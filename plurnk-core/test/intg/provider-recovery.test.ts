@@ -3,7 +3,7 @@
 // like a [202] wait and the next prompt resumes it with its log intact.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, ProviderError } from "@plurnk/plurnk-providers";
+import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
@@ -91,6 +91,56 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
             const requests = await db.test_provider_requests.all<{ outcome: string }>({ turn_id: turnId });
             assert.deepEqual(calls.map(({ state }) => state), ["error", "error", "response"]);
             assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "error", "response"], "request freezing drops no durable failure evidence");
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+});
+
+test("{§provider-recovery} a whole-call deadline recovers through the real provider without changing its packet", async () => {
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+        const requests: string[] = [];
+        const provider = new AiSdkProvider({
+            model: "deadline-recovery", url: "https://example.test/v1/chat/completions",
+            contextWindow: 100_000, fetchTimeoutMs: 50, operationTimeoutMs: 500,
+            temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 3,
+            fetch: async (_url, init) => {
+                requests.push(String(init?.body));
+                if (requests.length === 1) return new Promise<Response>((_resolve, reject) => {
+                    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+                });
+                const content = requests.length === 2
+                    ? "````FIND (worker:///**)\n````"
+                    : "````KILL\nRecovered.\n````";
+                return new Response(`data: ${JSON.stringify({
+                    id: `response-${requests.length}`, model: "deadline-recovery",
+                    choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+                    usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+                })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+            },
+        });
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `deadline-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const daemon = new Daemon({ db, provider });
+        await daemon.start();
+        const terminated: Terminated[] = [];
+        daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
+        try {
+            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the workspace and conclude.", policy: { proposals: "accept" } });
+            const done = await untilTerminated(terminated, 0);
+            assert.equal(done.result.status, 200);
+            assert.equal(requests.length, 3, "one expired request, its recovered response, and one new turn");
+            assert.equal(requests[0], requests[1], "recovery reissues the exact frozen request");
+            assert.notEqual(requests[1], requests[2]);
+            const rows = await db.test_log_entries_by_loop.all<{ source: string | null; status_rx: number }>({ loop_id: started.loopId });
+            assert.equal(rows.filter((row) => row.source === "provider" && row.status_rx === 504).length, 1);
+            const calls = await db.test_model_calls.all<{ state: string }>({ turn_id: done.turnIds[1]! });
+            const physical = await db.test_provider_requests.all<{ outcome: string; usage_input: number | null }>({ turn_id: done.turnIds[1]! });
+            assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
+            assert.deepEqual(physical.map(({ outcome }) => outcome), ["error", "response"]);
+            assert.deepEqual(physical.map(({ usage_input }) => usage_input), [null, 100], "unknown usage is not invented during recovery");
         } finally {
             await daemon.stop();
             await db.close();

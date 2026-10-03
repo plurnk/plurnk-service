@@ -175,8 +175,6 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
             },
             fetchTimeoutMs: 1_000,
             operationTimeoutMs: 5_000,
-            firstContentTimeoutMs: 1_000,
-            streamIdleTimeoutMs: 1_000,
             temperature: 0.2,
             repeatPenalty: 1.15,
             effort: { mode: "off", budget: null },
@@ -422,7 +420,7 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
                     + chunk({ content }, "stop") + usage + "data: [DONE]\n\n",
                 { headers: { "content-type": "text/event-stream" } });
             },
-            fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000, firstContentTimeoutMs: 1_000, streamIdleTimeoutMs: 1_000,
+            fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000,
             temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
             source: "provider:repeat-witness",
         });

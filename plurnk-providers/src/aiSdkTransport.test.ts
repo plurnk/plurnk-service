@@ -18,7 +18,6 @@ const request = {
     headers: {},
     body: {},
     messages: [{ role: "user" as const, content: "question" }],
-    fetchTimeoutMs: 1_000,
     streaming: false,
     captureRawBody: false,
 };
@@ -255,10 +254,10 @@ test("{§provider-cancellation-evidence} a shared cancellation reason does not m
     assert.deepEqual(results.map(({ chargeEvidence }) => chargeEvidence.response.id), ["request-10", "request-20"]);
 });
 
-test("{§provider-cancellation-evidence} deadline normalization retains evidence received before first content (#971)", async () => {
+test("{§provider-cancellation-evidence} cancellation retains evidence received before semantic output", async () => {
     const usage = { prompt_tokens: 100, completion_tokens: 0, total_tokens: 100 };
     await assert.rejects(executeOpenAICompatible({
-        ...request, streaming: true, firstContentTimeoutMs: 50,
+        ...request, streaming: true, signal: AbortSignal.timeout(50),
         fetch: async (_url, init) => new Response(new ReadableStream<Uint8Array>({
             start(controller) {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
@@ -270,9 +269,10 @@ test("{§provider-cancellation-evidence} deadline normalization retains evidence
             },
         }), { headers: { "content-type": "text/event-stream" } }),
     }), (error) => {
-        assert.ok(APICallError.isInstance(error));
-        assert.ok(error.cause instanceof ProviderTimeoutError);
-        assert.equal(error.cause.phase, "first_content");
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, "Provider call cancelled");
+        assert.ok(error.cause instanceof DOMException);
+        assert.equal(error.cause.name, "TimeoutError");
         const evidence = transportFailureEvidence(error);
         assert.deepEqual(evidence.usage, { inputTokens: 100, outputTokens: 0, totalTokens: 100 });
         assert.deepEqual(evidence.chargeEvidence.usage, usage);
@@ -370,7 +370,6 @@ test("the adapter maps leading system messages to AI SDK instructions", async ()
             { role: "system", content: "system contract" },
             { role: "user", content: "hello" },
         ],
-        fetchTimeoutMs: 1000,
         streaming: false,
         captureRawBody: false,
         fetch,
@@ -500,15 +499,8 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
     });
 });
 
-test("normalizeRetryAttemptError — deadlines surface at once, never transport-retried ({§provider-connectivity}, #479)", () => {
-    const first = normalizeRetryAttemptError(new ProviderTimeoutError("first_content", 180000));
-    assert.equal(APICallError.isInstance(first), true);
-    assert.equal((first as APICallError).isRetryable, false);
-    const attempt = normalizeRetryAttemptError(new ProviderTimeoutError("attempt", 60000));
-    assert.equal((attempt as APICallError).isRetryable, false);
-    const idle = normalizeRetryAttemptError(new ProviderTimeoutError("stream_idle", 120000));
-    assert.equal((idle as APICallError).isRetryable, false);
-    const operation = new ProviderTimeoutError("operation", 2700000);
+test("normalizeRetryAttemptError preserves the whole-call deadline ({§provider-connectivity})", () => {
+    const operation = new ProviderTimeoutError(2700000);
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
 

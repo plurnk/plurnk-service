@@ -208,8 +208,6 @@ export const startClientJourneyModel = async () => {
             PLURNK_PROVIDERS_RETRY_ATTEMPTS_journey: "0",
             PLURNK_PROVIDERS_FETCH_TIMEOUT_journey: "5000",
             PLURNK_PROVIDERS_OPERATION_TIMEOUT_journey: "15000",
-            PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT_journey: "5000",
-            PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT_journey: "5000",
             PLURNK_PROVIDERS_CACHE_AFFINITY_journey: "0",
             PLURNK_PROVIDERS_CACHE_WRITE_POLICY_journey: "off",
         },

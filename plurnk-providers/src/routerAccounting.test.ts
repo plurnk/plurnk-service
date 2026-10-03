@@ -80,7 +80,6 @@ const fixture = (streaming: boolean, billing: Record<string, unknown>, failure =
         supportedEfforts: ["low"],
         fetchTimeoutMs: 2000,
         operationTimeoutMs: 2000,
-        firstContentTimeoutMs: 2000,
         retryAttempts: 0,
         streaming,
         rawBody: false,

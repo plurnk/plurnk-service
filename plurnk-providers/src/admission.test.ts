@@ -94,8 +94,6 @@ const provider = (url: string, route: string, overrides: NodeJS.ProcessEnv = {})
     PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
-    PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "2000",
-    PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_MAX_CONCURRENCY_LIMITED: "1",
     ...overrides,
@@ -172,11 +170,10 @@ test("{§provider-inference-admission} queued expiry preserves the operation dea
     assert.deepEqual(wire.opened, ["first", "third"]);
 });
 
-test("{§provider-inference-admission} queued time does not consume physical-attempt or first-content deadlines", { timeout: 10000 }, async (t) => {
+test("{§provider-inference-admission} queueing and generation do not use the discovery deadline", { timeout: 10000 }, async (t) => {
     const wire = await endpoint(t);
     const p = await provider(wire.url, "openai/gpt-4.1-mini", {
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "100",
-        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "100",
     });
     const first = generate(p, "first");
     await wire.wait("first");
@@ -304,15 +301,13 @@ for (const value of ["0", "-2", "1.5", "NaN", "Infinity", "9007199254740992"]) {
     });
 }
 
-// {§provider-first-content-at-dispatch} Recorded shape (#853): Z.ai accepted the request and never answered
-// headers; the 180 s first-content deadline never fired and the attempt held its full 600 s twice.
 for (const [name, route] of [
     ["native SDK", "openai/gpt-4.1-mini"],
     ["catalog compatible", "fireworks-ai/accounts/fireworks/models/kimi-k3"],
     ["local compatible", "openai/local"],
     ["Ollama SDK", "ollama/local"],
 ] as const) {
-    test(`{§provider-first-content-at-dispatch} ${name}: an endpoint that never sends headers fails at the first-content deadline, not the attempt deadline`, { timeout: 10000 }, async (t) => {
+    test(`{§provider-connectivity} ${name}: the whole-call deadline bounds an endpoint that never sends headers`, { timeout: 10000 }, async (t) => {
         const received = Promise.withResolvers<void>();
         const server = createServer(async (request, response) => {
             if (request.url === "/v1/models") return void response.end(JSON.stringify({ data: [{ id: "local", meta: { n_ctx: 8192 } }] }));
@@ -333,20 +328,18 @@ for (const [name, route] of [
         assert.ok(address && typeof address === "object");
         const p = await provider(`http://127.0.0.1:${address.port}/v1`, route, {
             FIREWORKS_API_KEY: "test-key",
-            PLURNK_PROVIDERS_OPERATION_TIMEOUT: "8000",
+            PLURNK_PROVIDERS_OPERATION_TIMEOUT: "150",
             PLURNK_PROVIDERS_FETCH_TIMEOUT: "6000",
-            PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "150",
         });
-        const started = performance.now();
         await assert.rejects(generate(p, "headerless"), (error) => {
             assert.ok(error instanceof ProviderError);
-            assert.equal(error.kind, "network_failure");
-            assert.equal(error.problem.timeoutPhase, "first_content");
+            assert.equal(error.kind, "deadline_exceeded");
+            assert.equal(error.status, 504);
+            assert.equal(error.problem.timeoutPhase, "operation");
             assert.equal(error.problem.timeoutMs, 150);
             assert.equal(error.accounting.length, 1, "the dispatched request is one settled physical attempt");
             return true;
         });
         await received.promise;
-        assert.ok(performance.now() - started < 3000, "the attempt deadline (6000 ms) did not decide the failure");
     });
 }

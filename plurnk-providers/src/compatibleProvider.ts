@@ -191,8 +191,6 @@ export const compatibleProviderFromEnv = async (
         supportedEfforts,
         fetchTimeoutMs: timeout,
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
-        firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),
-        streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
         droppedOutputTokens: parseRequiredInt(env.PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS, "PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS", provider),
         effort,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),

@@ -157,14 +157,11 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
         PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT: "2700000",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT_my_box: "15000",
-        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "600000",
-        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT_my_box: "2500",
         PLURNK_PROVIDERS_EFFORT: "off",
         PLURNK_PROVIDERS_REASONING_BUDGET: "4096", // bare budget — NOT a "_capacity" alias override of REASONING
     } as NodeJS.ProcessEnv;
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_OPERATION_TIMEOUT, "15000");
-    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "2500");
     assert.equal(scopeEnvToAlias(env, "budget").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
 });
 

@@ -1,6 +1,7 @@
 import { chatMessageText } from "./types.ts";
 import test, { mock } from "node:test";
 import { getEventListeners } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
@@ -16,21 +17,61 @@ const wireConfig = (env: NodeJS.ProcessEnv) => {
     return { requestFields, supportedEfforts: requestFields.efforts };
 };
 
-type TestProviderConfig = Omit<AiSdkProviderConfig, "operationTimeoutMs" | "firstContentTimeoutMs">
-    & Partial<Pick<AiSdkProviderConfig, "operationTimeoutMs" | "firstContentTimeoutMs">>;
+type TestProviderConfig = Omit<AiSdkProviderConfig, "operationTimeoutMs">
+    & Partial<Pick<AiSdkProviderConfig, "operationTimeoutMs">>;
 
 const testProvider = (config: TestProviderConfig): AiSdkProvider => {
-    const {
-        operationTimeoutMs = config.fetchTimeoutMs,
-        firstContentTimeoutMs = 0,
-        ...rest
-    } = config;
-    return new AiSdkProvider({
-        ...rest,
-        operationTimeoutMs,
-        firstContentTimeoutMs,
-    });
+    const { operationTimeoutMs = config.fetchTimeoutMs, ...rest } = config;
+    return new AiSdkProvider({ ...rest, operationTimeoutMs });
 };
+
+for (const phase of ["headers", "first content", "between chunks", "finish", "buffered"] as const) {
+    test(`{§provider-connectivity} ${phase} may be slow within the whole-call deadline`, async () => {
+        let requests = 0;
+        const usage = { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 };
+        const provider = testProvider({
+            model: "slow", url: "https://example.test/v1/chat/completions",
+            fetchTimeoutMs: 20,
+            operationTimeoutMs: 2_000, streaming: phase !== "buffered",
+            temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
+            retryAttempts: 0,
+            fetch: async (_url, init) => {
+                requests += 1;
+                const pause = () => delay(75, undefined, { signal: init?.signal ?? undefined });
+                if (phase === "headers" || phase === "buffered") await pause();
+                if (phase === "buffered") return new Response(JSON.stringify({
+                    id: "slow", model: "slow", usage,
+                    choices: [{ index: 0, message: { role: "assistant", content: "answer" }, finish_reason: "stop" }],
+                }), { headers: { "content-type": "application/json" } });
+                return new Response(new ReadableStream({
+                    async start(controller) {
+                        const emit = (delta: object, finish_reason: string | null = null) => controller.enqueue(
+                            new TextEncoder().encode(`data: ${JSON.stringify({
+                                id: "slow", model: "slow", usage,
+                                choices: [{ index: 0, delta, finish_reason }],
+                            })}\n\n`),
+                        );
+                        if (phase === "first content") await pause();
+                        emit({ reasoning_content: "considered" });
+                        if (phase === "between chunks") await pause();
+                        emit({ content: "answer" });
+                        if (phase === "finish") await pause();
+                        emit({}, "stop");
+                        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                        controller.close();
+                    },
+                }), { headers: { "content-type": "text/event-stream" } });
+            },
+        });
+        const response = await provider.generate({ workerId: "slow", messages: [] });
+        assert.equal(response.assistant.content, "answer");
+        assert.equal(response.assistant.finishReason, "stop");
+        assert.equal(requests, 1, "silence within the call deadline does not reissue inference");
+        assert.equal(response.accounting.length, 1);
+        assert.equal(response.accounting[0]?.outcome, "response");
+        assert.equal(response.accounting[0]?.usage?.outputTokens, 2);
+    });
+}
 
 test("{§provider-wire-declaration} native SDK requests reproject controls for streaming and buffered calls", async () => {
     const fields = new RequestFields("unlisted", {
@@ -242,7 +283,8 @@ test("caller cancellation and provider timeout reach an injected fetch", async (
     });
     await assert.rejects(
         timeoutProvider.generate({ workerId: "timeout", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure",
+        (error: ProviderError) => error.kind === "deadline_exceeded"
+            && error.problem.timeoutPhase === "operation" && error.problem.timeoutMs === 100,
     );
 });
 
@@ -926,80 +968,9 @@ test("native SDK accounting evidence becomes a normalized charge in buffered and
     });
 });
 
-test("native SDK providers share the first-content surface-at-once contract (#479)", async () => {
-    let calls = 0;
-    const usage = {
-        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-        outputTokens: { total: 1, text: 1, reasoning: 0 },
-    };
-    const languageModel = {
-        specificationVersion: "v4",
-        provider: "native.test",
-        modelId: "native-timeout",
-        supportedUrls: {},
-        doGenerate: async () => { throw new Error("buffered generation is not under test"); },
-        doStream: async ({ abortSignal }: { abortSignal?: AbortSignal }) => {
-            calls++;
-            if (calls > 1) {
-                return {
-                    stream: new ReadableStream({
-                        start(controller) {
-                            controller.enqueue({ type: "stream-start", warnings: [] });
-                            controller.enqueue({ type: "response-metadata", id: "native-retry", modelId: "native-timeout" });
-                            controller.enqueue({ type: "text-start", id: "text-1" });
-                            controller.enqueue({ type: "text-delta", id: "text-1", delta: "recovered" });
-                            controller.enqueue({ type: "text-end", id: "text-1" });
-                            controller.enqueue({
-                                type: "finish",
-                                finishReason: { unified: "stop", raw: "completed" },
-                                usage,
-                            });
-                            controller.close();
-                        },
-                    }),
-                    response: {},
-                };
-            }
-            return {
-                stream: new ReadableStream({
-                    start(controller) {
-                        controller.enqueue({ type: "stream-start", warnings: [] });
-                        const timer = setTimeout(() => controller.close(), 100);
-                        abortSignal?.addEventListener("abort", () => {
-                            clearTimeout(timer);
-                            controller.error(abortSignal.reason);
-                        }, { once: true });
-                    },
-                }),
-                response: {},
-            };
-        },
-    } as unknown as LanguageModel;
-    const provider = testProvider({
-        model: "native-timeout",
-        languageModel,
-        fetchTimeoutMs: 5_000,
-        operationTimeoutMs: 5_000,
-        firstContentTimeoutMs: 10,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 1,
-        source: "provider:test-native",
-    });
-
-    await assert.rejects(
-        provider.generate({ workerId: "native-retry", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.timeoutPhase === "first_content",
-    );
-    assert.equal(calls, 1, "a deadline surfaces at once; no transport retry (#479)");
-});
 
 test("{§provider-connectivity} a wedged transport that ignores the abort still surfaces the operation deadline (#505)", async () => {
-    // The wedged-adapter case: a fetch that never resolves AND never observes its abort signal, with every
-    // SDK attempt deadline disabled. Only the operation deadline — enforced by racing, not by the advisory
-    // signal the transport ignores — can keep generate() from hanging the loop.
+    // {§provider-connectivity}: cancellation must bound a transport that ignores its signal.
     const wedgedFetch: typeof globalThis.fetch = () => new Promise<Response>(() => {});
     const provider = testProvider({
         ...injectedBase,
@@ -2232,15 +2203,6 @@ test("configured headers and url are sent verbatim", async () => {
 
 const retryCfg = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null } as const };
 
-const stalledStreamResponse = (): Response => new Response(new ReadableStream({
-    start(controller) {
-        controller.enqueue(new TextEncoder().encode(
-            'data: {"id":"stalled","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
-        ));
-        setTimeout(() => controller.close(), 100);
-    },
-}), { status: 200 });
-
 test("retry: a transient failure retries and a later success resolves", async () => {
     const calls = installFetchScript([
         { status: 408, retryAfter: 0 },
@@ -2256,32 +2218,6 @@ test("retry: a transient failure retries and a later success resolves", async ()
     assert.equal(res.notices, undefined, "retries before semantic output do not manufacture a degraded-response warning");
 });
 
-test("streamed-body silence surfaces on the first failure; the budget is not consumed (#479)", async () => {
-    let calls = 0;
-    mock.method(globalThis, "fetch", async () => {
-        calls++;
-        return stalledStreamResponse();
-    });
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 5000,
-        streamIdleTimeoutMs: 10,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 1,
-        source: "provider:test",
-    });
-    await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.timeoutPhase === "stream_idle"
-            && error.problem.timeoutMs === 10,
-    );
-    assert.equal(calls, 1, "a stalled stream is the engine's to recover, not the transport's to replay");
-    mock.restoreAll();
-});
 
 test("an Undici stream termination surfaces on the first failure (#479)", async () => {
     let calls = 0;
@@ -2301,7 +2237,6 @@ test("an Undici stream termination surfaces on the first failure (#479)", async 
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5000,
-        streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
         effort: { mode: "off", budget: null },
@@ -2318,102 +2253,8 @@ test("an Undici stream termination surfaces on the first failure (#479)", async 
     mock.restoreAll();
 });
 
-test("streamed-body silence does not replay when retries are disabled", async () => {
-    let calls = 0;
-    mock.method(globalThis, "fetch", async () => {
-        calls++;
-        return stalledStreamResponse();
-    });
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 1000,
-        streamIdleTimeoutMs: 10,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 0,
-        source: "provider:test",
-    });
-    await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.timeoutPhase === "stream_idle"
-            && error.problem.timeoutMs === 10,
-    );
-    assert.equal(calls, 1, "zero retries permits exactly one provider request");
-    mock.restoreAll();
-});
 
-test("an attempt timeout surfaces on the first failure and settles its physical request (#479)", async () => {
-    let calls = 0;
-    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        calls++;
-        return await new Promise<Response>((_resolve, reject) => {
-            const signal = init?.signal;
-            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
-        });
-    });
-    const settled: Array<{ outcome: string }> = [];
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 10,
-        streamIdleTimeoutMs: 0,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 1,
-        source: "provider:test",
-        operationTimeoutMs: 5_000,
-    });
-    await assert.rejects(
-        p.generate({
-            workerId: "r",
-            messages: [],
-            observeRequest: async () => async (accounting) => { settled.push(accounting); },
-        }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.timeoutPhase === "attempt"
-            && error.problem.timeoutMs === 10,
-    );
-    assert.equal(calls, 1, "the deadline surfaces at once (#479)");
-    assert.deepEqual(settled.map(({ outcome }) => outcome), ["error"], "the failed physical request is durably settled");
-    mock.restoreAll();
-});
 
-test("first-content silence surfaces independently of the stream-idle deadline (#479)", async () => {
-    let calls = 0;
-    mock.method(globalThis, "fetch", async () => {
-        calls++;
-        return new Response(new ReadableStream({
-            start(controller) {
-                setTimeout(() => controller.close(), 100);
-            },
-        }), { status: 200 });
-    });
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 5_000,
-        streamIdleTimeoutMs: 0,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 1,
-        source: "provider:test",
-        operationTimeoutMs: 5_000,
-        firstContentTimeoutMs: 10,
-    });
-    await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && error.problem.timeoutPhase === "first_content"
-            && error.problem.timeoutMs === 10,
-    );
-    assert.equal(calls, 1, "the first-content deadline surfaces at once (#479)");
-    mock.restoreAll();
-});
 
 test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct failure the consumer re-issues", async () => {
     let calls = 0;
@@ -2429,7 +2270,6 @@ test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct f
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 50,
-        streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
         effort: { mode: "off", budget: null },
@@ -2451,28 +2291,20 @@ test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct f
     mock.restoreAll();
 });
 
-test("the total generation deadline spans stalled-stream retry scheduling", async () => {
+test("{§provider-connectivity} the whole-call deadline spans provider-directed retry waits", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
-        if (calls > 1) {
-            return new Response(new ReadableStream({
-                start(controller) {
-                    controller.enqueue(new TextEncoder().encode(
-                        'data: {"id":"second","object":"chat.completion.chunk","created":2,"model":"m","choices":[{"index":0,"delta":{"content":"late"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
-                    ));
-                    controller.close();
-                },
-            }), { status: 200 });
-        }
-        return stalledStreamResponse();
+        return new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), {
+            status: 503,
+            headers: { "content-type": "application/json", "retry-after": "60" },
+        });
     });
     const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5000,
         operationTimeoutMs: 50,
-        streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
         effort: { mode: "off", budget: null },
@@ -2483,36 +2315,58 @@ test("the total generation deadline spans stalled-stream retry scheduling", asyn
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
-            && error.problem.timeoutPhase === "operation",
+            && error.problem.timeoutPhase === "operation"
+            && error.accounting.length === 1
+            && error.accounting[0]?.outcome === "error",
     );
     assert.ok(Date.now() - started < 500, "the configured total deadline ends retry scheduling");
     assert.equal(calls, 1, "the total deadline expires before another request begins");
     mock.restoreAll();
 });
 
-test("a zero stream-idle timeout permits a slow inter-chunk pause", async () => {
-    mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({
-        async start(controller) {
-            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"slow "}}]}\n\n'));
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"is valid"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
-            controller.close();
-        },
-    }), { status: 200 }));
-    const p = testProvider({
-        model: "m",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 1000,
-        streamIdleTimeoutMs: 0,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        effort: { mode: "off", budget: null },
-        retryAttempts: 0,
+for (const active of [false, true]) {
+    test(`{§provider-connectivity} whole-call expiry settles ${active ? "active" : "silent"} stream evidence`, async () => {
+        const settled: unknown[] = [];
+        let observed = "";
+        const p = testProvider({
+            model: "m", url: "https://example.test/v1/chat/completions",
+            fetchTimeoutMs: 5_000, operationTimeoutMs: 100,
+            temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 3,
+            fetch: async (_url, init) => new Response(new ReadableStream({
+                start(controller) {
+                    const emit = (delta: object) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                        id: "deadline-evidence", model: "m",
+                        choices: [{ index: 0, delta, finish_reason: null }],
+                        usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
+                    })}\n\n`));
+                    emit({});
+                    const timer = active ? setInterval(() => emit({ reasoning_content: "thinking " }), 10) : null;
+                    init?.signal?.addEventListener("abort", () => {
+                        if (timer !== null) clearInterval(timer);
+                        controller.error(init.signal?.reason);
+                    }, { once: true });
+                },
+            }), { headers: { "content-type": "text/event-stream" } }),
+        });
+        await assert.rejects(p.generate({
+            workerId: "deadline-evidence", messages: [],
+            observeReasoning: (delta) => { observed += delta; },
+            observeRequest: async () => async (evidence) => { settled.push(evidence); },
+        }), (error) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "deadline_exceeded");
+            assert.equal(error.problem.timeoutMs, 100);
+            assert.equal(error.accounting.length, 1);
+            assert.equal(error.accounting[0]?.outcome, "error");
+            assert.equal(error.accounting[0]?.usage?.inputTokens, 10);
+            assert.equal(error.accounting[0]?.usage?.outputTokens, 1);
+            assert.deepEqual(settled, error.accounting, "received evidence settles before expiry returns");
+            return true;
+        });
+        assert.equal(observed.length > 0, active);
     });
-    const result = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(result.assistant.content, "slow is valid");
-    mock.restoreAll();
-});
+}
+
 
 test("retry: exhausting the budget surfaces the classified ProviderError", async () => {
     const { ProviderError } = await import("./errors.ts");
@@ -3048,7 +2902,7 @@ test("a response with an invalid reasoning detail retains totals and their catal
     assert.deepEqual(raw.usageRefusal, { reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer", usage }, "the durable response carries the refused counters");
 });
 
-test("{§provider-connectivity} a stream still producing content outlives the attempt deadline; stream-idle governs it instead", async () => {
+test("{§provider-connectivity} generation does not inherit the discovery/tokenizer HTTP deadline", async () => {
     const encoder = new TextEncoder();
     const chunk = (content: string, finish: string | null = null) => `data: ${JSON.stringify({
         id: "long", object: "chat.completion.chunk", created: 1, model: "m",
@@ -3070,7 +2924,6 @@ test("{§provider-connectivity} a stream still producing content outlives the at
             model: "m",
             url: "http://x/v1/chat/completions",
             fetchTimeoutMs: 60,
-            streamIdleTimeoutMs: 1_000,
             temperature: 0.2,
             repeatPenalty: 1.15,
             effort: { mode: "off", budget: null },
@@ -3079,7 +2932,7 @@ test("{§provider-connectivity} a stream still producing content outlives the at
             operationTimeoutMs: 5_000,
         });
         const response = await p.generate({ workerId: "long", messages: [] });
-        assert.equal(response.assistant.content, "part0 part1 part2 part3 part4 part5 part6 part7 ", "about 200 ms of streaming against a 60 ms attempt deadline completes");
+        assert.equal(response.assistant.content, "part0 part1 part2 part3 part4 part5 part6 part7 ");
     } finally {
         mock.restoreAll();
     }

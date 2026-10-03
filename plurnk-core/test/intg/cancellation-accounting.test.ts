@@ -15,7 +15,7 @@ for (const reported of [false, true]) {
             const provider = new AiSdkProvider({
                 model: "cancellation-witness", url: "https://example.test/v1/chat/completions",
                 contextWindow: 100_000, streaming: true,
-                fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 5000,
+                fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
                 temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 3,
                 normalizeCost: (evidence) => evidence.charge as ProviderCost | undefined,
                 fetch: async (_url, init) => {

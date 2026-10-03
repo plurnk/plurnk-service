@@ -77,10 +77,8 @@ export type AiSdkProviderConfig = {
     url?: string;                             // OpenAI-compatible chat-completions URL
     languageModel?: LanguageModel;            // native AI SDK provider model
     attributions?: (context: PluginAttributionContext) => PluginAttribution;
-    fetchTimeoutMs: number;                    // one physical generation attempt; zero disables
+    fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
-    firstContentTimeoutMs: number;             // first semantic streamed content; zero disables
-    streamIdleTimeoutMs?: number;             // semantic streamed-content idle deadline; zero/unset disables
     droppedOutputTokens?: number;             // {§provider-output-dropped} billed output tokens beyond streamed characters that void a response; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
@@ -241,8 +239,6 @@ export default class AiSdkProvider implements Provider {
     #languageModel: LanguageModel | undefined;
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
-    #firstContentTimeoutMs: number;
-    #streamIdleTimeoutMs: number | undefined;
     #droppedOutputTokens: number;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
@@ -308,8 +304,6 @@ export default class AiSdkProvider implements Provider {
         for (const [name, value] of [
             ["fetchTimeoutMs", config.fetchTimeoutMs],
             ["operationTimeoutMs", config.operationTimeoutMs],
-            ["firstContentTimeoutMs", config.firstContentTimeoutMs],
-            ["streamIdleTimeoutMs", config.streamIdleTimeoutMs],
         ] as const) {
             if (value !== undefined && (!Number.isInteger(value) || value < 0 || value > MAX_TIMER_MS)) {
                 throw new Error(`${config.source ?? "provider"}: ${name} must be an integer from 0 through ${MAX_TIMER_MS} milliseconds`);
@@ -317,8 +311,6 @@ export default class AiSdkProvider implements Provider {
         }
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#operationTimeoutMs = config.operationTimeoutMs;
-        this.#firstContentTimeoutMs = config.firstContentTimeoutMs;
-        this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
         this.#droppedOutputTokens = config.droppedOutputTokens ?? 0;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
@@ -776,9 +768,6 @@ export default class AiSdkProvider implements Provider {
                         messages,
                         signal: operationSignal,
                         fetch: this.#fetch,
-                        fetchTimeoutMs: this.#fetchTimeoutMs,
-                        firstContentTimeoutMs: this.#firstContentTimeoutMs,
-                        streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
@@ -793,9 +782,6 @@ export default class AiSdkProvider implements Provider {
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
-                        fetchTimeoutMs: this.#fetchTimeoutMs,
-                        firstContentTimeoutMs: this.#firstContentTimeoutMs,
-                        streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
@@ -869,7 +855,7 @@ export default class AiSdkProvider implements Provider {
                 || err instanceof ProviderReasoningObserverError) throw err.cause;
             if (signal?.aborted) throw signal.reason;
             if (operationTimeout?.aborted) {
-                const timeout = new ProviderTimeoutError("operation", this.#operationTimeoutMs, err);
+                const timeout = new ProviderTimeoutError(this.#operationTimeoutMs, err);
                 throw new ProviderError(this.#source, "deadline_exceeded", timeout.message, {
                     status: 504,
                     cause: timeout,

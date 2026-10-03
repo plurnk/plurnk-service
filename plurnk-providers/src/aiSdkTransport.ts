@@ -5,7 +5,6 @@ import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
-import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 
 const errorSchema = z.object({
@@ -191,9 +190,6 @@ export type AiSdkTransportRequest = {
     messages: ChatMessage[];
     signal?: AbortSignal;
     fetch?: typeof globalThis.fetch;
-    fetchTimeoutMs: number;
-    firstContentTimeoutMs?: number;
-    streamIdleTimeoutMs?: number;
     streaming: boolean;
     captureRawBody: boolean;
     observeReasoning?: ProviderReasoningObserver;
@@ -248,29 +244,6 @@ type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | 
     reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
 };
 
-const transportTimeout = (
-    cause: unknown,
-    request: AiSdkModelRequest,
-): ProviderTimeoutError | null => {
-    const owned = providerTimeoutOf(cause);
-    if (owned !== null) return owned;
-
-    const seen = new Set<unknown>();
-    let current = cause;
-    while (typeof current === "object" && current !== null && !seen.has(current)) {
-        if ((current as { name?: string }).name === "TimeoutError") break;
-        seen.add(current);
-        current = (current as { cause?: unknown }).cause;
-    }
-    if (typeof current !== "object" || current === null) return null;
-
-    const message = String((current as { message?: unknown }).message ?? "");
-    if (/chunk timeout/i.test(message)) {
-        return new ProviderTimeoutError("stream_idle", request.streamIdleTimeoutMs ?? 0, cause);
-    }
-    return new ProviderTimeoutError("attempt", request.fetchTimeoutMs, cause);
-};
-
 const streamFailureValues = new WeakMap<object, readonly unknown[]>();
 const streamFailureOutput = new WeakSet<object>();
 
@@ -308,18 +281,6 @@ export const transportFailureOutputObserved = (error: unknown): boolean => {
 
 export const normalizeRetryAttemptError = (error: unknown): unknown => {
     if (!APICallError.isInstance(error)) {
-        // Attempt, first-content, and stream-idle deadlines surface on the first
-        // failure ({§provider-connectivity}, #479): the engine's {§provider-recovery}
-        // owns re-issue with backoff and park; the stall is reported, never swallowed.
-        if (error instanceof ProviderTimeoutError && error.phase !== "operation") {
-            return retainStreamFailureValues(error, new APICallError({
-                message: error.message,
-                url: "model:generation",
-                requestBodyValues: {},
-                cause: error,
-                isRetryable: false,
-            }));
-        }
         // Node's Undici stream reader reports a peer-aborted HTTP/2 body as this
         // raw TypeError after headers have arrived. Normalize it at the attempt
         // boundary so the owned scheduler sees the same retryability that the
@@ -367,15 +328,7 @@ const executeModel = async (
         if (request.signal?.aborted) {
             throw retainStreamFailureValues(cause, new Error("Provider call cancelled", { cause: request.signal.reason }));
         }
-        const timeout = transportTimeout(cause, request);
-        if (timeout === null) throw normalizeRetryAttemptError(cause);
-        throw retainStreamFailureValues(cause, new APICallError({
-            message: timeout.message,
-            url: "model:generation",
-            requestBodyValues: {},
-            cause: timeout,
-            isRetryable: false,
-        }));
+        throw normalizeRetryAttemptError(cause);
     }
 };
 
@@ -437,33 +390,6 @@ const executeModelOnce = async (
             ? { role: "assistant", content: chatMessageText(message) }
             : { role: "system", content: chatMessageText(message) };
     });
-    // {§provider-connectivity} — a streamed attempt's deadline holds only until semantic content
-    // flows; after that, stream-idle catches a stall and the operation deadline bounds the whole.
-    // Semantic output retires the attempt deadline, not the operation deadline.
-    const attemptDeadline = request.streaming && request.fetchTimeoutMs > 0 ? new AbortController() : null;
-    const attemptTimer = attemptDeadline === null ? null : setTimeout(
-        () => attemptDeadline.abort(new ProviderTimeoutError("attempt", request.fetchTimeoutMs)),
-        request.fetchTimeoutMs,
-    );
-    // {§provider-first-content-at-dispatch} The first-content deadline is armed here, at dispatch —
-    // after admission, before response headers — because an endpoint that never answers headers
-    // otherwise holds the attempt for the whole attempt deadline (#853).
-    const firstContentDeadline = request.streaming
-        && request.firstContentTimeoutMs !== undefined
-        && request.firstContentTimeoutMs > 0
-        ? new AbortController()
-        : null;
-    const firstContentTimer = firstContentDeadline === null ? null : setTimeout(
-        () => firstContentDeadline.abort(new ProviderTimeoutError("first_content", request.firstContentTimeoutMs ?? 0)),
-        request.firstContentTimeoutMs,
-    );
-    const liftAttemptDeadline = (): void => {
-        if (attemptTimer !== null) clearTimeout(attemptTimer);
-        if (firstContentTimer !== null) clearTimeout(firstContentTimer);
-    };
-    const signals = [request.signal, attemptDeadline?.signal, firstContentDeadline?.signal]
-        .filter((signal): signal is AbortSignal => signal !== undefined);
-    const abortSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
     const common = {
         model,
         toolChoice: "none",
@@ -474,16 +400,8 @@ const executeModelOnce = async (
         // AiSdkProvider owns retries so every physical request is independently
         // observed and accounted. The SDK transport executes exactly once.
         maxRetries: 0,
-        abortSignal,
+        abortSignal: request.signal,
         headers: request.headers,
-        timeout: {
-            ...(request.fetchTimeoutMs > 0 && !request.streaming ? { totalMs: request.fetchTimeoutMs } : {}),
-            ...(request.streaming
-                && request.streamIdleTimeoutMs !== undefined
-                && request.streamIdleTimeoutMs > 0
-                ? { chunkMs: request.streamIdleTimeoutMs }
-                : {}),
-        },
         ...settings,
     } as const;
 
@@ -544,18 +462,16 @@ const executeModelOnce = async (
             }
             if (part.type === "text-delta" && part.text.length > 0) {
                 outputObserved = true;
-                liftAttemptDeadline();
                 request.observeText?.(part.text);
             }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
-                liftAttemptDeadline();
                 request.observeReasoning?.(part.text);
             }
             if (part.type === "error") streamError ??= part.error;
         }
         if (streamError !== undefined) throw streamError;
-        abortSignal?.throwIfAborted();
+        request.signal?.throwIfAborted();
         const evidence = extractEvidence(rawChunks);
         const accountingUsage = wireUsageEvidenceOf(rawChunks);
         const content = await result.text;
@@ -593,8 +509,6 @@ const executeModelOnce = async (
         };
     } catch (error) {
         throw preserveStreamFailure(error, rawChunks, outputObserved);
-    } finally {
-        liftAttemptDeadline();
     }
 };
 
@@ -631,9 +545,6 @@ export const executeOpenAICompatible = async (
         headers: {},
         messages: request.messages,
         signal: request.signal,
-        fetchTimeoutMs: request.fetchTimeoutMs,
-        firstContentTimeoutMs: request.firstContentTimeoutMs,
-        streamIdleTimeoutMs: request.streamIdleTimeoutMs,
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,
         ...(request.observeReasoning === undefined ? {} : { observeReasoning: request.observeReasoning }),

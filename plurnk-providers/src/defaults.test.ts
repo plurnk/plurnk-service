@@ -8,8 +8,10 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
-    assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "180000");
-    assert.equal(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "120000");
+    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).sort(), [
+        "PLURNK_PROVIDERS_FETCH_TIMEOUT",
+        "PLURNK_PROVIDERS_OPERATION_TIMEOUT",
+    ]);
     assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
     assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
 });
@@ -20,11 +22,9 @@ test("withProviderDefaults preserves every explicit operator value", () => {
         PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT: "84",
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "42",
-        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "21",
     });
     assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "malformed");
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "off");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "84");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "42");
-    assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "21");
 });

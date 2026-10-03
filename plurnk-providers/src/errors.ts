@@ -14,36 +14,16 @@ export interface ClassifiedProviderError {
     extensions?: Readonly<Record<string, unknown>>;
 }
 
-export type ProviderTimeoutPhase = "attempt" | "first_content" | "stream_idle" | "operation";
-
 export class ProviderTimeoutError extends Error {
-    readonly phase: ProviderTimeoutPhase;
+    readonly phase = "operation";
     readonly timeoutMs: number;
 
-    constructor(phase: ProviderTimeoutPhase, timeoutMs: number, cause?: unknown) {
-        const labels: Record<ProviderTimeoutPhase, string> = {
-            attempt: "Provider attempt",
-            first_content: "First provider content",
-            stream_idle: "Provider stream idle",
-            operation: "Provider operation",
-        };
-        super(`${labels[phase]} exceeded its ${timeoutMs} ms deadline.`, cause === undefined ? undefined : { cause });
+    constructor(timeoutMs: number, cause?: unknown) {
+        super(`Provider operation exceeded its ${timeoutMs} ms deadline.`, cause === undefined ? undefined : { cause });
         this.name = "ProviderTimeoutError";
-        this.phase = phase;
         this.timeoutMs = timeoutMs;
     }
 }
-
-export const providerTimeoutOf = (error: unknown): ProviderTimeoutError | null => {
-    const seen = new Set<unknown>();
-    let current = error;
-    while (typeof current === "object" && current !== null && !seen.has(current)) {
-        if (current instanceof ProviderTimeoutError) return current;
-        seen.add(current);
-        current = (current as { cause?: unknown }).cause;
-    }
-    return null;
-};
 
 const peerTerminated = (err: unknown): boolean => {
     const seen = new Set<unknown>();
@@ -145,17 +125,6 @@ export const classifyProviderError = (
 
 const classifyApiCallError = (err: APICallError, detailLimit: number | undefined): ClassifiedProviderError => {
     {
-        const timeout = providerTimeoutOf(err);
-        if (timeout !== null) {
-            return {
-                kind: "network_failure",
-                message: timeout.message,
-                extensions: {
-                    timeoutPhase: timeout.phase,
-                    timeoutMs: timeout.timeoutMs,
-                },
-            };
-        }
         const status = err.statusCode ?? 0;
         const message = err.message.trim().length > 0
             ? preview(err.message, detailLimit)

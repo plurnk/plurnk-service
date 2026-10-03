@@ -471,7 +471,7 @@ The universal groups are:
 - reasoning activation and optional explicit budget;
 - explicit reasoning response-content style;
 - decode tuning;
-- operation, physical-attempt, first-content, stream-idle, retry, and probe budgets;
+- whole-call generation, discovery/tokenizer HTTP, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
 - context-window and generation-envelope overrides;
 - provider-documented cache affinity and explicit cache-write policy;
@@ -787,21 +787,14 @@ unconfigured. Their grammar protection remains at {§provider-grammar-transport}
 §provider-connectivity The provider adapter owns one attempt scheduler around
 the complete generation exchange; SDK-internal retries are disabled.
 `PLURNK_PROVIDERS_RETRY_ATTEMPTS=N` permits at most `N + 1` physical requests.
-The layers are independent and a configured value of zero disables only that
-deadline:
+Generation has one configurable deadline; `0` disables it. Caller cancellation
+and the caller's task allowance remain authoritative. Initial silence, a pause
+between chunks, and buffered output do not acquire separate deadlines.
 
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including admission queueing, every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; not retried inside this operation. Consumer recovery is separate. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
-| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request. A non-streamed request is bounded through response consumption; a streamed one only until its first semantic content. After content begins, stream-idle bounds silence and the operation deadline still bounds the whole call. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
-| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Dispatch through first semantic model content ({§provider-first-content-at-dispatch}); metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
-| Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
-
-§provider-first-content-at-dispatch The first-content deadline is armed when the
-admitted attempt is dispatched, before response headers, so an endpoint that accepts
-the request and never answers fails at `timeoutPhase=first_content` instead of holding
-the attempt for the whole attempt deadline. It still begins only after admission
-({§provider-inference-admission}).
+| Discovery/tokenizer HTTP | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | Non-generation endpoint discovery and tokenizer requests only. | Ordinary HTTP failure at the owning discovery or measurement boundary. Never interrupts generation. |
 
 Settled calls remove their deadline timers and cancellation subscriptions.
 
@@ -817,7 +810,7 @@ retries generation to obtain it. Partial output is never a completed response.
 
 A 2xx exchange whose body cannot be processed (a provider invalid-response)
 classifies as the non-retryable 502 on the first failure unless an explicit
-`x-should-retry` directive says otherwise (#479). Inner deadline failures surface on the first failure; when a
+`x-should-retry` directive says otherwise (#479). When a
 directive-driven retry sequence exhausts, `attempts` and `retryExhausted`
 are added and the classification is final. Every admitted physical attempt opens
 and settles exactly one ordered {§provider-request-accounting} record, including
@@ -1011,7 +1004,7 @@ alias scoping. Zero, other negative values and non-integers are invalid.
 | Admission | FIFO among live waiters. The lease begins before the physical request observer and ends after the complete response or transport failure settles, including streamed bodies. |
 | Cancellation | A queued abort removes that waiter and preserves the caller's reason. It opens no physical request or accounting row. In-flight cancellation signals the transport; capacity is released when that attempt unwinds. A transport still running despite abort does not authorize exceeding the limit. |
 | Retries | Backoff holds no lease. Each retry rejoins admission as a new physical attempt. |
-| Deadlines | The existing operation deadline includes queueing. Attempt, first-content and stream-idle deadlines begin only after admission; queued work is not a stalled stream. |
+| Deadline | The whole-call operation deadline includes queueing, every physical attempt and retry wait. Transport adds no generation deadline. |
 | Scope | Workers, tools, messages, waits, token measurement and endpoint discovery are not serialized by inference admission. Independent endpoints progress independently. No cross-process or machine-wide capacity guarantee is implied. |
 
 Admission neither changes worker lifecycle nor selects another model or endpoint.

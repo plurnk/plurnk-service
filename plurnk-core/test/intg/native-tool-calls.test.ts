@@ -24,7 +24,7 @@ for (const transport of ["text", "wire"] as const) {
                 const notices: Notice[] = [];
                 let requests = 0;
                 const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
-                    fetchTimeoutMs: 1000, operationTimeoutMs: 3000, firstContentTimeoutMs: 0,
+                    fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
                     temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
                     fetch: async () => {
                         requests += 1;

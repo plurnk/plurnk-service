@@ -54,7 +54,7 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
         const reasoning = `${frame("NOTE", note)}\n\n${frame("READ (worker:///fact.txt)", null)}\n\nContinue thinking.\n`;
         const streamed: string[] = [];
         const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
-            fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
+            fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null },
             fetch: async () => new Response([
                 { choices: [{ index: 0, delta: { reasoning_content: reasoning } }] },
@@ -174,7 +174,7 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
             },
         });
         const provider = new AiSdkProvider({ model: "fixture", url: `http://127.0.0.1:${address.port}/v1/chat/completions`,
-            contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
+            contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null }, rawBody: true,
             normalizeCost: ({ charge: value }) => value as typeof charge | undefined,
             ...(tagged ? { reasoningResponseStyle: "think-tags" as const } : {}),

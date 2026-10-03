@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { APICallError, JSONParseError, RetryError, TypeValidationError } from "ai";
-import { ProviderError, ProviderTimeoutError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
+import { ProviderError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
 import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
 
@@ -228,28 +228,6 @@ test("{§provider-retryable-truth} transport retry exhaustion is explicit and st
     assert.equal(error.cause, cause);
 });
 
-test("retry exhaustion retains the exact inner deadline phase", () => {
-    const failures = [1, 2].map(() => new APICallError({
-        message: "attempt timed out",
-        url: "https://example.test/v1/chat/completions",
-        requestBodyValues: {},
-        cause: new ProviderTimeoutError("attempt", 10),
-        isRetryable: true,
-    }));
-    const cause = new RetryError({
-        message: "Failed after 2 attempts.",
-        reason: "maxRetriesExceeded",
-        errors: failures,
-    });
-    const error = toProviderError(cause, "provider:test");
-    assert.equal(error.kind, "network_failure");
-    assert.equal(error.status, 503);
-    assert.equal(error.problem.retryable, true);
-    assert.equal(error.problem.attempts, 2);
-    assert.equal(error.problem.retryExhausted, true);
-    assert.equal(error.problem.timeoutPhase, "attempt");
-    assert.equal(error.problem.timeoutMs, 10);
-});
 
 // {§provider-failure-cause} — the SDK wraps every processing failure of a 2xx body in one message;
 // the durable Problem keeps a bounded classification of what actually happened underneath.

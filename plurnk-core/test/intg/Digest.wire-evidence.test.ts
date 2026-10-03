@@ -17,7 +17,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
     let requests = 0;
     const provider = new AiSdkProvider({
         model: "wire-evidence", url: "https://example.test/v1/chat/completions",
-        fetchTimeoutMs: 1000, operationTimeoutMs: 3000, firstContentTimeoutMs: 1000,
+        fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
         contextWindow: 100000, outputBudget: 1000,
         effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
         rawBody: false,

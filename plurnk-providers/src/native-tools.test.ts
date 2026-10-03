@@ -63,7 +63,6 @@ const response = (protocol: Protocol, streaming: boolean): Response => {
 const request = {
     messages: [{ role: "user" as const, content: "question" }],
     headers: { "x-fixture": "preserved" },
-    fetchTimeoutMs: 1_000,
     maxOutputTokens: 1_000,
     captureRawBody: true,
 };

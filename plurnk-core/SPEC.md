@@ -6212,7 +6212,7 @@ teardown. The runner joins the test body's cleanup before starting the next
 specimen. The shared workspace and story helpers cover setup, inference and
 oracle failures, preserve the primary failure when their cleanup also fails,
 and attempt every registered disposal.
-Provider attempt/recovery limits remain independent; a harness cancellation is
+The provider whole-call deadline and recovery policy remain independent; a harness cancellation is
 not evidence that the provider's own deadline expired.
 
 §provider-conformance-matrix **Every configured model alias is exercised through a
