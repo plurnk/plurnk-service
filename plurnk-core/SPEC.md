@@ -143,7 +143,7 @@ which depends on core semantic conventions v1.44.0: a CLIENT-kind
 spelling, never its tuning alias; unmatched IDs are preserved, `other` for an
 unregistered handle), and `gen_ai.request.model`;
 on settlement it gains `gen_ai.usage.input_tokens` and
-`gen_ai.usage.output_tokens` by aggregating every reported request quantity in
+`gen_ai.usage.output_tokens` for quantities reported by every physical request in
 validated accounting ({§tokenomics-provider-usage}), plus
 `gen_ai.response.finish_reasons`; failures carry `error.type` as the class
 name only. Plurnk custom attributes (attempt, kind, status, loop/turn ids)

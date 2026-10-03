@@ -4,7 +4,7 @@ import { trace } from "@opentelemetry/api";
 import { Mock, type ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { settleGenAiResponse } from "./genai.ts";
 
-test("{§observability-genai-conventions} telemetry aggregates every reported request without inventing unknown usage", async (t) => {
+test("{§observability-genai-conventions} telemetry publishes only complete request totals", async (t) => {
     const response = await new Mock({ contextWindow: 16_384, responses: [{
         assistant: { content: "answer", reasoning: null },
         usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },
@@ -17,7 +17,7 @@ test("{§observability-genai-conventions} telemetry aggregates every reported re
         ...unknown, usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
     };
     for (const [accounting, expected] of [
-        [[unknown, ...response.accounting], [5, 3]],
+        [[unknown, ...response.accounting], [undefined, undefined]],
         [[partial, ...response.accounting], [7, 4]],
         [[unknown], [undefined, undefined]],
     ] as const) {
