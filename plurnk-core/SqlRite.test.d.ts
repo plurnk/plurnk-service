@@ -581,6 +581,9 @@ export class SqlRiteSync {
 	test_parser_log_first: SqlRiteSyncPreparedStatements;
 	test_model_reasoning_resources: SqlRiteSyncPreparedStatements;
 	test_reasoning_reads: SqlRiteSyncPreparedStatements;
+	test_stream_opened_at: SqlRiteSyncPreparedStatements;
+	test_stream_clock: SqlRiteSyncPreparedStatements;
+	test_stream_set_clock: SqlRiteSyncPreparedStatements;
 	tok_channel_weight: SqlRiteSyncPreparedStatements;
 	tok_log_weight: SqlRiteSyncPreparedStatements;
 	test_turn_source_rewrite: SqlRiteSyncPreparedStatements;
@@ -1171,6 +1174,9 @@ export default class SqlRite {
 	test_parser_log_first: SqlRitePreparedStatements;
 	test_model_reasoning_resources: SqlRitePreparedStatements;
 	test_reasoning_reads: SqlRitePreparedStatements;
+	test_stream_opened_at: SqlRitePreparedStatements;
+	test_stream_clock: SqlRitePreparedStatements;
+	test_stream_set_clock: SqlRitePreparedStatements;
 	tok_channel_weight: SqlRitePreparedStatements;
 	tok_log_weight: SqlRitePreparedStatements;
 	test_turn_source_rewrite: SqlRitePreparedStatements;

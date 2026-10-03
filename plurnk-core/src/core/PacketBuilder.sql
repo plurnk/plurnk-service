@@ -28,13 +28,12 @@ WHERE c.id = $worker_id;
 
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
--- size and the size last reported to the model (the publication cursor). Powers the Delegation streams
--- orienting section ({§child-orientation}): `* active <runtime>:///<coord> — <channel> N lines (+D)`
--- pointers the model READs/KILLs. Nothing else reaches the model while a stream is active
--- ({§exec-stream}). Empty → section omitted.
+-- size, publication cursor and durable activity clock. Powers the Delegation streams
+-- inventory ({§child-orientation}); output bodies remain explicit READs while active ({§exec-stream}).
 SELECT s.scheme, e.authority, e.pathname, sp.id AS publication_id, ec.name AS channel,
     (length(ec.content) - length(replace(ec.content, char(10), ''))) AS lines,
-    length(ec.content) AS bytes, sp.published_end AS reported
+    length(ec.content) AS bytes, sp.published_end AS reported,
+    s.opened_at, s.output_changed_at
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN subscription_publications sp ON sp.subscription_id = s.id

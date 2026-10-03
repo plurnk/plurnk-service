@@ -292,13 +292,20 @@ export default class PacketBuilder {
         // emptiness is stated rather than inferred from a missing heading ({§packet-empty-sections}).
         const openChannels = await this.#db.engine_child_streams_open.all<{
             scheme: string; authority: string; pathname: string; publication_id: number; channel: string;
-            lines: number; bytes: number; reported: number;
+            lines: number; bytes: number; reported: number; opened_at: string; output_changed_at: string | null;
         }>({ worker_id: workerId });
-        // {§exec-stream} — an active stream shows only its size and growth since the last packet.
+        // {§child-orientation}: one clock snapshot for the packet's live inventory.
+        const now = Date.now();
+        const secondsSince = (timestamp: string): number => Math.max(0, Math.floor((now - Date.parse(timestamp)) / 1000));
         const childStreams = [...Map.groupBy(openChannels, (c) => renderAddress(c)).entries()].map(([path, channels]) => ({
             status: "active",
             path,
-            detail: channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`).join("; "),
+            detail: [
+                `elapsed ${secondsSince(channels[0]!.opened_at)}s`,
+                channels[0]!.output_changed_at === null ? "output timing unknown"
+                    : `output unchanged ${secondsSince(channels[0]!.output_changed_at)}s`,
+                ...channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`),
+            ].join("; "),
         }));
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));

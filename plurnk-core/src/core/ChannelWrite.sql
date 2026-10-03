@@ -107,6 +107,32 @@ BEGIN
     UPDATE workers SET wake_revision = wake_revision + 1 WHERE id = NEW.worker_id;
 END;
 
+-- INIT: subscriptions_output_clock
+-- {§child-orientation}: silence starts at opening, including streams with no output yet.
+DROP TRIGGER IF EXISTS subscriptions_output_clock;
+CREATE TRIGGER subscriptions_output_clock
+AFTER INSERT ON subscriptions
+BEGIN
+    UPDATE subscriptions SET output_changed_at = NEW.opened_at WHERE id = NEW.id;
+END;
+
+-- INIT: subscriptions_output_changed
+-- Content and its clock commit together. State/metadata writes and identical
+-- content do not count; publication chooses which channels the worker observes.
+DROP TRIGGER IF EXISTS subscriptions_output_changed;
+CREATE TRIGGER subscriptions_output_changed
+INSTEAD OF UPDATE OF content ON entry_channels
+WHEN NEW.content IS NOT OLD.content
+BEGIN
+    UPDATE subscriptions
+    SET output_changed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE entry_id = NEW.entry_id AND closed_at IS NULL
+      AND EXISTS (
+          SELECT 1 FROM subscription_publications sp
+          WHERE sp.subscription_id = subscriptions.id AND sp.channel = NEW.name
+      );
+END;
+
 -- INIT: subscriptions_settle_channels
 -- Subscription settlement is the single atomic transition that closes the
 -- lifecycle and installs current terminal producer evidence on every channel.

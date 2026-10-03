@@ -586,9 +586,17 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   the errors section), just above it. Body-suppressed child activity is durable
   history; this section is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
-  its channels' sizes and growth since the last packet in `detail`
-  (`{"status":"active","path":"sh:///ab3d5678","detail":"stdout 340 lines (+2048 bytes)"}`)
-  — the only thing the model learns about a stream before it closes
+  elapsed runtime, output inactivity, and its channels' sizes and growth since
+  the last packet in `detail`
+  (`{"status":"active","path":"sh:///ab3d5678","detail":"elapsed 300s; output unchanged 120s; stdout 340 lines (+2048 bytes)"}`).
+  Both durations are whole seconds at packet assembly, floored and bounded
+  below by zero. Runtime starts at subscription opening. Output inactivity
+  starts there too, then resets atomically when any published channel's content
+  changes, including replacement or clearing. Identical writes, empty appends,
+  READs, publication acknowledgements, metadata, and channel-state changes do
+  not reset it. The clock is durable; an upgraded stream lacking that evidence
+  reports `output timing unknown` until its next content change, never a guessed
+  timestamp. These are observations, not new timeouts or wake conditions
   ({§exec-stream}). It is orienting state, never advice: the model sees its live
   subtree (`{"status":102,"path":"worker://worker-x"}`) and reasons for itself —
   READ, SEND, or KILL via the path.
@@ -3201,7 +3209,7 @@ two states and no others:
 
 | state | what the model receives |
 |---|---|
-| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
+| active | nothing in the Log. The `## Delegation` stream pointer reports timing and channel activity ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet writes the read resource as its operand, exactly as an explicit READ does ({§log-address-metadata}). |
 
 §stream-observation-result **One liveness fact.** The durable READ result owns

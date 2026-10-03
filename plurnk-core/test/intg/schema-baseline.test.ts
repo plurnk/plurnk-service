@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import sha256 from "../../src/core/sha256.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
@@ -88,6 +89,47 @@ test("{§graph-relations}: upgrading preserves source content and invalidates im
         assert.ok(columns(after, "symbol_refs").includes("end_line"));
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
+});
+
+test("{§db-migrations} {§child-orientation}: upgrading retains streams without inventing their missing output timestamps", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'streamUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'observer');
+            INSERT INTO entries (id, workspace_id, scheme, pathname) VALUES (1, 1, 'sh', '/1234abcd');
+            INSERT INTO entry_channels (entry_id, name, content, mimetype, state)
+                VALUES (1, 'stdout', 'retained', 'text/stream', 'active');
+            INSERT INTO subscriptions (id, worker_id, entry_id, scheme, handle, opened_at)
+                VALUES (1, 1, 1, 'sh', 'old-stream', '2026-01-01T00:00:00.000Z');
+            INSERT INTO subscription_publications (subscription_id, channel, published_end)
+                VALUES (1, 'stdout', 8);
+        `);
+    } finally { before.close(); }
+    let timestamp: string;
+    const db = await openMigrated(path);
+    try {
+        assert.deepEqual(await db.test_stream_clock.get({ id: 1 }), {
+            opened_at: "2026-01-01T00:00:00.000Z", output_changed_at: null,
+        }, "old stream timing is unknown, not inferred from broader entry timestamps");
+        assert.equal((await db.test_get_channel.get<{ content: string }>({ entry_id: 1, name: "stdout" }))?.content, "retained");
+        assert.equal((await db.test_subscription_publications.all<{ published_end: number }>({ id: 1 }))[0]?.published_end, 8);
+        await ChannelWrite.appendToChannel(db, { entryId: 1, producerWorkerId: 1, channel: "stdout", chunk: " output" });
+        const row = await db.test_stream_clock.get<{ output_changed_at: string | null }>({ id: 1 });
+        assert.ok(row?.output_changed_at);
+        timestamp = row.output_changed_at;
+    } finally { await db.close(); }
+    const reopened = await openMigrated(path);
+    try {
+        assert.equal((await reopened.test_stream_clock.get<{ output_changed_at: string }>({ id: 1 }))?.output_changed_at,
+            timestamp, "reopening the database preserves the output activity fact");
+        assert.equal((await reopened.test_get_channel.get<{ content: string }>({ entry_id: 1, name: "stdout" }))?.content,
+            "retained output");
+        assert.equal((await reopened.test_get_subscription.get<{ closed_at: string | null }>({ id: 1 }))?.closed_at, null);
+    } finally { await reopened.close(); }
 });
 
 test(`{§db-migrations} {§emission-row}: a ${PREVIOUS.release} database migrates in place, keeping its log and inventing no announcement`, async () => {

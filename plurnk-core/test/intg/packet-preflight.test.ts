@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { provider } from "./reasoning-fixture.ts";
 
-test("{§reasoning-initial-read}: packet preflight preserves stream growth until an actual provider request", async () => {
+test("{§reasoning-initial-read}: packet preflight preserves stream growth until an actual provider request", async (t) => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-preflight");
@@ -31,6 +31,8 @@ test("{§reasoning-initial-read}: packet preflight preserves stream growth until
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1, provider: model, gitStatus: null,
         });
         const cursor = async () => (await db.test_subscription_publications.all<{ published_end: number }>({ id: subscriptionId }))[0]!.published_end;
+        const now = Date.now();
+        t.mock.method(Date, "now", () => now);
         const first = await build();
         const second = await build();
         assert.equal(await cursor(), 0);

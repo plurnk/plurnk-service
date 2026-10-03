@@ -102,6 +102,8 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "delegation");
             assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
+            assert.match(JSON.parse(pointers).streams[0].detail, /^elapsed \d+s; output unchanged \d+s;/u,
+                "a real running subprocess carries timing through the assembled provider packet");
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /"path":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
