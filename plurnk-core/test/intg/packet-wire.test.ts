@@ -24,13 +24,17 @@ test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not 
         coordinate: "1/2/3", op: "WAIT", status: 102, tx: { body: "" }, rx: { detail: "Nothing is in flight. Continuing." },
     }], tok);
     assert.equal(parseLogRecords(idle)[0]!.waitSeconds, undefined, "an idle WAIT has no wait duration");
+    const zero = PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "WAIT", status: 102, tx: { body: "" }, attrs: { waiting: 0 },
+    }], tok);
+    assert.equal(parseLogRecords(zero)[0]!.waitSeconds, 0, "zero explicitly declines parking");
     const unbounded = {
         coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" }, attrs: { waiting: -1 },
     };
     assert.equal(parseLogRecords(PacketWire.renderLog([unbounded], tok))[0]!.waitSeconds, undefined,
         "a released unbounded receipt does not acquire a duration from today's configuration");
     assert.equal(unbounded.attrs.waiting, -1, "historical evidence is unchanged");
-    for (const waiting of [0, -2, "600", null, Number.NaN, Number.POSITIVE_INFINITY]) {
+    for (const waiting of [-2, "600", null, Number.NaN, Number.POSITIVE_INFINITY]) {
         assert.throws(() => PacketWire.renderLog([{ ...unbounded, attrs: { waiting } }], tok),
             /A WAIT receipt carries a malformed waiting bound\./u);
     }

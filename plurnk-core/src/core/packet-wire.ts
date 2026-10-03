@@ -887,10 +887,10 @@ export default class PacketWire {
         // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
         if (op === "WAIT" && e.attrs !== null && typeof e.attrs === "object" && "waiting" in e.attrs) {
             const seconds = (e.attrs as { waiting: unknown }).waiting;
-            if (typeof seconds !== "number" || !Number.isFinite(seconds) || (seconds <= 0 && seconds !== -1)) {
+            if (typeof seconds !== "number" || !Number.isFinite(seconds) || (seconds < 0 && seconds !== -1)) {
                 throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
             }
-            if (seconds > 0) meta.waitSeconds = seconds;
+            if (seconds >= 0) meta.waitSeconds = seconds;
         }
         // An execution's output is a separate stream entry ({§exec-stream}); its address rides in a
         // `stream` link, distinct from the runtime-owned invocation target.

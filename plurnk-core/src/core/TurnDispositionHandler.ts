@@ -52,10 +52,10 @@ export default class TurnDispositionHandler {
 
     async handle(ctx: TurnContext, statement: DispositionStatement): Promise<DispatchResult> {
         // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
-        if (await this.#hasLiveWork(ctx.loopId)) return {
-            status: 202,
-            attrs: { waiting: statement.lineMarker?.marks[0] ?? TurnDispositionHandler.configuredWaitSeconds() },
-        };
+        if (await this.#hasLiveWork(ctx.loopId)) {
+            const seconds = statement.lineMarker?.marks[0] ?? TurnDispositionHandler.configuredWaitSeconds();
+            return { status: seconds === 0 ? 102 : 202, attrs: { waiting: seconds } };
+        }
         return { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
@@ -72,6 +72,7 @@ export default class TurnDispositionHandler {
             const configured = TurnDispositionHandler.configuredWaitSeconds();
             const seconds = waits.length === 0 ? configured
                 : Math.min(...waits.map((statement) => statement.lineMarker?.marks[0] ?? configured));
+            if (seconds === 0) return 102;
             const pollAt = Math.ceil(Date.now() + seconds * 1000);
             return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations", pollAt }) ? 202 : this.#lifecycle.status(ctx.loopId);
         }

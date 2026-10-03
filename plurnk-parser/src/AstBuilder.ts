@@ -504,8 +504,14 @@ export default class AstBuilder {
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position);
         const durations = AstBuilder.#findAll(ctx, LineMarkerContext)
-            .map((marker) => AstBuilder.#lineMarkerFromCtx(marker)!.marks[0]!)
-            .filter((seconds) => Number.isFinite(seconds) && seconds > 0);
+            .flatMap((marker) => {
+                const raw = marker.getText();
+                const seconds = /^<-?[0-9]+(?:\.[0-9]+)?>$/u.test(raw) ? Number(raw.slice(1, -1)) : Number.NaN;
+                if (Number.isFinite(seconds) && seconds >= 0) return [seconds];
+                const at = AstBuilder.#positionOf(marker);
+                AstBuilder.#advisories.push(new PlurnkParseError(at.line, at.column, "parser", `Ignored WAIT duration ${raw}.`, "warning"));
+                return [];
+            });
         return {
             op,
             aside: AstBuilder.#asideOf(ctx),

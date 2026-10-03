@@ -10,52 +10,87 @@ import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } fr
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 
-test("{§notice-drain-on-read} WAIT feedback survives parking, reaches only its loop, and drains once", async (t) => {
-    const db = await openMigrated();
-    t.after(() => db.close());
-    const workspaceId = await insertWorkspace(db, "wait-feedback");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
-    const childLoopId = await holdChild(db, workspaceId, workerId);
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    const lifecycle = new LoopLifecycle(db);
-    const provider = new Mock({ contextWindow: 100_000, responses: ["WAIT 15", "WAIT <0.25>", "WAIT", "KILL"].map((header) => ({
-        assistant: { content: PlurnkParser.frame(header, null), reasoning: null },
-    })) });
-    const run = () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
-    const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
-    const resume = async () => {
-        assert.equal(await lifecycle.wake(loopId), true);
-        assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
-        return run();
-    };
+for (const [header, warning] of [
+    ["WAIT 15", "`WAIT` body text was on the OP line and was taken as the body"],
+    ["WAIT <10s>", "Ignored WAIT duration <10s>."],
+] as const) {
+    test(`{§notice-drain-on-read} ${header} feedback survives parking, reaches only its loop, and drains once`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "wait-feedback");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const childLoopId = await holdChild(db, workspaceId, workerId);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const lifecycle = new LoopLifecycle(db);
+        const provider = new Mock({ contextWindow: 100_000, responses: [header, "WAIT <0.25>", "WAIT", "KILL"].map((header) => ({
+            assistant: { content: PlurnkParser.frame(header, null), reasoning: null },
+        })) });
+        const run = () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
+        const resume = async () => {
+            assert.equal(await lifecycle.wake(loopId), true);
+            assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
+            return run();
+        };
 
-    assert.equal((await run()).result.status, 202);
-    const siblingId = await insertWorker(db, workspaceId);
-    const siblingLoop = await insertLoop(db, siblingId, 1);
-    const sibling = await engine.runLoop({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } }] }),
-        workspaceId, workerId: siblingId, loopId: siblingLoop, messages: [],
+        assert.equal((await run()).result.status, 202);
+        const siblingId = await insertWorker(db, workspaceId);
+        const siblingLoop = await insertLoop(db, siblingId, 1);
+        const sibling = await engine.runLoop({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } }] }),
+            workspaceId, workerId: siblingId, loopId: siblingLoop, messages: [],
+        });
+        assert.equal(sibling.result.status, 200);
+        assert.equal(packetSection(await packet(sibling.turnIds.at(-1)!), "notices"), "", "another loop neither consumes nor receives the warning");
+
+        const resumed = await resume();
+        assert.equal(resumed.result.status, 202);
+        const resumedPacket = await packet(resumed.turnIds.at(-1)!);
+        const notices = packetSection(resumedPacket, "notices");
+        assert.ok(notices.includes(`parse_advisory: ${warning}`), notices);
+        assert.equal(notices.match(/parse_advisory:/gu)?.length, 1);
+        const wait = logEntries(resumedPacket).find(({ logPath }) => String(logPath).endsWith("/WAIT"));
+        assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
+        if (header === "WAIT 15") assert.match(String(wait?.body), /15/u, "the authored prose is retained");
+
+        const next = await resume();
+        assert.equal(next.result.status, 202);
+        assert.equal(packetSection(await packet(next.turnIds.at(-1)!), "notices"), "", "the warning drains on the first resumed packet only");
+        await lifecycle.finish(childLoopId, { status: 200 });
+        assert.equal((await resume()).result.status, 200);
     });
-    assert.equal(sibling.result.status, 200);
-    assert.equal(packetSection(await packet(sibling.turnIds.at(-1)!), "notices"), "", "another loop neither consumes nor receives the warning");
+}
 
-    const resumed = await resume();
-    assert.equal(resumed.result.status, 202);
-    const resumedPacket = await packet(resumed.turnIds.at(-1)!);
-    const notices = packetSection(resumedPacket, "notices");
-    assert.match(notices, /parse_advisory: `WAIT` body text was on the OP line and was taken as the body/);
-    assert.equal(notices.match(/parse_advisory:/gu)?.length, 1);
-    const wait = logEntries(resumedPacket).find(({ logPath }) => String(logPath).endsWith("/WAIT"));
-    assert.equal(wait?.waitSeconds, 300, "inline prose does not override the configured wait bound");
-    assert.match(String(wait?.body), /15/u, "the authored prose is retained");
-
-    const next = await resume();
-    assert.equal(next.result.status, 202);
-    assert.equal(packetSection(await packet(next.turnIds.at(-1)!), "notices"), "", "the warning drains on the first resumed packet only");
-    await lifecycle.finish(childLoopId, { status: 200 });
-    assert.equal((await resume()).result.status, 200);
-});
+for (const headers of [["WAIT <0>"], ["WAIT <600>", "WAIT <0>"], ["WAIT <0>", "WAIT"]]) {
+    test(`{§worker-wait-timing} ${headers.join(" + ")} continues silently without parking or cancelling live work`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "zero-wait");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const childLoopId = await holdChild(db, workspaceId, workerId);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const lifecycle = new LoopLifecycle(db);
+        const run = (source: string) => engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+            workspaceId, workerId, loopId, messages: [],
+        });
+        const result = await run([...headers.map((header) => PlurnkParser.frame(header, null)), PlurnkParser.frame("NOTE", "The child is still running.")].join("\n\n"));
+        assert.equal(result.status, 102);
+        assert.equal(await lifecycle.status(loopId), 102);
+        assert.deepEqual(await lifecycle.parked(workerId), [], "zero creates no parked wait or timer");
+        assert.equal(await lifecycle.status(childLoopId), 102, "the child keeps running");
+        assert.ok(result.outcomes.some(({ op, status }) => op === "NOTE" && status === 200), "the sibling operation executed");
+        const next = await run(PlurnkParser.frame("WAIT", null));
+        assert.equal(next.status, 202, "the zero bound does not leak into a later WAIT");
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+        assert.equal(packetSection(packet, "notices"), "", "zero earns no correction");
+        const zero = logEntries(packet).find((entry) => String(entry.logPath).endsWith("/WAIT") && entry.waitSeconds === 0);
+        assert.ok(zero, "the no-wait receipt records the accepted zero");
+        assert.equal(zero.status, 102);
+    });
+}
 
 for (const [headers, seconds] of [
     [["WAIT"], 300],

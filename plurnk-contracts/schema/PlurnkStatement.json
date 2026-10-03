@@ -561,7 +561,7 @@
                     "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
-                    "description": "The optional maximum park duration, in positive seconds.",
+                    "description": "The optional maximum park duration in seconds; zero continues without parking.",
                     "oneOf": [
                         { "type": "null" },
                         {
@@ -573,7 +573,7 @@
                                     "type": "array",
                                     "minItems": 1,
                                     "maxItems": 1,
-                                    "items": { "type": "number", "exclusiveMinimum": 0 }
+                                    "items": { "type": "number", "minimum": 0 }
                                 }
                             }
                         }

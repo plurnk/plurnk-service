@@ -794,7 +794,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; none when targeted |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
-| WAIT | optional label ({§send-wait-scope}) | positive seconds | explanation of the wait |
+| WAIT | optional label ({§send-wait-scope}) | non-negative seconds | explanation of the wait |
 
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
@@ -840,11 +840,13 @@ under {§wait-obligation-matrix}. Parameterless KILL requests successful complet
 under {§kill-conclusion}; its optional body is the literal final answer.
 SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
-§send-wait-scope WAIT's optional `<seconds>` is a positive finite scalar bounding
+§send-wait-scope WAIT's optional `<seconds>` is a non-negative finite scalar bounding
 this park, not the lifetime of its work. Without it, the service supplies its
 configured bound ({§worker-wait-timing}). Repeated duration slots select the
-smallest positive scalar; other scope decorations and metadata remain ignored
-without diagnostics. The optional target is a label, never a selected wake source;
+smallest valid scalar. Zero continues without parking or a diagnostic. Invalid
+duration scopes are ignored with a terse warning; when none is valid, the configured
+bound applies. Metadata remains ignored without diagnostics.
+The optional target is a label, never a selected wake source;
 the body is the wait's explanation. Neither creates a schedule or restricts ordinary
 wake events. Ordinary malformed-header rules still apply. Multiple WAITs request
 one park with the earliest bound, including the configured bound for each bare WAIT.
@@ -1122,7 +1124,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | None                                   | Lifetime uses metadata; observation cadence belongs to the daemon ({§exec-lifetime}) |
-| WAIT                  | Positive seconds                       | Maximum park duration ({§send-wait-scope}) |
+| WAIT                  | Non-negative seconds                   | Maximum park duration ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a

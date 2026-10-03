@@ -221,8 +221,9 @@ test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borr
         assert.deepEqual(result.items.map((item) => item.kind === "error" ? `${item.error.severity}: ${item.error.message}` : item.kind === "statement" ? item.statement.op : item.kind),
             [op, `warning: \`${op}\` takes a target only; the scope \`<result range>\` was ignored. A scope selects lines in READ, EDIT and KILL.`]);
     }
-    // {§send-wait-scope} — a WAIT scope is skipped unread, never refused (#756).
-    assert.deepEqual(PlurnkParser.parse(section("WAIT", " <result range>")).items.filter((item) => item.kind === "error"), []);
+    const wait = PlurnkParser.parse(section("WAIT", " <result range>"));
+    assert.deepEqual(wait.items.map((item) => item.kind === "error" ? `${item.error.severity}: ${item.error.message}` : item.kind === "statement" ? item.statement.op : item.kind),
+        ["WAIT", "warning: Ignored WAIT duration <result range>."]);
     assert.equal(firstError(section("FIND", " (src/*.ts) <result range>", undefined)).message,
         "invalid FIND scope \"<result range>\"; use numeric result positions, e.g. `<1,16>`");
 });

@@ -652,9 +652,8 @@ SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 SLOTS_INVISIBLE : [\u200B-\u200D\u2060\uFEFF]+ -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
-// {§send-wait-scope} — a scalar is a duration; other decorations do not select a wake source.
-SLOTS_WAIT_DURATION : { this.slotReady && this.openOp === "WAIT" }? '<' NUM '>' -> type(L_MARKER) ;
-SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> skip ;
+// {§send-wait-scope} — retain each duration for validation and its possible advisory.
+SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> type(L_MARKER) ;
 // {§scope-on-scopeless} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
 SLOTS_NO_SCOPE : { this.slotReady && this.scopeless() }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' { this.noteNotation("scope"); } -> skip ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;

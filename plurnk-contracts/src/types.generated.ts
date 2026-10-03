@@ -528,7 +528,7 @@ aside: (string | null)
 metadata: null
 target: (ParsedPath | null)
 /**
- * The optional maximum park duration, in positive seconds.
+ * The optional maximum park duration in seconds; zero continues without parking.
  */
 lineMarker: (null | {
 /**

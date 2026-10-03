@@ -852,7 +852,7 @@ commits atomically with the wait revision, rounded up to the next millisecond.
 Expiry queues the same loop through normal worker/provider admission; it never
 cancels work or fabricates a result.
 
-Each parked WAIT receipt exposes `waitSeconds`, the positive maximum accepted
+With live work, each WAIT receipt exposes `waitSeconds`, the maximum accepted
 for that operation. It is not elapsed time or a promised sleep: an ordinary wake
 or a shorter sibling WAIT can resume the loop sooner. An idle WAIT has no bound.
 Historical unbounded receipts do not acquire one during projection.
@@ -861,6 +861,7 @@ Historical unbounded receipts do not acquire one during projection.
 |---|---|
 | Message or work settlement before expiry | Wake normally; retire the old timer. |
 | Several WAITs | One park at the earliest requested bound; a bare WAIT requests the configured bound. |
+| Zero bound | Continue at 102 without parking, a timer, cancellation, or a warning; a later WAIT chooses its own bound. |
 | Eligible completion joining live work | Use the configured bound. |
 | No live work | Continue immediately; do not arm a timer. |
 | Later WAIT after any wake | New wait identity and bound; no inherited override or backoff. |

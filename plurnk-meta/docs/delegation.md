@@ -44,7 +44,8 @@ activity. With live work (a child or an open stream) the loop parks and wakes
 when that work settles, when a message arrives, or when the wait duration expires;
 without live work it continues at once. `WAIT <600>` waits at most ten minutes;
 bare WAIT uses the configured default. Expiry resumes inspection without
-cancelling work. Several WAITs are one park with the earliest bound. An optional
+cancelling work. Zero continues immediately. Invalid durations are ignored with
+a warning. Several WAITs are one park with the earliest bound. An optional
 path is a label, not a selected wake source.
 
 ```WAIT
