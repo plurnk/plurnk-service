@@ -58,7 +58,7 @@ export interface FunctionalityHost {
     // Worker, replaced without runtimes and without workspace exclusivity.
     readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void>;
-    mutateWorkspace<T>(workspaceId: number, namespaceOwner: string, caller: FunctionalityCaller, run: () => Promise<T>): Promise<T>;
+    withWorkspaceGate<T>(workspaceId: number, namespaceOwner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
     preparationChanged(workspaceId: number, preparation: readonly FunctionalityPreparationActivity[]): void;
 }
@@ -257,24 +257,26 @@ export default class Functionality {
         options: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean } = {},
     ): Promise<void> {
         const adapter = this.#adapter(family);
-        await this.#serialize(this.#key(identity.workspaceId, family), async () => {
-            const current = this.#families.get(this.#key(identity.workspaceId, family));
-            if (current === undefined) return;
-            if (options.ifChanged === true && current.configurationFailure === null) {
-                try {
-                    if (Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
-                } catch (cause) {
-                    if (!(cause instanceof ConfigurationError)) throw cause;
-                    // The normal publication below withdraws the invalid family's capabilities.
+        await this.#host.withWorkspaceGate(
+            identity.workspaceId, adapter.namespaceOwner, options.gate ?? "wait",
+            () => this.#serialize(this.#key(identity.workspaceId, family), async () => {
+                const current = this.#families.get(this.#key(identity.workspaceId, family));
+                if (current === undefined) return;
+                if (options.ifChanged === true && current.configurationFailure === null) {
+                    try {
+                        if (Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
+                    } catch (cause) {
+                        if (!(cause instanceof ConfigurationError)) throw cause;
+                        // The normal publication below withdraws the invalid family's capabilities.
+                    }
                 }
-            }
-            await this.#publish(adapter, identity, current.state, {
-                failure: "publish-unavailable",
-                configurationFailure: "contain",
-                retain: () => this.#host.retainWorkspace(identity.workspaceId),
-                gate: options.gate ?? "wait",
-            });
-        });
+                await this.#publish(adapter, identity, current.state, {
+                    failure: "publish-unavailable",
+                    configurationFailure: "contain",
+                    retain: () => this.#host.retainWorkspace(identity.workspaceId),
+                });
+            }),
+        );
     }
 
     families(): string[] {
@@ -410,8 +412,8 @@ export default class Functionality {
             return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options));
         }
         if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
-        return this.#host.mutateWorkspace(
-            identity.workspaceId, adapter.namespaceOwner, caller,
+        return this.#host.withWorkspaceGate(
+            identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try",
             () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options)),
         );
     }
@@ -450,7 +452,7 @@ export default class Functionality {
         const identity = { workspaceId: context.workspaceId };
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const state = await this.#loadState(adapter, identity.workspaceId);
-            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", configurationFailure: "contain", retain: context.retain, gate: "none" });
+            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", configurationFailure: "contain", retain: context.retain });
         });
     }
 
@@ -672,7 +674,6 @@ export default class Functionality {
             failure: caller === "action" ? "reject" : "publish-unavailable",
             configurationFailure: "reject",
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
-            gate: "none",
             forceAlias: retry ? transition.alias : null,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
@@ -790,7 +791,6 @@ export default class Functionality {
             readonly failure: "publish-unavailable" | "reject";
             readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
-            readonly gate: WorkspaceCapabilityGate;
             readonly forceAlias?: string | null;
         },
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
@@ -819,7 +819,6 @@ export default class Functionality {
             readonly failure: "publish-unavailable" | "reject";
             readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
-            readonly gate: WorkspaceCapabilityGate;
             readonly forceAlias?: string | null;
         },
         report: (alias: string | null, phase: FunctionalityPreparationActivity["phase"]) => void,
@@ -886,7 +885,7 @@ export default class Functionality {
                     state: Functionality.#persisted(nextState),
                     runtimes,
                 }, {
-                    gate: options.gate,
+                    gate: "none",
                     publish: () => {
                         this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure });
                         return () => {

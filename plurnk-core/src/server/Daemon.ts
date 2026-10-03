@@ -223,7 +223,7 @@ export default class Daemon implements ApplicationPort {
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
             readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),
             replaceWorkerModuleState: (workerId, owner, state) => this.#residency.replaceWorkerModuleState(workerId, owner, state),
-            mutateWorkspace: (workspaceId, owner, caller, run) => this.#residency.exclusively(workspaceId, owner, caller === "operation" ? "wait" : "try", run),
+            withWorkspaceGate: (workspaceId, owner, gate, run) => this.#residency.exclusively(workspaceId, owner, gate, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.

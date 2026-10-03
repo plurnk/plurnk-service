@@ -24,7 +24,9 @@ import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 
 const OWNER = "fx fixture adapter";
 
@@ -163,6 +165,52 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 };
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
+
+test("{§module-workspace-quiescence} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```KILL\nReady.\n```")] });
+    const daemon = new Daemon({ db, provider });
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const queued = Promise.withResolvers<void>();
+    const log: string[] = [];
+    let handle!: FunctionalityFamilyHandle;
+    daemon.registerModule({ setup: (seam) => {
+        handle = seam.registerFunctionalityAdapter({
+            ...fixtureAdapter(log),
+            refreshIfChanged: async (identity) => {
+                entered.resolve();
+                await resume.promise;
+                await handle.refresh(identity, { gate: "none", ifChanged: true });
+            },
+        });
+    } });
+    t.after(async () => { resume.resolve(); await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "refresh-during-admission" });
+    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+    await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
+    const before = log.filter((event) => event.startsWith("commit:")).length;
+    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Confirm readiness.", policy: { proposals: "accept" } });
+    await entered.promise;
+    const request = WorkspaceGate.prototype.requestExclusive;
+    t.mock.method(WorkspaceGate.prototype, "requestExclusive", function (this: WorkspaceGate, id: number) {
+        const held = request.call(this, id);
+        queued.resolve();
+        return held;
+    }, { times: 1 });
+    const refresh = handle.refresh({ workspaceId });
+    await queued.promise;
+    assert.equal(provider.received.length, 0, "the current turn is still in admission");
+    resume.resolve();
+    await refresh;
+    const lifecycle = new LoopLifecycle(db);
+    await waitForDb(() => lifecycle.status(loop.loopId), (status) => status === 200);
+    assert.equal(provider.received.length, 1, "the current turn reaches inference and concludes");
+    assert.equal(log.filter((event) => event.startsWith("commit:")).length, before + 1, "the background refresh subsequently publishes once");
+    const listed = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
+    assert.equal(listed.definitions.find(({ alias }) => alias === "svc")?.state, "active");
+});
 
 for (const boundary of ["available", "prepare"] as const) {
     test(`{§configuration-repair-path} a warm ${boundary} failure withdraws capabilities, preserves definitions, and recovers normally`, async (t) => {
