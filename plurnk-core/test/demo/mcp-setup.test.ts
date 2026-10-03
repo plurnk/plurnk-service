@@ -1,7 +1,7 @@
 // {§mcp-model-projection} {§mcp-configuration}
 import assert from "node:assert/strict";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
-import type { FunctionalityListResult, FunctionalityMutationResult, McpOAuthCompletionResult } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, McpOAuthBeginResult, McpOAuthCompletionResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { serveOAuthMcp } from "../../../plurnk-mcp/test/oauth-fixture.ts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
@@ -10,6 +10,7 @@ import { liveTest as test } from "../live-test.ts";
 for (const oauth of [false, true]) {
     test(`demo: the model sets up an MCP from its URL${oauth ? ", hands sign-in to the user," : ""} and uses its discovered tool`, async (t) => {
         const marker = `VERIFIED_${crypto.randomUUID()}`;
+        const code = crypto.randomUUID();
         let calls = 0;
         const handler = createMcpHandler(() => {
             const server = new McpServer({ name: "verification-service", version: "1.0.0" });
@@ -19,7 +20,7 @@ for (const oauth of [false, true]) {
             });
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
-        const served = oauth ? (await serveOAuthMcp(t, handler)).served : await serveMcpHttp(t, handler);
+        const served = oauth ? (await serveOAuthMcp(t, handler, { code })).served : await serveMcpHttp(t, handler);
         const key = "PLURNK_MCP_ENABLED";
         const saved = process.env[key];
         process.env[key] = "1";
@@ -39,12 +40,12 @@ for (const oauth of [false, true]) {
                 assert.ok(result.lastContent.includes(`/mcp oauth ${installed?.alias}`), "the user receives an actionable client sign-in command");
                 // Simulate the user's client continuation; the built-client test owns browser/callback reception.
                 const redirect = new URL("/callback", served.url);
-                const begun = await s.invokeWorkspaceAction("workspace.mcp.oauth.begin", { alias: installed!.alias, redirectUrl: redirect.href }) as FunctionalityMutationResult;
-                assert.ok(begun.definition?.authorization?.url);
-                const authorization = new URL(begun.definition.authorization.url);
+                const begun = await s.invokeWorkspaceAction("workspace.mcp.oauth.begin", { alias: installed!.alias, redirectUrl: redirect.href }) as McpOAuthBeginResult;
+                assert.ok("authorization" in begun && begun.authorization?.url);
+                const authorization = new URL(begun.authorization.url);
                 redirect.searchParams.set("state", authorization.searchParams.get("state")!);
                 redirect.searchParams.set("iss", authorization.origin);
-                redirect.searchParams.set("code", "fixture-code");
+                redirect.searchParams.set("code", code);
                 const completed = await s.invokeWorkspaceAction("workspace.mcp.oauth.complete", { alias: installed!.alias, callbackUrl: redirect.href }) as McpOAuthCompletionResult;
                 assert.deepEqual(completed, { status: 202, alias: installed!.alias });
                 result = await liveLoop(s, 3, { prompt: "I'm signed in now. Can you look up that code?", workerId: result.modelWorkerId, maxTurns: 8 }, { signal: t.signal });

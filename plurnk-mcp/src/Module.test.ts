@@ -210,6 +210,30 @@ const interactiveOAuthFixture = (
     t: import("node:test").TestContext,
 ): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
 
+test("OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const token = (body: string) => fetch(`${origin}/token`, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body,
+    });
+    for (const body of ["", "grant_type=client_credentials", "grant_type=authorization_code&code=wrong"]) {
+        const response = await token(body);
+        assert.equal(response.status, 400);
+        assert.equal((await response.json()).error, "invalid_grant");
+    }
+    const guessed = await fetch(served.url, { headers: { Authorization: "Bearer access-token" } });
+    assert.equal(guessed.status, 401);
+    await guessed.text();
+    const grant = "grant_type=authorization_code&code=fixture-code";
+    const accepted = await token(grant);
+    assert.equal(accepted.status, 200);
+    const credentials = await accepted.json();
+    assert.equal(typeof credentials.access_token, "string");
+    assert.notEqual(credentials.access_token, "access-token");
+    const replay = await token(grant);
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, "invalid_grant");
+});
+
 const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
     ...httpServer("oauth", served.url),
     authorization: {

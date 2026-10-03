@@ -5,14 +5,16 @@ import { serveMcpHttp } from "./http-fixture.ts";
 export const serveOAuthMcp = async (
     t: TestContext,
     handler: McpHttpHandler,
-    options: { metadata?: boolean; registration?: boolean } = {},
+    options: { metadata?: boolean; registration?: boolean; code?: string } = {},
 ): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>>; tokenRequests: URLSearchParams[] }> => {
     let origin = "";
+    let exchanged = false;
+    const accessToken = crypto.randomUUID();
     const tokenRequests: URLSearchParams[] = [];
     const served = await serveMcpHttp(t, handler, async (request) => {
         const url = new URL(request.url);
         if (url.pathname === "/mcp") {
-            if (request.headers.get("authorization") === "Bearer access-token") return null;
+            if (exchanged && request.headers.get("authorization") === `Bearer ${accessToken}`) return null;
             return new Response("unauthorized", {
                 status: 401,
                 headers: { "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"` },
@@ -39,8 +41,13 @@ export const serveOAuthMcp = async (
             return Response.json({ ...await request.json(), client_id: "registered-fixture", token_endpoint_auth_method: "none" });
         }
         if (url.pathname === "/token") {
-            tokenRequests.push(new URLSearchParams(await request.text()));
-            return Response.json({ access_token: "access-token", token_type: "Bearer", expires_in: 3600, scope: "mcp:read" });
+            const params = new URLSearchParams(await request.text());
+            tokenRequests.push(params);
+            if (exchanged || params.get("grant_type") !== "authorization_code" || params.get("code") !== (options.code ?? "fixture-code")) {
+                return Response.json({ error: "invalid_grant" }, { status: 400 });
+            }
+            exchanged = true;
+            return Response.json({ access_token: accessToken, token_type: "Bearer", expires_in: 3600, scope: "mcp:read" });
         }
         return new Response("not found", { status: 404 });
     });
