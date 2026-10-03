@@ -17,7 +17,7 @@ body?
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
+* KILL: End things — delete an entry, stop a process, retire log items, or end the loop with a KILL turn.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams; `WAIT <60>` waits at most 60 seconds.
@@ -26,7 +26,6 @@ body?
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY KILL the loop by performing a KILL turn.
 > YOU MAY NOT respond before the KILL turn.
 > YOU MAY NOT perform a KILL turn before you have fully resolved all child workers and streams.
 > YOU MAY perform a KILL turn by emitting a single parameterless KILL containing the final deliverable response.
