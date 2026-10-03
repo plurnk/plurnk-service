@@ -36,9 +36,6 @@ This is an example of the complete, final deliverable response.
 
 ## `pattern` (worker:///_plurnk/plurnk/pattern.md)
 
-> [!TIP]
-> All member files and entries are mapped, indexed, and universally pattern searchable.
-
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
 | `/`    | regex (ECMAScript)          | `/\btimeout\b/i`                |
