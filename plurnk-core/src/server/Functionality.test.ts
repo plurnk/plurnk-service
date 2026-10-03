@@ -56,15 +56,21 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
     const releaseTurn = await gate.acquireTurn(1, 1);
     const catalog = handle.refresh({ workspaceId: 1 });
     await queued.promise;
+    let settled = false;
+    const settling = coordinator.settle(1).then(() => { settled = true; });
     const admission = handle.refresh({ workspaceId: 1 }, { gate: "none", ifChanged: true });
     let finished = false;
+    let settledWhileHeld = false;
     try {
         finished = await Promise.race([admission.then(() => true), delay(300).then(() => false)]);
+        settledWhileHeld = settled;
         assert.deepEqual(publications, ["published"], "the queued refresh does not replace the current turn's snapshot");
     } finally {
         releaseTurn();
-        await Promise.all([catalog, admission]);
+        await Promise.all([catalog, admission, settling]);
     }
     assert.equal(finished, true, "turn admission must finish while it owns the turn gate, not wait on a refresh that needs that gate");
+    assert.equal(settledWhileHeld, false, "settle includes accepted publications still waiting for workspace admission");
+    assert.equal(settled, true);
     assert.deepEqual(publications, ["published", "published"], "the queued refresh publishes after the turn releases");
 });

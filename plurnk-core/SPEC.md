@@ -4179,6 +4179,8 @@ preparation, and publication hold the same exclusive gate. Every mutation or
 background refresh acquires that gate before the family's serialization lane;
 turn-admission refresh uses its already-held gate. A queued background refresh
 cannot own the family lane while waiting for a turn that needs that lane.
+Settling the coordinator includes accepted refreshes waiting for that gate,
+not only work already inside a family lane.
 Explicit client mutations use `try` and fail 409 before effects while the workspace is held.
 Refused mutations reserve no queue position; a client retry is a new admission.
 An accepted model mutation uses `wait`, proceeding after its originating turn. Activation and turn-admission refresh use `none` inside

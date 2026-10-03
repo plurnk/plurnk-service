@@ -156,6 +156,7 @@ export default class Functionality {
     readonly #schemas = new Map<string, Readonly<Record<FunctionalityVerb, JsonSchema>>>();
     readonly #families = new Map<string, WorkspaceFamily>();
     readonly #queues = new Map<string, Promise<unknown>>();
+    readonly #admissions = new Map<Promise<unknown>, number>();
     readonly #preparations = new Map<number, Map<string, FunctionalityPreparationActivity>>();
 
     constructor(host: FunctionalityHost) {
@@ -257,7 +258,7 @@ export default class Functionality {
         options: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean } = {},
     ): Promise<void> {
         const adapter = this.#adapter(family);
-        await this.#host.withWorkspaceGate(
+        await this.#withWorkspaceGate(
             identity.workspaceId, adapter.namespaceOwner, options.gate ?? "wait",
             () => this.#serialize(this.#key(identity.workspaceId, family), async () => {
                 const current = this.#families.get(this.#key(identity.workspaceId, family));
@@ -312,10 +313,14 @@ export default class Functionality {
     // Join outstanding invocations before inspecting or closing durable state.
     // Rejections have already been delivered to their action or execution stream.
     async settle(workspaceId?: number): Promise<void> {
-        const pending = [...this.#queues]
-            .filter(([key]) => workspaceId === undefined || key.startsWith(`${workspaceId}:`))
-            .map(([, queue]) => queue.catch(() => undefined));
-        await Promise.all(pending);
+        await Promise.allSettled([
+            ...[...this.#queues]
+                .filter(([key]) => workspaceId === undefined || key.startsWith(`${workspaceId}:`))
+                .map(([, queue]) => queue),
+            ...[...this.#admissions]
+                .filter(([, id]) => workspaceId === undefined || id === workspaceId)
+                .map(([pending]) => pending),
+        ]);
     }
 
     // {§functionality-documents} — the family-generated documents of every
@@ -412,7 +417,7 @@ export default class Functionality {
             return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options));
         }
         if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
-        return this.#host.withWorkspaceGate(
+        return this.#withWorkspaceGate(
             identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try",
             () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options)),
         );
@@ -446,6 +451,13 @@ export default class Functionality {
         const next = previous.catch(() => undefined).then(work);
         this.#queues.set(key, next);
         return next;
+    }
+
+    async #withWorkspaceGate<T>(workspaceId: number, owner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>): Promise<T> {
+        const pending = this.#host.withWorkspaceGate(workspaceId, owner, gate, run);
+        this.#admissions.set(pending, workspaceId);
+        try { return await pending; }
+        finally { this.#admissions.delete(pending); }
     }
 
     async #activate(adapter: FunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
