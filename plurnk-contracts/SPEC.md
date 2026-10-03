@@ -234,16 +234,25 @@ optional protocol status, optional {§provider-usage}, and required
 {§provider-cost} travel together. Ordered request records preserve retries and
 capacity failover; a later response never replaces an earlier request.
 
+§provider-request-evidence The physical-request settlement may also carry
+JSON-serializable, provider-owned response/failure evidence. This is forensic
+data, separate from accounting and executable output. Consumers persist it
+with the same request, including failed requests before a successful retry;
+they never substitute it for an admitted response. Missing historical evidence
+remains absent. Heavy evidence is not copied into accounting or client events.
+
 §provider-accounting `ProviderAccounting.requests` is the source evidence.
-`usage` and `costUsd` are deterministic projections of that ordered set, not
-independent inputs. Each usage field sums the requests that report that exact
-quantity; an unreported quantity is skipped rather than invented as zero or
-allowed to erase known evidence. Detail fields are likewise independent sums,
-so heterogeneous request telemetry never implies a complete aggregate
-partition merely because their reported keys overlap. `costUsd` sums every
-USD-expressible request and is `null` only when none is expressible. The empty
-request set projects explicit zero usage and cost. Consumers do not recompute
-provider rates or convert currencies while reading the projection.
+The projections are derived, not independent inputs:
+
+| Projection | Complete total | Known subtotal |
+| --- | --- | --- |
+| Tokens | Each `usage` field is present only if every request reports that quantity. | `knownUsage` sums each reported field, omitting wholly unknown quantities. Its detail sums need not form a complete partition. |
+| USD | `costUsd` is `null` if any request lacks USD-expressible cost. | `knownCostUsd` sums expressible costs, or is `null` when none are known. |
+
+The empty request set projects explicit zero usage and cost in both columns.
+Unknown is never zero. Human presentations identify a subtotal as incomplete;
+comparative totals, ratios, and cost-per-success use only complete evidence.
+Consumers do not reconstruct rates or currencies from these projections.
 
 The parser ignores outside text and returns ordered statement and error items
 under {§whitespace-contract}. It recovers at a

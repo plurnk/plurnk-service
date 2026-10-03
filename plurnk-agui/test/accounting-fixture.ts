@@ -69,7 +69,7 @@ export const loopUsage = (fixture: LoopUsageFixture = {}): TerminatedNotificatio
             costUsd: "0",
         });
     return {
-        accounting,
+        accounting: { knownUsage: accounting.usage, knownCostUsd: accounting.costUsd, ...accounting },
         curationWeight: fixture.curationWeight ?? null,
         curationBudget: fixture.curationBudget ?? null,
         contextTokens: fixture.contextTokens ?? fixture.inputTokens ?? null,

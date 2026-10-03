@@ -49,6 +49,12 @@ export default class DigestEvidence {
         return (this.#db.digest_model_response as SyncPrep<{ response: string }>).get({ model_call_id: modelCallId })?.response ?? null;
     }
 
+    request(requestId: number): string | null {
+        const row = (this.#db.digest_provider_request_evidence as SyncPrep<{ evidence?: string | null }>).get({ request_id: requestId });
+        if (row === undefined) throw new Error(`digest: provider request ${requestId} disappeared`);
+        return row.evidence ?? null;
+    }
+
     reasoning(turn: TurnRow): string | null {
         if (turn.has_reasoning === 0) return null;
         const row = (this.#db.digest_turn_reasoning as SyncPrep<{ content: string }>).get({ turn_id: turn.id });

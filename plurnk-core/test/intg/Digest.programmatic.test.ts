@@ -336,11 +336,13 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.equal(worker.json.provider_requests.length, 3);
         assert.equal(worker.json.provider_requests[2]?.turn_attempt_id, null);
         assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
-        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), ["0.001"]);
-        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage?.inputTokens), [100]);
+        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), [null]);
+        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.knownCostUsd), ["0.001"]);
+        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage), [null]);
+        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.knownUsage?.inputTokens), [100]);
         assert.match(worker.markdown, /prompt-a1/);
-        assert.match(worker.markdown, /Tokens:\s+input=100 output=10 reasoning=1 cache-read=0/);
-        assert.match(worker.markdown, /Cost:\s+\$0\.001 \(estimated — catalog rates\)/);
+        assert.match(worker.markdown, /Tokens:\s+input=100\+\? output=10\+\? reasoning=1\+\? cache-read=0\+\?/);
+        assert.match(worker.markdown, /Cost:\s+\$0\.001 \+ \? \(incomplete\) \(estimated — catalog rates\)/);
         assert.match(worker.markdown, /Wire:\s+3 requests · 1 error \(33%\)/);
         assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(
@@ -372,19 +374,20 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(workspace.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(workspace.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
         assert.equal(workspace.json.provider_requests.length, 5);
-        assert.equal(workspace.json.workspaces[0]?.accounting.costUsd, "0.003");
+        assert.equal(workspace.json.workspaces[0]?.accounting.costUsd, null);
+        assert.equal(workspace.json.workspaces[0]?.accounting.knownCostUsd, "0.003");
         assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(
             workspace.json.workers
                 .filter(({ id }) => id === a1.workerId || id === a2.workerId)
-                .map(({ accounting }) => accounting.costUsd),
+                .map(({ accounting }) => accounting.knownCostUsd),
             ["0.001", "0.002"],
         );
         assert.match(workspace.markdown, /prompt-a1/);
         assert.match(workspace.markdown, /prompt-a2/);
         assert.match(workspace.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(workspace.markdown, /Op mix:\s+EDIT=1/);
-        assert.match(workspace.markdown, /Cost:\s+\$0\.002 \(charged\)/);
+        assert.match(workspace.markdown, /Cost:\s+\$0\.002 \+ \? \(incomplete\) \(charged\)/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
         assert.ok(workspace.files.some((file) => file.startsWith("worker-a1-1-1.")));

@@ -25,5 +25,6 @@ UPDATE provider_requests SET
     cost_usd_equivalent = $cost_usd_equivalent,
     cost_source = $cost_source,
     cost_reason = $cost_reason,
+    evidence = $evidence,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';

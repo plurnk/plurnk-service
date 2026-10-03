@@ -149,10 +149,10 @@ hops to a child to speak to it; watching a child's rows is the delegation observ
 asks for ({§agui-delegation-observation}).
 
 §agui-status-descendants **The descendants' spend is the daemon's, republished, never promoted.**
-`status.descendants` is `{ requests, usage, costUsd }`: the daemon's {§provider-accounting}
+`status.descendants` is `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting}
 projection over the bound Worker's descendant tree on this delegation
 ({§methods-worker-descendants}), without its request list — `requests` counts them, so zero
-requests reads as nothing spent rather than unknown, and `usage` and `costUsd` pass through
+requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through
 verbatim ({§agui-numbers-passthrough}). The module reads it beside `children` for every snapshot
 and whole-gauge replacement, and republishes `STATE_DELTA /plurnk/status/descendants` only when
 the projection changes: after another worker's `loop/packet` or `loop/terminated`, after another
@@ -181,7 +181,7 @@ current gauge without clients inventing missing fields.
 | §agui-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |
 | `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park, queued on wake) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
 | `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed by the daemon for every snapshot and whole-gauge replacement, and republished as `STATE_DELTA /plurnk/status/children` only when it changes: after another worker's `loop/terminated` or `loop/packet` (it may be a child), or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands (it spawned or killed one). Clients render the number and never poll the directory for it ({§agui-status-children}). |
-| `snapshot.plurnk.status.descendants` | `ApplicationPort.descendantAccounting({ workspaceId, workerId, loopId })` | `{ requests, usage, costUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's descendants' settled spend on this delegation, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/descendants` only when it changes ({§agui-status-descendants}). |
+| `snapshot.plurnk.status.descendants` | `ApplicationPort.descendantAccounting({ workspaceId, workerId, loopId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's descendants' settled spend on this delegation, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/descendants` only when it changes ({§agui-status-descendants}). |
 | `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity. Reattachment snapshots carry current derivation activity through the same projection, without polling or duplicate routine Notices. Clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |

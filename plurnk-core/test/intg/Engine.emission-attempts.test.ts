@@ -1390,7 +1390,11 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
             { outcome: "error", input: null, cost: "provider went offline before reporting monetary evidence" },
             { outcome: "response", input: 10, cost: "0.012" },
         ]);
-        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "0.024", "the response-less failure is skipped; the expressible cost survives");
+        const accounting = (await engine.loopUsage(loopId)).accounting;
+        assert.equal(accounting.costUsd, null, "the response-less failure leaves the total unknown");
+        assert.equal(accounting.knownCostUsd, "0.024", "the expressible subtotal survives");
+        assert.equal(accounting.usage, null);
+        assert.equal(accounting.knownUsage?.inputTokens, 20);
         const attempts = await db.test_turn_attempts.all<{
             state: "response" | "error";
             accepted: number | null;

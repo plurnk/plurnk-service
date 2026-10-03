@@ -214,6 +214,9 @@ test("{§provider-cancellation-evidence} cancellation preserves received evidenc
                         assert.equal(evidence.chargeEvidence.response.id, "cancelled-response");
                         assert.deepEqual(evidence.chargeEvidence.usage, reported ? usage : undefined);
                         assert.deepEqual(evidence.chargeEvidence.charge, reported ? charge : undefined);
+                        assert.deepEqual(evidence.rawBody, [body]);
+                        assert.equal(channel === "content" ? evidence.content : evidence.reasoning, "partial output");
+                        assert.match(JSON.stringify(evidence.error), /worker cancelled/);
                         return true;
                     });
                     assert.equal(observed, "partial output");

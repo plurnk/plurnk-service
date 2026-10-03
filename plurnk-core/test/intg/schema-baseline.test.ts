@@ -60,6 +60,34 @@ for (const release of [RELEASED, PREVIOUS, EARLIER]) {
     });
 }
 
+test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier requests and does not fabricate captures", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'requestUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
+                VALUES (1, 1, 1, 'retain requests', '{"proposals":"reject"}', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
+                VALUES (1, 1, 1, 'model', 'inference', 102, NULL);
+            INSERT INTO inference_calls (id, workspace_id, turn_id, sequence, kind, request_model)
+                VALUES (1, 1, 1, 1, 'emission', 'fixture');
+            INSERT INTO provider_requests (id, inference_call_id, sequence, provider, model)
+                VALUES (1, 1, 1, 'provider:fixture', 'fixture');
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual({ ...after.prepare("SELECT id, state, evidence FROM provider_requests").get() },
+            { id: 1, state: "pending", evidence: null });
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
     const path = await released(RELEASED);
     const before = new DatabaseSync(path);

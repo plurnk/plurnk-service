@@ -285,10 +285,11 @@ export default class DigestRequiem {
                         completedAt: null,
                         state: "open",
                         accounting: null,
+                        evidence: null,
                     };
                     call.requests.push(request);
                     updateObservedTotals();
-                    return async (value) => {
+                    return async (value, evidence) => {
                         if (request.state !== "open") throw new Error("requiem provider request settled more than once");
                         const accounting = validateProviderRequestAccounting(value);
                         if (accounting.provider !== identity.provider || accounting.model !== identity.model) {
@@ -297,6 +298,7 @@ export default class DigestRequiem {
                         request.state = "settled";
                         request.completedAt = new Date().toISOString();
                         request.accounting = accounting;
+                        request.evidence = evidence ?? null;
                         updateObservedTotals();
                     };
                 };
@@ -359,9 +361,7 @@ export default class DigestRequiem {
                 || `(no testimony - ${report.accounting.usage?.outputTokens ?? "unknown"} output tokens after ${report.calls.length} provider call(s))`;
             report.testimony = testimony;
             persistReports();
-            const costSummary = report.accounting.costUsd === null
-                ? "cost USD unavailable"
-                : `cost USD ${report.accounting.costUsd}`;
+            const costSummary = `cost ${DigestRender.costSummary(report.accounting)}`;
             const physicalRequests = report.calls.reduce((total, call) => total + call.requests.length, 0);
             out.push(
                 `## Worker #${worker.id} - ${worker.name}`,

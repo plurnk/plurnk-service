@@ -69,7 +69,7 @@ for (const reported of [false, true]) {
                     assert.equal(turn.status, 499);
                     const requests = await db.test_provider_requests.all<{
                         state: string; outcome: string; usage_input: number | null; usage_output: number | null;
-                        cost_kind: string; cost_amount: string | null;
+                        cost_kind: string; cost_amount: string | null; evidence: string;
                     }>({ turn_id: turn.id });
                     assert.equal(requests.length, 1);
                     assert.equal(requests[0]!.state, "settled");
@@ -78,6 +78,11 @@ for (const reported of [false, true]) {
                     assert.equal(requests[0]!.usage_output, reported ? 10 : null);
                     assert.equal(requests[0]!.cost_kind, reported ? "charged" : "unknown");
                     assert.equal(requests[0]!.cost_amount, reported ? "0.0123" : null);
+                    const evidence = JSON.parse(requests[0]!.evidence);
+                    assert.equal(evidence.reasoning, "Still reasoning.");
+                    assert.match(evidence.content, /must-not-exist.txt/);
+                    assert.equal(evidence.rawBody[0].id, "cancelled-child");
+                    assert.match(JSON.stringify(evidence.error), /cancel|abort|shutdown/i);
                     const descendants = await daemon.descendantAccounting({ workspaceId, workerId: parent, loopId: parentLoop });
                     assert.equal(descendants.requests.length, 1);
                     assert.equal(descendants.costUsd, reported ? "0.0123" : null);

@@ -133,7 +133,7 @@ const mockSeam = () => {
         listWorkers: async () => [workerRow(10, "client-1", "client")],
         readWorker: async () => null,
         listWorkerLoops: async () => [],
-        descendantAccounting: async () => ({ requests: [], usage: null, costUsd: null }),
+        descendantAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
@@ -214,8 +214,8 @@ for (const status of [200, 502]) {
             ? children ? [{ ...workerRow(88, "child", "model", 77), lifecycle: "running" }] : []
             : [workerRow(77, "state-replay")];
         // {§agui-status-descendants} — the daemon's projection over the child's settled spend, verbatim.
-        const spent = { requests: [{ provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } }], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" };
-        seam.descendantAccounting = async () => children ? spent : { requests: [], usage: null, costUsd: null };
+        const spent = { requests: [{ provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } }], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" };
+        seam.descendantAccounting = async () => children ? spent : { requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null };
         const usage = loopUsage({ curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 });
         seam.runLoop = async () => {
             setImmediate(async () => {
@@ -254,7 +254,7 @@ for (const status of [200, 502]) {
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
                     packetCount: 2, children: 1, activity: null, preparation: [], waitUntil: null,
-                    descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" },
+                    descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
             });
@@ -585,7 +585,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             packetCount: 3,
             waitUntil: null,
             children: 0,
-            descendants: { requests: 0, usage: null, costUsd: null },
+            descendants: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
             activity: {
                 kind: "derivation",
                 phase: "indexing",

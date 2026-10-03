@@ -256,7 +256,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
 
     const requiem = readFileSync(path, "utf8");
     assert.match(requiem, /the testimony/, "the testimony was written");
-    assert.match(requiem, /input=10 output=3 reasoning=0 cache-read=2, cost USD 0\.013/);
+    assert.match(requiem, /input=10 output=3 reasoning=0 cache-read=2, cost \$0\.013/);
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
         workers: Array<{ accounting: ProviderAccounting; messages: ChatMessage[]; responses: unknown[] }>;
     };

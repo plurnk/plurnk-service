@@ -1184,6 +1184,8 @@ reason: string
 export interface ProviderAccounting {
 requests: ProviderRequestAccounting[]
 usage: (ProviderUsage | null)
+knownUsage: (ProviderUsage | null)
+knownCostUsd: (string | null)
 costUsd: (string | null)
 }
 /**
@@ -1199,7 +1201,7 @@ usage?: ProviderUsage
 cost: ProviderCost
 }
 /**
- * Known token quantities. Physical-request instances enforce their partition identities; aggregate projections sum each reported field independently. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ * Token quantities. Physical-request instances enforce their partition identities. ProviderAccounting distinguishes complete usage from knownUsage subtotals. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
 export interface ProviderUsage {
@@ -1229,7 +1231,7 @@ export type NonEmptyString = string
 export type Tokens = number
 
 /**
- * Known token quantities. Physical-request instances enforce their partition identities; aggregate projections sum each reported field independently. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ * Token quantities. Physical-request instances enforce their partition identities. ProviderAccounting distinguishes complete usage from knownUsage subtotals. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
 export interface SkillDefinition {

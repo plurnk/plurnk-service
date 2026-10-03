@@ -374,10 +374,15 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         assert.deepEqual(generated.accounting, {
             requests: 1,
             costUsd: "0",
+            knownCostUsd: "0",
             inputTokens: 0,
+            knownInputTokens: 0,
             outputTokens: 0,
+            knownOutputTokens: 0,
             reasoningTokens: null,
+            knownReasoningTokens: null,
             cacheReadTokens: null,
+            knownCacheReadTokens: null,
         }, "the exact settled derivation rides turn_generated");
         for (const b of lifecycle) {
             assert.equal(b.payload.notice.level, "info", "lifecycle beats are info-level progress notices, never errors");

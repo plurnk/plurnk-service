@@ -132,9 +132,7 @@ export const addDecimals = (values: readonly string[]): string => {
 };
 
 export const sumProviderCostsUsd = (costs: readonly ProviderCost[]): string | null => {
-    // {§tokenomics-provider-usage} — a request without USD-expressible cost
-    // (an uncataloged model, or a response-less failure) is skipped; it never
-    // erases the expressible evidence. Null only when nothing is expressible.
-    const values = costs.map(providerCostUsd).filter((value): value is string => value !== null);
-    return values.length === 0 ? null : addDecimals(values);
+    const values = costs.map(providerCostUsd);
+    if (values.some((value) => value === null)) return null;
+    return addDecimals(values as string[]);
 };

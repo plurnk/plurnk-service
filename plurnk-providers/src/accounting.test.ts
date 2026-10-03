@@ -118,7 +118,7 @@ test("response cost normalization is an explicit adapter capability", () => {
     );
 });
 
-test("aggregateProviderAccounting preserves request order and only sums known fields", () => {
+test("{§provider-accounting} unknown requests retain subtotals without presenting them as totals", () => {
     const accounting = aggregateProviderAccounting([
         {
             provider: "provider:a",
@@ -140,12 +140,14 @@ test("aggregateProviderAccounting preserves request order and only sums known fi
         },
     ]);
     assert.deepEqual(accounting.requests.map(({ provider }) => provider), ["provider:a", "provider:b"]);
-    assert.deepEqual(accounting.usage, {
+    assert.equal(accounting.usage, null);
+    assert.deepEqual(accounting.knownUsage, {
         inputTokens: 2,
         outputTokens: 3,
         totalTokens: 5,
     }, "a response-less failure is skipped, never allowed to erase reported usage");
-    assert.equal(accounting.costUsd, "0.25", "a response-less failure is skipped; the expressible cost survives");
+    assert.equal(accounting.costUsd, null, "unknown is not free");
+    assert.equal(accounting.knownCostUsd, "0.25", "received price evidence is retained separately");
 });
 
 test("aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
@@ -200,6 +202,11 @@ test("aggregateProviderAccounting does not invent complete detail partitions acr
     ]);
 
     assert.deepEqual(accounting.usage, {
+        inputTokens: 6,
+        outputTokens: 0,
+        totalTokens: 6,
+    });
+    assert.deepEqual(accounting.knownUsage, {
         inputTokens: 6,
         outputTokens: 0,
         totalTokens: 6,

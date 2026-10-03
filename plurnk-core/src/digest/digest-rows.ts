@@ -262,6 +262,7 @@ export type RequiemCallRecord = {
         completedAt: string | null;
         state: "open" | "settled";
         accounting: ProviderRequestAccounting | null;
+        evidence: unknown;
     }>;
     failure: unknown;
 };

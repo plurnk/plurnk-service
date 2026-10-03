@@ -16,6 +16,14 @@ const expected = {
             outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
         },
         costUsd: "0",
+        knownCostUsd: "0",
+        knownUsage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
+        },
     },
     cost: {
         kind: "estimated",

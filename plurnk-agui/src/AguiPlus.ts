@@ -9,7 +9,7 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { JsonPatch } from "@ag-ui/core";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
-import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ProviderUsage } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting } from "@plurnk/plurnk-contracts";
 import type {
     ApplicationLoopProjection,
     ClientInteractionProjection,
@@ -164,17 +164,14 @@ export interface AguiStatusState {
 // {§agui-status-descendants} — the daemon's {§provider-accounting} projection over the descendant
 // tree, without its request list: how many settled requests, their usage, their cost. Numbers
 // verbatim ({§agui-numbers-passthrough}); zero requests is "nothing spent", not "unknown".
-export interface AguiDescendantsState {
+export interface AguiDescendantsState extends Omit<ProviderAccounting, "requests"> {
     readonly requests: number;
-    readonly usage: ProviderUsage | null;
-    readonly costUsd: string | null;
 }
-export const descendantsState = (accounting: ProviderAccounting): AguiDescendantsState => ({
-    requests: accounting.requests.length,
-    usage: accounting.usage,
-    costUsd: accounting.costUsd,
+export const descendantsState = ({ requests, ...projection }: ProviderAccounting): AguiDescendantsState => ({
+    ...projection,
+    requests: requests.length,
 });
-export const EMPTY_DESCENDANTS: AguiDescendantsState = Object.freeze({ requests: 0, usage: null, costUsd: null });
+export const EMPTY_DESCENDANTS: AguiDescendantsState = Object.freeze({ requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null });
 
 // {§agui-status-children} — a child that still owes a result is alive; one that concluded is not.
 export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycle>(["queued", "running", "parked"]);

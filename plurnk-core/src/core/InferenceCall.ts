@@ -67,7 +67,7 @@ export default class InferenceCall {
             );
         }
         let settled = false;
-        return async (value) => {
+        return async (value, evidence) => {
             if (settled) {
                 throw new ProviderAccountingIntegrityError(
                     `provider request ${row.id} was settled more than once`,
@@ -81,7 +81,7 @@ export default class InferenceCall {
             }
             try {
                 const result = await this.#db.engine_settle_provider_request.run(
-                    providerRequestSettlementParams(row.id, accounting),
+                    providerRequestSettlementParams(row.id, accounting, evidence),
                 );
                 if (result.changes !== 1) {
                     throw new Error(`provider request ${row.id} was not pending at settlement`);

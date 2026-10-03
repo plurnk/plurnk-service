@@ -149,7 +149,7 @@ test("loop accounting adds decimal strings exactly without denormalized rollups"
     }
 });
 
-test("one unknown request is skipped in the derived USD total without erasing known evidence", async () => {
+test("{§provider-accounting} one unknown request makes the total unknown without erasing its known subtotal", async () => {
     const { db, loopId } = await fixture();
     try {
         await openRequest(db, loopId, 1, {
@@ -170,7 +170,8 @@ test("one unknown request is skipped in the derived USD total without erasing kn
         });
 
         const accounting = (await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId)).accounting;
-        assert.equal(accounting.costUsd, "4.25", "the expressible charge survives; the unknown request is skipped");
+        assert.equal(accounting.costUsd, null, "the unknown request is not free");
+        assert.equal(accounting.knownCostUsd, "4.25", "received price evidence survives separately");
         assert.equal(accounting.requests[0]?.cost.kind, "charged");
         assert.equal(accounting.requests[1]?.cost.kind, "unknown");
     } finally {

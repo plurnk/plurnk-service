@@ -720,6 +720,7 @@ export default class AiSdkProvider implements Provider {
                 outcome: ProviderRequestAccounting["outcome"],
                 usage: ProviderUsage | undefined,
                 evidence: Parameters<ProviderCostNormalizer>[0],
+                forensicEvidence: unknown,
                 status?: number,
             ): Promise<ProviderRequestAccounting> => {
                 let requestAccounting: ProviderRequestAccounting;
@@ -748,7 +749,7 @@ export default class AiSdkProvider implements Provider {
                 }
                 accounting.push(requestAccounting);
                 try {
-                    await settle?.(requestAccounting);
+                    await settle?.(requestAccounting, forensicEvidence);
                 } catch (cause) {
                     throw new ProviderRequestObserverError(cause);
                 }
@@ -812,6 +813,7 @@ export default class AiSdkProvider implements Provider {
                     "error",
                     failure.usage,
                     failure.chargeEvidence,
+                    failure,
                     failure.status,
                 );
                 throw error;
@@ -822,6 +824,7 @@ export default class AiSdkProvider implements Provider {
                 "response",
                 response.usage,
                 response.chargeEvidence,
+                response,
             );
             return response;
         };

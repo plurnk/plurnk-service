@@ -81,6 +81,7 @@ export const providerRequestFromStorageRow = (
 export const providerRequestSettlementParams = (
     id: number,
     value: ProviderRequestAccounting,
+    evidence?: unknown,
 ): Record<string, string | number | null> => {
     const request = validateProviderRequestAccounting(value);
     const usage = request.usage;
@@ -103,5 +104,6 @@ export const providerRequestSettlementParams = (
         cost_usd_equivalent: cost.kind === "charged" ? cost.usdEquivalent ?? null : null,
         cost_source: cost.kind === "unknown" ? null : cost.source,
         cost_reason: cost.kind === "unknown" ? cost.reason : null,
+        evidence: evidence === undefined ? null : JSON.stringify(evidence),
     };
 };

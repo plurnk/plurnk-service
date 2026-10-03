@@ -53,6 +53,7 @@ export interface ProviderRequestIdentity {
 
 export type ProviderRequestSettlement = (
     accounting: ProviderRequestAccounting,
+    evidence?: unknown,
 ) => Promise<void>;
 
 export type ProviderRequestObserver = (

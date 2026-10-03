@@ -81,6 +81,11 @@ LEFT JOIN turns t ON t.id = ic.turn_id
 LEFT JOIN loops l ON l.id = t.loop_id
 ORDER BY ic.workspace_id, ic.timestamp, ic.id, pr.sequence;
 
+-- PREP: digest_provider_request_evidence
+-- Read one heavy record at a time. SELECT * also reads historical databases
+-- whose provider_requests predates the optional evidence column.
+SELECT * FROM provider_requests WHERE id = $request_id;
+
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
        op, signal,

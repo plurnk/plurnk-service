@@ -244,26 +244,34 @@ type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | 
     reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
 };
 
-const streamFailureValues = new WeakMap<object, readonly unknown[]>();
+type StreamFailure = {
+    rawBody: readonly unknown[];
+    content: string;
+    reasoning: string;
+    response?: ProviderChargeEvidence["response"];
+    error: unknown;
+};
+
+const streamFailures = new WeakMap<object, StreamFailure>();
 const streamFailureOutput = new WeakSet<object>();
 
 const retainStreamFailureValues = <T extends object>(source: unknown, target: T): T => {
     if (typeof source !== "object" || source === null) return target;
-    const values = streamFailureValues.get(source);
-    if (values !== undefined) streamFailureValues.set(target, values);
+    const evidence = streamFailures.get(source);
+    if (evidence !== undefined) streamFailures.set(target, evidence);
     if (streamFailureOutput.has(source)) streamFailureOutput.add(target);
     return target;
 };
 
 const preserveStreamFailure = (
     error: unknown,
-    rawChunks: readonly unknown[],
+    evidence: Omit<StreamFailure, "error">,
     outputObserved: boolean,
 ): object => {
     const failure = typeof error === "object" && error !== null
         ? error
         : new Error("Provider stream failed", { cause: error });
-    streamFailureValues.set(failure, [...rawChunks, error]);
+    streamFailures.set(failure, { ...evidence, error });
     if (outputObserved) streamFailureOutput.add(failure);
     return failure;
 };
@@ -455,6 +463,9 @@ const executeModelOnce = async (
     const rawChunks: unknown[] = [];
     let streamError: unknown;
     let outputObserved = false;
+    let partialContent = "";
+    let partialReasoning = "";
+    let partialResponse: ProviderChargeEvidence["response"] | undefined;
     try {
         for await (const part of result.fullStream) {
             if (part.type === "raw") {
@@ -462,13 +473,16 @@ const executeModelOnce = async (
             }
             if (part.type === "text-delta" && part.text.length > 0) {
                 outputObserved = true;
+                partialContent += part.text;
                 request.observeText?.(part.text);
             }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
+                partialReasoning += part.text;
                 request.observeReasoning?.(part.text);
             }
             if (part.type === "error") streamError ??= part.error;
+            if (part.type === "finish-step") partialResponse = part.response;
         }
         if (streamError !== undefined) throw streamError;
         request.signal?.throwIfAborted();
@@ -508,7 +522,7 @@ const executeModelOnce = async (
             warnings: warnings ?? [],
         };
     } catch (error) {
-        throw preserveStreamFailure(error, rawChunks, outputObserved);
+        throw preserveStreamFailure(error, { rawBody: rawChunks, content: partialContent, reasoning: partialReasoning, response: partialResponse }, outputObserved);
     }
 };
 
@@ -566,14 +580,33 @@ export type AiSdkTransportFailureEvidence = {
     readonly usageRefusal?: UsageRefusal;
     readonly chargeEvidence: ProviderChargeEvidence;
     readonly status?: number;
+    readonly content: string;
+    readonly reasoning: string;
+    readonly rawBody?: unknown;
+    readonly error: unknown;
+    readonly transportError?: unknown;
+};
+
+const failureRecord = (error: unknown, seen = new Set<unknown>()): unknown => {
+    if (!(error instanceof Error)) return error;
+    if (seen.has(error)) return { name: error.name, message: "Circular error cause" };
+    seen.add(error);
+    return {
+        name: error.name,
+        message: error.message,
+        ...("code" in error ? { code: error.code } : {}),
+        ...("data" in error ? { data: error.data } : {}),
+        ...(error.cause === undefined ? {} : { cause: failureRecord(error.cause, seen) }),
+    };
 };
 
 export const transportFailureEvidence = (
     error: unknown,
 ): AiSdkTransportFailureEvidence => {
-    const values = typeof error === "object" && error !== null
-        ? streamFailureValues.get(error) ?? (APICallError.isInstance(error) ? responseBodyValues(error) : [])
-        : [];
+    const partial = typeof error === "object" && error !== null ? streamFailures.get(error) : undefined;
+    const apiError = APICallError.isInstance(error) ? error : undefined;
+    const values = [...(partial?.rawBody ?? (apiError === undefined ? [] : responseBodyValues(apiError))), error];
+    const emission = extractEvidence(values);
     const settled = settledUsage(values, undefined);
     const usageEvidence = wireUsageEvidenceOf(values);
     const charge = wireChargeEvidenceOf(values);
@@ -581,18 +614,28 @@ export const transportFailureEvidence = (
     const wireStatus = values
         .map(recordOf)
         .find((record) => Number.isInteger(record?.status))?.status;
-    const apiStatus = APICallError.isInstance(error) ? error.statusCode : undefined;
+    const apiStatus = apiError?.statusCode;
     const status = Number.isInteger(apiStatus) && (apiStatus as number) >= 100 && (apiStatus as number) <= 599
         ? apiStatus as number
         : Number.isInteger(wireStatus) && (wireStatus as number) >= 100 && (wireStatus as number) <= 599
             ? wireStatus as number
             : undefined;
     return {
+        content: emission.content || partial?.content || "",
+        reasoning: emission.reasoning || partial?.reasoning || "",
+        ...(partial !== undefined ? { rawBody: partial.rawBody }
+            : apiError?.responseBody === undefined ? {} : { rawBody: apiError.responseBody }),
+        error: failureRecord(error),
+        ...(partial === undefined || partial.error === error ? {} : { transportError: failureRecord(partial.error) }),
         ...settled,
         chargeEvidence: {
             ...(charge === undefined ? {} : { charge }),
             ...(usageEvidence === undefined ? {} : { usage: usageEvidence }),
-            response: typeof responseId === "string" ? { id: responseId } : {},
+            response: {
+                ...(typeof responseId === "string" ? { id: responseId } : {}),
+                ...(apiError?.responseHeaders === undefined ? {} : { headers: apiError.responseHeaders }),
+                ...partial?.response,
+            },
         },
         ...(status === undefined ? {} : { status }),
     };

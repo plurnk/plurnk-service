@@ -5,7 +5,7 @@
     "description": "Ordered physical provider-request evidence and its deterministic aggregate projection.",
     "type": "object",
     "additionalProperties": false,
-    "required": ["requests", "usage", "costUsd"],
+    "required": ["requests", "usage", "knownUsage", "costUsd", "knownCostUsd"],
     "properties": {
         "requests": {
             "type": "array",
@@ -17,6 +17,8 @@
                 { "type": "null" }
             ]
         },
+        "knownUsage": { "$ref": "#/properties/usage" },
+        "knownCostUsd": { "$ref": "#/properties/costUsd" },
         "costUsd": {
             "oneOf": [
                 {

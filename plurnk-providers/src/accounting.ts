@@ -6,6 +6,7 @@ import type {
 } from "./types.ts";
 import {
     addDecimals,
+    providerCostUsd,
     sumProviderCostsUsd,
     validateProviderCost,
 } from "./cost.ts";
@@ -118,54 +119,39 @@ export const validateProviderRequestAccounting = (
     return value as ProviderRequestAccounting;
 };
 
-const sumKnown = (
+const projectUsage = (
     requests: readonly ProviderRequestAccounting[],
-    read: (usage: ProviderUsage) => number | undefined,
-): number | undefined => {
-    // {§tokenomics-provider-usage} — aggregate usage sums every reported
-    // quantity; an unreported one (a response-less failure) is skipped, never
-    // invented as zero and never allowed to erase the reported evidence.
-    const known = requests
-        .map((request) => request.usage === undefined ? undefined : read(request.usage))
-        .filter((value): value is number => value !== undefined);
-    if (known.length === 0) return undefined;
-    const sum = known.reduce((total, value) => total + value, 0);
-    if (!Number.isSafeInteger(sum)) {
-        throw new TypeError("aggregate provider usage exceeds the safe-integer range");
-    }
-    return sum;
-};
-
-export const aggregateProviderAccounting = (
-    values: readonly ProviderRequestAccounting[],
-): ProviderAccounting => {
-    const requests = values.map(validateProviderRequestAccounting);
+    complete: boolean,
+): ProviderUsage | null => {
     if (requests.length === 0) {
         return {
-            requests: [],
-            usage: {
-                inputTokens: 0,
-                outputTokens: 0,
-                totalTokens: 0,
-                inputTokenDetails: {
-                    noCacheTokens: 0,
-                    cacheReadTokens: 0,
-                    cacheWriteTokens: 0,
-                },
-                outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            inputTokenDetails: {
+                noCacheTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
             },
-            costUsd: "0",
+            outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
         };
     }
-
-    const inputTokens = sumKnown(requests, (usage) => usage.inputTokens);
-    const outputTokens = sumKnown(requests, (usage) => usage.outputTokens);
-    const totalTokens = sumKnown(requests, (usage) => usage.totalTokens);
-    const noCacheTokens = sumKnown(requests, (usage) => usage.inputTokenDetails?.noCacheTokens);
-    const cacheReadTokens = sumKnown(requests, (usage) => usage.inputTokenDetails?.cacheReadTokens);
-    const cacheWriteTokens = sumKnown(requests, (usage) => usage.inputTokenDetails?.cacheWriteTokens);
-    const textTokens = sumKnown(requests, (usage) => usage.outputTokenDetails?.textTokens);
-    const reasoningTokens = sumKnown(requests, (usage) => usage.outputTokenDetails?.reasoningTokens);
+    const sum = (read: (usage: ProviderUsage) => number | undefined): number | undefined => {
+        const known = requests.map(({ usage }) => usage === undefined ? undefined : read(usage))
+            .filter((value): value is number => value !== undefined);
+        if (known.length === 0 || (complete && known.length !== requests.length)) return undefined;
+        const total = known.reduce((a, b) => a + b, 0);
+        if (!Number.isSafeInteger(total)) throw new TypeError("aggregate provider usage exceeds the safe-integer range");
+        return total;
+    };
+    const inputTokens = sum((usage) => usage.inputTokens);
+    const outputTokens = sum((usage) => usage.outputTokens);
+    const totalTokens = sum((usage) => usage.totalTokens);
+    const noCacheTokens = sum((usage) => usage.inputTokenDetails?.noCacheTokens);
+    const cacheReadTokens = sum((usage) => usage.inputTokenDetails?.cacheReadTokens);
+    const cacheWriteTokens = sum((usage) => usage.inputTokenDetails?.cacheWriteTokens);
+    const textTokens = sum((usage) => usage.outputTokenDetails?.textTokens);
+    const reasoningTokens = sum((usage) => usage.outputTokenDetails?.reasoningTokens);
     const inputTokenDetails = noCacheTokens === undefined
         && cacheReadTokens === undefined && cacheWriteTokens === undefined
         ? undefined
@@ -180,11 +166,7 @@ export const aggregateProviderAccounting = (
             ...(textTokens === undefined ? {} : { textTokens }),
             ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
         };
-    // Each physical request was validated above. Aggregate fields deliberately
-    // sum their own known evidence independently: heterogeneous providers may
-    // report different detail subsets, so the projection must not reinterpret
-    // their union as one complete per-request partition.
-    const usage: ProviderUsage | null = inputTokens === undefined && outputTokens === undefined && totalTokens === undefined
+    return inputTokens === undefined && outputTokens === undefined && totalTokens === undefined
         && inputTokenDetails === undefined && outputTokenDetails === undefined
         ? null
         : {
@@ -194,9 +176,19 @@ export const aggregateProviderAccounting = (
             ...(inputTokenDetails === undefined ? {} : { inputTokenDetails }),
             ...(outputTokenDetails === undefined ? {} : { outputTokenDetails }),
         };
+};
+
+export const aggregateProviderAccounting = (
+    values: readonly ProviderRequestAccounting[],
+): ProviderAccounting => {
+    const requests = values.map(validateProviderRequestAccounting);
+    const costs = requests.map(({ cost }) => cost);
+    const knownCosts = costs.map(providerCostUsd).filter((cost): cost is string => cost !== null);
     return {
-        requests: [...requests],
-        usage,
-        costUsd: sumProviderCostsUsd(requests.map(({ cost }) => cost)),
+        requests,
+        usage: projectUsage(requests, true),
+        knownUsage: projectUsage(requests, false),
+        costUsd: sumProviderCostsUsd(costs),
+        knownCostUsd: requests.length === 0 ? "0" : knownCosts.length === 0 ? null : addDecimals(knownCosts),
     };
 };

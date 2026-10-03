@@ -67,12 +67,20 @@ export default class DigestRender {
     static usageSummary(accounting: ProviderAccounting | null): string {
         if (accounting === null) return "accounting=incomplete";
         const usage = accounting.usage;
+        const known = accounting.knownUsage;
+        const quantity = (total: number | undefined, subtotal: number | undefined): string =>
+            total !== undefined ? String(total) : subtotal === undefined ? "unknown" : `${subtotal}+?`;
         return [
-            `input=${usage?.inputTokens ?? "unknown"}`,
-            `output=${usage?.outputTokens ?? "unknown"}`,
-            `reasoning=${usage?.outputTokenDetails?.reasoningTokens ?? "unknown"}`,
-            `cache-read=${usage?.inputTokenDetails?.cacheReadTokens ?? "unknown"}`,
+            `input=${quantity(usage?.inputTokens, known?.inputTokens)}`,
+            `output=${quantity(usage?.outputTokens, known?.outputTokens)}`,
+            `reasoning=${quantity(usage?.outputTokenDetails?.reasoningTokens, known?.outputTokenDetails?.reasoningTokens)}`,
+            `cache-read=${quantity(usage?.inputTokenDetails?.cacheReadTokens, known?.inputTokenDetails?.cacheReadTokens)}`,
         ].join(" ");
+    }
+
+    static costSummary(accounting: ProviderAccounting | null): string {
+        if (accounting?.costUsd != null) return `$${accounting.costUsd}`;
+        return accounting?.knownCostUsd == null ? "unknown" : `$${accounting.knownCostUsd} + ? (incomplete)`;
     }
 
     static #operationResult(raw: unknown, subject: string): OperationResult {
@@ -413,9 +421,7 @@ export default class DigestRender {
         const reasoning = assistant?.reasoning ?? null;
         const accounting = DigestRender.#accounting(m.requestsByTurn.get(turn.id) ?? []);
         const tokens = DigestRender.usageSummary(accounting);
-        const cost = accounting === null || accounting.costUsd === null
-            ? " cost=unavailable"
-            : ` cost=$${accounting.costUsd}`;
+        const cost = ` cost=${DigestRender.costSummary(accounting)}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed transport metadata; absence makes no claim
         // about endpoint-owned settings. {§operator-grammar}
@@ -500,9 +506,7 @@ export default class DigestRender {
             : DigestRender.usageSummary(accounting);
         const costStr = requests.length === 0
             ? "n/a"
-            : accounting === null || accounting.costUsd === null
-                ? "unknown"
-                : `$${accounting.costUsd}`;
+            : DigestRender.costSummary(accounting);
         // {§digest-forensic-fidelity} (#461): settled exchanges that carry no usage at
         // all (errored/aborted) billed server-side invisibly; say so, never price-as-zero.
         const usageless = requests.filter((row) => row.state === "settled" && row.usage_total === null).length;
@@ -673,6 +677,9 @@ export default class DigestRender {
                 if (attempt.failure !== null) {
                     lines.push(`Failure: ${JSON.stringify(DigestRender.parseJson(attempt.failure, attempt.failure))}`);
                 }
+                for (const request of m.requestsByAttempt.get(attempt.id) ?? []) {
+                    lines.push(`Physical request ${request.sequence}: [${request.state === "settled" ? request.outcome : request.state} evidence](requests/${request.id}.json)`);
+                }
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
                         if (typeof error.message === "string") lines.push(`- ${error.message}`);
@@ -687,7 +694,8 @@ export default class DigestRender {
                     )?.usage?.outputTokenDetails?.reasoningTokens;
                     lines.push(reasoningTokens !== undefined && reasoningTokens > 0
                         ? `(provider reported ${reasoningTokens} reasoning tokens; no readable reasoning content returned)`
-                        : "(no reasoning content returned)");
+                        : attempt.state === "error" ? "(no admitted reasoning; partial output, when available, is in physical-request evidence)"
+                            : "(no reasoning content returned)");
                 }
             }
         }
@@ -818,6 +826,20 @@ export default class DigestRender {
                 for (const [file, body] of attemptFiles) write(file, body);
             }
         });
+        for (const request of m.providerRequests) {
+            write(`requests/${request.id}.json`, JSON.stringify({
+                id: request.id,
+                inferenceCallId: request.inference_call_id,
+                sequence: request.sequence,
+                provider: request.provider,
+                model: request.model,
+                state: request.state,
+                startedAt: request.started_at,
+                completedAt: request.completed_at,
+                accounting: request.state === "settled" ? DigestRender.#requestAccounting(request) : null,
+                evidence: DigestRender.parseJson(m.evidence.request(request.id)),
+            }, null, 2));
+        }
         return written;
     }
 
@@ -918,6 +940,7 @@ export default class DigestRender {
             })),
             provider_requests: m.providerRequests.map((request) => ({
                 id: request.id,
+                evidence: `requests/${request.id}.json`,
                 inference_call_id: request.inference_call_id,
                 turn_attempt_id: request.turn_attempt_id,
                 kind: request.kind,

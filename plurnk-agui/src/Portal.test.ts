@@ -103,7 +103,7 @@ const mockSeam = (
         pendingClientInteractions: async () => pendingInteractions,
         listWorkers: async () => topology.workers ?? [worker(10)],
         listWorkerLoops: async ({ workerId }) => topology.loops?.get(workerId) ?? [],
-        descendantAccounting: async () => ({ requests: [], usage: null, costUsd: null }),
+        descendantAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         resolveProposal: (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             const index = pending.findIndex((item) => item.logEntryId === logEntryId);

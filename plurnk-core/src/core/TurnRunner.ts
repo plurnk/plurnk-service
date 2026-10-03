@@ -1151,10 +1151,15 @@ export default class TurnRunner {
                 accounting: {
                     requests: attempts.turnWireAccounting.length,
                     costUsd: wire.costUsd,
+                    knownCostUsd: wire.knownCostUsd,
                     inputTokens: wire.usage?.inputTokens ?? null,
+                    knownInputTokens: wire.knownUsage?.inputTokens ?? null,
                     outputTokens: wire.usage?.outputTokens ?? null,
+                    knownOutputTokens: wire.knownUsage?.outputTokens ?? null,
                     reasoningTokens: wire.usage?.outputTokenDetails?.reasoningTokens ?? null,
+                    knownReasoningTokens: wire.knownUsage?.outputTokenDetails?.reasoningTokens ?? null,
                     cacheReadTokens: wire.usage?.inputTokenDetails?.cacheReadTokens ?? null,
+                    knownCacheReadTokens: wire.knownUsage?.inputTokenDetails?.cacheReadTokens ?? null,
                 },
             });
         }

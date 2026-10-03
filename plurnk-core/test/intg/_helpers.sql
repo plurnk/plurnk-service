@@ -158,7 +158,7 @@ SELECT pr.id, a.id AS turn_attempt_id, ic.sequence AS attempt_sequence, pr.seque
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
        pr.usage_output_text, pr.usage_output_reasoning,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
-       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
+       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at, pr.evidence
 FROM provider_requests pr
 JOIN inference_calls ic ON ic.id = pr.inference_call_id
 LEFT JOIN turn_attempts a ON a.model_call_id = ic.id

@@ -209,6 +209,15 @@ observer is a durability sink, not an alternate evidence representation; the
 same ordered records remain on the final generation result or
 error.
 
+The adapter also settles {§provider-request-evidence}. A successful request
+retains its normalized transport response; a failed request retains received
+SDK raw chunks (or the error response body), partial content and reasoning,
+available response identity/headers, usage/charge evidence, and its error and
+cancellation cause. Failure capture is independent of successful raw-body
+capture. These are the SDK's received values, not a claim of byte-for-byte
+HTTP capture. Settlement is durable before returning the failure; a process
+crash before settlement leaves a pending request, not an invented response.
+
 §provider-reasoning-observer When a consumer supplies `observeReasoning`, the
 provider synchronously delivers each exact, ordered, nonempty readable-reasoning
 delta as it becomes available. A transport without incremental reasoning emits
