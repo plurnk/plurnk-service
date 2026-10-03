@@ -73,6 +73,10 @@ This is an example of the complete, final deliverable response.
 
 ## File Editing
 
+```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
+bar
+```
+
 ```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
 baz
 ```
@@ -84,7 +88,7 @@ bar
 ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
 ```
 
-````EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
+````EDIT (edit-example.md)
 ```EDIT (create-example.md)
 Nesting can be resolved with increased outer fences. Examples can use tabbed offset.
 ```
@@ -115,3 +119,13 @@ Describe the child's complete task in the body.
 
 > [!TIP]
 > `SEND (worker://name)` messages a live worker.
+
+## Environment (worker:///_plurnk/plurnk/env.md)
+
+```env (add) <!-- persists for this worker's commands -->
+{"alias":"PLANET","definition":{"value":"world"}}
+```
+
+```sh [{"env":{"GREETING":"Hello"}}] <!-- presuming sh tool is enabled -->
+echo "$GREETING, $PLANET."
+```
