@@ -167,6 +167,25 @@ message count, grammar presence, worker identity, or another incidental request
 shape. The signal never enters model-facing messages. Generic
 provider callers MAY omit it; Core supplies it for every model call.
 
+§provider-native-tools-disabled Generation requests declare no native tools and
+select the SDK's portable `none` tool choice, for emissions and BARE alike.
+The built-in transports preserve that intent after SDK serialization:
+
+| Protocol | No-tool wire representation |
+| --- | --- |
+| OpenAI-compatible Chat Completions and Responses | `tools: []`, `tool_choice: "none"` |
+| Anthropic Messages | `tools: []`, `tool_choice: {"type":"none"}` |
+| Gemini GenerateContent | `tools: []`, `toolConfig: {"functionCallingConfig":{"mode":"NONE"}}` |
+| Bedrock Converse | No tool configuration; the protocol has no `none` choice. |
+| Installed SDK provider plugins | Portable `none` intent; the plugin owns its wire projection. |
+
+This is a text-generation contract, not provider/model tuning or prompt
+teaching. Callers cannot supply tools or override the choice through request
+extensions. Do not add deprecated function-call fields, dummy tools, or fields
+from another protocol. The opt-out neither constrains arbitrary prose nor
+proves that an endpoint honors it; unexpected native calls retain their full
+evidence and follow {§provider-native-tool-calls}.
+
 A successful return carries the model's raw content and reasoning, normalized
 finish reason, model identity, its ordered {§provider-request-accounting}, the
 request's `ProviderRequestCapacity`, opaque evidence, optional metadata, and

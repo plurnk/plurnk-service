@@ -2,6 +2,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";
 import { providerFromSdkModel } from "./catalogProvider.ts";
 import type { Provider, ProviderOptions } from "./types.ts";
+import { withoutNativeTools } from "./native-tools.ts";
 
 type ShowResponse = {
     model_info?: Record<string, unknown>;
@@ -55,6 +56,7 @@ export const ollamaProviderFromEnv = async (
         name: "ollama",
         baseURL: `${baseUrl}/v1`,
         includeUsage: true,
+        transformRequestBody: (body) => withoutNativeTools(body, "openai"),
     }).languageModel(model);
     return providerFromSdkModel({
         name: "ollama",

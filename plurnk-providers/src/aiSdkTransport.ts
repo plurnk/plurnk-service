@@ -6,6 +6,7 @@ import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, 
 import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
+import { withoutNativeTools } from "./native-tools.ts";
 
 const errorSchema = z.object({
     error: z.object({
@@ -465,6 +466,7 @@ const executeModelOnce = async (
     const abortSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
     const common = {
         model,
+        toolChoice: "none",
         ...(instructions.length === 0 ? {} : { instructions }),
         messages: messages.length > 0
             ? messages
@@ -598,7 +600,7 @@ const executeModelOnce = async (
 
 export const executeAiSdkModel = executeModel;
 
-const SDK_OWNED_BODY_KEYS = ["model", "messages", "stream", "stream_options"] as const;
+const SDK_OWNED_BODY_KEYS = ["model", "messages", "stream", "stream_options", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"] as const;
 
 export const executeOpenAICompatible = async (
     request: AiSdkTransportRequest,
@@ -614,14 +616,14 @@ export const executeOpenAICompatible = async (
         headers: request.headers,
         fetch: request.fetch,
         includeUsage: true,
-        transformRequestBody: (sdkBody) => ({
+        transformRequestBody: (sdkBody) => withoutNativeTools({
             ...sdkBody,
             ...request.body,
             stream: sdkBody.stream,
             ...(sdkBody.stream_options !== undefined
                 ? { stream_options: sdkBody.stream_options }
                 : {}),
-        }),
+        }, "openai"),
     });
     const model = provider.languageModel(request.model, { errorStructure });
     return executeModel({

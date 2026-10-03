@@ -12,6 +12,9 @@ Ordinary provider behavior is intentionally not reimplemented here:
 - PLURNK owns aliases, generation envelopes, normalized usage and errors,
   evidence capture, first-party metadata, and local endpoint capabilities.
 
+Native tool calling is explicitly disabled through each protocol's standard
+controls; PLURNK operations travel as text ({§provider-native-tools-disabled}).
+
 See [SPEC.md](SPEC.md) for the contract, [the model reference](docs/models.md)
 for what a model is told about routes and generation, and
 [.env.defaults](.env.defaults) for every knob.

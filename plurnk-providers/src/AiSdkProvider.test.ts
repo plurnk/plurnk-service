@@ -1675,9 +1675,11 @@ test("sampling passthrough guards contract invariants: n/tools/caps stripped, pl
         },
     });
     const body = JSON.parse(calls[0].init.body as string);
-    for (const k of ["n", "tools", "tool_choice", "modalities", "prediction", "max_completion_tokens"]) {
+    for (const k of ["n", "modalities", "prediction", "max_completion_tokens"]) {
         assert.equal(k in body, false, `${k} must be stripped`);
     }
+    assert.deepEqual(body.tools, [], "caller sampling cannot declare native tools");
+    assert.equal(body.tool_choice, "none", "caller sampling cannot enable native tool calling");
     assert.equal(body.max_tokens, 100); // the managed envelope, not the smuggled 999999
     assert.equal(body.seed, 42);
     assert.equal(body.user, "acct-7");
