@@ -5,6 +5,7 @@
 //   <0>      sentinel: before position 1 (EDIT prepend)
 //   <-1>     sentinel: after the last position (EDIT append)
 //   <1,-1>   every position (in range context, -1 normalizes to last line)
+//   <1,1,-1,1> the whole text; -1 as a region line is the content's end, so <-1,1,-1,1> appends
 //   <SL,SC,EL,EC> selects an exact text region with an exclusive end.
 //
 // Runtime tolerance (not canonical producer syntax): <SL,SC,EL> is accepted
@@ -177,11 +178,13 @@ export default class Slicer {
         marker: LineMarker,
         body: string,
     ): TextReplacement | { error: string } {
-        const [startLine, startColumn, endLine, rawEndColumn] = marker.marks;
-        if (![startLine, startColumn, endLine, rawEndColumn].every(Number.isSafeInteger)) {
+        if (marker.marks.length !== 4 || !marker.marks.every(Number.isSafeInteger)) {
             return { error: "An exact text region requires four integer coordinates." };
         }
         const lines = TextCoordinates.lines(content);
+        // {§text-scope-semantics} — `-1` is the final addressable endpoint in every form: as a region line it
+        // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends.
+        const [startLine, startColumn, endLine, rawEndColumn] = Slicer.#finalEndpoint(content, lines, marker.marks);
         if (startLine < 1 || startLine > lines.length) {
             return { error: `Start line ${startLine} is outside the available line range 1..${lines.length}.` };
         }
@@ -210,6 +213,16 @@ export default class Slicer {
             };
         }
         return { start, end, body, startLine, endLine: resolvedEndLine };
+    }
+
+    static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly number[]): [number, number, number, number] {
+        const [startLine, startColumn, endLine, endColumn] = marks as [number, number, number, number];
+        const last = lines[lines.length - 1]!;
+        const finalColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
+        return [
+            startLine === -1 ? lines.length : startLine, startLine === -1 ? finalColumn : startColumn,
+            endLine === -1 ? lines.length : endLine, endLine === -1 ? finalColumn : endColumn,
+        ];
     }
 
     // {§zero-width-column-one-insert} — the fence artifact repaired where a fenced EDIT body becomes
@@ -310,11 +323,12 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
     ): { marker: LineMarker; normalization: ScopeNormalization } | { error: string } {
-        const [startLine, startColumn, endLine] = marker.marks;
-        if (![startLine, startColumn, endLine].every(Number.isSafeInteger)) {
+        const [startLine, startColumn, requestedEndLine] = marker.marks;
+        if (![startLine, startColumn, requestedEndLine].every(Number.isSafeInteger)) {
             return { error: "A tolerated three-coordinate text region requires integer coordinates." };
         }
         const lines = TextCoordinates.lines(content);
+        const endLine = requestedEndLine === -1 ? lines.length : requestedEndLine;
         if (endLine < 1) {
             return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
         }
@@ -324,7 +338,7 @@ export default class Slicer {
             return { error: `End line ${endLine} cannot select from empty content.` };
         }
         const endColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
-        const requested: ScopeNormalization["requested"] = [startLine, startColumn, endLine];
+        const requested: ScopeNormalization["requested"] = [startLine, startColumn, requestedEndLine];
         const canonical: ScopeNormalization["canonical"] = [startLine, startColumn, resolvedEndLine, endColumn];
         return {
             marker: { ...marker, marks: [...canonical] },

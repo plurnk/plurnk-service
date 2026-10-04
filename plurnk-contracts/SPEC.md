@@ -904,7 +904,10 @@ used by four-coordinate selections. Whole-line replacement deliberately
 accounts for newline separators; it is an ergonomic projection over exact
 replacement, not a different mimetype navigation mode. An end bound beyond
 the available content clamps to the final addressable endpoint; the start bound
-must resolve. As an unadvertised
+must resolve. `-1` as a line coordinate of any form is that final endpoint: the
+append point as a one-integer mutation scope, through the last line in an inclusive
+range, and the end of the content as an exact region's start or end, so `<1,1,-1,1>`
+is the whole text and `<-1,1,-1,1>` appends. As an unadvertised
 ingestion tolerance, the runtime accepts three integers as
 `startLine,startColumn,endLine` and immediately normalizes them to the complete
 four-coordinate region ending after the final code point of `endLine`.

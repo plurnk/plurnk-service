@@ -191,6 +191,14 @@ test("lines tolerates three coordinates and reports the exact canonical region",
     assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 9, 1]);
 });
 
+test("{§text-scope-semantics} -1 as a region line is the final endpoint: <1,1,-1,1> is the whole text, <-1,1,-1,1> appends", () => {
+    assert.equal(Slicer.lineMarkerEdit(TEXT, { marks: [1, 1, -1, 1] }, "ALL\n").result, "ALL\n", "the whole text, end column moot at the end");
+    assert.equal(Slicer.lineMarkerEdit(TEXT, { marks: [-1, 1, -1, 1] }, "OMEGA\n").result, `${TEXT}OMEGA\n`, "a zero-width region at the end appends");
+    assert.equal(Slicer.lines(TEXT, { marks: [2, 1, -1, 7] }).text, "beta\ngamma\ndelta\n", "from line 2 to the end, whatever the end column says");
+    assert.equal(Slicer.lines(TEXT, { marks: [2, 1, -1] }).text, "beta\ngamma\ndelta\n", "the tolerated three-coordinate form takes -1 the same way");
+    assert.equal(Slicer.lines(TEXT, { marks: [1, 1, -2, 1] }).status, 416, "other negatives stay unspecified");
+});
+
 test("lines rejects unaddressable exact regions", () => {
     // Line out of range — no clamp applies.
     const noLine = Slicer.lines("a😀b", { marks: [99, 1, 99, 2] });
