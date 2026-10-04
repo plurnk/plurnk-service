@@ -9,7 +9,7 @@
 body?
 ```
 
-```COPY|MOVE (source) <scope|range>? (destination) <scope|range>? [metadata]? <!-- aside -->?
+```exampleCopyOrMove (source) <scope|range>? (destination) <scope|range>? [metadata]? <!-- aside -->?
 ```
 
 ## Plurnk Workflow OPs
