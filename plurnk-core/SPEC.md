@@ -371,8 +371,8 @@ supplies examples and complete instructions on demand. A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
 tool-family rows also carry the concise `{§scheme-catalog-aside}` that drives
-on-demand capability discovery. Ordinary surveys use FIND's markerless first
-page ({§markerless-first-page}), whose range metadata reports the requested and returned page against the
+on-demand capability discovery. Ordinary surveys use FIND without a scope
+({§markerless-first-page}), whose range metadata reports the returned set against the
 complete result total; only the small capability-reference surfaces
 explicitly select all. The opening survey demonstrates both `*` and `**` without
 normalizing an all-results override. Every survey executes even when empty
@@ -1160,7 +1160,7 @@ These are the complete strike sources:
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-execution operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`, in a turn where no operation succeeded ({§strike-progress-immunity}). | The originating failure row.                                  |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
-| Empty turn          | An admitted turn with no authored response operation ({§empty-turn}).                                            | The turn's `422` error row, and its reasoning read back ({§reasoning-empty-turn-read}). |
+| Empty turn          | An admitted turn with no authored response operation ({§empty-turn}).                                            | The turn's `422` error row. |
 
 Execution results remain exact model-visible evidence but are always soft: an
 executor error is not a PLURNK contract violation. Cycle detection remains an
@@ -1920,7 +1920,7 @@ Client-interface target parameters carry fragments inline (`{ target: "sh:///a3b
   MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read. Binary sources
   keep {§membership-source-projection}, where the source is not text and the projection is the
   body; a fetched web page keeps its scheme's own two channels ({§html-materialization}).
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-output-admission} — this is information, not a second guard.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
 
 ### §channel-state Channel state — metadata, not gating
 
@@ -2156,8 +2156,8 @@ The packet projects each visible match's `locator`, exact `region`, or
 explicitly enclosing `enclosingRegion`
 using {§packet-extent-metadata}, without duplicating matched body text. Log
 curation removes metadata for matches outside the retained body. Match metadata
-uses the ordinary preview allowance ({§body-projection}), keeping only complete
-items; `matchLocationCount` appears when that preview omits locations. Exact
+lands with the result it describes under {§context-fit}, complete or as the
+receipt; `matchLocationCount` appears when the result is a receipt. Exact
 FIND pages the complete location set ({§find-result-projection}).
 
 - §read-bytes A binary channel, and the `#bytes` view of
@@ -2223,7 +2223,7 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a model reasoning source; missing provider reasoning creates no substitute. A non-model producer may record its own authored rationale under {§turn-source-resources}. |
 | Resource | `reasoning://<worker>/<loop>/<turn>` is immutable text/plain source belonging to the named workspace worker's turn under {§turn-source-resources}. Every workspace actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
-| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}, and an empty turn's reasoning is read back under {§reasoning-empty-turn-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
+| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
@@ -2238,23 +2238,8 @@ the READ itself; this is an ordinary read of already stored text, not recursion
 or a future-source subscription. The initial message arrives separately as an
 inbound SEND ({§message-arrival}). Neither initialization nor later turns
 manufacture a task inventory.
-`PLURNK_REASONING_VIEW_LINES` (alias-scoped, default in `.env.defaults`) selects this one READ's
-scope: `0` omits it, `-1` reads the complete rationale, and a positive integer
-bounds it to the first N lines. Source retention, deliberate READs, and client
-streaming are independent. The only other automatic reasoning READ follows an empty
-turn ({§reasoning-empty-turn-read}).
-
-§reasoning-empty-turn-read **Operation-free reasoning is read back for recovery.** After a
-turn admitted under {§empty-turn} with no admitted reasoning operations, one runtime turn of the same loop
-(`{ producer="_plurnk", kind="operation" }`) dispatches
-`READ (reasoning://<worker>/<loop>/<turn>) <!-- turn N emitted no OP -->` over that turn's stored
-reasoning source; its receipt renders in the next packet like any other log row.
-`PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped) selects the scope on the same scale as
-`PLURNK_REASONING_VIEW_LINES`; it ships `0`, off, because at a short window the page read back is
-the pressure that emptied the turn (the 16k rungs on bench #40), and an operator turns it on per alias. Any admitted reasoning NOTE, FIND or READ suppresses
-this recovery readback. No read follows a turn without reasoning, and none follows
-a turn whose emission or reasoning carries a foreign tool-call grammar or leaked template token
-(`KnownToxins` names them); the strike and its error row are unchanged.
+That READ carries no scope and lands under {§context-fit}. Source retention, deliberate
+READs, and client streaming are independent; no other automatic reasoning READ exists.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
@@ -2381,7 +2366,7 @@ Authored `metadata` retains its opaque ordered block strings under {§scheme-met
   until its row is KILLed: an uncaptioned native part on the user turn reads as a fresh arrival (#899).
   Model-response settlement never consumes an observation. KILL follows
   {§log-kill-scope}; forks inherit the snapshot and ordinary projection state independently. Output withholding
-  suppresses the complete native part under {§context-output-admission}. Unsupported routes receive only the
+  suppresses the complete native part under {§context-fit}. Unsupported routes receive only the
   text projection and no native charge; switching back to a compatible route exposes still-retained media.
   Each included part contributes `tokensAttachment` within `logTokens`: `ceil(width × height / 750)` for an
   image, `pages × 1500` for a document, `ceil(duration × 32)` for audio, or `ceil(bytes / 4)` when page count
@@ -2449,7 +2434,7 @@ like any other row.
 | When | An inference turn that admitted at least one content statement. Reasoning-only turns, including initialization ({§worker-initialization-entry}), a programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
 | Place | After the turn's inputs (arrivals, deltas, open-path READs) and before its reasoning NOTEs and operations, written after the selection snapshot ({§turn-ops-selection-snapshot}): the emission sits between what the worker had seen and what it caused. |
 | Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission → ops://<worker>/L/T · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
-| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of admitted content statements, each in a closed fence. Each body appears within the shared preview bound ({§body-projection}), `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS`. A longer body keeps its head, and its closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
+| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of admitted content statements, each in a closed fence. Each body appears as its head, about a hundred tokens of curation weight — enough to recognise the turn, never enough to matter to the budget ({§context-fit}) — and a longer body's closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
 | Sources and memory | Dispatch and immutable `ops://` sources retain complete bodies ({§turn-source-resources}); an explicit source READ returns them normally. The wire omits NOTE and WAIT blocks, whose own rows show them whole ({§body-projection}), so curating a NOTE row removes its text; an emission of only NOTE and WAIT delivers nothing, its row stands, and no assistant message follows it ({§packet-wire-envelope}); reasoning-only NOTEs never enter this projection. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
 | Presentation | Born folded: the record shows its header, and its body follows the record as the worker's assistant message. |
@@ -2876,11 +2861,10 @@ accounting and model-visible failure evidence remain separately owned by
   filters what is stored. The model hears only the weight: the next packet's Notices section
   carries `outside_text: N tokens emitted outside OPs. Discarded.`, N by {§tokenomics-agnostic-ruler};
   the text itself never enters a packet, not even inside its turn's emission ({§emission-row}), is never delivered and never concludes.
-  {§empty-turn} still strikes a turn that holds only text, with unchanged reasoning recovery
-  ({§reasoning-empty-turn-read}), reply accounting and completion rules. A log-entry heading in
+  {§empty-turn} still strikes a turn that holds only text, with unchanged
+  reply accounting and completion rules. A log-entry heading in
   outside text still rejects the attempt unless it echoes an emission row ({§fabricated-log-entry}); an unfenced operation line is
-  not response text ({§unfenced-operation}) and so never reaches the source; `KnownToxins` guards
-  only the read-back ({§reasoning-empty-turn-read}). Clients receive the text once through
+  not response text ({§unfenced-operation}) and so never reaches the source. Clients receive the text once through
   `outside/event` ({§notifications-outside-event}, {§agui-outside-text}); FORK snapshots the
   source with the turn's others; the digest names its weight. It has no address: there is no
   `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate
@@ -2900,8 +2884,7 @@ accounting and model-visible failure evidence remain separately owned by
   reasoning NOTEs nor outside text ({§outside-text}) enter the count. When none exist and no boundary was lost, retain the turn
   and its raw sources and count one progress-contract strike, whether or not the turn carried text. The strike sends no notice of its own: the turn records one `_plurnk`
   error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
-  any failure ({§operation-result-uniform-error-channel}), and its reasoning is read back to the
-  model under {§reasoning-empty-turn-read}; the threshold terminal still says why ({§engine-rails}).
+  any failure ({§operation-result-uniform-error-channel}); the threshold terminal still says why ({§engine-rails}).
   An empty turn uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
   different empty programs are not a repeated cycle merely because neither contained
   operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
@@ -3908,9 +3891,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` | First recovery delay (ms); doubles per failure up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX` ({§provider-recovery}). |
 | `PLURNK_SERVICE_MAX_STRIKES` | Consecutive turn-contract strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS` | Completed provider responses allowed beneath one engine turn before frame admission is exhausted. Bounded interior operation errors are admitted without spending this budget. Exhaustion contributes one frame-contract strike under {§invalid-emission-attempts}. |
-| `PLURNK_SERVICE_PREVIEW_LINES` | First page of every markerless retrieval, in the projection's own units, and the head bound of an automatic preview ({§markerless-first-page}, {§body-projection}). |
-| `PLURNK_SERVICE_PREVIEW_CHARS` | Independent Unicode code-point bound on the same previews, with CRLF treated as one indivisible separator ({§body-projection}). |
-| `PLURNK_SERVICE_PROMPT_PROJECTION` | Aggregate curation-weight share of the provider-derived input capacity available to the automatic projection of arrivals from outside the workspace ({§message-projection}); alias-scoped overrides are supported. |
+| `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` | How many of the heaviest retained log rows the gauge names ({§context-gauge}). |
 | `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES` | Minimum neighboring lines hashed on each side; repeated handles expand their context ({§line-anchor-disambiguation}). |
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES` | Min repetitions before cycle detection fires ({§engine-rails}). |
@@ -4909,7 +4890,7 @@ without an origin filter ({§actor-boundary-isolation}).
 
 `PacketBuilder.buildRequestPacket` owns the engine's default ordered section
 list. Trusted scheme plugins may transform that first-class list before it is
-rendered or measured; {§context-output-admission} remains an engine-owned post-build rail.
+rendered or measured; {§context-fit} remains an engine-owned post-build rail.
 
 ```mermaid
 flowchart LR
@@ -4986,44 +4967,37 @@ trust gate; an external client action cannot invoke it. Whole-list transformatio
 the fork-avoidance valve for alternate packet shapes, while
 overflow recovery and packet projection remain closed engine concerns.
 
-### §tokenomics Tokenomics: four facts, one curation ruler
+### §tokenomics The context budget: one room, one gauge, one rule
 
 Token accounting distinguishes the artifact being measured, the unit, and the
 time of measurement.
 
 | Fact | Owner and unit | Time | Contract |
 |:-----|:---------------|:-----|:---------|
-| Core curation weight | `contentWeight = ceil(chars/2)` over channel content, canonical log bodies, rendered packet slots, and placed emissions | Write/build | Stable, model-independent pressure and curation savings; never a tokenizer claim. |
+| Core curation weight | `contentWeight = ceil(chars/2)` over channel content, canonical log bodies, rendered packet slots, and placed emissions | Write/build | Stable, model-independent measure; never a tokenizer claim. The model meets it as `tokens`. |
 | §tokenomics-context-envelope-admission Provider input capacity | Provider model limits and configured output reservation, in provider tokens | Before every logical request | `min(maxInputTokens, contextWindow - outputBudget)` over the known terms. The provider alone measures the complete request and admits, defers, or rejects it. |
 | Provider generation envelope | Provider response grant and optional reasoning subset, in provider tokens | Before every logical request | The reservation includes hidden reasoning; its strict reasoning subset is never additive. The response grant follows {§provider-flexed-allowance}. |
 | Provider usage and cost | Provider-reported input/output/cache/reasoning tokens and monetary evidence | After every physical request | Durable physical-request forensics under {§provider-usage}; never curation state or a preflight estimate. |
 
+- §context-budget **One room.** The budget is the provider's input capacity converted to curation weight under {§tokenomics-calibrated-readout}, and it bounds the whole packet — teaching, catalog, log and gauge together. Nothing on the service panel sizes a part of it: no projection share, no preview page, no pressure threshold.
+- §context-gauge **One gauge.** Every packet carries one `## Context` section holding one JSON object: `tokens`, the packet's weight as rendered; `budget`, the room; and `largest`, the `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest retained log rows as `{path, tokens}` ranked by weight then path. Each log row heading carries its own `tokens`. The gauge is state: it never presents `budget − tokens` as response allowance, it carries no mandate, and it reads the same at one percent as at ninety-nine.
+- §context-fit **One rule: whole if it fits, otherwise its size and address.** A result the model asked for — a READ without a scope, a FIND, an exec result delivered on close — arrives complete when its weight fits within `budget − tokens` as of that turn; otherwise the complete result is stored and the row is a `413` receipt with no body naming the result's size in the projection's own units, its weight, the remaining budget, and the two verbs: `READ` a range, or `KILL` first. An arrival the model did not ask for — an inbound `SEND`, a child's conclusion — takes the same bodiless receipt as a fact, not an error: its size and its address. Explicit scopes (`<a,b>`, a pattern, `<1,-1>`) are exact and take the same test. Nothing is previewed, projected, withheld or paged on the model's behalf; the one automatic cut is an emission row's head ({§emission-row}).
+- §context-verbs **The verbs are the curation.** `READ` with a range takes a piece of what did not fit ({§read-selection-projection}); `NOTE` keeps what the model learned; `KILL` retires rows, ranges and bodies ({§log-kill-scope}). The daemon adds no other mechanism.
+- §context-hard-413 **An over-budget packet fails honestly.** A request whose rendered weight exceeds the budget never reaches `provider.generate`: the turn terminalizes with the exact `engine/context/token-budget-overflow` 413 Problem without provider I/O. The gauge named the condition on the previous packet and the verbs were available; nothing older is hidden to make it fit.
+- §context-output-selection **Retired, column kept.** Migration 6's `output_admission_turn_id` recorded first-presentation admission under the former withholding rule; the rule is gone and the column stays in the schema unread, as released migrations are frozen ({§db-migrations}).
 - §tokenomics-weight-stored-at-write **Curation weight, stored at write.** `entry_channels.weight` weighs the complete channel content. `log_entries.weight` weighs the complete canonical `LogBody` content before coordinate and packet presentation; persistence `tx`/`rx` envelopes contribute nothing merely by existing, and proposal settlement recomputes the value when the canonical result changes. Bodyless rows therefore weigh zero. The stored number is a stable content-depth measurement, not a provider-token prediction. `entry_channels.lines` is the channel's line count beside it, a stored generated column SQLite keeps on every write as the persisted mirror of {§logical-line-count} (a trailing newline terminates the last line; empty content has none), so a catalog lists extent without reading bodies.
 - §tokenomics-render-weight-budget **Packet curation budget.** `logTokensTotal` measures the *complete assembled packet* after section transforms and readout substitution, its rendered slots and the emissions it places ({§emission-row}); it is not a sum of log-row `logTokens` fields. Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns final values into those widths; final substitution is length-invariant and the displayed total equals the stored request weight. Receipt, FIND-item, pressure-inventory, total, and ceiling figures all use the same curation ruler. A `SUM` of stored content weights measures a different artifact and cannot substitute for packet render weight.
 - §tokenomics-calibrated-readout **Convert capacity, never content costs.** Before packet assembly, Core obtains the answering model's last five settled emission responses pairing a measured packet weight with a provider-reported prompt count. The conversion factor is `sum(reported) / sum(weight)`; fewer than three samples use 1. `logTokensMax = floor(inputCapacity / factor)` converts provider capacity into curation units. Zero means no whole curation unit fits; unknown input capacity remains `null`. The built packet captures this allowance once for its readout, pressure inventory, overflow admission, and persisted client gauge. Later responses cannot change that packet's allowance. Samples are model-keyed, not worker-local; a model with no samples starts at 1. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
 - §tokenomics-window-partition **One capacity derivation; no service-side token budget.** The provider owns model limits, the configured output reservation, and each call's response grant. Its resolved `inputCapacity` supplies the physical denominator exposed to clients and the boundary conversion into curation units ({§tokenomics-calibrated-readout}). Core shapes context in curation units; provider request-shaped evidence alone admits or rejects physical I/O. `PLURNK_SERVICE_PROMPT_BUDGET`, `PLURNK_SERVICE_SAFETY`, and the additive reasoning/completion reserve knobs are retired; local and custom deployments tune context window, total output budget, optional reasoning subset, and prompt-projection percentage at their owning layers.
-- §tokenomics-prompt-projection-share **Prompt projection is stable packet policy.**
-  `PLURNK_SERVICE_PROMPT_PROJECTION` is a required alias-scoped percentage in
-  `(0, 100)`. It allocates that share of the cold-start curation allowance
-  (the capacity conversion with factor 1) to the aggregate automatic prompt-body
-  projection. Rolling calibration does not resize existing prompt bodies; only
-  the overall curation ceiling adapts. This does not bound stored prompt
-  size, provider capacity, an explicit READ/FIND result, or the complete packet.
-  Basing the share on configured capacity rather than current free weight or
-  sampled conversion keeps one prompt's projection byte-stable as the log and
-  calibration samples evolve.
-- §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, Core omits denominator-dependent curation telemetry and uses the ordinary bounded prompt projection. The provider still sends requests whose measurement or limits are estimates or unavailable: ambiguity defers to the upstream capacity oracle rather than becoming a local rejection.
+- §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, there is no budget: the gauge carries `tokens` alone, every result arrives whole, and the provider remains the capacity oracle ({§provider-capacity-admission}). Core never invents a stand-in.
 
 §tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest packet-bearing model-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. The curation pair is the packet's measured weight and captured allowance, exactly as displayed to the model, not a recalculation using newer usage evidence. Packetless chronology cannot erase an assembled-request gauge. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
 - **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or full-text coverage. Progress notices make the wait visible. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats a text label.** Filesystem source acquisition, including tracked members and installed skill resources, inspects up to the first 8192 bytes when extension detection does not identify a binary type. NUL marks `application/octet-stream`; existing binary types retain their declared type. Member projections follow {§membership-source-projection}; installed skill projections follow {§skills-resources}.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
-- §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Curation` section is one JSON object carrying `logTokensTotal` and `logTokensMax`. It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
-- §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** At `PLURNK_SERVICE_BUDGET_PRESSURE` of `logTokensMax`, a Markdown `> [!WARNING]` block follows the JSON with `> YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` New output withholding replaces that mandate under {§context-output-warning}. The JSON may include `logTokensLargest`: at most `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` retained log items, each `{path, logTokens}`, ranked by that charge descending and then path. Native-only, suppressed, and metadata-only items remain eligible: whole-item KILL can reclaim their actual contribution. Include the largest prefix that fits; drop the optional list before the warning. Both participate in the final fixed-point total and complete request admission check.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** A settled channel's `content_hash` (SHA-256) is its body's identity in the content store ({§content-store}); a writer may bind it, a bound hash must match the content, and an active stream has none until it settles. `weight` is stored beside that content and is never keyed or recomputed by model.
 - §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Complete totals and known subtotals remain distinct under {§provider-accounting}; unknown requests cannot impersonate free requests, and missing usage never becomes zero. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
-- §tokenomics-negative-pressure **Negative curation pressure is honest but never submitted.** The provisional readout may report `logTokensTotal` above `logTokensMax`. Crossing the maximum withholds new returned output under {§context-output-admission}; no over-ceiling packet reaches `provider.generate`. Output admission creates neither a strike nor another turn.
 
 Each physical request also retains {§provider-request-evidence}, atomically
 with its accounting settlement. Failure does not discard received fragments.
@@ -5031,44 +5005,6 @@ The digest emits one linked `requests/<id>.json` artifact per physical request,
 including unavailable evidence as `null`, reading heavy records one at a time.
 Failed partial operations and reasoning remain forensic data only; they never
 execute, enter model history, or become a later request's successful output.
-
-### §context-output-admission Budget enforcement: returned-output admission
-
-Operations and their results are execution history. Packet admission controls
-only whether newly presented returned output fits, never what executed or what
-the model's lifecycle declaration means.
-
-```mermaid
-flowchart TD
-    assemble["Assemble and measure<br/>candidate request"] --> budget{"Weight ≤ curation ceiling?"}
-    budget -->|yes| generate["Provider generate"]
-    budget -->|no| withhold["Withhold new returned output<br/>retain receipts and add overflow metadata"]
-    withhold --> verify{"Request with warning fits?"}
-    verify -->|yes| generate
-    verify -->|no| stop["Terminal 413"]
-    generate --> capacity{"Provider capacity failure?"}
-    capacity -->|no| response["Classify completed response"]
-    capacity -->|yes| prompt{"Withholding automatic<br/>prompt bodies changes request?"}
-    prompt -->|yes| retry["Persist failure;<br/>rebuild and retry"]
-    retry --> generate
-    prompt -->|no| stop
-```
-
-§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored NOTE/lifecycle/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly is pure. No recovery turn, generated lifecycle declaration, KILL operation, strike, or extra model attempt is manufactured.
-
-| Projection fact | Meaning |
-|---|---|
-| No output admission | Not yet presented as returned output; eligible on its first visible request. |
-| Admitted | Normal projection, thereafter controlled only by deliberate curation and existing delivery rules. |
-| Withheld | Body/native parts stay absent in the original receipt; freeing space does not silently restore them. |
-
-§context-output-receipt A withheld receipt adds `overflow: "N output lines not shown; the log exceeded logTokensMax when this row was withheld"`, counting the output lines its normal current projection would show, not unrelated source lines. Withheld native media is named as `"N output lines and native content not shown; ..."` or, without a text body, `"native content not shown; ..."`. Its original result status and Problem are unchanged. FORK inherits admission state with the copied log. Explicit KILL still controls readable/active content independently.
-
-§context-output-warning **New omission escalates the one curation warning.** The admitting request renders `> [!WARNING]` followed by `> YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` beneath its JSON readout, replacing the ordinary pressure mandate even when withholding brings usage below 80%. Historical omission alone does not retrigger it. The warning participates in exact packet measurement; optional largest-items entries yield space first.
-
-§context-output-hard-413 **Unfittable retained context fails honestly.** If the request still exceeds the ceiling after withholding newly presented output, it terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem without provider I/O. No unrelated older history or authored memory is pruned. Separately, provider capacity failures follow {§provider-surface-capacity}: withholding automatic prompt-body projection permits a retry only when it changes the request; otherwise the exact provider-owned 413 terminates the request-only model turn.
-
-- §tokenomics-fetch-fits-free **Withholding is not deletion.** The complete result lands once. READ/FIND of its original log address retain the readable body and original coordinates; scoped READ creates a fresh output occurrence subject to the same admission rule. Source resources and forensic evidence remain unchanged. Deliberate scoped KILL, unlike withholding, removes lines from subsequent readable projections ({§log-readable-projection}).
 
 - §loop-terminals **Lifecycle outcomes are HTTP-precise.**
 
@@ -5197,7 +5133,7 @@ their boundaries ({§log-wire-format}).
 | `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
 | `notices`       | user   | Terse observation bullets                                                                     | {§notice-drain-on-read}         |
 | `git`           | user   | Working-tree state in a NOTE blockquote                                                       | {§packet-cache-monotone}        |
-| `budget`        | user   | JSON curation usage and ceiling; pressure guidance when needed                                | {§tokenomics-neutral-telemetry} |
+| `budget`        | user   | JSON curation usage and ceiling; pressure guidance when needed                                | {§context-gauge} |
 | `messages`      | user   | JSON pointers to the loop's unanswered immutable messages, path and source                    | {§message-arrival}              |
 | `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
 
@@ -5310,23 +5246,14 @@ Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualifie
 
 | row producer | ordinary visible projection |
 |---|---|
-| any `READ` or `FIND` | complete selected operation result |
+| any `READ` or `FIND` | the complete result when it fit; otherwise the bodiless `413` receipt ({§context-fit}) |
 | `NOTE`, `WAIT` | complete literal authored text |
-| inbound `SEND` from outside the workspace | budgeted head under {§message-projection} |
+| inbound `SEND` from outside the workspace | complete when it fit; otherwise its size and address ({§context-fit}, {§message-projection}) |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
-| every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
-| bodyless row | heading and any facts; no coordinate lines; `logTokens` includes any selected native part |
+| every other nonempty body | complete when it fit; otherwise its size and address ({§context-fit}) |
+| bodyless row | heading and any facts; no coordinate lines; `tokens` includes any selected native part |
 
-§markerless-first-page **Every markerless retrieval takes the same implicit marker.** A marker's
-unit is whatever its projection counts, so `PLURNK_SERVICE_PREVIEW_LINES` is the first page of
-all of them: lines of text, bytes of a byte view ({§read-bytes}), positions of a FIND. It is one
-choice with one home; no operation carries a page size of its own.
-
-Markerless text READs select their page with the same line/character bound as
-ordinary previews, before result storage and packet rendering. Explicit scopes
-remain exact. Automatic stream delivery uses that markerless selector too;
-its range or region describes the selected content and the complete stream
-remains addressable. This selection is not a second rendering-time cut.
+§markerless-first-page **A retrieval without a scope is the whole thing, or its size.** A READ or FIND without a scope selects everything — every line, every byte of a byte view ({§read-bytes}), every result — and lands under {§context-fit}: complete when it fits the remaining budget, otherwise a `413` receipt naming the size and the verbs. Explicit scopes remain exact. Automatic stream delivery takes the same rule, and the complete stream remains addressable. No operation carries a page size of its own, and no knob supplies one.
 
 READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. NOTE and lifecycle bodies are complete literal text while visible, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Arrivals from outside the workspace follow their separate adaptive projection contract ({§message-projection}). Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, execution commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `preview` under {§packet-extent-metadata}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
@@ -5379,7 +5306,7 @@ additional alias. Answering either reaches the same message.
 
 §message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter supplies its own canonical actor address through {§methods-loop-run}: the AG-UI bridge names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://`. An absent source is the operator. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers. The Open Messages pointer carries the same attribution ({§message-arrival}).
 
-§message-projection **Message storage is unbounded by model context; automatic materialization is not.** Core persists every accepted message completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for the visible bodies of arrivals other than a peer worker's — every `source` that is not a `worker://` address, the loop's own assignment included. Complete bodies render when their aggregate weight fits. Otherwise all such visible rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries `preview` under {§packet-extent-metadata}. The row remains complete and READable by coordinate; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. A peer worker's message takes the ordinary bounds. When provider input capacity is unknown the percentage is underivable, so arrival rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a message because it exceeds a context window.
+§message-projection **Message storage is unbounded by model context; its arrival in the packet is not.** Core persists every accepted message completely before packet assembly. An arrival renders complete when it fits the remaining budget ({§context-fit}) and otherwise as its size and address, where a READ of the message's log body, scoped or whole, retrieves it. A peer worker's message takes the same rule. No share of the capacity is set aside for arrivals, and no knob sizes one.
 
 §message-loop-containment A loop contains every message that arrives before it
 concludes; the next turn boundary publishes every inbox row the loop has not yet
@@ -5417,8 +5344,8 @@ retain distinct contracts and lifetimes.
   `errors` section is a derived index over those rows from the current and
   immediately prior turn: one `{status, path}` JSON object per row,
   nothing else. The Problem lives on the curatable row and is READ via the path.
-  Withheld output preserves its original result ({§context-output-receipt});
-  an unfittable retained context fails before inference ({§context-output-hard-413}).
+  Withheld output preserves its original result ({§context-fit});
+  an unfittable retained context fails before inference ({§context-hard-413}).
 - §log-row-self-explains **Every ≥400 pointer names a record that states its
   why.** A model-operation failure is the model's own operation result; its
   Problem Details `instance` retains the originating occurrence URI; when absent,

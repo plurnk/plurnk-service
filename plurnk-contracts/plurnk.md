@@ -114,10 +114,10 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 > [!TIP]
 > The EDIT body is literal text; it may hold more or fewer lines than the scope. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
 
-## Context Curation
+## Context
 
-> [!WARNING]
-> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
+> [!TIP]
+> Your packet is a room: `tokens` is how full it is, `budget` is its size, `largest` names its heaviest rows. Anything you READ, FIND or receive arrives whole if it fits, otherwise as its size and address. READ a range of what did not fit, NOTE what you learned, KILL what you no longer need. Successful log KILL receipts are not shown.
 
 ```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
 ```
