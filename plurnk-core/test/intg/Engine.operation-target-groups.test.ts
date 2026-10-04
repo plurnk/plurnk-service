@@ -222,3 +222,49 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         await db.close();
     }
 });
+
+test("{§target-group} {§safe-uri-target-groups}: a KILL written one path per slot curates every member, the scope binding to its slot; the program stays as authored", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const sourceTurnId = await insertTurn(db, loopId, 1);
+        const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
+        const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
+        const heading = "KILL (log:///1/1/1/READ) (log:///1/1/2/READ) <1,-1>";
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [response(`\n\`\`\`\`${heading}\`\`\`\`\n\`\`\`\`NOTE\nThe first is retired, the second trimmed.\n\`\`\`\``)],
+        });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Curate both reads." }] });
+        const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; turn_id: number; status_rx: number; folded: string; active: number }>({ loop_id: loopId });
+        const byId = new Map(rows.map((row) => [row.id, row]));
+        assert.equal(byId.get(firstId)?.active, 0, "an unscoped member retires its row whole");
+        assert.equal(byId.get(secondId)?.active, 1);
+        assert.equal(byId.get(secondId)?.folded, "[[1,-1]]", "the scope binds to the slot it follows");
+        assert.deepEqual(rows.filter((row) => row.turn_id === result.turnId && row.op === "KILL").map(({ status_rx }) => status_rx), [200, 200], "one row per member");
+        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const ops = programs.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops");
+        assert.ok(ops !== undefined && ops.content.includes(heading), "the stored program is the authored group, unexpanded");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§target-group} {§safe-uri-target-groups}: a READ written one path per slot lands one row per member", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
+        const provider = new Mock({
+            contextWindow: 100_000,
+            responses: [response("\n````READ (worker:///alpha.md) (worker:///beta.md)````\n````NOTE\nBoth reads are pending review.\n````")],
+        });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string | null; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(
+            rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)).map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
+            [{ pathname: "/alpha.md", status: 200 }, { pathname: "/beta.md", status: 200 }],
+        );
+    } finally {
+        await db.close();
+    }
+});

@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, type KillStatement, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 const EXPLICIT_URI = /^[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -31,11 +31,27 @@ const splitTopLevel = (raw: string): string[] => {
     return members;
 };
 
-// {§safe-uri-target-groups} — this is an admission tolerance, not a second
-// path grammar. The authored statement remains in the forensic turnOps source;
-// only ordinary dispatch receives one clone per independently valid URI.
-export const expandSafeUriTargetGroup = (statement: PlurnkStatement): PlurnkStatement[] => {
-    if (statement.op !== "READ" && statement.op !== "KILL") return [statement];
+// {§safe-uri-target-groups} — the heading's slot group ({§target-group}): one member per slot, any
+// target kind, each with the scope, metadata and matcher its own slot carried; the heading's naked
+// pattern is every member's; a distilling body lands once, with the first member.
+const expandSlotGroup = (statement: ReadStatement | KillStatement): PlurnkStatement[] => {
+    const { group, ...single } = statement;
+    if (group === undefined) return [statement];
+    const shared = group[0].matcher === null ? statement.matcher : null;
+    return group.map((member, index) => ({
+        ...single,
+        target: member.target,
+        lineMarker: member.lineMarker,
+        metadata: member.metadata,
+        matcher: member.matcher ?? shared,
+        ...(index === 0 || statement.op !== "KILL" ? {} : { body: null }),
+    }) as PlurnkStatement);
+};
+
+// {§safe-uri-target-groups} — one slot whose text is several explicit URIs: an admission tolerance,
+// not a second path grammar. The authored statement remains in the forensic turnOps source; only
+// ordinary dispatch receives one clone per independently valid URI, the selection shared.
+const expandSafeUriGroup = (statement: ReadStatement | KillStatement): PlurnkStatement[] => {
     if (statement.target === null) return [statement];
     const members = splitTopLevel(statement.target.raw);
     if (members.length < 2 || members.some((member) => !EXPLICIT_URI.test(member))) return [statement];
@@ -48,4 +64,11 @@ export const expandSafeUriTargetGroup = (statement: PlurnkStatement): PlurnkStat
         if (error instanceof PlurnkParseError) return [statement];
         throw error;
     }
+};
+
+// {§safe-uri-target-groups} — a READ or KILL target group becomes one ordinary statement per member,
+// in authored order; every other statement passes through whole.
+export const expandTargetGroup = (statement: PlurnkStatement): PlurnkStatement[] => {
+    if (statement.op !== "READ" && statement.op !== "KILL") return [statement];
+    return statement.group === undefined ? expandSafeUriGroup(statement) : expandSlotGroup(statement);
 };

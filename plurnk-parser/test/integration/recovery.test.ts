@@ -132,11 +132,22 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
     assert.deepEqual(statements(r).map(writtenOp), ["sh", "WAIT"]);
 });
 
+// {§target-group} — a second slot on READ or KILL is a member, not an extra slot.
+for (const header of ["READ (a.md) <2,3> (extra.md)", "KILL (a.md) (extra.md)"]) {
+    test(`{§target-group}: ${header} is a target group of two`, () => {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+            const r = parse(turn(frame(header, null)));
+            assert.deepEqual(errors(r), [], header);
+            const [statement] = statements(r);
+            assert.ok(statement !== undefined && (statement.op === "READ" || statement.op === "KILL") && statement.group?.length === 2, header);
+            assert.deepEqual(statements(r).map(writtenOp), [header.split(" ")[0]!, "WAIT"]);
+        }
+    });
+}
+
 for (const header of [
     "FIND (/needle/) (src/) <1,-1>",
-    "READ (a.md) <2,3> (extra.md)",
     "EDIT (a.md) (extra.md)",
-    "KILL (a.md) (extra.md)",
     "SEND (worker://child) (extra.md)",
     "BARE (a.md) (extra.md)",
     "WORK (worker://child) (extra.md)",

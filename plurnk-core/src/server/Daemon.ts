@@ -34,6 +34,7 @@ import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
+import { expandTargetGroup } from "../core/operation-target-groups.ts";
 import SkillsFunctionality from "./SkillsFunctionality.ts";
 import WorkspacePlugins, { type WorkspacePluginSet } from "./WorkspacePlugins.ts";
 import { agentRootScopes, configurationDirectories } from "./AgentRoots.ts";
@@ -955,9 +956,15 @@ export default class Daemon implements ApplicationPort {
         try {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
-                const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
+                // {§safe-uri-target-groups} — a client-authored group runs member by member on the one seam
+                // result: the first failure, otherwise the last outcome.
+                let result: { status: number; [key: string]: unknown } | undefined;
+                for (const member of expandTargetGroup(statement)) {
+                    const outcome = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement: member });
+                    if (result === undefined || result.status < 400) result = outcome;
+                }
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
-                return result;
+                return result!;
             } catch (error) {
                 await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
                 throw error;
@@ -992,7 +999,8 @@ export default class Daemon implements ApplicationPort {
             const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
             try {
                 const results = [];
-                for (const statement of statements) {
+                // {§safe-uri-target-groups} — a client-authored group is one result per member.
+                for (const statement of statements.flatMap(expandTargetGroup)) {
                     results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
                 }
                 await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });

@@ -91,6 +91,13 @@ export default class PlurnkParser {
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 selection(statement.source);
                 selection(statement.destination);
+            } else if ((statement.op === "READ" || statement.op === "KILL") && statement.group !== undefined) {
+                // {§target-group} — every member with its own scope and metadata, then the group's naked pattern.
+                for (const member of statement.group) selection(member);
+                const own = statement.group[0].matcher;
+                if (statement.matcher !== null && (own === null || own.raw !== statement.matcher.raw)) {
+                    modifiers.push(...metadataOf(null, statement.matcher, true));
+                }
             } else {
                 if (statement.target !== null) {
                     modifiers.push(`(${spelled(statement.target)})`);

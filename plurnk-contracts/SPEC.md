@@ -654,7 +654,9 @@ normalize optional bodies to null. Closing fences are conventional, never requir
 ({§closer-fallback}).
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
-runtime fences from the shared AST, with one blank line between operations.
+runtime fences from the shared AST, with one blank line between operations; a
+target group renders every member with its own scope and metadata, then the
+group's naked pattern ({§target-group}).
 Every closing fence occupies its own line, including bodyless operations;
 inline fences remain accepted input, not generated examples.
 It chooses at least three backticks and more than any run within the body
@@ -683,6 +685,18 @@ has at most one scope; its metadata blocks retain their authored order.
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
 optional target and duration under {§send-wait-scope}. Their literal bodies begin
 below the header.
+
+§target-group **READ and KILL take a target group.** A READ or KILL heading may carry several
+`(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked
+pattern on the heading ({§naked-pattern}) is the group's and applies to every member. The AST keeps
+the first slot in `target`, `lineMarker` and `metadata` and, only when the heading carries more than
+one slot, repeats it with the rest as `group: ResourceSelection[]` in authored order, each member's
+`matcher` the one its own metadata carried. The operation runs once per member, in authored order,
+under the core SPEC's {§safe-uri-target-groups}; a distilling body ({§log-kill-distillation}) lands
+once, with the first member. COPY and MOVE keep their two operands with their own meaning
+({§transfer-resource-selections}); every other operation takes one slot, and a second slot on its
+heading is the slot-opener diagnostic. The form is accepted, not taught: it rescues a bulk attempt
+written one path per slot.
 
 §scope-on-scopeless **A scope on an operation that takes none is dropped, and named.** WORK, FORK,
 BARE and NOTE take no scope, and neither does a SEND without a recipient; a `<…>` slot on such a
@@ -874,7 +888,8 @@ disposition.
 anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
 ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
 selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
-The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: string | null }`.
+The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: string | null }`,
+with `group` beside them when the heading carries more than one slot ({§target-group}).
 The body is retained on parameterless KILL ({§kill-conclusion}) and on a `log:///` target, where
 it is the model's distillation of what the KILL retires and lands as its own NOTE row
 ({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one
@@ -1088,7 +1103,8 @@ matching.
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
   statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
   never a strike. A `<` anywhere else in the slot remains the lexer's refusal.
-- §extra-path-slot A path slot beyond the operation's admitted operands is a parser
+- §extra-path-slot A path slot beyond the operation's admitted operands — one for every
+  operation, two for COPY and MOVE, any number on READ and KILL ({§target-group}) — is a parser
   error at its opening paren. Report the unexpected slot and the grammar's expected
   alternatives when available, without inferring pattern intent or imposing another
   operation's operand count. The statement is dropped and its siblings run.

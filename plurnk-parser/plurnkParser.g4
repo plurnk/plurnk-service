@@ -62,7 +62,8 @@ midStatement
     ;
 
 findStatement : OPEN_FIND slotModifiers? opAside? statementEnd ;
-readStatement : OPEN_READ slotModifiers? opAside? statementEnd ;
+// {§target-group} — READ and KILL take several `(path)` slots; each binds the scope and metadata after it.
+readStatement : OPEN_READ targetGroup? opAside? statementEnd ;
 editStatement : OPEN_EDIT slotModifiers? opAside? statementEnd ;
 copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
@@ -77,7 +78,7 @@ bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAside? statementEnd ;
 forkStatement : OPEN_FORK targetWithMetadata? opAside? statementEnd ;
 // KILL takes a scope ({§kill-scope}): lines of a log body or of an entry.
-killStatement : OPEN_KILL slotModifiers? opAside? statementEnd ;
+killStatement : OPEN_KILL targetGroup? opAside? statementEnd ;
 lookStatement : OPEN_LOOK slotModifiers? opAside? statementEnd ;
 
 opAside : ASIDE ;
@@ -116,6 +117,11 @@ emptyStatementEnd
 slotModifiers
     : resourceSelection
     | lineMarker targetWithMetadata?
+    ;
+
+// {§target-group} — one selection, then any number more: `(a) <1,3> (b) [meta] (c)`.
+targetGroup
+    : slotModifiers resourceSelection*
     ;
 
 // The fence selects the executor; its program/tool path and metadata retain

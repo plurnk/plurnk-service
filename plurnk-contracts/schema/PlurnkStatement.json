@@ -186,6 +186,14 @@
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
                 },
+                "group": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                        "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
+                    },
+                    "description": "The heading's target group ({§target-group}): every `(path)` slot with the scope and metadata that follow it, in authored order, the first repeating `target`, `lineMarker` and `metadata`. Present only when the heading carries more than one slot; absent, as in every statement stored before groups existed, the operation has its one target."
+                },
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull"
                 },
@@ -445,6 +453,14 @@
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
+                },
+                "group": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                        "$ref": "https://schemas.plurnk.xyz/v0/ResourceSelection.json"
+                    },
+                    "description": "The heading's target group ({§target-group}): every `(path)` slot with the scope and metadata that follow it, in authored order, the first repeating `target`, `lineMarker` and `metadata`. Present only when the heading carries more than one slot; absent, as in every statement stored before groups existed, the operation has its one target."
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull",

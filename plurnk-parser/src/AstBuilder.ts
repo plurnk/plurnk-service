@@ -44,6 +44,7 @@ import type {
     NoteStatementContext,
     ResourceSelectionContext,
     SlotModifiersContext,
+    TargetGroupContext,
     ReadStatementContext,
     StatementContext,
     MidStatementContext,
@@ -430,7 +431,8 @@ export default class AstBuilder {
 
     static #buildRead(ctx: ReadStatementContext): ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
+        const group = ctx.targetGroup();
+        const slots = AstBuilder.#extractTextSlots(group?.slotModifiers() ?? null, position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("READ", slots.target, split.inline, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
@@ -446,9 +448,35 @@ export default class AstBuilder {
             lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
+            ...AstBuilder.#targetGroup("READ", group, slots, lifted.metadata, position),
             body: null,
             position,
         };
+    }
+
+    // {§target-group} — the heading's slots beyond the first, each with the scope and metadata that follow
+    // it; the first member repeats the statement's own target, scope and metadata, with the matcher its
+    // metadata carried and never the heading's naked pattern, which is the group's.
+    static #targetGroup(
+        op: string,
+        ctx: TargetGroupContext | null,
+        slots: TextSlots,
+        metadata: SchemeMetadata,
+        position: Position,
+    ): { group?: ReadStatement["group"] } {
+        const rest = ctx?.resourceSelection() ?? [];
+        if (rest.length === 0) return {};
+        if (slots.target === null) {
+            throw new PlurnkParseError(position.line, position.column, "visitor",
+                `\`${op}\` names a target group whose first slot has no target.`, "error",
+                `Write every member in parentheses: \`${op} (a) (b)\`.`);
+        }
+        const options = AstBuilder.metadataOptions(slots.metadata);
+        const own = options !== null && typeof options.pattern === "string"
+            ? AstBuilder.#parseMatcherBody(options.pattern, position, slots.target) : null;
+        const first: ResourceSelection = { target: slots.target, metadata, lineMarker: slots.lineMarker, matcher: own };
+        const [second, ...others] = rest.map((selection) => AstBuilder.#resourceSelectionFromCtx(selection, position, op));
+        return { group: [first, second!, ...others] };
     }
 
     static #buildEdit(ctx: EditStatementContext): EditStatement {
@@ -598,7 +626,8 @@ export default class AstBuilder {
     static #buildKill(ctx: KillStatementContext): KillStatement {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
-        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
+        const group = ctx.targetGroup();
+        const slots = AstBuilder.#extractTextSlots(group?.slotModifiers() ?? null, position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         if (slots.target === null && slots.lineMarker === null && slots.metadata === null) {
             return {
@@ -618,6 +647,7 @@ export default class AstBuilder {
             lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
+            ...AstBuilder.#targetGroup("KILL", group, slots, lifted.metadata, position),
             body: distilling && split.below !== null && split.below.trim() !== "" ? split.below : null,
             position,
         };
@@ -770,10 +800,10 @@ export default class AstBuilder {
             : blocks.map((block) => block.METADATA_TEXT().map((token) => token.getText()).join(""));
     }
 
-    static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position): ResourceSelection {
+    static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position, op = "COPY/MOVE"): ResourceSelection {
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
         if (target === null) throw new Error("resource selection grammar did not produce a target");
-        const lifted = AstBuilder.#liftMatcher("COPY/MOVE", AstBuilder.#metadataFromCtx(ctx), pos, null, false, false, target);
+        const lifted = AstBuilder.#liftMatcher(op, AstBuilder.#metadataFromCtx(ctx), pos, null, false, false, target);
         return {
             target,
             metadata: lifted.metadata,
