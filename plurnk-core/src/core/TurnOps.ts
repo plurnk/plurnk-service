@@ -7,7 +7,7 @@ export type InternalTurnStatement = PlurnkStatement;
 
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
-    // {§emission-row} — each body as its head; a longer body's closer names the source. Dispatch and
+    // {§emission-row} — each body as its head, an ellipsis marking the cut; a longer body's closer names the source. Dispatch and
     // source evidence keep the original statements.
     static renderEmission(statements: readonly PlurnkStatement[], source: string): string {
         return statements.map((statement) => {
@@ -18,8 +18,8 @@ export default class TurnOps {
             if (body.length === 0) return PlurnkParser.frame(heading, null);
             const { head: kept, cut } = EmissionHead.cut(body);
             if (!cut) return PlurnkParser.frame(heading, body);
-            const head = kept.replace(/\r?\n$/u, "");
-            return `${PlurnkParser.frame(heading, head)} <!-- Automatically truncated op body: READ (${source}) to retrieve in full -->`;
+            const head = `${kept.replace(/\r?\n$/u, "")}…`;
+            return `${PlurnkParser.frame(heading, head)} <!-- … READ (${source}) -->`;
         }).join("\n\n");
     }
 

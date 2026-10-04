@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import PacketWire from "./packet-wire.ts";
 
-const aside = "<!-- Automatically truncated op body: READ (ops://analyst/1/2) to retrieve in full -->";
+const aside = "<!-- … READ (ops://analyst/1/2) -->";
 
 test("{§emission-row} the wire drops NOTE and WAIT blocks and keeps every other block, whole and in order", () => {
     const read = PlurnkParser.frame("READ (worker:///a.md) <1,-1> <!-- look -->", null);

@@ -91,9 +91,9 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     const edit = PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", body);
     const first = `${edit}\n\n${PlurnkParser.frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
     const reasoning = PlurnkParser.frame("NOTE", "REASONING-MEMORY: independent reasoning note.");
-    const head = EmissionHead.cut(body).head.replace(/\r?\n$/u, "");
+    const head = `${EmissionHead.cut(body).head.replace(/\r?\n$/u, "")}…`;
     assert.ok(head.split("\n").length < 20, "the head is a flat ~100-token cut, far short of the 120-line body ({§emission-row})");
-    const header = `${PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", head)} <!-- Automatically truncated op body: READ (ops://analyst/1/2) to retrieve in full -->`;
+    const header = `${PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", head)} <!-- … READ (ops://analyst/1/2) -->`;
     const { db, result, provider, rows, workerId } = await run("envelope-header-history", "Work, curate, then inspect your original program.", [
         say(first, reasoning),
         say(PlurnkParser.frame("KILL (log:///1/2/*/NOTE)", null)),
