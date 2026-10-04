@@ -2249,7 +2249,7 @@ A READ carrying active native media is atomic: any KILL scope is ignored and the
 | Deliberate scoped KILL | Current projection `folded`, initially empty | Packet, READ, FIND, COPY, and search omit those lines; later retrieval cannot undo trimming. |
 
 Packet display combines both masks. Other consumers use only deliberate trimming.
-`logTokens` prices the materialized observation, never absent body content.
+`tokens` prices the materialized observation, never absent body content.
 Coordinates and anchors retain the original body's physical lines; selection occurs
 before omitted lines are removed, and sparse receipts retain their original line
 ordinals. Automatic previews remain retrieval bounds, not deletions. COPY can read
@@ -2272,14 +2272,14 @@ type and projection facts under {§read-bytes}.
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf> → path pattern · <logTokens>
+### log:///<loop>/<turn>/<item>/<leaf> → path pattern · <tokens>
 {"oneLine":"strict JSON facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
 | Line | Content | Rule |
 |---|---|---|
-| H3 | Only the row's complete READ address, addressed resource(s), selection pattern(s), and ` · ` followed by its `logTokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}); each pattern follows its operand. No invocation parentheses, scope, aside or metadata block. The operation appears only in the URI leaf. |
+| H3 | Only the row's complete READ address, addressed resource(s), selection pattern(s), and ` · ` followed by its `tokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}); each pattern follows its operand. No invocation parentheses, scope, aside or metadata block. The operation appears only in the URI leaf. |
 | facts | One strict JSON object in stable alphabetical order. | Present only when a fact exists. Asides, scopes, opaque invocation metadata and result facts belong here, not on the H3. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
@@ -2358,14 +2358,14 @@ Authored `metadata` retains its opaque ordered block strings under {§scheme-met
   {§log-kill-scope}; forks inherit the snapshot and ordinary projection state independently. Output withholding
   suppresses the complete native part under {§context-fit}. Unsupported routes receive only the
   text projection and no native charge; switching back to a compatible route exposes still-retained media.
-  Each included part contributes `tokensAttachment` within `logTokens`: `ceil(width × height / 750)` for an
+  Each included part contributes `tokensAttachment` within `tokens`: `ceil(width × height / 750)` for an
   image, `pages × 1500` for a document, `ceil(duration × 32)` for audio, or `ceil(bytes / 4)` when page count
   or duration is unknown. Byte ranges select
   hexadecimal text, never crop the native resource. Retries reuse the frozen request; model-call evidence
   records the exact READ coordinates sent without controlling retention. Missing immutable bytes are an
   internal integrity failure, never silently dropped content. No ejection message or permanent teaching is
   added. These stable curation weights are not provider-token measurements ({§tokenomics-render-weight-budget}).
-- §packet-token-accounting Every row reports one `logTokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, facts, visible body, selected native attachment, and the emission it delivers outside its record ({§emission-row}). The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
+- §packet-token-accounting Every row reports one `tokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, facts, visible body, selected native attachment, and the emission it delivers outside its record ({§emission-row}). The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -2397,7 +2397,7 @@ or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
 `matchingPathCount`; line READ likewise omits the rendered-body `lines` count
 and its internally resolved whole-line region. Exact READ formats its region
 as `range`. A failed retrieval's Problem owns its range extension rather than
-repeating it at top level. `logTokens` weighs the complete rendered record
+repeating it at top level. `tokens` weighs the complete rendered record
 under {§packet-token-accounting};
 generic body `lines` remains available on READ-shaped materialization notices
 that have no retrieval extent. FIND content weights follow {§log-wire-format};
@@ -2428,7 +2428,7 @@ like any other row.
 | Sources and memory | Dispatch and immutable `ops://` sources retain complete bodies ({§turn-source-resources}); an explicit source READ returns them normally. The wire omits NOTE and WAIT blocks, whose own rows show them whole ({§body-projection}), so curating a NOTE row removes its text; an emission of only NOTE and WAIT delivers nothing, its row stands, and no assistant message follows it ({§packet-wire-envelope}); reasoning-only NOTEs never enter this projection. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
 | Presentation | Born folded: the record shows its header, and its body follows the record as the worker's assistant message. |
-| Accounting | `logTokens` charges the record and the emission the wire delivers, truncation asides included, never the omitted NOTE and WAIT blocks or the cut remainder ({§packet-token-accounting}). An explicit source READ has its own ordinary charge. |
+| Accounting | `tokens` charges the record and the emission the wire delivers, truncation asides included, never the omitted NOTE and WAIT blocks or the cut remainder ({§packet-token-accounting}). An explicit source READ has its own ordinary charge. |
 | Curation | Curated whole ({§log-kill-scope}): KILL retires it, and so does a scope covering every line (`<1,-1>`); on its exact coordinate a narrower scope is 422 `emission-curated-whole`, and a sweep whose scope would only trim it leaves it intact. |
 | Schema | Migration 12 admits `kind="emission"` only on this shape: one per turn, the turn's newest row when written, frozen, and curated whole. A database from before version 12 keeps its rows and gains no announcement. FORK copies it with the inherited turns, still naming its writer. |
 | Echoes | A worker that repeats the heading in its own text is tolerated ({§fabricated-log-entry}); the digest counts the echoes. A worker that copies the truncation aside onto its own closer keeps its body intact; the aside is outside text ({§outside-text}). |
