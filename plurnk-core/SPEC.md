@@ -2249,8 +2249,9 @@ turn admitted under {§empty-turn} with no admitted reasoning operations, one ru
 (`{ producer="_plurnk", kind="operation" }`) dispatches
 `READ (reasoning://<worker>/<loop>/<turn>) <!-- turn N emitted no OP -->` over that turn's stored
 reasoning source; its receipt renders in the next packet like any other log row.
-`PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped, default in `.env.defaults`) selects the scope on the same
-scale as `PLURNK_REASONING_VIEW_LINES`. Any admitted reasoning NOTE, FIND or READ suppresses
+`PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped) selects the scope on the same scale as
+`PLURNK_REASONING_VIEW_LINES`; it ships `0`, off, because at a short window the page read back is
+the pressure that emptied the turn (the 16k rungs on bench #40), and an operator turns it on per alias. Any admitted reasoning NOTE, FIND or READ suppresses
 this recovery readback. No read follows a turn without reasoning, and none follows
 a turn whose emission or reasoning carries a foreign tool-call grammar or leaked template token
 (`KnownToxins` names them); the strike and its error row are unchanged.
