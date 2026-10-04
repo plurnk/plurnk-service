@@ -236,12 +236,16 @@ test("File.read: an invalid exact region remains a composed 416 result", async (
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
         const r = await readFileScheme(readStmt(filePath("f.txt"), {
-            lineMarker: { marks: [2, 1, 2, -1] },
+            lineMarker: { marks: [2, 1, 2, -2] },
         }), ctx);
         assert.equal(r.status, 416);
-        assert.deepEqual(r.problem?.requestedCoordinates, [2, 1, 2, -1]);
+        assert.deepEqual(r.problem?.requestedCoordinates, [2, 1, 2, -2]);
         assert.equal(Object.hasOwn(r, "range"), false);
         assert.equal(r.content, null);
+        // {§text-scope-semantics} -1 as a column is the end of its line, not an invalid region.
+        const toEnd = await readFileScheme(readStmt(filePath("f.txt"), { lineMarker: { marks: [2, 1, 2, -1] } }), ctx);
+        assert.equal(toEnd.status, 200);
+        assert.equal(toEnd.content, "two");
     });
 });
 
