@@ -11,6 +11,8 @@ const fakeProvider = (
 ): Provider => ({
     model: "fake",
     contextWindow: 1000,
+    inputWall: null,
+    outputFloor: null,
     inputModalities: new Set<InputModality>(),
     constrainsOutput,
     generate: async () => {

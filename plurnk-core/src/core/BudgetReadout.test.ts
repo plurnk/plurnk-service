@@ -12,7 +12,7 @@ const resolve = (
 ): { content: string; usage: number; gauge: Gauge } => {
     const prefix = "x".repeat(baseWeight * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const content = BudgetReadout.resolve(BudgetReadout.draft(budget), budget, measure, largest);
+    const content = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, largest);
     return { content, usage: measure(content), gauge: JSON.parse(content) as Gauge };
 };
 
@@ -83,15 +83,12 @@ test("{§context-gauge} largest: ranked by tokens then path, bounded by PLURNK_S
     }
 });
 
-test("{§context-gauge} the inventory is the largest prefix that fits the budget", () => {
+test("{§context-gauge} the inventory is complete over budget as under it: the largest rows are the curation handles exactly when the packet is over", () => {
     const wide = { path: `log:///${"1".repeat(200)}/READ`, tokens: 110 };
     const narrow = { path: "log:///1/1/2/READ", tokens: 90 };
-    const { usage, gauge } = resolve(1_000, 900, [wide, narrow]);
-    assert.deepEqual(gauge.largest, [], "a prefix that cannot fit is cut down, to nothing when it must");
-    assert.ok(usage <= 1_000, "the gauge never pushes a fitting packet over its budget");
-    const fits = resolve(1_000, 900, [narrow, { ...narrow, path: "log:///1/1/3/READ", tokens: 80 }]);
-    assert.equal(fits.gauge.largest.length, 2, "what fits is named");
-    assert.ok(fits.usage <= 1_000);
+    const { usage, gauge } = resolve(1_000, 900, [narrow, wide]);
+    assert.deepEqual(gauge.largest, [wide, narrow], "every ranked row is named, whatever it costs the gauge");
+    assert.ok(usage > 1_000, "an over-budget packet reports its tokens honestly ({§context-over-budget-row})");
 });
 
 test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge carries tokens alone, and names every inventory row", () => {
@@ -104,20 +101,20 @@ test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge car
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
-        () => BudgetReadout.resolve('{"budget":100}', 100, () => 10),
+        () => BudgetReadout.resolve('{"budget":100}', () => 10),
         /must contain \{\{tokens\}\} exactly once/,
     );
     assert.throws(
-        () => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => Number.NaN),
+        () => BudgetReadout.resolve(BudgetReadout.draft(100), () => Number.NaN),
         /packet weight must be a non-negative safe integer/,
     );
-    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => 10, [{ path: "file:///a", tokens: 1 }]), /one log:\/\/\/ URI/);
+    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(100), () => 10, [{ path: "file:///a", tokens: 1 }]), /one log:\/\/\/ URI/);
 });
 
 test("{§output-allowance-notice} (#826) the readout carries curation state and no output allowance", () => {
     const drafted = BudgetReadout.draft(1000);
     assert.match(drafted, /"budget":1000\}$/);
-    assert.doesNotMatch(BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length), /tokensResponseMax|allowance|grant/u);
+    assert.doesNotMatch(BudgetReadout.resolve(drafted, (candidate) => candidate.length), /tokensResponseMax|allowance|grant/u);
     assert.equal(BudgetReadout.draft(null), '{"tokens":{{tokens}}}');
 });
 
@@ -126,7 +123,7 @@ test("{§tokenomics-calibrated-readout} a converted budget changes the room with
     const measure = (content: string): number => contentWeight(prefix + content);
     const items = [{ path: "log:///1/2/3/READ", tokens: 44 }];
     for (const budget of [100, 200]) {
-        const rendered = BudgetReadout.resolve(BudgetReadout.draft(budget), budget, measure, items);
+        const rendered = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, items);
         const usage = measure(rendered);
         assert.match(rendered, new RegExp(`"tokens":\\s*${usage},"budget":${budget}`, "u"), `the displayed figure retains the measured curation units; got: ${rendered}`);
         assert.doesNotMatch(rendered, /MUST/u);

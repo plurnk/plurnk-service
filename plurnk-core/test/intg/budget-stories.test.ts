@@ -101,8 +101,8 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     } finally { await db.close(); }
 });
 
-// The hard-413 Problem owns exact pressure; no request or task is fabricated.
-test("budget: the irreducible hard-413 Problem reports a positive overshoot honestly", async () => {
+// The wall's Problem owns exact evidence; no request or task is fabricated.
+test("{§context-wall} the irreducible window overflow reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -110,12 +110,12 @@ test("budget: the irreducible hard-413 Problem reports a positive overshoot hone
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
         assert.equal(t.producer, "model", "admission failure does not manufacture a recovery producer");
-        const problem = t.curationFailure?.problem as { tokens?: number; budget?: number; excess?: number } | undefined;
+        const problem = t.curationFailure?.problem as { tokens?: number; wall?: number; excess?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal 413 carries its exact Problem");
-        const { tokens, budget, excess } = problem;
-        assert.ok(typeof tokens === "number" && typeof budget === "number" && typeof excess === "number");
-        assert.ok(tokens > budget, `tokens ${tokens} exceed the budget ${budget} — a real overshoot`);
-        assert.equal(excess, tokens - budget, "the Problem's arithmetic closes exactly ({§context-hard-413})");
+        const { tokens, wall, excess } = problem;
+        assert.ok(typeof tokens === "number" && typeof wall === "number" && typeof excess === "number");
+        assert.ok(tokens > wall, `tokens ${tokens} exceed the wall ${wall} — a real overshoot`);
+        assert.equal(excess, tokens - wall, "the Problem's arithmetic closes exactly ({§context-wall})");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null);
     } finally { await db.close(); }
 });

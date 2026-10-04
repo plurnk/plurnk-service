@@ -150,7 +150,7 @@ test("context token budget carries active total and maximum without a percent", 
     } finally { await db.close(); }
 });
 
-test("an unrecoverable curation overflow preserves exact pressure evidence in its terminal Problem", async () => {
+test("{§context-wall} a packet past the window even as receipts preserves exact evidence in its terminal Problem", async () => {
     const db = await openMigrated();
     const partitionKeys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const previousPartition = partitionKeys.map((key) => process.env[key]);
@@ -167,7 +167,7 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         // scaffolding alone blows past it and cannot be recovered by suppressing the owned boundary.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
+        assert.equal(result.status, 413, "past the wall even as receipts, the loop ends rather than ask the window for what it has not got");
         const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
         assert.equal(turn?.packet, null, "an over-ceiling candidate is never stored as a model request");
         assert.deepEqual(
@@ -178,12 +178,12 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
         const plan = rows.find((row) => row.op === "NOTE" && row.origin === "_plurnk");
         assert.equal(plan, undefined, "admission never manufactures a cleanup note");
-        const problem = result.curationFailure?.problem as { tokens?: number; budget?: number; excess?: number } | undefined;
-        assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence ({§context-hard-413})");
-        const { tokens, budget: ceiling, excess } = problem;
-        assert.ok(typeof tokens === "number" && typeof ceiling === "number" && typeof excess === "number");
-        assert.ok(tokens > ceiling, `tokens ${tokens} exceed the budget of ${ceiling}`);
-        assert.equal(excess, tokens - ceiling, "the excess reconciles exactly");
+        const problem = result.curationFailure?.problem as { tokens?: number; wall?: number; excess?: number } | undefined;
+        assert.ok(problem !== undefined, "the terminal owns exact evidence ({§context-wall})");
+        const { tokens, wall, excess } = problem;
+        assert.ok(typeof tokens === "number" && typeof wall === "number" && typeof excess === "number");
+        assert.ok(tokens > wall, `tokens ${tokens} exceed the wall of ${wall}`);
+        assert.equal(excess, tokens - wall, "the excess reconciles exactly");
     } finally {
         partitionKeys.forEach((key, index) => {
             const previous = previousPartition[index];

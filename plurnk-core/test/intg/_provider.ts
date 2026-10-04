@@ -14,6 +14,7 @@ export const testProviderCapacity = (
     maxInputTokens: null,
     maxOutputTokens: null,
     outputBudget,
+    outputFloor: null,
     reasoningBudget: null,
     measurement: {
         kind: "exact",
@@ -28,6 +29,7 @@ export const testDeferredProviderCapacity = (source = "core:test-fixture"): Prov
         maxInputTokens: null,
         maxOutputTokens: null,
         outputBudget: null,
+        outputFloor: null,
         reasoningBudget: null,
         measurement: {
             kind: "unavailable",

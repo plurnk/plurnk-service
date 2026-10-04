@@ -186,9 +186,11 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
 
             const previousOutput = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
             const previousReasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-            process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "999999";
+            // {§context-wall} — an eleven-token window holds no packet even as receipts: the turn ends
+            // before any provider call, packetless.
+            process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
             delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-            const constrained = new Mock({ contextWindow: 1_000_000, responses: [response] });
+            const constrained = new Mock({ contextWindow: 11, responses: [response] });
             if (previousOutput === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
             else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previousOutput;
             if (previousReasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;

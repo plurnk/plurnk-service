@@ -20,7 +20,7 @@ import { acceptedKinds } from "./attachments.ts";
 // Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
+import PacketWire, { type BodiedLogRow, type StoredLogRow } from "./packet-wire.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
@@ -104,13 +104,23 @@ const compactDefinitionTables = (markdown: string): string => {
 
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
+// {§context-wall} — the packet's tokens against the provider's input wall, in provider tokens, and
+// the curation weight the packet must shed to fit it ({§context-own-rows-fit}).
+export interface WindowOverflow {
+    readonly tokens: number;
+    readonly budget: number;
+    readonly wall: number;
+    readonly excess: number;
+    readonly excessWeight: number;
+}
+
 export interface CurationOverflow {
     readonly weight: number;
     readonly budget: number;
     readonly excess: number;
 }
 
-// Packet assembly ({§packet-assembly}) and the one budget check ({§context-hard-413}). Deliberate
+// Packet assembly ({§packet-assembly}) and the budget and wall measures ({§context-over-budget-row}, {§context-wall}). Deliberate
 // curation stays in scoped KILL; what fits was decided where each row landed ({§context-fit}).
 export default class PacketBuilder {
     #db: Db;
@@ -120,6 +130,8 @@ export default class PacketBuilder {
     // {§context-budget} — each loop's high-water budget, for the input capacity it was derived from.
     readonly #loopBudgets = new Map<number, { readonly inputCapacity: number; readonly budget: number }>();
     readonly #emissions = new WeakMap<readonly StoredPacketSection[], ReadonlyMap<string, string>>();
+    // {§context-own-rows-fit} — the rows of each built packet the wall may still take, newest last.
+    readonly #bodiedRows = new WeakMap<readonly StoredPacketSection[], readonly BodiedLogRow[]>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
@@ -206,12 +218,20 @@ export default class PacketBuilder {
         return budget;
     }
 
+    // {§context-own-rows-fit} — the packet's rows still carrying a body or a native part, in row order.
+    bodiedRowsOf(packet: RequestPacket): readonly BodiedLogRow[] {
+        const rows = this.#bodiedRows.get(packet.sections);
+        if (rows === undefined) throw new Error("bodiedRowsOf: the packet was not built by this PacketBuilder");
+        return rows;
+    }
+
     // {§packet-stored-shape} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
         initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         turnId = null,
+        bodiless,
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -229,6 +249,8 @@ export default class PacketBuilder {
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
         turnId?: number | null;
+        // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id.
+        bodiless?: ReadonlySet<number>;
     }): Promise<RequestPacket> {
         // {§configuration-repair-path} — a retired packet knob refuses packet construction, never startup.
         PacketBuilder.assertConfiguration();
@@ -316,6 +338,7 @@ export default class PacketBuilder {
             {
                 projectRoot: workspaceRow?.project_root ?? null,
                 acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
+                ...(bodiless === undefined ? {} : { bodiless }),
             },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
@@ -370,7 +393,7 @@ export default class PacketBuilder {
             const curationTargets = transformedLog?.content === renderedLog.content
                 ? renderedLog.curationTargets
                 : [];
-            const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
+            const content = BudgetReadout.resolve(budgetSection.content, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
@@ -394,6 +417,8 @@ export default class PacketBuilder {
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight + emissionsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#curationBudgets.set(packet.sections, curationBudget);
         this.#emissions.set(packet.sections, emissions);
+        // {§context-own-rows-fit} — a transformed log is one item the wall cannot take row by row.
+        this.#bodiedRows.set(packet.sections, drafts.find((section) => section.name === "log")?.content === renderedLog.content ? renderedLog.bodied : []);
         this.#streamObservations.set(packet.sections, openChannels);
         return packet;
     }
@@ -460,14 +485,26 @@ export default class PacketBuilder {
         return budget;
     }
 
-    // {§context-hard-413} — measurement never mutates visibility; an over-budget packet is the
-    // turn's honest terminal, never a silent cut.
+    // {§context-over-budget-row} — measurement never mutates visibility; an over-budget packet is a row
+    // and a request, never a silent cut.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
         const budget = this.curationBudgetFor(packet);
         if (budget === null) return null;
         const { weight } = packet;
         if (weight <= budget) return null;
         return { weight, budget, excess: weight - budget };
+    }
+
+    // {§context-wall} — the packet's tokens through the loop's conversion (the budget is the capacity
+    // over the factor, so tokens are weight × capacity ÷ budget) against the provider's input wall;
+    // null without a wall or a budget: an unknown window has no wall.
+    windowOverflow(packet: RequestPacket, provider: { readonly inputCapacity: number | null; readonly inputWall: number | null }): WindowOverflow | null {
+        const budget = this.curationBudgetFor(packet);
+        if (budget === null || provider.inputCapacity === null || provider.inputWall === null) return null;
+        const tokens = Math.ceil(packet.weight * provider.inputCapacity / budget);
+        if (tokens <= provider.inputWall) return null;
+        const excessWeight = packet.weight - Math.floor(provider.inputWall * budget / provider.inputCapacity);
+        return { tokens, budget, wall: provider.inputWall, excess: tokens - provider.inputWall, excessWeight };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

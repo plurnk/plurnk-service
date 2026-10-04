@@ -35,7 +35,7 @@ const receipt = (row: Record<string, unknown>): { lines: number; tokens: number;
     return { lines: Number(problem.lines), tokens: Number(problem.tokens), remaining: Number(problem.remaining), detail: String(problem.detail ?? "") };
 };
 
-test("{§context-fit}: a READ that does not fit lands as a bodiless 413 naming its size, tokens, the remaining budget and the verbs; a range READ then succeeds", async () => {
+test("{§context-fit}: a READ that does not fit lands as a 413 receipt above the longest prefix of its lines that fits, naming its size, tokens, the remaining budget, the lines delivered and the verbs; the prefix holds the room until the receipt is killed, then a range READ succeeds", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-fit-${crypto.randomUUID()}`);
@@ -46,26 +46,30 @@ test("{§context-fit}: a READ that does not fit lands as a bodiless 413 naming i
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         const provider = providerAt(12_000, [
             response(`\`\`\`\`READ (worker:///large.md)\`\`\`\`\n${continuing}`),
-            response(`\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`KILL (log:///**/READ)\`\`\`\`\n\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
             response(continuing),
         ]);
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; status_rx: number; rx: string; attrs: string }>({ turn_id: first.turnId });
         const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 413, "the result does not fit the remaining budget");
-        const stored = JSON.parse(read.rx) as { content: unknown; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number }; range?: { total: number } };
-        assert.equal(stored.content, null, "the row carries no body; the file is where the result lives");
+        const stored = JSON.parse(read.rx) as { content: unknown; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number; delivered: number }; range?: { total: number; returned?: [number, number] } };
+        const delivered = stored.problem.delivered;
+        assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < 600, `a prefix of the lines fit: ${delivered}`);
+        assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary; the file is where the whole result lives");
         assert.equal(stored.problem.type, "https://problems.plurnk.xyz/engine/context/result-exceeds-budget");
-        assert.match(stored.problem.detail, /^600 lines, \d+ tokens; \d+ tokens remain: READ a range, or KILL first\.$/u);
+        assert.match(stored.problem.detail, new RegExp(`^600 lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines delivered; READ a range, or KILL first\\.$`, "u"));
         assert.equal(stored.problem.lines, 600);
-        assert.ok(stored.problem.tokens > stored.problem.remaining, "it did not fit");
+        assert.ok(stored.problem.tokens > stored.problem.remaining, "the whole did not fit");
         assert.equal(stored.range?.total, 600, "the extent is the whole resource");
+        assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.ok(packet.weight <= 12_000, "the receipt fits where the result could not");
         const row = logEntries(packet).find((entry) => entry.status === 413 && entry.path === "worker:///large.md")!;
         assert.ok(row, "the receipt is a row of the next packet");
-        assert.equal(row.body, undefined);
+        assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
+        assert.match(String(row.body), /^\s*1(?:<@[0-9A-Za-z]{5}>|:)1: evidence/u, "numbered from the first line");
         const facts = receipt(row);
         assert.equal(facts.lines, 600);
         assert.ok(facts.tokens > 0 && facts.remaining >= 0 && facts.tokens > facts.remaining);
@@ -74,7 +78,7 @@ test("{§context-fit}: a READ that does not fit lands as a bodiless 413 naming i
         assert.ok(logEntries(packet).some((entry) => String(entry.logPath).endsWith("/NOTE") && /Review the evidence/u.test(String(entry.body))), "the NOTE is never replaced");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
             .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
-        assert.equal(sliced.status_rx, 200, "{§context-verbs}: a range READ takes a piece of what did not fit");
+        assert.equal(sliced.status_rx, 200, "{§context-verbs}: the prefix held the room; KILL first, then a range READ takes a piece of what did not fit");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 3, provider });
         const later = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: third.turnId }))!.packet);
@@ -87,6 +91,26 @@ test("{§context-fit}: a READ that does not fit lands as a bodiless 413 naming i
     } finally {
         await db.close();
     }
+});
+
+test("{§context-fit}: a READ whose first line does not fit is a bodiless receipt", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `context-fit-line-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/line.md", content: "evidence ".repeat(4_000) });
+        const provider = providerAt(12_000, [response(`\`\`\`\`READ (worker:///line.md)\`\`\`\`\n${continuing}`)]);
+        const turn = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
+            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+        assert.equal(read.status_rx, 413);
+        const stored = JSON.parse(read.rx) as { content: unknown; problem: { detail: string; lines: number; delivered?: number } };
+        assert.equal(stored.content, null, "not one line fit: the row carries no body");
+        assert.equal(stored.problem.delivered, undefined);
+        assert.match(stored.problem.detail, /^1 line, \d+ tokens; \d+ tokens remain: READ a range, or KILL first\.$/u);
+    } finally { await db.close(); }
 });
 
 test("{§context-verbs}: KILL first — the fit measure honours curation within the same turn", async () => {
@@ -121,29 +145,35 @@ test("{§context-verbs}: KILL first — the fit measure honours curation within 
     } finally { await db.close(); }
 });
 
-test("{§context-hard-413}: an impossible floor terminates the loop without provider calls or manufactured operations", async () => {
+test("{§context-wall}: an impossible window terminates the loop without provider calls or manufactured operations", async () => {
     const db = await openMigrated();
+    const output = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+    const reasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
     try {
         const workspaceId = await insertWorkspace(db, `output-floor-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
-        const provider = providerAt(2, [response(continuing)]);
+        // An eleven-token window with a two-token output budget: no packet fits it even as receipts.
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
+        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        const provider = new Mock({ contextWindow: 11, responses: [response(continuing)] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, messages, provider, maxTurns: 3 });
         assert.equal(result.result.status, 413);
-        assert.equal(result.result.problem?.detail, "Context budget overflow: the packet's tokens exceed its budget; retained context cannot fit."); // {§pinned-wording-core}
+        assert.equal(result.result.problem?.detail, "Context window overflow: the packet cannot fit the model's window even as receipts."); // {§pinned-wording-core}
         assert.equal(result.reason, "token_budget");
         assert.equal(provider.remaining, 1);
-        const turn = await db.test_get_turn.get<{ kind: string; producer: string; packet: string | null; status: number }>({ id: result.turnIds.at(-1)! });
-        assert.equal(turn!.kind, "inference");
-        assert.equal(turn!.producer, "model");
-        assert.equal(turn!.status, 413);
+        const turn = await db.test_get_turn.get<{ packet: string | null }>({ id: result.turnIds.at(-1)! });
         assert.equal(turn!.packet, null, "a request that was never submitted is not provider evidence");
         const rows = await db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: result.turnIds.at(-1)! });
         assert.ok(rows.every(({ op }) => !["WAIT", "DONE", "FAIL", "KILL"].includes(op)), "no recovery disposition or curation program is manufactured");
-    } finally { await db.close(); }
+    } finally {
+        await db.close();
+        if (output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = output;
+        if (reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET; else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
+    }
 });
 
-test("{§context-hard-413}: authored state is never pruned to manufacture a fit", async () => {
+test("{§context-over-budget-row}: over budget but under the wall, the packet goes with one 413 row at its head, the gauge shows it over, and authored state is untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-authorship-${crypto.randomUUID()}`);
@@ -154,18 +184,88 @@ test("{§context-hard-413}: authored state is never pruned to manufacture a fit"
         const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${note}\n\`\`\`\``)]);
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const before = await db.engine_render_log.all({ worker_id: workerId });
-        const small = providerAt(12_000, [response(continuing)]);
+        // A 12,000-token budget inside a million-token window: far over the budget, far under the wall.
+        const small = providerAt(12_000, [response(continuing), response(continuing)]);
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
-        assert.equal(second.status, 413);
-        assert.equal(second.curationFailure?.problem?.detail, "Context budget overflow: the packet's tokens exceed its budget; retained context cannot fit."); // {§pinned-wording-core}
-        assert.deepEqual(second.curationFailure?.problem && Object.keys(second.curationFailure.problem).filter((key) => ["tokens", "budget", "excess"].includes(key)).sort(), ["budget", "excess", "tokens"], "the terminal names tokens, budget and excess");
-        assert.equal(small.remaining, 1);
-        const after = await db.engine_render_log.all({ worker_id: workerId });
-        assert.deepEqual(after, before, "authored state cannot be removed to manufacture a fit");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
-        assert.equal(rows.find(({ op }) => op === "NOTE")!.folded, "[]");
-        assert.equal(JSON.parse(rows.find(({ op }) => op === "NOTE")!.tx).body, note);
+        assert.equal(second.status, 102, "the over-budget packet is submitted, not ended");
+        assert.equal(small.remaining, 1, "the provider was asked once");
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
+        const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
+        assert.ok(gauge.tokens > gauge.budget, `the gauge shows the packet over: ${gauge.tokens} of ${gauge.budget}`);
+        const rows = logEntries(packet).filter((row) => String(row.logPath).endsWith("/error"));
+        assert.equal(rows.length, 1, "one row, at the head of the turn");
+        const problem = (rows[0]!.problem ?? {}) as { detail?: string; excess?: number };
+        assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§pinned-wording-core}
+        assert.equal(problem.excess, undefined, "{§context-gauge}: the gauge is the one home for the numbers");
+        assert.equal(rows[0]!.origin, "_plurnk");
+        const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
+        const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
+        assert.equal(logEntries(next).filter((row) => String(row.logPath).endsWith("/error")).length, 2, "the row recurs on every packet that is over");
+        const after = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
+        for (const row of before as Array<{ id: number }>) assert.deepEqual(after.find(({ id }) => id === row.id), row, "authored state cannot be removed or folded to manufacture a fit");
+        const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
+        assert.ok(firstRows.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
     } finally { await db.close(); }
+});
+
+test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiless as receipts until the packet fits; older rows and every stored body stand, and each packet decides afresh", async () => {
+    const db = await openMigrated();
+    const output = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+    const reasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+    try {
+        const workspaceId = await insertWorkspace(db, `own-rows-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const alpha = "alpha ".repeat(1_000);
+        const beta = "beta ".repeat(1_200);
+        const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${alpha}\n\`\`\`\``), response(`\`\`\`\`NOTE\n${beta}\n\`\`\`\``), response(continuing)]);
+        await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
+        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
+        const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
+        const settled = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet) as { weight: number };
+        const betaRow = logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
+        assert.ok(betaRow, "the newest large NOTE is a bodied row of the settled packet");
+        // A wall 600 tokens under the settled packet: the next packet is over it by its newest small rows and
+        // those 600 tokens, and the beta NOTE alone sheds that. The output budget is half the window, so the
+        // packet that fits the wall is still over budget.
+        const contextWindow = Math.ceil((settled.weight - 600) / 0.9);
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
+        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        const tight = new Mock({ contextWindow, responses: [response(continuing), response(`\`\`\`\`KILL (${betaRow.logPath})\`\`\`\`\n${continuing}`), response(continuing)] });
+        const wall = tight.inputWall!;
+        assert.ok(wall < settled.weight && wall > settled.weight - betaRow.tokens, `the wall sits inside the beta NOTE: ${wall} of ${settled.weight}`);
+        const fourth = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
+        assert.equal(fourth.status, 102, "the packet was submitted, not ended");
+        assert.equal(tight.remaining, 2);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: fourth.turnId }))!.packet) as { weight: number };
+        assert.ok(packet.weight <= wall, `the packet fits the wall: ${packet.weight} of ${wall}`);
+        const entries = logEntries(packet);
+        const taken = entries.find((row) => row.logPath === betaRow.logPath)!;
+        assert.equal(taken.body, undefined, "the newest bodied row is a receipt");
+        assert.deepEqual(taken.size, { lines: 1, tokens: betaRow.tokens }, "its size names the lines and tokens of the body it stood for");
+        assert.ok(Number(taken.tokens) < betaRow.tokens, "the receipt charges less than the body did");
+        assert.ok(entries.some((row) => /alpha alpha/u.test(String(row.body))), "the older NOTE keeps its body: newest first, and only as many as it takes");
+        assert.equal(entries.filter((row) => row.size !== undefined).length, 1, "one row was taken");
+        const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
+        assert.ok(gauge.tokens > gauge.budget, "the packet that fits the wall is still over budget");
+        assert.equal(entries.filter((row) => String(row.logPath).endsWith("/error")).length, 1, "{§context-over-budget-row}: the row rides the packet that fits");
+        const stored = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: second.turnId });
+        assert.ok(stored.some(({ op, tx, folded }) => op === "NOTE" && JSON.parse(tx).body === beta && folded === "[]"), "the body stays stored, whole and unfolded");
+        const look = await engine.look({ statement: readStmt(urlPath("log", String(betaRow.logPath).slice("log://".length)), { marks: [1, -1] }), workspaceId, workerId, loopId });
+        assert.equal(look.status, 200);
+        assert.match(String((look as { content?: string }).content), /beta beta/u, "and readable at its address");
+        await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
+        const sixth = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
+        const after = logEntries(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet));
+        assert.equal(after.find((row) => row.logPath === betaRow.logPath), undefined, "{§context-verbs}: the KILL retired the row");
+        assert.equal(after.filter((row) => row.size !== undefined).length, 0, "with the room restored, nothing is taken: each packet decides afresh");
+        assert.ok(after.some((row) => /alpha alpha/u.test(String(row.body))), "the older NOTE stands whole");
+    } finally {
+        await db.close();
+        if (output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = output;
+        if (reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET; else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
+    }
 });
 
 for (const origin of ["plugin", "_plurnk"] as const) test(`{§context-fit}: ${origin} output crosses maintenance and loop boundaries whole, result and all`, async () => {

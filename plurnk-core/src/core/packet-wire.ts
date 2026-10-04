@@ -125,10 +125,20 @@ interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
+    // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id: each renders
+    // bodiless, its size and address in place of its body.
+    readonly bodiless?: ReadonlySet<number>;
 }
 
 interface ReclaimableLogItem {
     readonly path: string;
+    readonly tokens: number;
+}
+
+// {§context-own-rows-fit} — a row still carrying a body or a native part the wall may take, and the
+// tokens it charges as rendered.
+export interface BodiedLogRow {
+    readonly id: number;
     readonly tokens: number;
 }
 
@@ -141,6 +151,8 @@ export interface RenderedLog {
     readonly attachments: readonly PacketAttachment[];
     // {§emission-row} — the emissions the rendered rows announce, in row order.
     readonly emissions: readonly RenderedEmission[];
+    // {§context-own-rows-fit} — the rows the wall may still take, in row order: newest last.
+    readonly bodied: readonly BodiedLogRow[];
 }
 
 // {§emission-row} — an announced emission: its row's coordinate, its frozen canonical text, and the
@@ -160,6 +172,7 @@ interface RenderedLogRow {
     readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
     readonly emission: RenderedEmission | null;
+    readonly bodied: BodiedLogRow | null;
 }
 
 interface VisibleLogBody {
@@ -283,7 +296,7 @@ export default class PacketWire {
     // pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], emissions: [] };
+        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], emissions: [], bodied: [] };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         const records = rows.map(({ content }) => content);
         return {
@@ -293,6 +306,7 @@ export default class PacketWire {
                 curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
             emissions: rows.flatMap(({ emission }) => emission === null ? [] : [emission]),
+            bodied: rows.flatMap(({ bodied }) => bodied === null ? [] : [bodied]),
         };
     }
 
@@ -608,7 +622,9 @@ export default class PacketWire {
     static entryView(r: StoredLogRow, transientOpenLogEntryId: number | null = null): LogEntryView {
         const tx = (r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx) as StatementTx | string | null;
         const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
-        const readResult = LogEntryProjection.op(r) === "READ" && r.status_rx === 200 && rx !== null && typeof rx === "object";
+        // {§context-fit} — a READ row's anchors ride with its lines whatever its status: a receipt that
+        // carries a prefix carries the prefix's anchors.
+        const readResult = LogEntryProjection.op(r) === "READ" && rx !== null && typeof rx === "object" && typeof (rx as { content?: unknown }).content === "string";
         const rawLineAnchors = readResult && Object.hasOwn(rx, "lineAnchors") ? (rx as { lineAnchors: unknown }).lineAnchors : undefined;
         if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
             throw new TypeError("A READ result's lineAnchors field must be an array.");
@@ -1010,38 +1026,48 @@ export default class PacketWire {
         // and tokens of the body the model can READ at this row's address.
         const unfit = PacketWire.#attrsOf(e).unfit;
         if (unfit !== null && typeof unfit === "object") meta.size = unfit;
-        // {§log-wire-format}: one descriptive heading, the facts, the body.
-        let tokens = 0;
-        const renderRow = (): string => {
-            const lines = [`### ${path}${identity.description === null ? "" : ` ${identity.description}`} · ${tokens}`];
-            if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
-            if (display === "open") lines.push(body);
-            return lines.join("\n");
-        };
-
         // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
         const attachment = !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
             ? native
             : null;
-        if (attachment !== null) meta.tokensAttachment = attachment.weight;
         // {§emission-row}: an emission row carries its frozen emission outside its record, and charges what
         // the wire delivers of it, as the worker's own message, exactly as a native part is charged.
         const emission = LogEntryProjection.isEmission(e) && coordinate !== null
             ? { coordinate, content: fullBody.content, weight: weighContent(PacketWire.deliveredEmission(fullBody.content)) }
             : null;
-        for (let pass = 0; pass < 8; pass += 1) {
-            const next = weighContent(renderRow()) + (attachment?.weight ?? 0) + (emission?.weight ?? 0);
-            if (next === tokens) {
-                return {
-                    content: renderRow(),
-                    curationTarget: { path, tokens },
-                    attachment,
-                    emission,
-                };
+        // {§log-wire-format}: one descriptive heading, the facts, the body.
+        const render = (open: boolean, tokens: number): string => {
+            const lines = [`### ${path}${identity.description === null ? "" : ` ${identity.description}`} · ${tokens}`];
+            if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
+            if (open) lines.push(body);
+            return lines.join("\n");
+        };
+        const converge = (open: boolean, part: PacketAttachment | null): { content: string; tokens: number } => {
+            if (part !== null) meta.tokensAttachment = part.weight;
+            else delete meta.tokensAttachment;
+            let tokens = 0;
+            for (let pass = 0; pass < 8; pass += 1) {
+                const next = weighContent(render(open, tokens)) + (part?.weight ?? 0) + (emission?.weight ?? 0);
+                if (next === tokens) return { content: render(open, tokens), tokens };
+                tokens = next;
             }
-            tokens = next;
-        }
-        throw new Error("packet log row accounting did not converge");
+            throw new Error("packet log row accounting did not converge");
+        };
+        const row = (rendered: { content: string; tokens: number }, part: PacketAttachment | null, bodied: BodiedLogRow | null): RenderedLogRow =>
+            ({ content: rendered.content, curationTarget: { path, tokens: rendered.tokens }, attachment: part, emission, bodied });
+        const whole = converge(display === "open", attachment);
+        // {§context-own-rows-fit} — a row the wall may take carries a body or a native part and is not an
+        // emission row, whose head-cut program keeps the turn legible.
+        if (typeof e.id !== "number" || emission !== null || (display !== "open" && attachment === null)) return row(whole, attachment, null);
+        if (!(options.bodiless?.has(e.id) ?? false)) return row(whole, attachment, { id: e.id, tokens: whole.tokens });
+        // Taken: the fit rule's receipt shape — its size and address, no body, no native part.
+        meta.size = { lines: projected.projectedLineCount, tokens: whole.tokens };
+        const receipt = converge(false, null);
+        if (receipt.tokens < whole.tokens) return row(receipt, null, null);
+        // A receipt that weighs no less than the body it stands for sheds nothing: the row stays whole and
+        // is spent.
+        delete meta.size;
+        return row(converge(display === "open", attachment), attachment, null);
     }
 
     static #attachmentOf(

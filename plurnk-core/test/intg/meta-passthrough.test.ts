@@ -27,6 +27,8 @@ class MetaProvider implements Provider {
     get reasoningBudget(): number | null { return this.#base.reasoningBudget; }
     get supportedEfforts() { return this.#base.supportedEfforts; }
     get inputCapacity(): number | null { return this.#base.inputCapacity; }
+    get outputFloor(): number | null { return this.#base.outputFloor; }
+    get inputWall(): number | null { return this.#base.inputWall; }
     get model(): string { return this.#base.model; }
     get inputModalities(): ReadonlySet<InputModality> { return this.#base.inputModalities; }
     countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {

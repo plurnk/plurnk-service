@@ -20,14 +20,13 @@ export default class BudgetReadout {
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final
     // numeric substitution cannot change the measured packet length or oscillate.
-    // The inventory is the largest prefix that fits the budget; without a budget, all of it.
+    // {§context-gauge} — the inventory is complete whatever the packet weighs: over budget it is the
+    // curation handles the row asks the model to use ({§context-over-budget-row}).
     static resolve(
         template: string,
-        budget: number | null,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
     ): string {
-        if (budget !== null) BudgetReadout.#assertBudget(budget);
         BudgetReadout.#assertTemplate(template);
         const ranked = largestLogItems
             .map((item) => BudgetReadout.#assertLargestLogItem(item))
@@ -35,11 +34,7 @@ export default class BudgetReadout {
                 ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
                 : a.tokens > b.tokens ? -1 : 1)
             .slice(0, Knob.integer("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", 0));
-        for (let count = ranked.length; count > 0; count -= 1) {
-            const resolved = BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked.slice(0, count)), measurePacket);
-            if (budget === null || resolved.usage <= budget) return resolved.content;
-        }
-        return BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, []), measurePacket).content;
+        return BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked), measurePacket).content;
     }
 
     static #resolveTemplate(

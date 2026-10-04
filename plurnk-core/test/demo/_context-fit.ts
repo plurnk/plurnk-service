@@ -79,14 +79,16 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
         assert.equal((JSON.parse(row.rx) as { content: string }).content, expected, `${row.pathname} landed whole`);
     }
     for (const row of receipts) {
-        const rx = JSON.parse(row.rx) as { content: string | null; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number } };
-        assert.equal(rx.content, null, `${row.pathname}: a receipt carries no body`);
+        const rx = JSON.parse(row.rx) as { content: string | null; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number; delivered?: number } };
+        const expected = row.pathname === "incident.txt" ? fixture.content : fixture.telemetry;
+        if (rx.content === null) assert.equal(rx.problem.delivered, undefined, `${row.pathname}: a receipt without a prefix delivered nothing`);
+        else assert.ok((rx.problem.delivered ?? 0) > 0 && expected.startsWith(rx.content), `${row.pathname}: a receipt's body is the prefix of lines that fit`);
         assert.equal(rx.problem.type, RESULT_EXCEEDS_BUDGET);
         assert.ok(rx.problem.lines > 0 && rx.problem.tokens > rx.problem.remaining, "the receipt names the size and what remained");
         assert.match(rx.problem.detail, /READ a range, or KILL first\.$/u, "the receipt names the verbs ({§context-verbs})");
         const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/READ`;
         const visible: Record<string, unknown> | undefined = projected.find((entry) => entry.logPath === coordinate);
-        if (visible !== undefined) assert.equal("body" in visible, false, "the body it could not hold is absent from the request");
+        if (visible !== undefined && rx.content === null) assert.equal("body" in visible, false, "the body it could not hold is absent from the request");
     }
 
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;

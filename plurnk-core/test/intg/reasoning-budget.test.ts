@@ -32,8 +32,8 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             assert.equal(rx.status, 200);
             assert.equal(rx.content, reasoning, "the whole source, exactly");
         } else {
-            assert.equal(rx.status, 413, "the explicit scope is exact: it did not fit, so nothing of it is shown");
-            assert.equal(rx.content, null);
+            assert.equal(rx.status, 413, "the explicit scope is exact: it did not fit, so the row is its receipt above what fit");
+            if (rx.content !== null) assert.ok(reasoning.startsWith(rx.content) && ((rx.problem as { delivered?: number } | undefined)?.delivered ?? 0) > 0, "the body is the longest prefix of lines that fit");
             assert.equal(rx.problem?.type, RESULT_EXCEEDS_BUDGET);
             assert.equal(rx.problem?.lines, 120, "the receipt names the size");
             assert.ok(rx.problem!.tokens > rx.problem!.remaining, "and what remained");
@@ -54,8 +54,8 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             assert.match(String(record.body), /120:Finding 120:/);
             assert.equal(record.preview, undefined);
         } else {
-            assert.equal(record.body, undefined);
             assert.equal(record.status, 413, "the receipt rides the next packet");
+            assert.doesNotMatch(String(record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
             const range = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
             assert.equal(range.status, 200, "a range READ of the source still works ({§context-verbs})");
             assert.ok("content" in range);

@@ -37,7 +37,8 @@ import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
-import { resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
+import { resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
@@ -763,7 +764,8 @@ export default class Dispatcher {
     }
 
     // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;
-    // otherwise the row is its size and address, and the result stays where it was read from.
+    // otherwise the row is its size and address — a READ of lines above the longest prefix of them that
+    // fits — and the result stays where it was read from.
     async #fitResult(context: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<DispatchResult> {
         if (context.fit === undefined || (statement.op !== "READ" && statement.op !== "FIND")) return result;
         if (result.status >= 300 || typeof result.content !== "string" || result.content.length === 0) return result;
@@ -771,11 +773,29 @@ export default class Dispatcher {
         if (remaining === null) return result;
         const tokens = await this.#rowTokens(context, statement, result);
         if (tokens <= remaining) return result;
+        const size = resultSize(result as { range?: never; content?: unknown });
         const range = (result as { range?: unknown }).range;
         const retained = statement.op === "READ"
             ? { content: null, mimetype: null, channel: (result as { channel?: unknown }).channel ?? null, ...(range === undefined ? {} : { range }) }
             : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, (result as Record<string, unknown>)[key]]] : [])) };
-        return unfitResult(retained, resultSize(result as { range?: never; content?: unknown }), tokens, remaining, statement.op);
+        const receipt = (delivered: number): DispatchResult => unfitResult(retained, size, tokens, remaining, statement.op, delivered);
+        if (statement.op !== "READ" || size.unit !== "line") return receipt(0);
+        const whole = result as DispatchResult & { readonly content: string };
+        const withPrefix = (count: number): DispatchResult => {
+            const prefix = resultPrefix(whole, count) as Record<string, unknown>;
+            const carried = Object.fromEntries(["content", "mimetype", "startLine", "lineAnchors", "lineNumberWidth", "lineOrdinals", "matches", "range"]
+                .flatMap((key) => prefix[key] === undefined ? [] : [[key, prefix[key]]]));
+            return { ...receipt(count), ...carried } as DispatchResult;
+        };
+        // The longest prefix whose row, in its receipt shape, fits: the whole is known not to.
+        let fits = 0;
+        let bound = TextCoordinates.logicalLines(whole.content).length - 1;
+        while (fits < bound) {
+            const probe = Math.ceil((fits + bound) / 2);
+            if (await this.#rowTokens(context, statement, withPrefix(probe)) <= remaining) fits = probe;
+            else bound = probe - 1;
+        }
+        return fits === 0 ? receipt(0) : withPrefix(fits);
     }
 
     // The tokens the row would charge the packet, rendered as the log renders it ({§context-fit}).

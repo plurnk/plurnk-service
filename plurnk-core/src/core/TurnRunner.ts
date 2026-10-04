@@ -61,7 +61,7 @@ import NoticeChannel from "./NoticeChannel.ts";
 import ProviderRecovery from "./ProviderRecovery.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type CurationOverflow } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage, type WindowOverflow } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
@@ -206,21 +206,23 @@ export type AdmittedTurnResult = {
     readonly emptyTurn: boolean;
 };
 
-// {§context-hard-413} — the context budget's one terminal: the packet exceeds it with nothing left to cut.
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context budget overflow: the packet's tokens exceed its budget; retained context cannot fit.";
+// {§context-wall} — the window's one terminal: the packet cannot fit the model's window even as receipts.
+const WINDOW_OVERFLOW_DETAIL = "Context window overflow: the packet cannot fit the model's window even as receipts.";
 
-const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
+const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Results.failure(
     "engine:context",
-    "token-budget-overflow",
+    "window-overflow",
     413,
-    TOKEN_BUDGET_OVERFLOW_HARD_DETAIL,
+    WINDOW_OVERFLOW_DETAIL,
     {},
-    {
-        tokens: pressure.weight,
-        budget: pressure.budget,
-        excess: pressure.excess,
-    },
+    { tokens: overflow.tokens, budget: overflow.budget, wall: overflow.wall, excess: overflow.excess },
 );
+
+// {§context-over-budget-row} — over budget is a row and a request: the row is how the model hears it.
+// {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
+// ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
+const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
+const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
@@ -292,6 +294,8 @@ type PacketFacts = {
     readonly gitStatus: GitStatusSnapshot | null;
     readonly notices: Notice[];
     readonly transientOpenLogEntryId: number | null;
+    // {§context-own-rows-fit} — the rows the wall took for this turn's packet, shared by every rebuild.
+    readonly bodiless: Set<number>;
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
@@ -637,9 +641,11 @@ export default class TurnRunner {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
             if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn, gitStatus);
-            const request = await this.#composeRequest(args, container, gitStatus);
-            const overflow = this.#packets.curationOverflow(request.packet);
-            if (overflow !== null) return await this.#failCuration(request, overflow);
+            const composed = await this.#composeRequest(args, container, gitStatus);
+            const admitted = await this.#admitPacket(args, composed);
+            // {§context-wall} — only the window ends a loop.
+            if (admitted.overflow !== null) return await this.#failCuration(admitted.request, admitted.overflow);
+            const request = admitted.request;
             const attempts = await this.#prepareProviderAttempts(args, request);
             let emission: ProviderEmission;
             try {
@@ -853,7 +859,7 @@ export default class TurnRunner {
             turnId: initializationTurn.id,
             fromSequence: 1,
             failOnOperationError: true,
-            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId }),
+            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, bodiless: new Set() }),
             signal: this.#loopSignal(loopId),
             onDispatch,
             onSettled,
@@ -989,7 +995,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, turnId);
         // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
         // would render now. The drained notices join the same facts below.
-        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId };
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, bodiless: new Set() };
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
@@ -1092,6 +1098,7 @@ export default class TurnRunner {
             notices: facts.notices,
             transientOpenLogEntryId: facts.transientOpenLogEntryId,
             turnId: facts.turnId,
+            bodiless: facts.bodiless,
         });
     }
 
@@ -1107,10 +1114,57 @@ export default class TurnRunner {
         };
     }
 
-    // {§context-hard-413} — retained context cannot fit: the turn completes on the overflow and the
-    // loop rules the terminal; no provider I/O.
-    async #failCuration(request: TurnRequest, overflow: CurationOverflow): Promise<EngineTurnResult> {
-        const curationFailure = curationOverflowFailure(overflow);
+    // {§context-over-budget-row} — one `_plurnk` error row at the head of the turn's own rows, then the
+    // packet as it renders with it; the row recurs on every packet that is over.
+    async #noteOverBudget(args: TurnArgs, request: TurnRequest): Promise<TurnRequest> {
+        const { workerId, loopId, onDispatch, onSettled } = args;
+        const minted = await this.#problems.record({
+            workerId, loopId, turnId: request.turnId, sequence: request.nextActionIndex, origin: "_plurnk", source: "context",
+            result: overBudgetFailure(),
+        });
+        onDispatch?.(minted.id);
+        await onSettled?.(minted.id);
+        const packet = await this.#buildPacket(args, request);
+        return { ...request, nextActionIndex: request.nextActionIndex + 1, packet };
+    }
+
+    // The packet against the wall and the budget: the newest rows go bodiless until it fits the window
+    // ({§context-own-rows-fit}); a packet still over budget then says so in a row ({§context-over-budget-row}),
+    // whose own weight takes the same wall. The overflow is returned only when the packet cannot fit even
+    // as receipts.
+    async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<{ request: TurnRequest; overflow: WindowOverflow | null }> {
+        const fitted = await this.#fitOwnRows(args, request);
+        if (fitted.overflow !== null) return fitted;
+        if (this.#packets.curationOverflow(fitted.request.packet) === null) return fitted;
+        return await this.#fitOwnRows(args, await this.#noteOverBudget(args, fitted.request));
+    }
+
+    // {§context-own-rows-fit} — while the packet is over the wall ({§context-wall}), the newest rows still
+    // carrying a body are taken, enough of them by their rendered tokens to shed the excess, and the packet
+    // is rebuilt with them bodiless; every body stays stored. The rebuilt packet is measured again until
+    // it fits, or until no row is left to take.
+    async #fitOwnRows(args: TurnArgs, request: TurnRequest): Promise<{ request: TurnRequest; overflow: WindowOverflow | null }> {
+        let current = request;
+        for (;;) {
+            const overflow = this.#packets.windowOverflow(current.packet, args.provider);
+            if (overflow === null) return { request: current, overflow: null };
+            let shed = 0;
+            let taken = 0;
+            for (const { id, tokens } of this.#packets.bodiedRowsOf(current.packet).toReversed()) {
+                if (shed >= overflow.excessWeight) break;
+                current.bodiless.add(id);
+                shed += tokens;
+                taken += 1;
+            }
+            if (taken === 0) return { request: current, overflow };
+            current = { ...current, packet: await this.#buildPacket(args, current) };
+        }
+    }
+
+    // {§context-wall} — the packet cannot fit the window even as receipts: the turn completes on the
+    // overflow and the loop rules the terminal; no provider I/O.
+    async #failCuration(request: TurnRequest, overflow: WindowOverflow): Promise<EngineTurnResult> {
+        const curationFailure = windowOverflowFailure(overflow);
         await Turn.complete(this.#db, request.turnId, curationFailure.status);
         return turnResult(request, curationFailure.status, { curationFailure });
     }
@@ -1257,7 +1311,7 @@ export default class TurnRunner {
                 await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
                 return "reissued";
             }
-            // {§context-hard-413} — a provider capacity rejection after the provider's own retries is this
+            // {§context-wall} — a provider capacity rejection after the provider's own retries is this
             // turn's failure; nothing is withheld to make the request smaller.
             throw error;
         } finally {

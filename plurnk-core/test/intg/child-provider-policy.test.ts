@@ -252,7 +252,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
             makeMockResponse("````KILL\nobserved child failure\n````"),
         ],
     });
-    const child = new Mock({ contextWindow: 4096, responses: [] });
+    // {§context-wall} — a window whose wall cannot hold the inherited packet even as receipts.
+    const child = new Mock({ contextWindow: 1537, responses: [] });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
@@ -279,7 +280,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
                 }
             }
             assert.ok(selectedChildLoop, "FORK created a real child loop on the selected provider before admission");
-            assert.equal(selectedChildLoop.status, 413, "universal packet admission, not preflight spawn logic, rejects the inherited packet");
+            assert.equal(selectedChildLoop.status, 413, "the wall, not preflight spawn logic, rejects the inherited packet ({§context-wall})");
             const event = (terminated() as Array<{ loopId: number; result: { status: number } }>).find(({ loopId }) => loopId === selectedChildLoop.id);
             assert.equal(event?.result.status, 413, "the ordinary child terminal result carries the admission failure");
         } finally {

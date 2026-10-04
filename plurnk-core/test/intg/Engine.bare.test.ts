@@ -28,6 +28,8 @@ class BareWitness implements Provider {
     readonly reasoningBudget = null;
     readonly supportedEfforts = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
+    readonly outputFloor = null;
+    readonly inputWall = null;
     readonly model = "bare-witness";
     readonly inputModalities: ReadonlySet<InputModality> = new Set();
     readonly calls: GenerateArgs[] = [];
@@ -119,6 +121,8 @@ class CancellingBareWitness implements Provider {
     readonly reasoningBudget = null;
     readonly supportedEfforts = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
+    readonly outputFloor = null;
+    readonly inputWall = null;
     readonly model = "cancelling-bare-witness";
     readonly inputModalities: ReadonlySet<InputModality> = new Set();
     readonly aborted: string[] = [];
