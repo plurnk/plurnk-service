@@ -122,15 +122,15 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```
 
-```MOVE (log:///1/4/2/READ) <12,40> (notes/wcs-excerpt.py) <-1> <!-- moves lines 12–40 of the result to the file's end; the row keeps the rest -->
+```MOVE (log:///1/4/2/READ) <12,40> (notes/wcs-excerpt.py) <-1> <!-- moves lines 12–40 of the result, counted as the result's own rows show them, to the file's end; the row keeps the rest -->
 ```
 
-```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- (successful log KILL receipts are not shown) -->
-Optional summarization of removed log item.
+```KILL (log:///1/[1-7]/*/{NOTE,READ,emission}) <!-- old results and your own old programs, in bulk; successful log KILL receipts are not shown -->
+exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
 ```
 
 ```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
-Optional summarization of removed log item.
+Optional summarizations of removed log items are preserved as NOTEs.
 ```
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
