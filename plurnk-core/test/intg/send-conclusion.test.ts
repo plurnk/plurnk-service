@@ -301,6 +301,9 @@ for (const [label, response, reasoning, notes, outside] of [
     ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."], undefined],
 ] as const) {
     test(`{§empty-turn}: ${label} preserves sources and strike behavior, repeating only operation-free reasoning`, async () => {
+        // {§reasoning-empty-turn-read} ships off; this witness turns the read-back on.
+        const previousReadBack = process.env.PLURNK_REASONING_EMPTY_TURN_LINES;
+        process.env.PLURNK_REASONING_EMPTY_TURN_LINES = "100";
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -321,7 +324,7 @@ for (const [label, response, reasoning, notes, outside] of [
                 "reasoning NOTEs are rows that do not count as authored response operations; outside text is none");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
-        } finally { await db.close(); }
+        } finally { await db.close(); if (previousReadBack === undefined) delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES; else process.env.PLURNK_REASONING_EMPTY_TURN_LINES = previousReadBack; }
     });
 }
 

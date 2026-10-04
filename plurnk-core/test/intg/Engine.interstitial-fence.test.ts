@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after, before } from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -8,6 +8,11 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithC
 import { packetSection } from "./_packet.ts";
 import { testExecutors } from "./_execs.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
+
+// {§reasoning-empty-turn-read} ships off; the empty-turn witnesses here turn the read-back on.
+let previousReadBack: string | undefined;
+before(() => { previousReadBack = process.env.PLURNK_REASONING_EMPTY_TURN_LINES; process.env.PLURNK_REASONING_EMPTY_TURN_LINES = "100"; });
+after(() => { if (previousReadBack === undefined) delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES; else process.env.PLURNK_REASONING_EMPTY_TURN_LINES = previousReadBack; });
 const FENCE = "`".repeat(4);
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
