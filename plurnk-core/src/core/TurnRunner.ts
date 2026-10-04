@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, NoteStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -280,7 +280,7 @@ type TurnContainer = {
     readonly createdTurnIds: number[];
     readonly initializationTurn: TurnRow | null;
     readonly initializationPolicies: CapabilityPolicy[];
-    readonly initializationStatements: Array<NoteStatement | FindStatement | ReadStatement>;
+    readonly initializationStatements: Array<FindStatement | ReadStatement>;
     readonly modelTurn: TurnRow | null;
     readonly systemCtx: PlurnkSchemeContext;
 };
@@ -717,18 +717,14 @@ export default class TurnRunner {
             throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
-        const initializationStatements: Array<NoteStatement | FindStatement | ReadStatement> = [];
+        const initializationStatements: Array<FindStatement | ReadStatement> = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
-        // example itself: the actual orienting operations and ordinary NOTEs.
+        // example itself: the actual orienting operations.
         // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
         // worker:///_plurnk/AGENTS.md) gets one foisted READ on the worker's first
         // loop, so local repo guidance is visible turn-0 content. Global policy
         // stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
-            initializationStatements.push({
-                op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
-                body: "This turn surveys tooling and environment.", position: UNKNOWN_POSITION,
-            });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
                 scheme: "worker",
@@ -835,6 +831,11 @@ export default class TurnRunner {
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
             this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
+        if (admittedInitializationStatements.length === 0) {
+            // Nothing to survey (the preview off, no project guidance): the turn opens and completes empty.
+            await Turn.complete(this.#db, initializationTurn.id, 200);
+            return;
+        }
         const program = TurnOps.renderInternal(admittedInitializationStatements);
         const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (admitted.length !== admittedInitializationStatements.length) {

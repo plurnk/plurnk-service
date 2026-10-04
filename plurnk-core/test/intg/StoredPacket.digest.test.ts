@@ -157,82 +157,89 @@ test("{§log-history-projection}: digest retains programs after all source READ 
 });
 
 test("{§digest-turn-artifact-identity}: digest preserves source channels without fabricating provider participation", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-turn-artifacts-"));
-    const dbPath = join(dir, "plurnk.db");
-    const digestDir = join(dir, "digest");
-    const db = await openMigrated(dbPath);
-    const inferenceSource = "````SEND\ndone\n````";
-    let initializationSource = "";
+    // The surveys are the initialization program; with the preview off there is none, so this witness turns it on.
+    const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
-        const workspaceId = await insertWorkspace(db, "turn-artifacts");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "conclude");
-        const response = {
-            assistant: { content: inferenceSource, reasoning: null },
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        } as MockResponse;
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response] }),
-            workspaceId,
-            workerId,
-            loopId,
-            messages: [{ role: "user", content: "Conclude." }],
-        });
+        const dir = await mkdtemp(join(tmpdir(), "plurnk-turn-artifacts-"));
+        const dbPath = join(dir, "plurnk.db");
+        const digestDir = join(dir, "digest");
+        const db = await openMigrated(dbPath);
+        const inferenceSource = "````SEND\ndone\n````";
+        let initializationSource = "";
+        try {
+            const workspaceId = await insertWorkspace(db, "turn-artifacts");
+            const workerId = await insertWorker(db, workspaceId, null, "analyst");
+            const loopId = await insertLoop(db, workerId, 1, "conclude");
+            const response = {
+                assistant: { content: inferenceSource, reasoning: null },
+                usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+            } as MockResponse;
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            await engine.runTurn({
+                provider: new Mock({ contextWindow: 100_000, responses: [response] }),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "Conclude." }],
+            });
 
-        const previousOutput = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
-        const previousReasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "999999";
-        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-        const constrained = new Mock({ contextWindow: 1_000_000, responses: [response] });
-        if (previousOutput === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
-        else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previousOutput;
-        if (previousReasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-        else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previousReasoning;
-        const overflow = await engine.runTurn({
-            provider: constrained,
-            workspaceId,
-            workerId,
-            loopId,
-            messages: [{ role: "user", content: "Conclude." }],
-            turnNumber: 2,
-        });
-        assert.equal(overflow.producer, "model");
-        assert.equal(overflow.kind, "inference");
-        assert.equal(overflow.status, 413);
-        assert.equal(constrained.remaining, 1, "the rejected candidate performs no provider call");
+            const previousOutput = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+            const previousReasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+            process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "999999";
+            delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+            const constrained = new Mock({ contextWindow: 1_000_000, responses: [response] });
+            if (previousOutput === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+            else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previousOutput;
+            if (previousReasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+            else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previousReasoning;
+            const overflow = await engine.runTurn({
+                provider: constrained,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "Conclude." }],
+                turnNumber: 2,
+            });
+            assert.equal(overflow.producer, "model");
+            assert.equal(overflow.kind, "inference");
+            assert.equal(overflow.status, 413);
+            assert.equal(constrained.remaining, 1, "the rejected candidate performs no provider call");
 
-        const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
-        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
-        assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
-        assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
+            const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
+            const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
+            assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
+            assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
+        } finally {
+            await db.close();
+        }
+
+        try {
+            Digest.run({ dbPath, digestDir });
+            const stems = await digestStems(digestDir);
+            assert.deepEqual(stems, ["analyst-1-1", "analyst-1-2"], "source-backed initialization and inference retain their log coordinates");
+            assert.equal(
+                await readFile(join(digestDir, "analyst-1-1.assistant.md"), "utf8"),
+                initializationSource,
+                "a packetless turn's program remains exact forensic evidence",
+            );
+            await assert.rejects(() => access(join(digestDir, "analyst-1-1.reasoning.md")), { code: "ENOENT" });
+            await assert.rejects(() => access(join(digestDir, `${stems[0]}.system.md`)), { code: "ENOENT" });
+            await assert.rejects(() => access(join(digestDir, `${stems[0]}.user.md`)), { code: "ENOENT" });
+            await assert.rejects(() => access(join(digestDir, `${stems[0]}.assistantRaw.json`)), { code: "ENOENT" });
+
+            assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), inferenceSource);
+            await access(join(digestDir, `${stems[1]}.system.md`));
+            await access(join(digestDir, `${stems[1]}.user.md`));
+            await access(join(digestDir, `${stems[1]}.assistantRaw.json`));
+
+            assert.equal(stems.length, 2, "only the two durable turns wrote artifacts");
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
     } finally {
-        await db.close();
-    }
-
-    try {
-        Digest.run({ dbPath, digestDir });
-        const stems = await digestStems(digestDir);
-        assert.deepEqual(stems, ["analyst-1-1", "analyst-1-2"], "source-backed initialization and inference retain their log coordinates");
-        assert.equal(
-            await readFile(join(digestDir, "analyst-1-1.assistant.md"), "utf8"),
-            initializationSource,
-            "a packetless turn's program remains exact forensic evidence",
-        );
-        await assert.rejects(() => access(join(digestDir, "analyst-1-1.reasoning.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, `${stems[0]}.system.md`)), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, `${stems[0]}.user.md`)), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, `${stems[0]}.assistantRaw.json`)), { code: "ENOENT" });
-
-        assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), inferenceSource);
-        await access(join(digestDir, `${stems[1]}.system.md`));
-        await access(join(digestDir, `${stems[1]}.user.md`));
-        await access(join(digestDir, `${stems[1]}.assistantRaw.json`));
-
-        assert.equal(stems.length, 2, "only the two durable turns wrote artifacts");
-    } finally {
-        await rm(dir, { recursive: true, force: true });
+        if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }
 });
 

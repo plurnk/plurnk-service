@@ -1264,67 +1264,74 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
 });
 
 test("digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-emission-digest-"));
-    const dbPath = join(dir, "plurnk.db");
-    const digestDir = join(dir, "digest");
-    const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
-    const rejected = "````READ (worker:///😀rejected bytes";
+    // The surveys are the initialization program; with the preview off there is none and no digest stem for it.
+    const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
-        const provider = new AttemptWitness({
-            contextWindow: 100_000,
-            responses: [
-                invalid(rejected, requestUsage(10, 2), "rejected reasoning"),
-                valid("accepted bytes", requestUsage(10, 3)),
-            ],
-        });
-        await engine.runTurn({
-            provider,
-            workspaceId,
-            workerId,
-            loopId,
-            messages: [{ role: "user", content: "do the task" }],
-        });
-    } finally {
-        await db.close();
-    }
+        const dir = await mkdtemp(join(tmpdir(), "plurnk-emission-digest-"));
+        const dbPath = join(dir, "plurnk.db");
+        const digestDir = join(dir, "digest");
+        const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
+        const rejected = "````READ (worker:///😀rejected bytes";
+        try {
+            const provider = new AttemptWitness({
+                contextWindow: 100_000,
+                responses: [
+                    invalid(rejected, requestUsage(10, 2), "rejected reasoning"),
+                    valid("accepted bytes", requestUsage(10, 3)),
+                ],
+            });
+            await engine.runTurn({
+                provider,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "do the task" }],
+            });
+        } finally {
+            await db.close();
+        }
 
-    try {
-        Digest.run({ dbPath, digestDir });
-        const stems = await digestStems(digestDir);
-        assert.equal(
-            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.assistant.md`), "utf8"),
-            rejected,
-        );
-        const rejectedResponse = JSON.parse(
-            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.response.json`), "utf8"),
-        ) as { assistant?: { content?: string } };
-        assert.equal(rejectedResponse.assistant?.content, rejected);
-        const parseErrors = JSON.parse(
-            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.parse-errors.json`), "utf8"),
-        ) as Array<{ line?: number; column?: number; source?: string }>;
-        assert.deepEqual(
-            { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
-            { line: 1, column: 0, source: "grammar" },
-            "the persisted digest evidence retains the boundary's coordinates",
-        );
-        assert.equal(
-            await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
-            "\n````KILL\naccepted bytes\n````\n",
-        );
-        const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
-        assert.match(markdown, /rejected-emissions=1\/2/);
-        assert.doesNotMatch(markdown, /rejected bytes/, "rejected content stays out of the accepted-turn waterfall");
-        const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
-        assert.match(reasoning, /Attempt 1 - rejected/);
-        assert.match(reasoning, /rejected reasoning/);
-        assert.match(reasoning, /never closed - add `\)`/, "the rejected attempt's own diagnostic is in the reasoning chronology");
-        assert.match(reasoning, /Attempt 2 - admitted/);
-        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-            turn_attempts: Array<{ accepted: boolean }>;
-        };
-        assert.deepEqual(json.turn_attempts.map(({ accepted }) => accepted), [false, true]);
+        try {
+            Digest.run({ dbPath, digestDir });
+            const stems = await digestStems(digestDir);
+            assert.equal(
+                await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.assistant.md`), "utf8"),
+                rejected,
+            );
+            const rejectedResponse = JSON.parse(
+                await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.response.json`), "utf8"),
+            ) as { assistant?: { content?: string } };
+            assert.equal(rejectedResponse.assistant?.content, rejected);
+            const parseErrors = JSON.parse(
+                await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.parse-errors.json`), "utf8"),
+            ) as Array<{ line?: number; column?: number; source?: string }>;
+            assert.deepEqual(
+                { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
+                { line: 1, column: 0, source: "grammar" },
+                "the persisted digest evidence retains the boundary's coordinates",
+            );
+            assert.equal(
+                await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
+                "\n````KILL\naccepted bytes\n````\n",
+            );
+            const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
+            assert.match(markdown, /rejected-emissions=1\/2/);
+            assert.doesNotMatch(markdown, /rejected bytes/, "rejected content stays out of the accepted-turn waterfall");
+            const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
+            assert.match(reasoning, /Attempt 1 - rejected/);
+            assert.match(reasoning, /rejected reasoning/);
+            assert.match(reasoning, /never closed - add `\)`/, "the rejected attempt's own diagnostic is in the reasoning chronology");
+            assert.match(reasoning, /Attempt 2 - admitted/);
+            const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+                turn_attempts: Array<{ accepted: boolean }>;
+            };
+            assert.deepEqual(json.turn_attempts.map(({ accepted }) => accepted), [false, true]);
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
     } finally {
-        await rm(dir, { recursive: true, force: true });
+        if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }
 });
 

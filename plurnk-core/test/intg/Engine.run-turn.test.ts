@@ -113,61 +113,68 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 });
 
 test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    // The surveys are the initialization program; with the preview off there is none, so this witness turns it on.
+    const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
-        const source = "````KILL\ndone\n````";
-        const provider = new Mock({
-            contextWindow: 100000,
-            responses: [contentResp(source)],
-        });
-        const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
-            messages: [{ role: "user", content: "Conclude." }],
-        });
-        assert.equal(result.status, 200);
+        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        try {
+            const source = "````KILL\ndone\n````";
+            const provider = new Mock({
+                contextWindow: 100000,
+                responses: [contentResp(source)],
+            });
+            const result = await engine.runTurn({
+                provider, workspaceId, workerId, loopId,
+                messages: [{ role: "user", content: "Conclude." }],
+            });
+            assert.equal(result.status, 200);
 
-        const turns = await db.test_list_turns_in_loop.all<{
-            id: number;
-            producer: string;
-            kind: string;
-        }>({ loop_id: loopId });
-        assert.deepEqual(
-            turns.map(({ producer, kind }) => ({ producer, kind })),
-            [
-                { producer: "_plurnk", kind: "initialization" },
-                { producer: "model", kind: "inference" },
-            ],
-        );
+            const turns = await db.test_list_turns_in_loop.all<{
+                id: number;
+                producer: string;
+                kind: string;
+            }>({ loop_id: loopId });
+            assert.deepEqual(
+                turns.map(({ producer, kind }) => ({ producer, kind })),
+                [
+                    { producer: "_plurnk", kind: "initialization" },
+                    { producer: "model", kind: "inference" },
+                ],
+            );
 
-        const rowsFor = (turnId: number) => db.test_log_entries_by_turn.all<{
-            op: string | null;
-            origin: string;
-            attrs: string;
-            rx: string;
-            initial_folded: string;
-            folded: string;
-        }>({ turn_id: turnId });
-        const initializationRows = await rowsFor(turns[0]!.id);
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
-        const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
-        assert.equal(initializationSource?.producer, "_plurnk");
-        assert.match(initializationSource!.content, /^```/m);
-        assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
-        assert.match(initializationSource!.content, /^```NOTE\n[^\n]*\n```$/m, "the initialization program renders each operation with a separate closing line");
-        assert.ok(!initializationRows.some(({ op }) => op === null));
-        assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
-        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1"), [],
-            "`_plurnk` initialization never fabricates a content announcement ({§emission-row})");
+            const rowsFor = (turnId: number) => db.test_log_entries_by_turn.all<{
+                op: string | null;
+                origin: string;
+                attrs: string;
+                rx: string;
+                initial_folded: string;
+                folded: string;
+            }>({ turn_id: turnId });
+            const initializationRows = await rowsFor(turns[0]!.id);
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
+            const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
+            assert.equal(initializationSource?.producer, "_plurnk");
+            assert.match(initializationSource!.content, /^```/m);
+            assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
+            assert.match(initializationSource!.content, /^```FIND [^\n]*\n```$/m, "the initialization program renders each operation with a separate closing line");
+            assert.ok(!initializationRows.some(({ op }) => op === null));
+            assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
+            assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1"), [],
+                "`_plurnk` initialization never fabricates a content announcement ({§emission-row})");
 
-        const inferenceRows = await rowsFor(turns[1]!.id);
-        const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
-        assert.equal(inferenceSource?.producer, "model");
-        assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
-        assert.ok(!inferenceRows.some(({ op }) => op === null));
-        assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(inferenceRows.some(({ op }) => op === "KILL"));
-    } finally { await db.close(); }
+            const inferenceRows = await rowsFor(turns[1]!.id);
+            const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
+            assert.equal(inferenceSource?.producer, "model");
+            assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
+            assert.ok(!inferenceRows.some(({ op }) => op === null));
+            assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
+            assert.ok(inferenceRows.some(({ op }) => op === "KILL"));
+        } finally { await db.close(); }
+    } finally {
+        if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
+    }
 });
 
 test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {

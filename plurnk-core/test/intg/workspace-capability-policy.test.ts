@@ -149,7 +149,6 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null; attrs: string }>({ loop_id: loopId });
         const harnessOps = rows.filter((row) => row.origin === "_plurnk" && !LogEntryProjection.isEmission(row)).map(({ op }) => op);
         assert.equal(harnessOps.includes("PLAN"), false);
-        assert.equal(harnessOps.includes("NOTE"), true);
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
             [],

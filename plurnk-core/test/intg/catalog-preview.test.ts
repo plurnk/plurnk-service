@@ -188,8 +188,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization executes its program once: one NOTE and nine surveys, the worker's own reasoning among them, and no reasoning READ",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization executes its program once: nine surveys, the worker's own reasoning among them, nothing else",
                 );
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
                     "`_plurnk` initialization has no content emission ({§emission-row})");
@@ -199,11 +199,9 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 200 },
                 );
                 assert.ok(turn?.completed_at !== null, "a completed continuation turn is distinct from an open turn");
-                const note = JSON.parse(initializationRows.find(({ op }) => op === "NOTE")!.tx) as { body: string };
                 assert.equal(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning"), undefined, "initialization observes no reasoning ({§worker-initialization-entry})");
                 const program = (await db.test_turn_sources_by_turn.all<{ kind: string; content: string }>({ turn_id: commons.turn_id })).find(({ kind }) => kind === "ops");
                 assert.ok(program, "the survey is the initialization turn's ops source");
-                assert.ok(program.content.includes(note.body), "the ordinary NOTE is part of the program that ran");
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
                     "the program reaches the first request through its results, never assistant history");
                 assert.deepEqual(
@@ -309,8 +307,8 @@ test("an empty workspace executes all nine orienting FINDs and preserves empty-s
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization contains one NOTE and nine surveys, and no reasoning READ",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization contains nine surveys and nothing else",
                 );
                 assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops"), [],
                     "turn 0 has no content source to announce or read ({§emission-row})");

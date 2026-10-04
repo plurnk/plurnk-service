@@ -16,90 +16,97 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
 test("observe: a real loop emits the loop → turn → provider → parse → dispatch topology", async () => {
-    const memory = await mountMemoryTracing();
+    // The surveys are the initialization program; with the preview off there is none to dispatch.
+    const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
-        const provider = new Mock({
-            contextWindow: 16384,
-            responses: [{
-                assistant: {
-                    // ops deliberately absent: the engine must parse this content.
-                    content: "\n````KILL\nobserved.\n````",
-                    reasoning: null,
-                },
-            }],
-        });
-        await withDaemon(provider, async (db, daemon) => {
-            const ws = await connect({ daemon });
-            const created = (await rpcCall(ws, 1, "workspace.create", {
-                name: "observe-topology", projectRoot: null,
-            })).result as { id: number };
-            assert.ok(Number.isInteger(created.id));
-            const term = await runLoopToTerminal(ws, 2, {
-                prompt: "Explain the loop topology.",
-                policy: { proposals: "accept" },
-            }, { timeoutMs: 60_000 });
-            assert.equal(term.finalStatus, 200);
-        });
-        await settleExports();
+        const memory = await mountMemoryTracing();
+        try {
+            const provider = new Mock({
+                contextWindow: 16384,
+                responses: [{
+                    assistant: {
+                        // ops deliberately absent: the engine must parse this content.
+                        content: "\n````KILL\nobserved.\n````",
+                        reasoning: null,
+                    },
+                }],
+            });
+            await withDaemon(provider, async (db, daemon) => {
+                const ws = await connect({ daemon });
+                const created = (await rpcCall(ws, 1, "workspace.create", {
+                    name: "observe-topology", projectRoot: null,
+                })).result as { id: number };
+                assert.ok(Number.isInteger(created.id));
+                const term = await runLoopToTerminal(ws, 2, {
+                    prompt: "Explain the loop topology.",
+                    policy: { proposals: "accept" },
+                }, { timeoutMs: 60_000 });
+                assert.equal(term.finalStatus, 200);
+            });
+            await settleExports();
 
-        const spans = memory.spans();
-        const childrenByParent = new Map<string | undefined, ReadableSpan[]>();
-        for (const s of spans) {
-            const parent = s.parentSpanContext?.spanId;
-            const list = childrenByParent.get(parent) ?? [];
-            list.push(s);
-            childrenByParent.set(parent, list);
-        }
+            const spans = memory.spans();
+            const childrenByParent = new Map<string | undefined, ReadableSpan[]>();
+            for (const s of spans) {
+                const parent = s.parentSpanContext?.spanId;
+                const list = childrenByParent.get(parent) ?? [];
+                list.push(s);
+                childrenByParent.set(parent, list);
+            }
 
-        const loop = spans.find((s) => s.name === "loop.run");
-        assert.ok(loop !== undefined, `loop.run span exists; got names: ${spans.map((s) => s.name).join(", ")}`);
-        assert.ok(Number.isInteger(loop.attributes["loop.id"]), "loop.run carries the loop id");
-        assert.ok(Number.isInteger(loop.attributes["status"]), "loop.run records its terminal status");
+            const loop = spans.find((s) => s.name === "loop.run");
+            assert.ok(loop !== undefined, `loop.run span exists; got names: ${spans.map((s) => s.name).join(", ")}`);
+            assert.ok(Number.isInteger(loop.attributes["loop.id"]), "loop.run carries the loop id");
+            assert.ok(Number.isInteger(loop.attributes["status"]), "loop.run records its terminal status");
 
-        const turns = (childrenByParent.get(loop.spanContext().spanId) ?? []).filter((s) => s.name === "loop.turn");
-        assert.equal(turns.length, 1, "one loop iteration retains one warmed engine-cycle span");
-        const turn = turns[0];
-        assert.equal(turn.attributes["turn.producer"], "model");
-        assert.equal(turn.attributes["turn.kind"], "inference");
-        assert.ok(Number.isInteger(turn.attributes["loop.id"]));
-        assert.ok(Number.isInteger(turn.attributes["turn.id"]));
+            const turns = (childrenByParent.get(loop.spanContext().spanId) ?? []).filter((s) => s.name === "loop.turn");
+            assert.equal(turns.length, 1, "one loop iteration retains one warmed engine-cycle span");
+            const turn = turns[0];
+            assert.equal(turn.attributes["turn.producer"], "model");
+            assert.equal(turn.attributes["turn.kind"], "inference");
+            assert.ok(Number.isInteger(turn.attributes["loop.id"]));
+            assert.ok(Number.isInteger(turn.attributes["turn.id"]));
 
-        const turnChildren = childrenByParent.get(turn.spanContext().spanId) ?? [];
-        const generate = turnChildren.find((s) => s.attributes["gen_ai.operation.name"] === "chat");
-        assert.ok(generate !== undefined, "the turn nests the provider call");
-        assert.equal(generate.kind, SpanKind.CLIENT, "the GenAI convention span is CLIENT-kind");
-        assert.equal(generate.attributes["gen_ai.operation.name"], "chat");
-        assert.equal(generate.attributes["gen_ai.provider.name"], "openai", "provider identity comes from the registered route, not its mocktest alias");
-        assert.equal(generate.attributes["gen_ai.system"], undefined);
-        assert.ok(typeof generate.attributes.model === "string" && generate.attributes.model.length > 0);
-        assert.equal(generate.attributes["gen_ai.request.model"], generate.attributes.model);
-        assert.equal(generate.name, `chat ${generate.attributes.model}`);
-        assert.ok(Number.isInteger(generate.attributes.attempt), "the provider span carries the emission attempt");
-        assert.deepEqual(
-            generate.attributes["gen_ai.response.finish_reasons"],
-            ["stop"],
-            "the settled span carries the convention finish reason",
-        );
+            const turnChildren = childrenByParent.get(turn.spanContext().spanId) ?? [];
+            const generate = turnChildren.find((s) => s.attributes["gen_ai.operation.name"] === "chat");
+            assert.ok(generate !== undefined, "the turn nests the provider call");
+            assert.equal(generate.kind, SpanKind.CLIENT, "the GenAI convention span is CLIENT-kind");
+            assert.equal(generate.attributes["gen_ai.operation.name"], "chat");
+            assert.equal(generate.attributes["gen_ai.provider.name"], "openai", "provider identity comes from the registered route, not its mocktest alias");
+            assert.equal(generate.attributes["gen_ai.system"], undefined);
+            assert.ok(typeof generate.attributes.model === "string" && generate.attributes.model.length > 0);
+            assert.equal(generate.attributes["gen_ai.request.model"], generate.attributes.model);
+            assert.equal(generate.name, `chat ${generate.attributes.model}`);
+            assert.ok(Number.isInteger(generate.attributes.attempt), "the provider span carries the emission attempt");
+            assert.deepEqual(
+                generate.attributes["gen_ai.response.finish_reasons"],
+                ["stop"],
+                "the settled span carries the convention finish reason",
+            );
 
-        // The parse is synchronous and ends before model dispatch.
-        const parse = turnChildren.find((s) => s.name === "contracts.parse");
-        assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
-        assert.equal(parse.attributes.statements, 1, "parse records the emitted KILL");
+            // The parse is synchronous and ends before model dispatch.
+            const parse = turnChildren.find((s) => s.name === "contracts.parse");
+            assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
+            assert.equal(parse.attributes.statements, 1, "parse records the emitted KILL");
 
-        const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
-        const ops = dispatches.map((s) => s.attributes.op);
-        assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
-        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
-        assert.ok(ops.includes("NOTE"), "initialization's reasoning NOTE uses ordinary dispatch");
-        assert.equal(ops.filter((op) => op === "KILL").length, 1, "the model's completion has its own dispatch span");
-        assert.ok(
-            ops.filter((op) => op !== "KILL" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
-            `initialization dispatches only reasoning operations; got ${ops.join(", ")}`,
-        );
-        for (const d of dispatches) {
-            assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");
+            const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
+            const ops = dispatches.map((s) => s.attributes.op);
+            assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
+            assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
+            assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
+            assert.equal(ops.filter((op) => op === "KILL").length, 1, "the model's completion has its own dispatch span");
+            assert.ok(
+                ops.filter((op) => op !== "KILL" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
+                `initialization dispatches only reasoning operations; got ${ops.join(", ")}`,
+            );
+            for (const d of dispatches) {
+                assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");
+            }
+        } finally {
+            await memory.shutdown();
         }
     } finally {
-        await memory.shutdown();
+        if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }
 });

@@ -42,7 +42,9 @@ const fixture = async (t: TestContext, prompt = "review") => {
 };
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
-const recordSamples = async ({ db, engine }: Fixture, counts = [300, 300, 300], model = "mock") => {
+// The default reported count sits well under the smallest sample packet's weight, so the default
+// direction is an enlarging conversion whatever turn zero carries.
+const recordSamples = async ({ db, engine }: Fixture, counts = [100, 100, 100], model = "mock") => {
     const workspaceId = await insertWorkspace(db, `sample-source-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "sample");

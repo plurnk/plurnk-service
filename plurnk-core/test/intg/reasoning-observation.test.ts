@@ -23,7 +23,7 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: next, reasoning: "Unrequested model reasoning." } }] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
-        assert.equal(result.status, 102, "the initialization NOTE does not change implicit continuation");
+        assert.equal(result.status, 102, "the initialization surveys do not change implicit continuation");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         assert.equal(logEntries(packet).find((row) => row.path === "reasoning://alice/3/1"), undefined, "no reasoning is authored, so nothing reads it back");
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), [], "initialization performs no reasoning READ");
@@ -32,23 +32,11 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         const program = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
         assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
         assert.ok("content" in program && typeof program.content === "string");
-        const orientation = "This turn surveys tooling and environment.";
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.equal(operations[0]?.op, "NOTE");
-        assert.equal(operations[0]?.op === "NOTE" ? operations[0].body : null, orientation);
         assert.ok(operations.some(({ op }) => op === "FIND"));
         assert.ok(!operations.some((statement) => statement.op === "READ" && statement.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
-        const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
-        assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/1"]);
-        for (const note of notes) {
-            assert.equal(note.origin, "_plurnk");
-            assert.equal(String(note.body).trim(), `1:${orientation}`);
-            const retained = await engine.look({ ...context, statement: statement(PlurnkParser.frame(`READ (${note.resource}) <1,-1>`, null)) });
-            assert.equal(retained.status, 200);
-            assert.equal(retained.content, orientation);
-        }
         assert.equal(provider.received.length, 1, "the survey costs no model inference");
     } finally {
         await db.close();

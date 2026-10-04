@@ -189,7 +189,6 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 false,
                 "initialization has no synthetic actionless receipt",
             );
-            assert.equal(initialization[0]?.op, "NOTE", "initialization opens with its orientation NOTE");
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {
