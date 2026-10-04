@@ -183,7 +183,8 @@ export default class Slicer {
         }
         const lines = TextCoordinates.lines(content);
         // {§text-scope-semantics} — `-1` is the final addressable endpoint in every form: as a region line it
-        // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends.
+        // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends; as a column
+        // it is the end of its line, so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to it.
         const [startLine, startColumn, endLine, rawEndColumn] = Slicer.#finalEndpoint(content, lines, marker.marks);
         if (startLine < 1 || startLine > lines.length) {
             return { error: `Start line ${startLine} is outside the available line range 1..${lines.length}.` };
@@ -217,11 +218,15 @@ export default class Slicer {
 
     static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly number[]): [number, number, number, number] {
         const [startLine, startColumn, endLine, endColumn] = marks as [number, number, number, number];
-        const last = lines[lines.length - 1]!;
-        const finalColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
+        const endOf = (line: number): number => {
+            const data = lines[Math.min(Math.max(line, 1), lines.length) - 1]!;
+            return [...content.slice(data.start, data.contentEnd)].length + 1;
+        };
+        const resolvedStart = startLine === -1 ? lines.length : startLine;
+        const resolvedEnd = endLine === -1 ? lines.length : endLine;
         return [
-            startLine === -1 ? lines.length : startLine, startLine === -1 ? finalColumn : startColumn,
-            endLine === -1 ? lines.length : endLine, endLine === -1 ? finalColumn : endColumn,
+            resolvedStart, startLine === -1 || startColumn === -1 ? endOf(resolvedStart) : startColumn,
+            resolvedEnd, endLine === -1 || endColumn === -1 ? endOf(resolvedEnd) : endColumn,
         ];
     }
 

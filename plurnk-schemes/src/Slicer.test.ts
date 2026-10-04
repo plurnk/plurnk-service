@@ -197,6 +197,9 @@ test("{§text-scope-semantics} -1 as a region line is the final endpoint: <1,1,-
     assert.equal(Slicer.lines(TEXT, { marks: [2, 1, -1, 7] }).text, "beta\ngamma\ndelta\n", "from line 2 to the end, whatever the end column says");
     assert.equal(Slicer.lines(TEXT, { marks: [2, 1, -1] }).text, "beta\ngamma\ndelta\n", "the tolerated three-coordinate form takes -1 the same way");
     assert.equal(Slicer.lines(TEXT, { marks: [1, 1, -2, 1] }).status, 416, "other negatives stay unspecified");
+    assert.equal(Slicer.lines(TEXT, { marks: [3, 1, 3, -1] }).text, "gamma", "-1 as a column is the end of its line");
+    assert.equal(Slicer.lineMarkerEdit(TEXT, { marks: [3, -1, 3, -1] }, "!").result, "alpha\nbeta\ngamma!\ndelta\n", "a zero-width region at a line's end appends to that line");
+    assert.equal(Slicer.lines(TEXT, { marks: [2, -1, 3, 1] }).text, "\n", "from the end of line 2 to the start of line 3 is the separator");
 });
 
 test("lines rejects unaddressable exact regions", () => {
