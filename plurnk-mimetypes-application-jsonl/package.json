@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-jsonl",
-    "version": "1.26.0",
+    "version": "1.27.0",
     "description": "JSON Lines / NDJSON handler with record-schema symbols and exact source-located queries.",
     "keywords": [
         "plurnk",
@@ -53,10 +53,10 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.26.0"
+        "@plurnk/plurnk-mimetypes": "^1.27.0"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes-application-json": "1.26.0",
+        "@plurnk/plurnk-mimetypes-application-json": "1.27.0",
         "jsonc-parser": "^3.3.1"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-application-jsonl#readme",

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mcp",
-    "version": "1.26.0",
+    "version": "1.27.0",
     "description": "Current Model Context Protocol host module for Plurnk.",
     "keywords": [
         "plurnk",
@@ -56,10 +56,10 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-agent-plugins": "1.26.0",
+        "@plurnk/plurnk-agent-plugins": "1.27.0",
         "@modelcontextprotocol/client": "2.0.0",
-        "@plurnk/plurnk-meta": "1.26.0",
-        "@plurnk/plurnk-contracts": "1.26.0"
+        "@plurnk/plurnk-meta": "1.27.0",
+        "@plurnk/plurnk-contracts": "1.27.0"
     },
     "devDependencies": {
         "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
@@ -67,7 +67,7 @@
         "zod": "4.6.5"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.26.0",
-        "@plurnk/plurnk-schemes": "^1.26.0"
+        "@plurnk/plurnk-execs": "^1.27.0",
+        "@plurnk/plurnk-schemes": "^1.27.0"
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agent-plugins",
-    "version": "1.26.0",
+    "version": "1.27.0",
     "description": "Conformant loader for Agent Plugins directories: manifest, containment, skills, and MCP configuration.",
     "keywords": [
         "plurnk",
@@ -50,7 +50,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-agent-skills": "1.26.0",
-        "@plurnk/plurnk-meta": "1.26.0"
+        "@plurnk/plurnk-agent-skills": "1.27.0",
+        "@plurnk/plurnk-meta": "1.27.0"
     }
 }
