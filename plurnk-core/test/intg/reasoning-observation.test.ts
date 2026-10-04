@@ -37,7 +37,7 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         assert.equal(operations[0]?.op, "NOTE");
         assert.equal(operations[0]?.op === "NOTE" ? operations[0].body : null, orientation);
         assert.ok(operations.some(({ op }) => op === "FIND"));
-        assert.ok(!operations.some(({ op, target }) => op === "READ" && target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
+        assert.ok(!operations.some((statement) => statement.op === "READ" && statement.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));

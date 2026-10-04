@@ -515,6 +515,7 @@ export class SqlRiteSync {
 	test_loop_termination_events: SqlRiteSyncPreparedStatements;
 	test_edit_rows_by_worker: SqlRiteSyncPreparedStatements;
 	test_emission_rows_by_worker: SqlRiteSyncPreparedStatements;
+	test_turn_sources_by_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -1108,6 +1109,7 @@ export default class SqlRite {
 	test_loop_termination_events: SqlRitePreparedStatements;
 	test_edit_rows_by_worker: SqlRitePreparedStatements;
 	test_emission_rows_by_worker: SqlRitePreparedStatements;
+	test_turn_sources_by_turn: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;
