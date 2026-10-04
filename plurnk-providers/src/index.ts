@@ -28,7 +28,7 @@ export type {
     TokenAlternative,
 } from "./types.ts";
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
-export { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, requestCapacityDecision } from "./capacity.ts";
+export { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, requestCapacityDecision } from "./capacity.ts";
 
 // Selector and alias parsing stay runtime-free in @plurnk/plurnk-aliases;
 // ModelRoute is the contracts-owned client wire shape; ProviderSpec is the

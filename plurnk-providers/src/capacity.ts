@@ -54,6 +54,23 @@ export const effectiveReasoningBudget = ({
     return Math.min(configured, outputBudget - 1);
 };
 
+// {§provider-output-floor}: the floor is never above the output budget, so a
+// call that tightens the budget below the configured floor tightens the floor
+// with it.
+export const effectiveOutputFloor = ({
+    configured,
+    outputBudget,
+}: {
+    configured: number | null;
+    outputBudget: number | null;
+}): number | null => {
+    positiveOrNull(configured, "outputFloor");
+    positiveOrNull(outputBudget, "outputBudget");
+    return configured === null || outputBudget === null
+        ? configured
+        : Math.min(configured, outputBudget);
+};
+
 export const effectiveInputCapacity = ({
     contextWindow,
     maxInputTokens,
@@ -81,47 +98,90 @@ export const effectiveInputCapacity = ({
     return capacities.length === 0 ? null : Math.min(...capacities);
 };
 
-// {§provider-flexed-allowance} (#482): the configured output budget is the floor
-// curation packed the input against; window room the actual prompt left
-// unclaimed is guaranteed free and becomes response runway. Only an exact
-// prompt measurement may claim slack — an estimate proves nothing about the
-// true remainder — and the model's own maxOutputTokens still caps the grant.
-const WIRE_FLEX_MARGIN = 256;
+// {§provider-output-floor}: the input wall is every known physical input
+// constraint intersected — independent maxInputTokens and the window less the
+// output floor. Null when neither is known.
+export const effectiveInputWall = ({
+    contextWindow,
+    maxInputTokens,
+    outputFloor,
+}: {
+    contextWindow: number | null;
+    maxInputTokens: number | null;
+    outputFloor: number | null;
+}): number | null => {
+    positiveOrNull(contextWindow, "contextWindow");
+    positiveOrNull(maxInputTokens, "maxInputTokens");
+    positiveOrNull(outputFloor, "outputFloor");
+    const windowWall = contextWindow !== null && outputFloor !== null
+        ? contextWindow - outputFloor
+        : null;
+    if (windowWall !== null && windowWall <= 0) {
+        throw new TypeError(
+            `outputFloor (${outputFloor}) must leave positive input room inside contextWindow (${contextWindow})`,
+        );
+    }
+    const walls = [
+        maxInputTokens,
+        windowWall,
+    ].filter((value): value is number => value !== null);
+    return walls.length === 0 ? null : Math.min(...walls);
+};
 
+// {§provider-flexed-allowance}: the wire margin kept between the measured prompt and the grant.
+export const WIRE_FLEX_MARGIN = 256;
+
+// {§provider-flexed-allowance}: the grant is the window's remainder after the
+// prompt and the margin. An exact prompt takes the remainder itself, clamped
+// between the floor and the model's own output limit — above the reservation
+// when the prompt left room, down to the floor when it ate into the
+// reservation. Any other measurement, and a pool, keeps the reservation,
+// clamped by the same remainder so the wire never asks the window for more
+// than it has, and never below the floor. No window, no budget or no count:
+// the reservation stands.
 export const flexedResponseMax = ({
     contextWindow,
     maxOutputTokens,
     outputBudget,
+    outputFloor,
     promptTokens,
     margin,
+    exact,
 }: {
     contextWindow: number | null;
     maxOutputTokens: number | null;
     outputBudget: number | null;
-    promptTokens: number;
+    outputFloor: number | null;
+    promptTokens: number | null;
     margin: number;
+    exact: boolean;
 }): number | null => {
-    if (outputBudget === null || contextWindow === null) return outputBudget;
+    if (outputBudget === null || contextWindow === null || promptTokens === null) return outputBudget;
     if (!Number.isSafeInteger(promptTokens) || promptTokens < 0) {
         throw new TypeError("promptTokens must be a non-negative safe integer");
     }
-    const flexed = Math.max(outputBudget, contextWindow - promptTokens - margin);
+    const least = outputFloor ?? outputBudget;
+    const remainder = contextWindow - promptTokens - margin;
+    if (!exact) return Math.max(least, Math.min(outputBudget, remainder));
+    const flexed = Math.max(least, remainder);
     return maxOutputTokens === null ? flexed : Math.min(flexed, Math.max(outputBudget, maxOutputTokens));
 };
 
+// {§provider-capacity-admission}: admission is decided against the input wall,
+// never the curation reservation.
 export const requestCapacityDecision = (
-    inputCapacity: number | null,
+    inputWall: number | null,
     measurement: PromptTokenMeasurement,
 ): ProviderRequestCapacity["decision"] => {
     const prompt = assertPromptTokenMeasurement(measurement, "provider capacity");
-    // An upper bound can prove fit when it is below the limit, but exceeding
-    // the limit proves nothing about the unknown exact count. Estimates never
+    // An upper bound can prove fit when it is below the wall, but exceeding
+    // the wall proves nothing about the unknown exact count. Estimates never
     // authorize or reject; the provider remains the capacity oracle.
-    return inputCapacity === null
+    return inputWall === null
         || prompt.kind === "estimate"
         || prompt.kind === "unavailable"
         ? "defer"
-        : prompt.tokens <= inputCapacity
+        : prompt.tokens <= inputWall
             ? "admit"
             : prompt.kind === "exact"
                 ? "reject"
@@ -133,6 +193,7 @@ export const assessRequestCapacity = ({
     maxInputTokens,
     maxOutputTokens,
     outputBudget,
+    outputFloor,
     reasoningBudget,
     measurement,
 }: {
@@ -140,6 +201,7 @@ export const assessRequestCapacity = ({
     maxInputTokens: number | null;
     maxOutputTokens: number | null;
     outputBudget: number | null;
+    outputFloor: number | null;
     reasoningBudget: number | null;
     measurement: PromptTokenMeasurement;
 }): ProviderRequestCapacity => {
@@ -153,21 +215,29 @@ export const assessRequestCapacity = ({
         throw new TypeError("reasoningBudget must be a strict subset of outputBudget");
     }
     const prompt = assertPromptTokenMeasurement(measurement, "provider capacity");
+    const floor = effectiveOutputFloor({ configured: outputFloor, outputBudget });
     const inputCapacity = effectiveInputCapacity({ contextWindow, maxInputTokens, outputBudget });
-    // {§provider-flexed-allowance}: exact measurements harvest the slack; every
-    // other measurement kind keeps the floor.
-    const responseMax = prompt.kind === "exact"
-        ? flexedResponseMax({ contextWindow, maxOutputTokens, outputBudget, promptTokens: prompt.tokens, margin: WIRE_FLEX_MARGIN })
-        : outputBudget;
+    const inputWall = effectiveInputWall({ contextWindow, maxInputTokens, outputFloor: floor });
+    const responseMax = flexedResponseMax({
+        contextWindow,
+        maxOutputTokens,
+        outputBudget,
+        outputFloor: floor,
+        promptTokens: prompt.kind === "unavailable" ? null : prompt.tokens,
+        margin: WIRE_FLEX_MARGIN,
+        exact: prompt.kind === "exact",
+    });
 
     return {
-        decision: requestCapacityDecision(inputCapacity, prompt),
+        decision: requestCapacityDecision(inputWall, prompt),
         contextWindow,
         maxInputTokens,
         maxOutputTokens,
         outputBudget,
+        outputFloor: floor,
         reasoningBudget,
         inputCapacity,
+        inputWall,
         responseMax,
         prompt,
     };

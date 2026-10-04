@@ -211,6 +211,8 @@ export const resolveTokenBudget = (spec: TokenBudgetSpec, window: number | null)
 
 export type GenerationEnvelope = {
     readonly outputBudget: number | null;
+    // {§provider-output-floor}: the least response room any request keeps; never above the output budget.
+    readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
 };
 
@@ -238,6 +240,7 @@ const optionalTokenBudget = (
 
 const resolveGeneration = (
     outputSpec: TokenBudgetSpec | null,
+    floorSpec: TokenBudgetSpec | null,
     reasoningSpec: TokenBudgetSpec | null,
     contextWindow: number | null,
     maxOutputTokens: number | null,
@@ -253,6 +256,17 @@ const resolveGeneration = (
             `${label} provider: PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}) must leave positive input capacity inside the context window (${contextWindow})`,
         );
     }
+    // {§provider-output-floor}: the floor resolves like the budget, under the same physical caps, and is
+    // never above the output budget — a floor the budget cannot hold clamps to the budget, never refuses.
+    const requestedFloor = floorSpec === null ? null : resolveTokenBudget(floorSpec, contextWindow);
+    const outputFloor = requestedFloor === null
+        ? null
+        : Math.min(requestedFloor, ...physicalCaps, ...(outputBudget === null ? [] : [outputBudget]));
+    if (contextWindow !== null && outputFloor !== null && outputFloor >= contextWindow) {
+        throw new Error(
+            `${label} provider: PLURNK_PROVIDERS_OUTPUT_FLOOR (${outputFloor}) must leave positive input room inside the context window (${contextWindow})`,
+        );
+    }
     const reasoningBudget = reasoningSpec === null
         ? null
         : resolveTokenBudget(reasoningSpec, contextWindow);
@@ -266,11 +280,11 @@ const resolveGeneration = (
             `${label} provider: PLURNK_PROVIDERS_REASONING_BUDGET (${reasoningBudget}) exceeds the effective PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}); reasoning is a subset of total output`,
         );
     }
-    return { outputBudget, reasoningBudget };
+    return { outputBudget, outputFloor, reasoningBudget };
 };
 
-// Standard providers receive the shipped OUTPUT_BUDGET floor and fail hard if
-// it is absent. Mock uses the tolerant sibling below so ordinary unit fixtures
+// Standard providers receive the shipped OUTPUT_BUDGET and OUTPUT_FLOOR panel values and fail
+// hard if either is absent. Mock uses the tolerant sibling below so ordinary unit fixtures
 // make no generation claim unless a test deliberately configures one.
 export const generationEnvelopeFromEnv = (
     env: NodeJS.ProcessEnv,
@@ -281,6 +295,7 @@ export const generationEnvelopeFromEnv = (
     shedRetiredEnvelope(env, label);
     return resolveGeneration(
         parseTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", label),
+        parseTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_FLOOR, "PLURNK_PROVIDERS_OUTPUT_FLOOR", label),
         optionalTokenBudget(env.PLURNK_PROVIDERS_REASONING_BUDGET, "PLURNK_PROVIDERS_REASONING_BUDGET", label),
         contextWindow,
         maxOutputTokens,
@@ -296,6 +311,7 @@ export const resolveGenerationEnvelopeFromEnv = (
     shedRetiredEnvelope(env, "mock");
     return resolveGeneration(
         optionalTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", "mock"),
+        optionalTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_FLOOR, "PLURNK_PROVIDERS_OUTPUT_FLOOR", "mock"),
         optionalTokenBudget(env.PLURNK_PROVIDERS_REASONING_BUDGET, "PLURNK_PROVIDERS_REASONING_BUDGET", "mock"),
         contextWindow,
         maxOutputTokens,
@@ -371,6 +387,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_MAX_CONCURRENCY",
     "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
+    "PLURNK_PROVIDERS_OUTPUT_FLOOR",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
     "PLURNK_PROVIDERS_EFFORT_FALLBACK",
     ...RequestFields.knobs,

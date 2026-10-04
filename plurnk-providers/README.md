@@ -117,6 +117,11 @@ flowchart TD
 - **Output** accepts positive tokens or a percentage of context; known model
   limits cap it. An explicit reasoning budget must be smaller than total output.
   Leaving the reasoning budget unset does not disable reasoning.
+- **Output floor** (`PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped `10%`) is the least
+  response room any request keeps, never above the output budget. The window less
+  the floor is the input wall: a packet past the budget is still sent with its
+  grant flexed down to the remainder; only a packet past the wall cannot be sent
+  ({§provider-output-floor}).
 - **Context** is derived from the live endpoint or catalog. An operator cap can
   shrink known capacity or declare unknown capacity, never enlarge known limits.
   Prompt projection and initialization reasoning READ limits are separate Core policy.

@@ -7,6 +7,7 @@ import {
     cacheAffinityDeclarationFromEnv,
     cacheWritePolicyFromEnv,
     generationEnvelopeFromEnv,
+    resolveGenerationEnvelopeFromEnv,
     parseRequiredInt,
     parseOptionalInt,
     parseTimeoutMs,
@@ -280,43 +281,79 @@ test("the shipped DRY floor is off and claims no universally safe shape", async 
 
 // -- {§provider-generation-envelope} --
 
+const floor = { PLURNK_PROVIDERS_OUTPUT_FLOOR: "10%" } as const;
+
 test("generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
     assert.deepEqual(
         generationEnvelopeFromEnv({
+            ...floor,
             PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
             PLURNK_PROVIDERS_REASONING_BUDGET: "4096",
         } as NodeJS.ProcessEnv, "x", 100_000, 32_000),
-        { outputBudget: 32_000, reasoningBudget: 4096 },
+        { outputBudget: 32_000, outputFloor: 10_000, reasoningBudget: 4096 },
     );
-    assert.throws(() => generationEnvelopeFromEnv({}, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_BUDGET must be set/);
-    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "150%" }, "x", 100_000, null), /percentage must be in \(0, 100\)/);
-    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "-5" }, "x", 100_000, null), /positive integer token count/);
-    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "100000" }, "x", 100_000, null), /must leave positive input capacity/);
+    assert.throws(() => generationEnvelopeFromEnv({ ...floor }, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_BUDGET must be set/);
+    assert.throws(() => generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "150%" }, "x", 100_000, null), /percentage must be in \(0, 100\)/);
+    assert.throws(() => generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "-5" }, "x", 100_000, null), /positive integer token count/);
+    assert.throws(() => generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "100000" }, "x", 100_000, null), /must leave positive input capacity/);
     assert.throws(() => generationEnvelopeFromEnv({
+        ...floor,
         PLURNK_PROVIDERS_OUTPUT_BUDGET: "20%",
         PLURNK_PROVIDERS_REASONING_BUDGET: "25%",
     }, "x", 100_000, null), /reasoning is a subset of total output/);
     assert.deepEqual(
-        generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "1%" }, "x", 2, null),
-        { outputBudget: 1, reasoningBudget: null },
+        generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1%" }, "x", 2, null),
+        { outputBudget: 1, outputFloor: 1, reasoningBudget: null },
         "a valid percentage always resolves to at least one whole token",
     );
     assert.throws(
-        () => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1, null),
+        () => generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1, null),
         /must leave positive input capacity/,
     );
 });
 
-test("envelope knobs are per-alias scopable (measured envelope per box)", async () => {
-    const { scopeEnvToAlias } = await import("./env.ts");
+test("{§provider-output-floor} PLURNK_PROVIDERS_OUTPUT_FLOOR parses like the output budget: percent or absolute, alias-scoped, required for a standard provider and optional for Mock", () => {
+    const budget = { PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" } as const;
+    assert.equal(generationEnvelopeFromEnv({ ...budget, ...floor }, "x", 100_000, null).outputFloor, 10_000);
+    assert.equal(generationEnvelopeFromEnv({ ...budget, PLURNK_PROVIDERS_OUTPUT_FLOOR: "2048" }, "x", 100_000, null).outputFloor, 2_048);
+    assert.equal(generationEnvelopeFromEnv({ ...budget, ...floor }, "x", null, null).outputFloor, null, "a percentage of an unknown window resolves to null like the budget");
+    assert.equal(
+        generationEnvelopeFromEnv(scopeEnvToAlias({ ...budget, ...floor, PLURNK_PROVIDERS_OUTPUT_FLOOR_turboderp: "1024" }, "turboderp"), "x", 100_000, null).outputFloor,
+        1_024,
+    );
+    assert.throws(() => generationEnvelopeFromEnv({ ...budget }, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_FLOOR must be set/);
+    assert.throws(() => generationEnvelopeFromEnv({ ...budget, PLURNK_PROVIDERS_OUTPUT_FLOOR: "0" }, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_FLOOR must be "<pct>%" or a positive integer token count/);
+    assert.deepEqual(
+        resolveGenerationEnvelopeFromEnv({ ...budget }, 100_000),
+        { outputBudget: 35_000, outputFloor: null, reasoningBudget: null },
+        "the tolerant resolver reads the floor optionally",
+    );
+});
+
+test("{§provider-output-floor} the floor is capped by the output budget", () => {
+    assert.deepEqual(
+        generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, "x", 1_000_000, null),
+        { outputBudget: 1_000, outputFloor: 1_000, reasoningBudget: null },
+        "a floor the budget cannot hold clamps to the budget, never refuses",
+    );
+    assert.equal(
+        generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1_000_000, 65_536).outputFloor,
+        65_536,
+        "the model's own output limit caps the floor as it caps the budget",
+    );
+    assert.equal(resolveGenerationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, 1_000_000).outputFloor, 1_000);
+});
+
+test("envelope knobs are per-alias scopable (measured envelope per box)", () => {
     const env = {
+        ...floor,
         PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
         PLURNK_PROVIDERS_REASONING_BUDGET: "10%",
         PLURNK_PROVIDERS_OUTPUT_BUDGET_turboderp: "8192",
         PLURNK_PROVIDERS_REASONING_BUDGET_turboderp: "4096",
     } as NodeJS.ProcessEnv;
-    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "turboderp"), "x", 49_152, null), { outputBudget: 8192, reasoningBudget: 4096 });
-    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, reasoningBudget: 10_000 });
+    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "turboderp"), "x", 49_152, null), { outputBudget: 8192, outputFloor: 4915, reasoningBudget: 4096 });
+    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, outputFloor: 10_000, reasoningBudget: 10_000 });
 });
 
 test("retired additive reserve knobs fail rather than creating a dual contract", () => {

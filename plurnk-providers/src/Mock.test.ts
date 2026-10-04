@@ -165,20 +165,39 @@ test("Mock: exhausted queue throws a ProviderError carrying its settled accounti
 test("the generation-envelope getters are on the Provider interface", () => {
     const previous = {
         output: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET,
+        floor: process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR,
         reasoning: process.env.PLURNK_PROVIDERS_REASONING_BUDGET,
     };
     try {
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "35%";
+        process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR = "10%";
         process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "10%";
         const p: Provider = new Mock({ contextWindow: 49152, responses: [] });
         assert.equal(p.outputBudget, 17_203);
+        assert.equal(p.outputFloor, 4_915);
         assert.equal(p.reasoningBudget, 4_915);
         assert.equal(p.inputCapacity, 31_949);
+        assert.equal(p.inputWall, 44_237, "the wall is the window less the floor ({§provider-output-floor})");
     } finally {
         if (previous.output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
         else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previous.output;
+        if (previous.floor === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR;
+        else process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR = previous.floor;
         if (previous.reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previous.reasoning;
+    }
+});
+
+test("{§provider-output-floor} an empty output floor leaves a Mock without a wall", () => {
+    const panel = process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR;
+    process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR = "";
+    try {
+        const m = new Mock({ contextWindow: 49152, responses: [] });
+        assert.equal(m.outputFloor, null);
+        assert.equal(m.inputWall, null);
+    } finally {
+        if (panel === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR;
+        else process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR = panel;
     }
 });
 

@@ -395,7 +395,7 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
     ]);
 });
 
-test("(#482) an exact-counting transport flexes the wire grant; the floor holds at capacity", async () => {
+test("{§provider-flexed-allowance} an exact-counting transport flexes the wire grant up past the reservation and down to the remainder", async () => {
     const seen: Array<Record<string, unknown>> = [];
     let promptTokens = 100;
     const providerFetch: typeof globalThis.fetch = async (input, init) => {
@@ -413,13 +413,14 @@ test("(#482) an exact-counting transport flexes the wire grant; the floor holds 
         promptTokensUrl: "https://example.test/input-tokens",
         contextWindow: 48_000,
         outputBudget: 8_000,
+        outputFloor: 4_000,
     });
     await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
     assert.equal(seen[0]?.max_tokens, 48_000 - 100 - 256, "a small exact prompt harvests the window slack — silent wire tolerance");
 
-    promptTokens = 40_000;
+    promptTokens = 42_000;
     await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "full" }] });
-    assert.equal(seen[1]?.max_tokens, 8_000, "a packet at capacity keeps the guaranteed floor");
+    assert.equal(seen[1]?.max_tokens, 48_000 - 42_000 - 256, "a packet into the reservation is granted the remainder, above the floor");
 });
 
 test("(#482) conformance judges the grant: tolerated overflow is accepted, past-the-grant is refused", async () => {
@@ -772,7 +773,8 @@ test("{§provider-capacity-failure} an exact request overflow rejects before obs
         url: "http://x/v1/chat/completions",
         contextWindow: 100,
         outputBudget: 40,
-        countPromptTokens: () => ({ kind: "exact", tokens: 61, source: "test:exact" }),
+        outputFloor: 10,
+        countPromptTokens: () => ({ kind: "exact", tokens: 91, source: "test:exact" }),
         fetchTimeoutMs: 1000,
         temperature: 0.2,
         repeatPenalty: 1.15,
@@ -791,6 +793,7 @@ test("{§provider-capacity-failure} an exact request overflow rejects before obs
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "capacity_exceeded");
+            assert.match(error.message, /91 input tokens, exceeding its 90 token input wall/);
             assert.equal(error.problem.capacityStage, "preflight");
             assert.equal(error.capacity?.decision, "reject");
             assert.deepEqual(error.accounting, []);
@@ -808,6 +811,7 @@ test("an estimate above the known envelope defers to the provider", async () => 
         url: "http://x/v1/chat/completions",
         contextWindow: 100,
         outputBudget: 40,
+        outputFloor: 10,
         countPromptTokens: () => ({
             kind: "estimate",
             tokens: 61,
@@ -823,7 +827,7 @@ test("an estimate above the known envelope defers to the provider", async () => 
     const response = await p.generate({ workerId: "capacity", messages: [] });
     assert.equal(response.capacity.decision, "defer");
     assert.equal(calls.length, 1);
-    assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 40);
+    assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 10, "the estimate's grant is bounded by its remainder, at the floor");
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {

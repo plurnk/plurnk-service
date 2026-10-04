@@ -6,7 +6,7 @@ import Meta, {
     type PluginAttribution,
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
-import { effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, requestCapacityDecision } from "./capacity.ts";
+import { WIRE_FLEX_MARGIN, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget, flexedResponseMax, requestCapacityDecision } from "./capacity.ts";
 import type { InputModality, Effort } from "./types.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
@@ -94,12 +94,14 @@ export default class Pool implements Provider {
     get maxInputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxInputTokens); }
     get maxOutputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxOutputTokens); }
     get outputBudget(): number | null { return this.#minimumKnown((provider) => provider.outputBudget); }
+    get outputFloor(): number | null { return this.#minimumKnown((provider) => provider.outputFloor); }
     get reasoningBudget(): number | null { return this.#minimumKnown((provider) => provider.reasoningBudget); }
     get supportedEfforts(): readonly Effort[] {
         return this.#backends[0].supportedEfforts.filter((policy) =>
             this.#backends.every((provider) => provider.supportedEfforts.includes(policy)));
     }
     get inputCapacity(): number | null { return this.#minimumKnown((provider) => provider.inputCapacity); }
+    get inputWall(): number | null { return this.#minimumKnown((provider) => provider.inputWall); }
 
     // Served id / capabilities aggregate CONSERVATIVELY: a worker could land on any
     // backend, so claim `constrainsOutput` only if EVERY backend does, and
@@ -168,8 +170,11 @@ export default class Pool implements Provider {
                 maxOutputTokens: provider.maxOutputTokens,
                 contextWindow: provider.contextWindow,
             });
+            const outputFloor = effectiveOutputFloor({ configured: provider.outputFloor, outputBudget });
             return {
+                provider,
                 outputBudget,
+                outputFloor,
                 reasoningBudget: effectiveReasoningBudget({
                     configured: provider.reasoningBudget,
                     outputBudget,
@@ -179,6 +184,11 @@ export default class Pool implements Provider {
                     maxInputTokens: provider.maxInputTokens,
                     outputBudget,
                 }),
+                inputWall: effectiveInputWall({
+                    contextWindow: provider.contextWindow,
+                    maxInputTokens: provider.maxInputTokens,
+                    outputFloor,
+                }),
             };
         });
         const minimum = (values: readonly (number | null)[]): number | null =>
@@ -186,17 +196,29 @@ export default class Pool implements Provider {
                 ? null
                 : Math.min(...values as number[]);
         const measurement = await this.countPromptTokens(messages, signal);
-        const inputCapacity = minimum(envelopes.map((envelope) => envelope.inputCapacity));
+        // {§provider-capacity-admission}: decided against the smallest member wall.
+        const inputWall = minimum(envelopes.map((envelope) => envelope.inputWall));
         return {
-            decision: requestCapacityDecision(inputCapacity, measurement),
+            decision: requestCapacityDecision(inputWall, measurement),
             contextWindow: this.contextWindow,
             maxInputTokens: this.maxInputTokens,
             maxOutputTokens: this.maxOutputTokens,
             outputBudget: minimum(envelopes.map((envelope) => envelope.outputBudget)),
+            outputFloor: minimum(envelopes.map((envelope) => envelope.outputFloor)),
             reasoningBudget: minimum(envelopes.map((envelope) => envelope.reasoningBudget)),
-            inputCapacity,
-            // A pool spans members whose windows differ; it never flexes ({§provider-flexed-allowance}).
-            responseMax: minimum(envelopes.map((envelope) => envelope.outputBudget)),
+            inputCapacity: minimum(envelopes.map((envelope) => envelope.inputCapacity)),
+            inputWall,
+            // A pool spans members whose windows differ; it grants the reservation, bounded by each
+            // member's remainder and never below its floor ({§provider-flexed-allowance}).
+            responseMax: minimum(envelopes.map(({ provider, outputBudget, outputFloor }) => flexedResponseMax({
+                contextWindow: provider.contextWindow,
+                maxOutputTokens: provider.maxOutputTokens,
+                outputBudget,
+                outputFloor,
+                promptTokens: measurement.kind === "unavailable" ? null : measurement.tokens,
+                margin: WIRE_FLEX_MARGIN,
+                exact: false,
+            }))),
             prompt: measurement,
         };
     }

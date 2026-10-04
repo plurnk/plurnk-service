@@ -95,12 +95,12 @@ fails hard.
 
 §provider-capacity-admission `assessRequestCapacity` intersects every known
 physical input constraint: independent `maxInputTokens` and
-`contextWindow - outputBudget`. Its result is `admit`, `reject`, or `defer` and
+`contextWindow - outputFloor`, the input wall ({§provider-output-floor}). Its result is `admit`, `reject`, or `defer` and
 retains the complete limit and measurement evidence. Exact fit admits; exact
-overflow rejects. A proven upper bound admits only when it fits. Unknown limits,
+overflow of the wall rejects; a prompt between the curation reservation and the wall is admitted with its grant flexed down. A proven upper bound admits only when it fits. Unknown limits,
 an upper bound above a limit, estimates, and unavailable measurements defer to
-the upstream provider as capacity oracle. The same stable intersection is
-exposed as `inputCapacity`; `null` means the available limits cannot establish
+the upstream provider as capacity oracle. The curation reservation's intersection, `maxInputTokens` and `contextWindow - outputBudget`, is
+exposed as `inputCapacity`, the line Core packs the room against; the wall's, as `inputWall`; `null` means the available limits cannot establish
 one. A known combined context and output budget must leave positive input
 capacity. Consumers may display or use that fact as policy, but MUST NOT
 substitute their own content heuristic for request-shaped admission.
@@ -537,7 +537,8 @@ Provider and model facts resolve independently:
 | Context window | Catalog metadata or local endpoint probe. | `PLURNK_PROVIDERS_CONTEXT_WINDOW`. | Minimum when both exist; sole value otherwise. Cataloged cloud miss fails construction; compatible probe miss remains `null` with one warning. |
 | Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
-| Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant may expand under {§provider-flexed-allowance}. |
+| Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant flexes under {§provider-flexed-allowance}. |
+| Output floor | None. | `PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped as `10%`. | The least response room any request keeps: percentage of effective context or absolute count, capped by the output budget; `window − floor` is the input wall ({§provider-output-floor}). |
 | Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable worker selection thereafter. | A supported member of {§effort-wire}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
@@ -754,17 +755,18 @@ request-accounting row. Capacity failures are not connectivity failures and are
 never retried by the provider scheduler; bounded packet recovery belongs to the
 consumer.
 
-§provider-flexed-allowance **Overflow is tolerated, never invited.** The
-configured output budget is the floor curation packs the input against
+§provider-flexed-allowance **The grant is the window's remainder, between the floor and the model's limit.** The
+configured output budget is the reservation curation packs the input against
 (`window − outputBudget`), and it is the only allowance the model is ever
-shown — the packet's disclosed `tokensResponseMax` stays the configured floor
-so the response discipline it teaches never varies. The wire is quietly
-generous: a transport with an exact prompt count (llama-server's input-token
-endpoint) grants `max(outputBudget, window − promptTokens − 256)`, capped by
-the model's own output limit, so a response overflowing the disclosed floor
-completes whenever the window's unclaimed room can hold it. Every other
-measurement kind — and any pool — keeps the floor, because an estimate proves
-nothing about the true remainder. A response exceeding even the grant is cut,
+shown — the packet's disclosed `tokensResponseMax` stays the configured reservation
+so the response discipline it teaches never varies. The wire grants the remainder: with an exact prompt count
+(llama-server's input-token endpoint) `window − promptTokens − 256`, clamped to no less than the
+output floor and no more than the model's own output limit, so a response overflowing the disclosed reservation
+completes whenever the window's unclaimed room can hold it, and a prompt that ate into the reservation still leaves the floor. Every other
+measurement kind — and any pool — grants the reservation, clamped by the same remainder taken from the prompt's estimate so the wire never asks the window for more than it has; an estimate proves
+nothing about the true remainder, so it never rejects.
+
+§provider-output-floor **The floor is the wall's other side.** `PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped as `10%`, is the least response room any request keeps, capped by the output budget; `window − floor`, intersected with `maxInputTokens`, is the physical input wall exposed as `inputWall`. A request under the curation reservation is the ordinary case; a request between the reservation and the wall is admitted with its grant flexed down to the remainder; an exact prompt over the wall is rejected before I/O; an estimate over the wall defers to the upstream provider as capacity oracle with its grant at the floor. Core consults the wall, never the reservation, to end a loop ({§context-wall} in the core contract). A response exceeding even the grant is cut,
 and the notice names the true per-call grant (`capacity.responseMax` on the
 response) — the tolerance's honest edge, never worse than the fixed allowance
 it forgives.

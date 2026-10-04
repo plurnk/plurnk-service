@@ -103,10 +103,16 @@ export interface ProviderRequestCapacity {
     readonly maxInputTokens: number | null;
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
+    // {§provider-output-floor}: the least response room this request keeps; never above outputBudget.
+    readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
+    // {§provider-capacity-admission}: the curation reservation's line (maxInputTokens and
+    // window − outputBudget) and the physical input wall (maxInputTokens and window − outputFloor)
+    // the decision was taken against.
     readonly inputCapacity: number | null;
-    // {§provider-flexed-allowance} (#482): the response allowance actually
-    // granted this request — the floor, or the exactly-measured slack above it.
+    readonly inputWall: number | null;
+    // {§provider-flexed-allowance}: the response allowance actually granted this
+    // request — the window's remainder, between the floor and the model's limit.
     readonly responseMax: number | null;
     readonly prompt: PromptTokenMeasurement;
 }
@@ -271,12 +277,18 @@ export interface Provider {
     readonly maxInputTokens: number | null;
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
+    // {§provider-output-floor}: the least response room any request keeps; never above outputBudget.
+    readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
     // Exact durable policies this adapter can represent without coercion.
     readonly supportedEfforts: readonly Effort[];
     // {§provider-input-modalities} — the native non-text parts the route's model accepts.
     readonly inputModalities: ReadonlySet<InputModality>;
+    // {§provider-capacity-admission}: the reservation's line Core packs the room against, and the
+    // physical input wall ({§provider-output-floor}) that ends a loop; null when the limits
+    // cannot establish one.
     readonly inputCapacity: number | null;
+    readonly inputWall: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a
     // /v1/models-shaped probe (llama-server today; any such backend). For a local

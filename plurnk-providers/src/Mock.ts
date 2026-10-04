@@ -12,7 +12,7 @@ import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { EFFORTS } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";
-import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
 
 export type MockAssistant = {
     content: string;
@@ -53,19 +53,22 @@ export default class Mock implements Provider {
     // Every request as received, newest last — the witness for what reached the provider.
     readonly received: ChatMessage[][] = [];
     #outputBudget: number | null;
+    #outputFloor: number | null;
     #reasoningBudget: number | null;
     #queue: MockResponse[];
 
     // {§provider-generation-envelope} Mock resolves the same generation
     // envelope as a real provider, but tolerates absent policy because it is
     // also the universal test fixture. No output budget means its context
-    // window alone cannot determine an input capacity. Mock has no alias
-    // identity, so it reads the bare knobs.
+    // window alone cannot determine an input capacity; no output floor, no
+    // input wall ({§provider-output-floor}). Mock has no alias identity, so it
+    // reads the bare knobs.
     constructor({ contextWindow, responses, inputModalities = [] }: { contextWindow: number | null; responses: MockResponse[]; inputModalities?: Iterable<InputModality> }) {
         this.#contextWindow = contextWindow;
         this.#inputModalities = new Set(inputModalities);
         const envelope = resolveGenerationEnvelopeFromEnv(process.env, contextWindow);
         this.#outputBudget = envelope.outputBudget;
+        this.#outputFloor = envelope.outputFloor;
         this.#reasoningBudget = envelope.reasoningBudget;
         this.#queue = [...responses];
     }
@@ -75,6 +78,7 @@ export default class Mock implements Provider {
     get maxInputTokens(): number | null { return null; }
     get maxOutputTokens(): number | null { return null; }
     get outputBudget(): number | null { return this.#outputBudget; }
+    get outputFloor(): number | null { return this.#outputFloor; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
     get supportedEfforts() { return EFFORTS; }
     get inputCapacity(): number | null {
@@ -82,6 +86,13 @@ export default class Mock implements Provider {
             contextWindow: this.#contextWindow,
             maxInputTokens: this.maxInputTokens,
             outputBudget: this.#outputBudget,
+        });
+    }
+    get inputWall(): number | null {
+        return effectiveInputWall({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: this.maxInputTokens,
+            outputFloor: this.#outputFloor,
         });
     }
     get model(): string { return "mock"; }
@@ -116,6 +127,7 @@ export default class Mock implements Provider {
             maxInputTokens: null,
             maxOutputTokens: null,
             outputBudget,
+            outputFloor: this.#outputFloor,
             reasoningBudget,
             measurement: await this.countPromptTokens(messages),
         });
@@ -129,7 +141,7 @@ export default class Mock implements Provider {
         this.received.push(messages.map((message) => ({ ...message })));
         const capacity = await this.assessRequestCapacity(messages, maxOutputTokens);
         if (capacity.decision === "reject") {
-            throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its exact input capacity.", {
+            throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its input wall.", {
                 capacity,
                 extensions: { capacityStage: "preflight", capacity },
             });

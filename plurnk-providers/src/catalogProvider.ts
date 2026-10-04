@@ -267,6 +267,7 @@ export const providerFromSdkModel = ({
         maxInputTokens,
         maxOutputTokens,
         outputBudget: envelope.outputBudget,
+        outputFloor: envelope.outputFloor,
         reasoningBudget: effort.budget,
         supportedEfforts: efforts,
         ...adaptiveEffort,

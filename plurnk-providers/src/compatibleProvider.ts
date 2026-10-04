@@ -187,6 +187,7 @@ export const compatibleProviderFromEnv = async (
         maxInputTokens: null,
         maxOutputTokens: null,
         outputBudget: envelope.outputBudget,
+        outputFloor: envelope.outputFloor,
         reasoningBudget: effort.budget,
         supportedEfforts,
         fetchTimeoutMs: timeout,

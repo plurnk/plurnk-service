@@ -24,7 +24,7 @@ import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
-import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget } from "./capacity.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
@@ -87,6 +87,7 @@ export type AiSdkProviderConfig = {
     maxInputTokens?: number | null;
     maxOutputTokens?: number | null;
     outputBudget?: number | null;
+    outputFloor?: number | null;               // {§provider-output-floor} — the least response room any request keeps
     reasoningBudget?: number | null;
     supportedEfforts?: readonly Effort[];
     // Native AI SDK projection for adaptive. Models.dev supplies the route's
@@ -250,6 +251,7 @@ export default class AiSdkProvider implements Provider {
     #maxInputTokens: number | null;
     #maxOutputTokens: number | null;
     #outputBudget: number | null;
+    #outputFloor: number | null;
     #reasoningBudget: number | null;
     #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     #effort: EffortSetting;
@@ -319,6 +321,7 @@ export default class AiSdkProvider implements Provider {
         this.#maxInputTokens = config.maxInputTokens ?? null;
         this.#maxOutputTokens = config.maxOutputTokens ?? null;
         this.#outputBudget = config.outputBudget ?? null;
+        this.#outputFloor = config.outputFloor ?? null;
         this.#reasoningBudget = config.reasoningBudget ?? null;
         this.#additiveReasoningProvider = config.additiveReasoningProvider;
         this.#effort = config.effort;
@@ -421,12 +424,15 @@ export default class AiSdkProvider implements Provider {
             ["maxInputTokens", this.#maxInputTokens],
             ["maxOutputTokens", this.#maxOutputTokens],
             ["outputBudget", this.#outputBudget],
+            ["outputFloor", this.#outputFloor],
             ["reasoningBudget", this.#reasoningBudget],
         ] as const) {
             if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) {
                 throw new Error(`${this.#source}: ${name} must be a positive safe integer or null`);
             }
         }
+        // {§provider-output-floor}: the floor is never above the output budget.
+        this.#outputFloor = effectiveOutputFloor({ configured: this.#outputFloor, outputBudget: this.#outputBudget });
         if (this.#reasoningBudget !== null
             && this.#outputBudget !== null
             && this.#reasoningBudget >= this.#outputBudget) {
@@ -466,6 +472,7 @@ export default class AiSdkProvider implements Provider {
     get maxInputTokens(): number | null { return this.#maxInputTokens; }
     get maxOutputTokens(): number | null { return this.#maxOutputTokens; }
     get outputBudget(): number | null { return this.#outputBudget; }
+    get outputFloor(): number | null { return this.#outputFloor; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
     get supportedEfforts(): readonly Effort[] { return this.#supportedEfforts; }
     get inputCapacity(): number | null {
@@ -473,6 +480,14 @@ export default class AiSdkProvider implements Provider {
             contextWindow: this.#contextWindow,
             maxInputTokens: this.#maxInputTokens,
             outputBudget: this.#outputBudget,
+        });
+    }
+    // {§provider-output-floor}: the physical input wall, the window less the floor.
+    get inputWall(): number | null {
+        return effectiveInputWall({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: this.#maxInputTokens,
+            outputFloor: this.#outputFloor,
         });
     }
     get model(): string { return this.#model; }
@@ -563,6 +578,7 @@ export default class AiSdkProvider implements Provider {
             maxInputTokens: this.#maxInputTokens,
             maxOutputTokens: this.#maxOutputTokens,
             outputBudget,
+            outputFloor: this.#outputFloor,
             reasoningBudget,
             measurement: await this.countPromptTokens(messages, signal),
         });
@@ -619,12 +635,12 @@ export default class AiSdkProvider implements Provider {
             throw new ProviderError(
                 this.#source,
                 "capacity_exceeded",
-                `The exact provider request uses ${capacity.prompt.tokens} input tokens, exceeding its ${capacity.inputCapacity} token input capacity.`,
+                `The exact provider request uses ${capacity.prompt.tokens} input tokens, exceeding its ${capacity.inputWall} token input wall.`,
                 { capacity, extensions: { capacityStage: "preflight", capacity } },
             );
         }
-        // {§provider-flexed-allowance} (#482): the wire grants the flexed
-        // allowance — the floor, or the exactly-measured slack above it.
+        // {§provider-flexed-allowance}: the wire grants the flexed allowance —
+        // the window's remainder, between the floor and the model's limit.
         const effectiveMaxOutputTokens = capacity.responseMax ?? capacity.outputBudget ?? undefined;
         const nativeReasoningBudget = this.#requestBody.nativeReasoningBudget(
             capacity.outputBudget,
@@ -1024,9 +1040,8 @@ export default class AiSdkProvider implements Provider {
             ...(notices !== undefined ? { notices } : {}),
         };
         // {§provider-flexed-allowance} (#482): conformance judges the GRANT the
-        // wire actually sent, not the configured floor — output between the two
-        // is overflow tolerance working, never a provider fault. Run7 loop-death
-        // was this guard still holding the floor after the flex landed.
+        // wire actually sent, not the configured reservation — output between
+        // the two is overflow tolerance working, never a provider fault.
         const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
         if (grantedOutput !== null
             && usage?.outputTokens !== undefined

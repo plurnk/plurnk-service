@@ -151,9 +151,11 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
             maxInputTokens: null,
             maxOutputTokens: null,
             outputBudget: null,
+            outputFloor: null,
             responseMax: null,
             reasoningBudget: null,
             inputCapacity: null,
+            inputWall: null,
             prompt: {
                 kind: "unavailable",
                 source: "fixture",

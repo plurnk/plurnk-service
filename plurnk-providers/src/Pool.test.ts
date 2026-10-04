@@ -4,7 +4,7 @@ import Pool from "./Pool.ts";
 import { ProviderError } from "./errors.ts";
 import type { PromptTokenMeasurement, Provider, ProviderResponse } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
-import { effectiveInputCapacity } from "./capacity.ts";
+import { effectiveInputCapacity, effectiveInputWall } from "./capacity.ts";
 
 test.afterEach(() => { resetEmittedWarnings(); });
 
@@ -29,8 +29,10 @@ const RESP: ProviderResponse = {
         maxInputTokens: null,
         maxOutputTokens: null,
         outputBudget: 12_000,
+        outputFloor: 4_800,
         reasoningBudget: null,
         inputCapacity: 36_000,
+        inputWall: 43_200,
         responseMax: 12_000,
         prompt: { kind: "exact", tokens: 0, source: "test:exact" },
     },
@@ -40,7 +42,7 @@ type FakeOpts = {
     model?: string; window?: number | null; servedModel?: string;
     constrainsOutput?: boolean; requiresOutputBudget?: boolean;
     maxInputTokens?: number | null; maxOutputTokens?: number | null;
-    outputBudget?: number | null; reasoningBudget?: number | null;
+    outputBudget?: number | null; outputFloor?: number | null; reasoningBudget?: number | null;
     tokenize?: boolean; throws?: Error;
     promptMeasurement?: PromptTokenMeasurement;
 };
@@ -54,12 +56,18 @@ const backend = (opts: FakeOpts = {}) => {
         maxInputTokens: opts.maxInputTokens ?? null,
         maxOutputTokens: opts.maxOutputTokens ?? null,
         outputBudget: opts.outputBudget ?? null,
+        outputFloor: opts.outputFloor ?? null,
         reasoningBudget: opts.reasoningBudget ?? null,
         supportedEfforts: ["off", "adaptive", "low", "medium", "high"],
         inputCapacity: effectiveInputCapacity({
             contextWindow: opts.window === undefined ? 48_000 : opts.window,
             maxInputTokens: opts.maxInputTokens ?? null,
             outputBudget: opts.outputBudget ?? null,
+        }),
+        inputWall: effectiveInputWall({
+            contextWindow: opts.window === undefined ? 48_000 : opts.window,
+            maxInputTokens: opts.maxInputTokens ?? null,
+            outputFloor: opts.outputFloor ?? null,
         }),
         ...(opts.servedModel !== undefined ? { servedModel: opts.servedModel } : {}),
         ...(opts.constrainsOutput !== undefined ? { constrainsOutput: opts.constrainsOutput } : {}),
@@ -76,8 +84,10 @@ const backend = (opts: FakeOpts = {}) => {
             maxInputTokens: opts.maxInputTokens ?? null,
             maxOutputTokens: opts.maxOutputTokens ?? null,
             outputBudget: maxOutputTokens ?? opts.outputBudget ?? null,
+            outputFloor: opts.outputFloor ?? null,
             reasoningBudget: opts.reasoningBudget ?? null,
             inputCapacity: null,
+            inputWall: null,
             responseMax: maxOutputTokens ?? opts.outputBudget ?? null,
             prompt: opts.promptMeasurement ?? {
                 kind: "exact",
@@ -182,17 +192,20 @@ test("Pool: prompt evidence is conservative across every routable backend", asyn
 });
 
 test("Pool: request capacity uses the smallest complete backend envelope", async () => {
-    const prompt = { kind: "exact", tokens: 11, source: "test:exact" } as const;
-    const narrowInput = backend({ window: 100, outputBudget: 90, promptMeasurement: prompt }).b;
-    const narrowContext = backend({ window: 50, outputBudget: 10, promptMeasurement: prompt }).b;
+    const prompt = { kind: "exact", tokens: 21, source: "test:exact" } as const;
+    const narrowInput = backend({ window: 100, outputBudget: 90, outputFloor: 80, promptMeasurement: prompt }).b;
+    const narrowContext = backend({ window: 50, outputBudget: 10, outputFloor: 5, promptMeasurement: prompt }).b;
     const pool = new Pool([narrowInput, narrowContext]);
 
     assert.equal(pool.inputCapacity, 10);
+    assert.equal(pool.inputWall, 20);
     const capacity = await pool.assessRequestCapacity([]);
     assert.equal(capacity.contextWindow, 50);
     assert.equal(capacity.outputBudget, 10);
+    assert.equal(capacity.outputFloor, 5);
     assert.equal(capacity.inputCapacity, 10, "independent minima do not synthesize a nonexistent 40-token envelope");
-    assert.equal(capacity.decision, "reject");
+    assert.equal(capacity.inputWall, 20, "the wall is the smallest member wall, not the pool window less the pool floor");
+    assert.equal(capacity.decision, "reject", "an exact prompt over the pool's wall is rejected ({§provider-capacity-admission})");
 });
 
 // --- dispatch: round-robin + affinity ---
