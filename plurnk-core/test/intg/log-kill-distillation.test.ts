@@ -58,7 +58,7 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
     });
 });
 
-test("{§log-kill-distillation} a failed log KILL keeps its body out of the log: nothing was retired, so nothing is distilled", async () => {
+test("{§log-kill-distillation} a failed log KILL still keeps its body as the model's NOTE, named by the target as written; the miss is the receipt beside it", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````NOTE\nwrote\n````",
         "````KILL (log:///9/9/9)\nnothing here\n````\n````NOTE\nchecked\n````",
@@ -71,11 +71,22 @@ test("{§log-kill-distillation} a failed log KILL keeps its body out of the log:
             const result = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
-            const history = await db.test_log_entries_by_loop.all<{ op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; origin: string }>({ loop_id: result.loopId });
-            assert.deepEqual(history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model").map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
+            const history = await db.test_log_entries_by_loop.all<{
+                op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; attrs: string | null; tx: string; origin: string;
+            }>({ loop_id: result.loopId });
+            const curation = history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model");
+            assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
                 { op: "KILL", pathname: "/9/9/9", sequence: 2, status_rx: 404 },
                 { op: "NOTE", pathname: null, sequence: 3, status_rx: 200 },
-            ], "the miss is the receipt; the body does not become a NOTE");
+                { op: "NOTE", pathname: null, sequence: 4, status_rx: 200 },
+            ], "the miss is the receipt, and the body still lands as the NOTE after it");
+            const [, kept] = curation;
+            assert.deepEqual(JSON.parse(kept!.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
+            assert.equal((JSON.parse(kept!.tx) as { body: string }).body, "nothing here");
+            const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3]! }))!.packet);
+            assert.equal(rows(next, "KILL").length, 1, "a missed log KILL's receipt renders");
+            assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-3), ["1:wrote\n", "1:nothing here\n", "1:checked\n"],
+                "the model possesses what it wrote, and may retire it (turn zero's survey NOTE precedes the model's rows)");
         } finally { ws.close(); }
     });
 });

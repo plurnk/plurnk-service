@@ -483,10 +483,12 @@ export default class Dispatcher {
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
         }
-        // {§log-kill-distillation} — a log KILL's body is the model's own NOTE row, written after the
-        // kill's receipt at the next sequence, so it never falls inside the kill's own selection.
+        // {§log-kill-distillation} — a log KILL's body is the model's own NOTE row whatever the kill's
+        // outcome: written after the kill's receipt at the next sequence, so it never falls inside the
+        // kill's own selection, and kept when the kill misses, because what the model wrote about its
+        // environment is the model's to retire, never the daemon's to drop.
         const distillation = Dispatcher.#distillationOf(context.statement);
-        if (distillation !== null && result.status < 300) {
+        if (distillation !== null) {
             const note: NoteStatement = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: distillation, position: context.statement.position };
             this.#distillations.set(note, (context.statement as KillStatement).target!.raw);
             const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
