@@ -9,9 +9,6 @@
 body?
 ```
 
-```exampleCopyOrMove (source) <scope|range>? (destination) <scope|range>? [metadata]? <!-- aside -->?
-```
-
 ## Plurnk Workflow OPs
 
 * NOTE: Record all conclusions, decisions, findings, and plans.
