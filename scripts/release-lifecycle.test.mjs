@@ -65,7 +65,7 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
 
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
     assert.doesNotMatch(gateSweep, /prepublishOnly/);
-    assert.match(gateSweep, /\["audit", "--audit-level=moderate"\]/);
+    assert.match(gateSweep, /\["audit", "--audit-level=moderate", "--omit=dev"\]/, "the audit covers what ships; a dev-only tool never reaches a user (#993)");
     assert.match(gateSweep, /npm_config_fetch_retries: "0"/, "the one deliberate audit never retries into a drop-limit (#649)");
     assert.match(gateSweep, /npm_config_fetch_timeout: "60000"/, "the audit fails fast and never hangs a release (#649)");
     assert.match(gateSweep, /audit UNREACHABLE[\s\S]*continuing/, "an unreachable advisory endpoint warns and continues (#649)");
@@ -79,7 +79,7 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const buildPolicy = gateSweep.indexOf('["scripts/package-build-policy.mjs"]');
     const packedCandidates = gateSweep.indexOf('["scripts/package-provenance.mjs", "--pack"]');
     const packageShape = gateSweep.indexOf('["scripts/package-publint.mjs"]');
-    const dependencyAudit = gateSweep.indexOf('["audit", "--audit-level=moderate"]');
+    const dependencyAudit = gateSweep.indexOf('["audit", "--audit-level=moderate", "--omit=dev"]');
     assert.ok(buildPolicy >= 0 && buildPolicy < packedCandidates);
     assert.ok(packedCandidates < packageShape && packageShape < dependencyAudit);
     assert.match(

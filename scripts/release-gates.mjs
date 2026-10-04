@@ -26,7 +26,8 @@ await run("node", publintArgs, { maxBuffer: 64 * 1024 * 1024 });
 // ≥moderate finding still fails the gate. (The endpoint drops over-limit requests instead
 // of answering 429, and npm's default retries re-feed the limit.)
 try {
-    await run("npm", ["audit", "--audit-level=moderate"], {
+    // What ships is what is audited: a dev-only tool never reaches a user (Matt, 2026-10-03; #993).
+    await run("npm", ["audit", "--audit-level=moderate", "--omit=dev"], {
         maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, npm_config_audit: "true", npm_config_fetch_retries: "0", npm_config_fetch_timeout: "60000" },
     });

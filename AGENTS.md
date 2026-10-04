@@ -59,7 +59,8 @@ Where things are, for an agent that has to act before it has read everything:
   run `npm run release:publish -- <client-version>` under `setsid` with its output in a log:
   it outruns a ten-minute shell cap, so watch the log, never the registry. It re-runs the
   drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
-  advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding), then
+  advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding in what
+  ships: the audit omits dev dependencies, which never reach a user), then
   publishes the service and the client, signs and mirrors their `v<version>` tags,
   and creates the GitHub Release entries. GitHub CLI write access is preflighted.
   `npm run release:finalize -- <service-version> <client-version>` repairs missing
