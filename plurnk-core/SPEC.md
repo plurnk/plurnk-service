@@ -363,6 +363,7 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Project filesystem | `*` | File cap below; `project root member files` |
 | Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
 | Named scratch entries | `worker://<worker>/*` | Markerless; `worker knowledgebase entries` |
+| The worker's own reasoning | `reasoning://<worker>/**` | Markerless; `this worker's reasoning, by loop and turn` |
 
 Only the three namespace surveys carry asides; the other targets name
 their surface. The word `skills` names Agent Skills and nothing else.
@@ -382,7 +383,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real reasoning-only `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its authored reasoning contains the orientation NOTE, READ/FIND surveys and its own reasoning READ ({§reasoning-initial-read}); it is stored before those operations execute through {§reasoning-operations} and {§op-execution-order}. No content program or emission row is fabricated ({§emission-row}). The first request sees ordinary results and the reasoning READ, not an assistant-content copy of the surveys. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` operation turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program — the orientation NOTE and the READ/FIND surveys — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning and reads none back. No emission row is fabricated ({§emission-row}): the first request sees the surveys' ordinary results, never an assistant-content copy of the program. The initial message arrives as an inbound SEND in the first model turn ({§message-arrival}); initialization never READs it, and neither initialization nor later turns manufacture a task inventory. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -2223,23 +2224,10 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a model reasoning source; missing provider reasoning creates no substitute. A non-model producer may record its own authored rationale under {§turn-source-resources}. |
 | Resource | `reasoning://<worker>/<loop>/<turn>` is immutable text/plain source belonging to the named workspace worker's turn under {§turn-source-resources}. Every workspace actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
-| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
+| Delivery | Initialization authors no reasoning ({§worker-initialization-entry}); every observation of reasoning is a deliberate READ. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
-
-### §reasoning-initial-read Initial reasoning observation
-
-The initialization turn records its `_plurnk`-authored rationale and complete
-NOTE/FIND/READ program as one reasoning source before dispatch. The shared
-reasoning extractor ({§reasoning-operations}) admits every operation once, in
-source order. Its final READ observes that same reasoning source, including
-the READ itself; this is an ordinary read of already stored text, not recursion
-or a future-source subscription. The initial message arrives separately as an
-inbound SEND ({§message-arrival}). Neither initialization nor later turns
-manufacture a task inventory.
-That READ carries no scope and lands under {§context-fit}. Source retention, deliberate
-READs, and client streaming are independent; no other automatic reasoning READ exists.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 

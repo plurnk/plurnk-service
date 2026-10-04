@@ -61,7 +61,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.deepEqual(history.filter(({ op, pathname }) => op === "KILL" && pathname === null)
                 .map(({ status_rx }) => status_rx), [200], "the final KILL concludes without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 2, "the broad sweep includes initialization's reasoning READ and the file READ");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§worker-initialization-entry})");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {
@@ -76,7 +76,6 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             for (const index of mock.received.keys()) {
                 assert.ok(programs.some(({ kind, turn_id }) => kind === "ops" && turn_id === ids[index + 1]), "every model turn retains its content source after curation");
             }
-            assert.ok(programs.some(({ kind, turn_id }) => kind === "reasoning" && turn_id === ids[0]), "initialization retains its reasoning source");
         } finally { ws.close(); }
     });
 });

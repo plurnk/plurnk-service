@@ -49,7 +49,6 @@ export const resolveOperatorGrammarPath = (value: string): string => {
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
-import ReasoningView from "./ReasoningView.ts";
 import { RECEIPT_RESERVE, reserved, type ContextFit } from "./ContextFit.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence, type TurnRow } from "./Turn.ts";
@@ -728,7 +727,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             initializationStatements.push({
                 op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
-                body: `This turn surveys tooling and environment. The log records results; reasoning://${workerName}/${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
+                body: "This turn surveys tooling and environment.", position: UNKNOWN_POSITION,
             });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
@@ -817,11 +816,11 @@ export default class TurnRunner {
     // complete turn before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
         const { workspaceId, workerId, loopId, onDispatch, onSettled } = args;
-        const { workerName, loopSequence, initializationStatements, initializationPolicies } = container;
+        const { initializationStatements, initializationPolicies } = container;
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
+        // Nine bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
         // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
-        // and named scratch, in that order.
+        // named scratch, and the worker's own reasoning, in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
         // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -829,19 +828,19 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        initializationStatements.push(ReasoningView.initialRead(workerName, loopSequence, initializationTurn.sequence));
-        // {§worker-initialization-entry} — publish the complete source before its own READ executes.
-        // {§emission-row} — reasoning-only work has receipts, never a fabricated content emission.
+        // {§worker-initialization-entry} — the survey is an ordinary operation program: recorded as the
+        // turn's ops source and executed through the same path as a model's program; it authors no reasoning.
+        // {§emission-row} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
             this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
-        const reasoning = ReasoningView.initialSource(TurnOps.renderInternal(admittedInitializationStatements));
-        const admitted = PlurnkParser.parseReasoningOperations(reasoning);
+        const program = TurnOps.renderInternal(admittedInitializationStatements);
+        const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (admitted.length !== admittedInitializationStatements.length) {
-            throw new Error("initialization reasoning did not preserve every authored operation");
+            throw new Error("initialization program did not preserve every authored operation");
         }
-        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
+        await Turn.recordSource(this.#db, initializationTurn.id, "ops", program);
         const result = await this.executeAdmittedTurn({
             statements: admitted,
             source: null,
@@ -931,6 +930,14 @@ export default class TurnRunner {
             {
                 op: "FIND", aside: "worker knowledgebase entries",
                 target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+            {
+                // {§worker-initialization-entry} — the worker's own reasoning is an addressable, searchable
+                // space from the first packet: surveyed by name, never read back.
+                op: "FIND", aside: "this worker's reasoning, by loop and turn",
+                target: { kind: "url", raw: `reasoning://${workerName}/**`, scheme: "reasoning", username: null, password: null, hostname: workerName, port: null, pathname: "/**", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },

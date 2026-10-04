@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { provider } from "./reasoning-fixture.ts";
 
-test("{§reasoning-initial-read}: packet preflight preserves stream growth until an actual provider request", async (t) => {
+test("{§worker-initialization-entry}: packet preflight preserves stream growth until an actual provider request", async (t) => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-preflight");

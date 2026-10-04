@@ -177,7 +177,7 @@ for (const [label, content, finishReason] of [
             assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§empty-turn} the strike is one error row on the turn");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2]! }))
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
-            assert.deepEqual(readBack, [], "the runtime reads nothing back on the model's behalf ({§reasoning-initial-read} is the only automatic reasoning READ)");
+            assert.deepEqual(readBack, [], "the runtime reads nothing back on the model's behalf, and initialization authors no reasoning either ({§worker-initialization-entry})");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");

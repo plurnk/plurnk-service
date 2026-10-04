@@ -14,7 +14,6 @@ import Digest from "../../src/digest/Digest.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
-import { parseLogRecords } from "../LogRecords.ts";
 import { statement, original, provider, type Resource, type Read } from "./reasoning-fixture.ts";
 
 test("{§reasoning-history}: model sources are read-only and hash-free; log observations remain curatable", async () => {
@@ -94,58 +93,14 @@ Revised determination.
         assert.equal(JSON.parse(curtailed.rx).content, original, "curation preserves durable observations");
         assert.equal((await dispatch(`\`\`\`\`KILL (${receipt})\`\`\`\``)).status, 200);
         assert.deepEqual(await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }), resources);
+        const automaticBefore = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ origin }) => origin === "_plurnk").length;
         await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const after = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        assert.equal(after.filter(({ origin }) => origin === "_plurnk").length, 1, "log curation cannot cause automatic redelivery");
+        assert.equal(after.filter(({ origin }) => origin === "_plurnk").length, automaticBefore, "log curation cannot cause automatic redelivery");
         assert.equal(after.find(({ id }) => id === read.id)?.active, 0);
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: first.turnId });
         assert.equal(JSON.parse(packet!.packet).assistant.reasoning, original);
     } finally { await db.close(); }
-});
-
-test("{§reasoning-initial-read}: the initialization READ carries no scope — the authored example arrives whole, and source retention is unchanged", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "reasoning-initial-whole");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const context = { workspaceId, workerId, loopId };
-        await engine.runTurn({ ...context, provider: provider(original), messages: [] });
-        const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
-        const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-        assert.equal(resource.content, original);
-        const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        assert.equal(reads.length, 1);
-        assert.equal(JSON.parse(reads[0]!.lineMarker ?? "null"), null, "no scope: the whole example ({§markerless-first-page})");
-        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-        assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ → reasoning:\/\/alice\//m, "{§log-address-metadata} the assembled reasoning receipt writes its addressed operand");
-        const record = parseLogRecords(log).find(({ logPath: path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
-        assert.ok(record);
-        assert.equal(record.aside, "inspect this turn's reasoning");
-        assert.equal(record.path, "reasoning://alice/1/1");
-        assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
-        assert.match(String(record.body), /```NOTE/);
-        assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
-        assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
-        assert.equal(JSON.parse(reads[0]!.rx).status, 200);
-        const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/1) <1,-1>", null)) });
-        assert.equal(source.status, 200);
-        assert.ok(typeof source.content === "string");
-        const total = source.content.split("\n").length;
-        assert.equal(record.range, `${total} lines`, "the whole example, with its extent");
-        assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total, requested: [1, -1], returned: [1, total] }, "the source selection matches the retained text, independent of its wording");
-        const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-            statement: statement(`\`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\`\``),
-        });
-        assert.equal(explicit.status, 200);
-        assert.ok("content" in explicit);
-        assert.equal(explicit.content, original.split("\n").slice(16).join("\n"), "an explicit READ of the model's own reasoning is unrestricted");
-        assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
-    } finally {
-        await db.close();
-    }
 });
 
 test("{§reasoning-history}: immutable sources support search, FORK, restart, and independent receipt curation", async () => {
@@ -276,7 +231,7 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId };
-        // The provider returns no reasoning for the model's turn (1/2); the initialization turn (1/1) always has its rationale.
+        // The provider returns no reasoning for the model's turn (1/2); the initialization turn (1/1) authors none either.
         const silent = await engine.runTurn({ ...context, provider: provider(null,
             `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: silent.turnId });

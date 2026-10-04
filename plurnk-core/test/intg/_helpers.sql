@@ -871,3 +871,6 @@ JOIN loops l ON l.id = le.loop_id
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE le.worker_id = $worker_id AND json_extract(le.attrs, '$.kind') = 'emission'
 ORDER BY le.id;
+
+-- PREP: test_turn_sources_by_turn
+SELECT kind, content FROM turn_sources WHERE turn_id = $turn_id ORDER BY kind;

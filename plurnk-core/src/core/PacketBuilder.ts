@@ -157,7 +157,7 @@ export default class PacketBuilder {
             PLURNK_SERVICE_PREVIEW_CHARS: oneRule,
             PLURNK_SERVICE_PROMPT_PROJECTION: oneRule,
             PLURNK_SERVICE_BUDGET_PRESSURE: "the gauge carries no threshold and no mandate ({§context-gauge})",
-            PLURNK_REASONING_VIEW_LINES: "the initialization reasoning READ carries no scope ({§reasoning-initial-read})",
+            PLURNK_REASONING_VIEW_LINES: "initialization authors no reasoning and reads none back ({§worker-initialization-entry})",
             PLURNK_REASONING_EMPTY_TURN_LINES: "an empty turn reads nothing back; its 422 row is the whole receipt ({§empty-turn})",
         };
         const retiredKey = new RegExp(`^(${Object.keys(retired).join("|")})(?:_.*)?$`, "u");

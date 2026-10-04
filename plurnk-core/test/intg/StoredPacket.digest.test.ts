@@ -204,8 +204,8 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
 
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning")!.content;
-        assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops"), "initialization has no content source");
+        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
+        assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
         assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
     } finally {
         await db.close();
@@ -216,11 +216,11 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
         const stems = await digestStems(digestDir);
         assert.deepEqual(stems, ["analyst-1-1", "analyst-1-2"], "source-backed initialization and inference retain their log coordinates");
         assert.equal(
-            await readFile(join(digestDir, "analyst-1-1.reasoning.md"), "utf8"),
+            await readFile(join(digestDir, "analyst-1-1.assistant.md"), "utf8"),
             initializationSource,
-            "a packetless reasoning source remains exact forensic evidence",
+            "a packetless turn's program remains exact forensic evidence",
         );
-        await assert.rejects(() => access(join(digestDir, "analyst-1-1.assistant.md")), { code: "ENOENT" });
+        await assert.rejects(() => access(join(digestDir, "analyst-1-1.reasoning.md")), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.system.md`)), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.user.md`)), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.assistantRaw.json`)), { code: "ENOENT" });

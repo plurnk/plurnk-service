@@ -11,56 +11,45 @@ import { statement, type Read } from "./reasoning-fixture.ts";
 
 const next = PlurnkParser.frame("NOTE", "Continue.");
 
-test("{§worker-initialization-entry} {§reasoning-initial-read}: initialization executes only reasoning and reads it back whole", async () => {
+test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` operation turn — its survey runs as a program, authors no reasoning, and fabricates no emission", async () => {
     const db = await openMigrated();
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-        const workspaceId = await insertWorkspace(db, "reasoning-bootstrap");
+        const workspaceId = await insertWorkspace(db, "ops-bootstrap");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 3, "Inspect the initial program.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: next, reasoning: "Unrequested model reasoning." } }] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
-        assert.equal(result.status, 102, "the initialization NOTEs do not change implicit continuation");
+        assert.equal(result.status, 102, "the initialization NOTE does not change implicit continuation");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const initial = logEntries(packet).find((row) => row.path === "reasoning://alice/3/1");
-        const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        assert.ok(initial);
-        assert.equal(initial.origin, "_plurnk");
-        assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
-        assert.match(String(initial.body), /```NOTE/);
-        assert.match(String(initial.body), /```FIND/);
-        assert.match(String(initial.body), /```READ \(reasoning:\/\/alice\/3\/1\)/);
-        assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
-        assert.equal(reads.length, 1);
-        assert.equal(reads[0]!.turn_seq, 1);
-        assert.equal(JSON.parse(reads[0]!.rx).status, 200, "initialization performs an immediately successful ordinary READ");
-        assert.equal(JSON.parse(reads[0]!.lineMarker ?? "null"), null, "the initial READ carries no scope: whole, like any markerless READ ({§markerless-first-page})");
-        const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
-        assert.ok("content" in source && typeof source.content === "string");
-        const orientation = "This turn surveys tooling and environment. The log records results; reasoning://alice/3/1 contains the submitted OPs.";
-        const operations = PlurnkParser.parseReasoningOperations(source.content);
-        assert.equal(operations[0]?.body, orientation);
+        assert.equal(logEntries(packet).find((row) => row.path === "reasoning://alice/3/1"), undefined, "no reasoning is authored, so nothing reads it back");
+        assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), [], "initialization performs no reasoning READ");
+        const reasoning = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
+        assert.equal(reasoning.status, 204, "the initialization turn has no reasoning source");
+        const program = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
+        assert.ok("content" in program && typeof program.content === "string");
+        const orientation = "This turn surveys tooling and environment.";
+        const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.equal(operations[0]?.op, "NOTE");
+        assert.equal(operations[0]?.op === "NOTE" ? operations[0].body : null, orientation);
         assert.ok(operations.some(({ op }) => op === "FIND"));
-        assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
-        const content = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
-        assert.equal(content.status, 204, "no content program is fabricated for a reasoning-only turn");
-        assert.equal(content.content ?? "", "");
-        assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), [], "reasoning OPs never masquerade as content emissions");
-        assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
+        assert.ok(!operations.some(({ op, target }) => op === "READ" && target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
+        assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
+        assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
         assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/1"]);
-        const bodies = [orientation];
-        for (const [index, note] of notes.entries()) {
+        for (const note of notes) {
             assert.equal(note.origin, "_plurnk");
-            assert.equal(String(note.body).trim(), `1:${bodies[index]}`);
+            assert.equal(String(note.body).trim(), `1:${orientation}`);
             const retained = await engine.look({ ...context, statement: statement(PlurnkParser.frame(`READ (${note.resource}) <1,-1>`, null)) });
             assert.equal(retained.status, 200);
-            assert.equal(retained.content, bodies[index]);
+            assert.equal(retained.content, orientation);
         }
-        assert.equal(provider.received.length, 1, "the harness rationale costs no model inference");
+        assert.equal(provider.received.length, 1, "the survey costs no model inference");
     } finally {
         await db.close();
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;

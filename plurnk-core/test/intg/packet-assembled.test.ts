@@ -192,10 +192,10 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             .filter((row) => row.origin === "_plurnk" && (row.op === "FIND" || row.op === "READ") && !LogEntryProjection.isEmission(row));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
         const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ worker_id: workerId });
-        const turnSource = sources.find(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk");
-        assert.ok(turnSource, "initialization stores exact source before its real READ");
+        const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
+        assert.ok(turnSource, "initialization stores its exact program as its ops source ({§worker-initialization-entry})");
         const source = turnSource.content;
-        const sourceFoists = PlurnkParser.parseReasoningOperations(source)
+        const sourceFoists = PlurnkParser.parseStatements(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
             .filter(({ op }) => op === "FIND" || op === "READ");
         assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
         for (const [index, { tx }] of foists.entries()) {
@@ -231,9 +231,9 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initialization = logEntries(packet)
             .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
         assert.deepEqual(
-            initialization.map(({ logPath: path }) => String(path).split("/").at(-1)),
-            ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-            "turn 0 exposes its reasoning NOTE, executed surveys, and its reasoning READ exactly once",
+            [...new Set(initialization.map(({ logPath: path }) => String(path).split("/").at(-1)))].sort(),
+            ["FIND", "NOTE"],
+            "{§worker-initialization-entry}: turn 0 exposes its orientation NOTE and its surveys, nothing else",
         );
         assert.deepEqual(
             initialization.filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath: path }) => path),

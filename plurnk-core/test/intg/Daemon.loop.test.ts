@@ -182,15 +182,14 @@ test("loop.run streams log/entry notifications during execution", async () => {
             const harness = captured
                 .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
-            assert.equal(harness.some(LogEntryProjection.isEmission), false, "reasoning-only initialization announces no content emission ({§emission-row})");
+            assert.equal(harness.some(LogEntryProjection.isEmission), false, "`_plurnk` initialization announces no content emission ({§emission-row})");
             const initialization = harness;
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
                 false,
                 "initialization has no synthetic actionless receipt",
             );
-            assert.equal(initialization[0]?.op, "NOTE", "initialization extracts its own reasoning NOTE");
-            assert.equal(initialization.at(-1)?.op, "READ", "initialization ends with its reasoning READ");
+            assert.equal(initialization[0]?.op, "NOTE", "initialization opens with its orientation NOTE");
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {

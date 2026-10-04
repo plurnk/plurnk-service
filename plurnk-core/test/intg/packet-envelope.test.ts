@@ -151,9 +151,7 @@ test("{§emission-row} {§packet-wire-envelope}: initialization remains in the l
 
     const opening = provider.received[0]!;
     assert.deepEqual(roles(opening), ["system", "user"]);
-    assert.match(chatMessageText(opening[1]!), /^## Log\n\n### log:\/\/\/1\/1\/1\/NOTE/u, "the log begins with initialization's ordinary reasoning NOTE");
-    assert.match(chatMessageText(opening[1]!), /### log:\/\/\/1\/1\/\d+\/READ → reasoning:\/\/[^/\s]+\/1\/1/u,
-        "initialization's reasoning program is available through its ordinary READ");
+    assert.match(chatMessageText(opening[1]!), /^## Log\n\n### log:\/\/\/1\/1\/1\/NOTE/u, "the log begins with initialization's orientation NOTE");
     assert.doesNotMatch(chatMessageText(opening[1]!), /\/emission →/u, "initialization creates no content announcement");
 
     const second = provider.received[1]!;

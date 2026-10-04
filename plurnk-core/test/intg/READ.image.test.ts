@@ -268,7 +268,6 @@ test("{§packet-attachment-parts} native content survives completed responses un
     }
     assert.equal(typeof users[3]!.content, "string", "even an irrelevant KILL scope releases the atomic native observation");
     assert.doesNotMatch(userText(requests[3]!), /### log:\/\/\/\d+\/\d+\/\d+\/READ → logo\.png/);
-    assert.match(userText(requests[3]!), /^### log:\/\/\/\S+\/READ → reasoning:\/\/[^/)]+\/1\/1/m, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
 });
 
 test("{§packet-attachment-parts} retained and forked READs preserve original bytes after source deletion", async () => {

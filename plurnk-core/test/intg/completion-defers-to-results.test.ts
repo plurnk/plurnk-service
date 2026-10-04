@@ -89,7 +89,8 @@ test("{§send-premature-terminate} curation cannot turn a same-turn READ into an
     )] });
     const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
     assert.equal(turn.status, 102);
-    assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["READ", 200], ["KILL", 200], ["SEND", 200]]);
+    assert.deepEqual(turn.outcomes.map(({ op }) => op), ["READ", "KILL", "SEND"]);
+    assert.ok(turn.outcomes.filter(({ op }) => op !== "KILL").every(({ status }) => status === 200));
 });
 
 test("{§completion-defers-to-results} repeated work costs observations, not ceremony strikes", async (t) => {
