@@ -117,6 +117,8 @@ export default class PacketBuilder {
     // {§tokenomics-calibrated-readout} — admission and client gauges consume
     // the allowance captured before this request can change model evidence.
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
+    // {§context-budget} — each loop's high-water budget, for the input capacity it was derived from.
+    readonly #loopBudgets = new Map<number, { readonly inputCapacity: number; readonly budget: number }>();
     readonly #emissions = new WeakMap<readonly StoredPacketSection[], ReadonlyMap<string, string>>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     #schemes: SchemeRegistry;
@@ -267,7 +269,7 @@ export default class PacketBuilder {
         // whole packet. Nothing here sizes a part of it.
         const inputCapacity = provider.inputCapacity;
         const calibration = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
-        const curationBudget = TokenCalibration.capacity(inputCapacity, calibration);
+        const curationBudget = this.#loopBudget(loopId, inputCapacity, TokenCalibration.capacity(inputCapacity, calibration));
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
@@ -445,6 +447,17 @@ export default class PacketBuilder {
             .filter(({ family }) => this.#capabilities.allowsRuntimeAcross(family, null, workspaceId, policies))
             .map(({ pathname, content }) => ({ pathname, content })));
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
+    }
+
+    // {§context-budget} — the room never shrinks within a loop: the budget is the greater of the
+    // calibrated capacity and the loop's high-water for the same input capacity, so a refined conversion
+    // can enlarge the room but never turns a packet the model already answered into an overflow.
+    #loopBudget(loopId: number, inputCapacity: number | null, calibrated: number | null): number | null {
+        if (inputCapacity === null || calibrated === null) return null;
+        const prior = this.#loopBudgets.get(loopId);
+        const budget = prior !== undefined && prior.inputCapacity === inputCapacity ? Math.max(prior.budget, calibrated) : calibrated;
+        this.#loopBudgets.set(loopId, { inputCapacity, budget });
+        return budget;
     }
 
     // {§context-hard-413} — measurement never mutates visibility; an over-budget packet is the

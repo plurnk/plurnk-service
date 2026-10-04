@@ -133,9 +133,14 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
         .map(({ content }) => content.split("## Context")[0]).join("\n");
     assert.equal(prefix(after), prefix(before), "the complete prefix before the volatile budget remains reusable");
     await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);
-    const tighter = await f.build(provider);
-    assert.ok(budgetOf(tighter).budget < budgetOf(before).budget, "the inverse direction is exercised too");
-    assert.equal(prefix(tighter), prefix(before), "a shrinking allowance does not resize cached historical content either");
+    assert.equal(budgetOf(await f.build(provider)).budget, budgetOf(after).budget, "{§context-budget}: within the loop the room never shrinks under a tighter conversion");
+    const nextLoop = await insertLoop(f.db, f.workerId, 2, prompt);
+    const tighter = await f.packets.buildRequestPacket({
+        workspaceId: f.workspaceId, workerId: f.workerId, loopId: nextLoop, provider,
+        initialMessages: messages, currentTurnSeq: 10, gitStatus: null,
+    });
+    assert.ok(budgetOf(tighter).budget < budgetOf(before).budget, "a new loop starts from the tighter conversion: the inverse direction is exercised too");
+    assert.equal(packetSection(tighter, "log"), packetSection(before, "log"), "a shrinking allowance does not resize cached historical content either");
     assert.equal((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet, persisted, "calibration never rewrites request history");
 });
 
@@ -289,4 +294,22 @@ test("{§tokenomics-calibrated-readout} a converted zero allowance takes ordinar
     assert.equal(result.status, 413);
     assert.equal(result.curationFailure?.problem?.budget, 0);
     assert.equal(provider.received.length, 0, "no representable curation allowance cannot produce an admitted request");
+});
+
+test("{§context-budget} within a loop the budget is its high-water: a refined conversion enlarges the room and never shrinks it; another capacity derives its own", async (t) => {
+    const f = await fixture(t);
+    const provider = providerAt(20_000);
+    assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "uncalibrated, the capacity is the room");
+    await recordSamples(f);
+    const enlarging = await TokenCalibration.forModel(f.db, "mock");
+    assert.ok(enlarging < 1);
+    const enlarged = budgetOf(await f.build(provider)).budget;
+    assert.equal(enlarged, Math.floor(20_000 / enlarging), "a refined conversion enlarges the room");
+    await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);
+    const shrinking = await TokenCalibration.forModel(f.db, "mock");
+    assert.ok(shrinking > 1);
+    const held = await f.build(provider);
+    assert.equal(budgetOf(held).budget, enlarged, "the room never shrinks within the loop");
+    assert.equal(f.packets.curationBudgetFor(held), enlarged, "admission uses the same held room");
+    assert.equal(budgetOf(await f.build(providerAt(30_000))).budget, Math.floor(30_000 / shrinking), "another input capacity derives its own room from the current conversion");
 });
