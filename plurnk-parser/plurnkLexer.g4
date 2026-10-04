@@ -466,11 +466,8 @@ private headingAt(offset: number): boolean {
         name += ch;
         cursor++;
     }
-    if (name === "") return false;
-    if (!Object.hasOwn(plurnkLexer.OPERATIONS, name) && !this.knownExecutor(name)) return false;
-    const next = this.inputStream.LA(cursor);
-    return next <= 0 || next === 0x20 || next === 0x09 || next === 0x28 || next === 0x3C || next === 0x5B
-        || this.offsetAfterEol(cursor) !== null;
+    // {§operation-fences}: the name alone makes the heading, whatever follows it (#996).
+    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
 }
 
 private headingAfterEol(): boolean {

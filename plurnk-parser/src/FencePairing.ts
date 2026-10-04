@@ -172,10 +172,13 @@ export default class FencePairing {
                 const headingWidth = glued[1]!.length;
                 return { kind: "closeThenHeading", width, headingWidth, selfClosed: options.closesOnLine(tail.trimStart()), bodiless: FencePairing.#bodiless(glued[2]!, glued[3]!) };
             }
+            // {§operation-fences}: the fence run and a known name make the heading, whatever follows the name on
+            // its line; the lexer opens the same line, so the pairing must read it as a heading too (#996).
             const name = NAME.exec(tail)?.[0];
-            const after = name === undefined ? "" : tail.slice(name.length);
-            const opens = name !== undefined && (after === "" || /^[ \t(<[]/u.test(after));
-            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
+            if (name !== undefined && FencePairing.#known(name, options)) {
+                const after = tail.slice(name.length);
+                return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
+            }
             if (tail.includes("`")) return { kind: "text" };
         }
         return { kind: "info", character, width };
