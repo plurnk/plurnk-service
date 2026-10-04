@@ -14,7 +14,6 @@
 
 import { PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
-import BodyPreview from "../content/body-preview.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -187,7 +186,8 @@ export const projectFindResult = (
         completeItems = resourceItems;
     }
 
-    const marker = statement.lineMarker ?? BodyPreview.firstPage();
+    // {§markerless-first-page} — without a scope, every result; whether they fit is decided where the row lands.
+    const marker = statement.lineMarker ?? LineMarkerOps.whole();
     const unit = locationMode ? "matchLocation" : "resource";
     const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {

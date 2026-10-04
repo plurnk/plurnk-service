@@ -401,7 +401,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
         assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
         assert.equal(rawView.content, "01\n02\n03\n04");
         assert.equal(rawView.mimetype, "application/x-readable-binary");
-        assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, 16], returned: [1, 4] });
+        assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, -1], returned: [1, 4] });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

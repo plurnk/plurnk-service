@@ -119,7 +119,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
     });
 });
 
-test("{§packet-extent-metadata}: previewing a sent reply changes neither delivery nor its retained body", async () => {
+test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async () => {
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`KILL\n\`\`\`\``, 10),
@@ -137,10 +137,10 @@ test("{§packet-extent-metadata}: previewing a sent reply changes neither delive
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
             const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && String(row.logPath).endsWith("/SEND"));
             assert.ok(reply, "the next model request contains the ordinary sent-message receipt");
-            assert.equal(reply.preview, "<1,16> of 40 lines", JSON.stringify(reply));
-            assert.equal(reply.lines, undefined, "preview already supplies the receipt's full extent");
-            assert.match(String(reply.body), /16:delivered line 16\n$/u);
-            assert.doesNotMatch(String(reply.body), /delivered line 17/u);
+            assert.equal(reply.preview, undefined, JSON.stringify(reply));
+            assert.equal(reply.lines, 40, "the receipt states its full extent");
+            assert.match(String(reply.body), /1:delivered line 1\n/u);
+            assert.match(String(reply.body), /40:delivered line 40\n$/u, "the whole reply, because it fits");
             const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             assert.ok(messages.some((row) => row.op === "SEND" && row.origin === "model" && row.tx.includes("delivered line 40")), "the complete submitted reply remains recorded");
         } finally { ws.close(); }

@@ -1,6 +1,6 @@
-// Arrival rows are inbound SEND rows the harness publishes. Their initially visible
-// projection receives a stable share of the packet budget, and the Open Messages
-// section points at each open row by its log coordinate for direct retrieval.
+// Arrival rows are inbound SEND rows the harness publishes. One lands whole when it fits the
+// remaining budget and otherwise folded with its size ({§context-fit}); the Open Messages section
+// points at each open row by its log coordinate for direct retrieval.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,6 @@ import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_scheme.ts";
 import { logEntries } from "./_packet.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
-import { contentWeight } from "../../src/core/content-weight.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````KILL\ndone\n````", 40)] });
 
@@ -35,7 +34,7 @@ test("a short message lands as one inbound SEND row", async () => {
     });
 });
 
-test("a jumbo message renders an adaptive preview and Open Messages points to its complete log body", async () => {
+test("{§context-fit}: a jumbo message lands folded with its size; Open Messages points to its complete log body", async () => {
     await withDaemon(mock(), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -47,27 +46,22 @@ test("a jumbo message renders an adaptive preview and Open Messages points to it
             const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
             assert.ok(prompt, "the arrival row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
-            const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
+            const packet = JSON.parse(row!.packet) as { weight: number; sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const logSection = (packet.sections ?? []).find((sec) => sec.name === "log");
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "messages");
-            assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt projection reaches the model");
-            assert.match(logSection?.content ?? "", /prompt line 17/, "prompt initialization is not clipped by the ordinary sixteen-line preview");
-            assert.doesNotMatch(logSection?.content ?? "", /prompt line 4000:/, "content beyond the adaptive projection remains outside the packet");
-            const chunk = /"preview":"<1,(\d+)> of 4000 lines"/.exec(logSection?.content ?? "");
-            assert.ok(chunk, "the projection states its displayed and complete extents");
-            assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
-            const projectedPrompt = logEntries(packet).find((entry) =>
-                typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
-            assert.equal(projectedPrompt?.preview, `<1,${chunk[1]}> of 4000 lines`, "the independent packet parser retains the following member");
+            assert.doesNotMatch(logSection?.content ?? "", /prompt line 1:/, "a body that does not fit is not shown in part");
+            const projectedPrompt = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
+            assert.ok(projectedPrompt, "the arrival row is in the packet");
+            assert.equal(projectedPrompt.body, undefined, "folded: the row is its size and its address");
+            assert.equal(projectedPrompt.preview, undefined, "nothing is previewed on the model's behalf");
+            const size = projectedPrompt.size as { lines: number; tokens: number };
+            assert.equal(size.lines, 4000, "the size names the lines the model can READ");
             const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
-            const ceiling = Number(/"logTokensMax":\s*(\d+)/.exec(budgetSection)?.[1]);
-            const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
-            assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
-            const projectedBody = String(projectedPrompt?.body ?? "").trimEnd().split("\n").map((line) => line.replace(/^\s*\d+:/u, "")).join("\n");
-            assert.ok(contentWeight(projectedBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
-            const bodyTarget = typeof projectedPrompt?.logPath === "string" ? projectedPrompt.logPath : undefined;
-            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/,
-                "the message body is addressed in the first packet-bearing turn");
+            const budget = Number(/"budget":\s*(\d+)/.exec(budgetSection)?.[1]);
+            assert.ok(Number.isFinite(budget) && size.tokens > budget - packet.weight, "it did not fit the remaining budget");
+            assert.ok(packet.weight <= budget, "the packet itself fits");
+            const bodyTarget = typeof projectedPrompt.logPath === "string" ? projectedPrompt.logPath : undefined;
+            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/, "the message body is addressed in the first packet-bearing turn");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
             const [workspace] = await daemon.listWorkspaces();
@@ -106,7 +100,7 @@ test("{§message-causal-source}: the operator's message is named for the model; 
     ], "left bare, the operator's row reads as the model's own SEND");
 });
 
-test("an oversized deliverable renders the universal preview and log recovery address", () => {
+test("{§context-fit}: a deliverable that landed renders whole; nothing is previewed", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
@@ -116,24 +110,13 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     const [projected] = parseLogRecords(rendered);
-    assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the preview head is visible");
-    assert.doesNotMatch(String(projected?.body), /deranged output line 30/, "content beyond the preview is withheld");
-    assert.equal(projected?.preview, "<1,16> of 400 lines", "the preview states its displayed and complete line extents");
-});
-
-test("a single-line body is constrained by the independent character bound", () => {
-    const countTokens = (s: string): number => Math.ceil(s.length / 4);
-    const bomb = "x".repeat(20_000); // one 20k-character line
-    const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://oneliner",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },
-        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
-    };
-    const rendered = PacketWire.renderLog([row], countTokens);
-    const [projected] = parseLogRecords(rendered);
-    const bodyChars = (String(projected?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
-    assert.ok(bodyChars <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), `the character knob bounds the single-line body (longest run ${bodyChars})`);
-    assert.equal(projected?.preview, "<1,1,1,2561> of <1,1,1,20001>", "the in-line cut is exact and addressable");
+    assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the first line is visible");
+    assert.match(String(projected?.body), /400:deranged output line 400/, "and so is the last: a landed row is whole");
+    assert.equal(projected?.preview, undefined, "no preview extent describes a cut that did not happen");
+    const oneLine = PacketWire.renderLog([{ ...row, rx: "x".repeat(20_000) }], countTokens);
+    const [single] = parseLogRecords(oneLine);
+    assert.equal((String(single?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0), 20_000, "no character bound cuts a line");
+    assert.equal(single?.preview, undefined);
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
@@ -148,7 +131,7 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     assert.ok(!rendered.includes("\"preview\""), "an in-bounds body has no preview extent");
 });
 
-test("a single-line jumbo prompt uses the adaptive prompt allowance rather than the ordinary character preview", async () => {
+test("{§context-fit}: a single-line jumbo prompt lands folded with its size, and its body stays READable", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -159,12 +142,12 @@ test("a single-line jumbo prompt uses the adaptive prompt allowance rather than 
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds.at(-1)! });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
             const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
-            const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
-            assert.ok(longestHayRun > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "prompt initialization is independent of the ordinary character preview");
-            assert.ok(longestHayRun < bomb.length, "the jumbo single line is still projected rather than stuffed whole into the packet");
-            const chunk = /"preview":"<1,1,1,(\d+)> of <1,1,1,(\d+)>"/.exec(log);
-            assert.ok(Number(chunk?.[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS) + 1);
-            assert.equal(chunk?.[2], String(Array.from(bomb).length + 1), "the prompt states the exact complete character extent");
+            assert.doesNotMatch(log, /hay hay/u, "the jumbo line is not stuffed into the packet, nor cut into it");
+            const arrival = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
+            assert.ok(arrival);
+            assert.deepEqual(Object.keys(arrival.size as object).sort(), ["lines", "tokens"], "the row states its size");
+            assert.equal((arrival.size as { lines: number }).lines, 1);
+            assert.equal(arrival.preview, undefined);
         } finally { ws.close(); }
     });
 });

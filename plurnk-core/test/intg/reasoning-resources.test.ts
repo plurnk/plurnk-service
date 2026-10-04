@@ -103,58 +103,48 @@ Revised determination.
     } finally { await db.close(); }
 });
 
-for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured ${limit} controls the authored example, not source retention`, async () => {
-    const prior = process.env.PLURNK_REASONING_VIEW_LINES;
-    process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
+test("{§reasoning-initial-read}: the initialization READ carries no scope — the authored example arrives whole, and source retention is unchanged", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `reasoning-limit-${limit}`);
+        const workspaceId = await insertWorkspace(db, "reasoning-initial-whole");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, workerId, loopId };
         await engine.runTurn({ ...context, provider: provider(original), messages: [] });
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
-        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]?.content, original);
+        const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
+        assert.equal(resource.content, original);
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        assert.equal(reads.length, limit === 0 ? 0 : 1);
-        if (limit === 0) {
-            const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
-            const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-                statement: statement(`\`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\`\``),
-            });
-            assert.equal(explicit.status, 200);
-            assert.ok("content" in explicit);
-            assert.equal(explicit.content, original.split("\n").slice(16).join("\n"), "omitting the initialization example does not restrict explicit READs");
-            assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
-        }
-        if (limit !== 0) {
-            assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ → reasoning:\/\/alice\//m, "{§log-address-metadata} the assembled reasoning receipt writes its addressed operand");
-            const record = parseLogRecords(log).find(({ logPath: path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
-            assert.ok(record);
-            assert.equal(record.aside, "inspect this turn's reasoning");
-            assert.equal(record.path, "reasoning://alice/1/1");
-            assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
-            if (limit === 1) assert.doesNotMatch(String(record.body), /```NOTE/);
-            else assert.match(String(record.body), /```NOTE/);
-            assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
-            assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
-            assert.equal(JSON.parse(reads[0]!.rx).status, 200);
-            const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/1) <1,-1>", null)) });
-            assert.equal(source.status, 200);
-            assert.ok(typeof source.content === "string");
-            const total = source.content.split("\n").length;
-            const returned = limit === -1 ? total : Math.min(limit, total);
-            assert.equal(record.range, returned === total ? `${total} lines` : `<1${returned === 1 ? "" : `,${returned}`}> of ${total} lines`);
-            assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total, requested: [1, limit], returned: [1, returned] }, "the source selection matches the retained text, independent of its wording");
-        }
+        assert.equal(reads.length, 1);
+        assert.equal(JSON.parse(reads[0]!.lineMarker ?? "null"), null, "no scope: the whole example ({§markerless-first-page})");
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+        const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
+        assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ → reasoning:\/\/alice\//m, "{§log-address-metadata} the assembled reasoning receipt writes its addressed operand");
+        const record = parseLogRecords(log).find(({ logPath: path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
+        assert.ok(record);
+        assert.equal(record.aside, "inspect this turn's reasoning");
+        assert.equal(record.path, "reasoning://alice/1/1");
+        assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
+        assert.match(String(record.body), /```NOTE/);
+        assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
+        assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
+        assert.equal(JSON.parse(reads[0]!.rx).status, 200);
+        const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/1) <1,-1>", null)) });
+        assert.equal(source.status, 200);
+        assert.ok(typeof source.content === "string");
+        const total = source.content.split("\n").length;
+        assert.equal(record.range, `${total} lines`, "the whole example, with its extent");
+        assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total, requested: [1, -1], returned: [1, total] }, "the source selection matches the retained text, independent of its wording");
+        const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
+            statement: statement(`\`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\`\``),
+        });
+        assert.equal(explicit.status, 200);
+        assert.ok("content" in explicit);
+        assert.equal(explicit.content, original.split("\n").slice(16).join("\n"), "an explicit READ of the model's own reasoning is unrestricted");
+        assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
     } finally {
         await db.close();
-        if (prior === undefined) delete process.env.PLURNK_REASONING_VIEW_LINES;
-        else process.env.PLURNK_REASONING_VIEW_LINES = prior;
     }
 });
 

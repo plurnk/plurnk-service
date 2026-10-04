@@ -70,9 +70,8 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.ok(automatic, "the automatic output observation names the resource actually read");
             assert.equal(automatic.source, undefined);
             assert.equal(automatic.stream, undefined);
-            assert.equal(automatic.range, "<1,16> of 40 lines");
-            assert.match(String(automatic.body), /16:result 16\n$/u);
-            assert.doesNotMatch(String(automatic.body), /result 17/u);
+            assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
+            assert.match(String(automatic.body), /40:result 40\n$/u);
 
             const mistaken = await turn(frame(`READ (${String(invocation.logPath)}) <17,40>`, null));
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");

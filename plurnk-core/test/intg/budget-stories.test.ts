@@ -57,9 +57,9 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    const state = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
-    const usage = state.logTokensTotal;
-    const ceiling = state.logTokensMax;
+    const state = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; budget: number };
+    const usage = state.tokens;
+    const ceiling = state.budget;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
 // Two reference measurements on throwaway workers (deterministic FAT body), so the
@@ -110,12 +110,12 @@ test("budget: the irreducible hard-413 Problem reports a positive overshoot hone
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
         assert.equal(t.producer, "model", "admission failure does not manufacture a recovery producer");
-        const problem = t.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
+        const problem = t.curationFailure?.problem as { tokens?: number; budget?: number; excess?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal 413 carries its exact Problem");
-        const { ceiling, usage, deficit } = problem;
-        assert.ok(typeof usage === "number" && typeof ceiling === "number" && typeof deficit === "number");
-        assert.ok(usage > ceiling, `usage ${usage} exceeds ceiling ${ceiling} — a real overshoot`);
-        assert.equal(deficit, usage - ceiling, "Problem pressure closes exactly");
+        const { tokens, budget, excess } = problem;
+        assert.ok(typeof tokens === "number" && typeof budget === "number" && typeof excess === "number");
+        assert.ok(tokens > budget, `tokens ${tokens} exceed the budget ${budget} — a real overshoot`);
+        assert.equal(excess, tokens - budget, "the Problem's arithmetic closes exactly ({§context-hard-413})");
         assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null);
     } finally { await db.close(); }
 });
@@ -132,13 +132,13 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         const provider = mockCeiling(10, okSends(1));
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.producer, "model");
-        const ceiling = (t.curationFailure?.problem as { ceiling?: number } | undefined)?.ceiling;
-        assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
+        const budget = (t.curationFailure?.problem as { budget?: number } | undefined)?.budget;
+        assert.equal(budget, 10, "context 12 − total output budget 2 → input capacity 10 ({§context-budget})");
         assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");
     } finally { await db.close(); }
 });
 
-test("{§tokenomics-neutral-telemetry} the model-facing budget is one measured three-field state (#478)", async () => {
+test("{§context-gauge} the model-facing gauge is one measured JSON object: tokens, budget, largest (#478)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -147,13 +147,13 @@ test("{§tokenomics-neutral-telemetry} the model-facing budget is one measured t
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "logTokensMax"], "the active-total/maximum state stays, and only those two");
-        assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the two fields");
+        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["tokens", "budget", "largest"], "the gauge is its three fields, and only those");
+        assert.equal(budget.split("\n").length, 1, "one JSON line — no threshold, warning or mandate follows the object");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });
 
-test("{§tokenomics-pressure-inventory}: a pressured composed packet points to its dominant visible log body", async () => {
+test("{§context-gauge}: a composed packet's largest inventory points to its dominant visible log body", async () => {
     const db = await openMigrated();
     try {
         const { expanded } = await measure(db);
@@ -170,15 +170,15 @@ test("{§tokenomics-pressure-inventory}: a pressured composed packet points to i
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const object = JSON.parse(budget.split("\n\n")[0]!) as { logTokensTotal: number; logTokensLargest: Array<{ path: string; logTokens: number }> };
-        const inventory = object.logTokensLargest;
+        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; largest: Array<{ path: string; tokens: number }> };
+        const inventory = object.largest;
         assert.ok(inventory.length > 0, "the pressure inventory rides inside the JSON object");
         const [largest] = inventory;
         assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+$/u);
-        assert.equal(typeof largest.logTokens, "number");
+        assert.equal(typeof largest.tokens, "number");
         const advised = logEntries(stored.packet).find((row) => row.logPath === largest.path);
-        assert.equal(largest.logTokens, advised?.logTokens, "inventory and receipt use the same complete-row charge");
+        assert.equal(largest.tokens, advised?.tokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
-        assert.equal(object.logTokensTotal, stored.weight, "conditional advice participates in exact packet accounting");
+        assert.equal(object.tokens, stored.weight, "conditional advice participates in exact packet accounting");
     } finally { await db.close(); }
 });

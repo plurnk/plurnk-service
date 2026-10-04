@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, before } from "node:test";
+import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -9,10 +9,6 @@ import { packetSection } from "./_packet.ts";
 import { testExecutors } from "./_execs.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
-// {§reasoning-empty-turn-read} ships off; the empty-turn witnesses here turn the read-back on.
-let previousReadBack: string | undefined;
-before(() => { previousReadBack = process.env.PLURNK_REASONING_EMPTY_TURN_LINES; process.env.PLURNK_REASONING_EMPTY_TURN_LINES = "100"; });
-after(() => { if (previousReadBack === undefined) delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES; else process.env.PLURNK_REASONING_EMPTY_TURN_LINES = previousReadBack; });
 const FENCE = "`".repeat(4);
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
@@ -144,13 +140,13 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
 });
 
 // {§empty-turn} — an operation attempt that did not parse, or prose cut at the allowance, is not an
-// answer: it is admitted as an empty turn — kept, struck once, its strike an error row on the turn
-// and its reasoning read back ({§reasoning-empty-turn-read}) — and the loop continues.
+// answer: it is admitted as an empty turn — kept, struck once, its strike an error row on the turn —
+// and the loop continues. Nothing is read back on the model's behalf; its reasoning stays at its address.
 for (const [label, content, finishReason] of [
     ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
 ] as const) {
-    test(`{§empty-turn}: ${label} is an empty turn with one strike, an error row and its reasoning read back, never an answer`, async () => {
+    test(`{§empty-turn}: ${label} is an empty turn with one strike and an error row, never an answer`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
@@ -168,21 +164,20 @@ for (const [label, content, finishReason] of [
                 messages: [{ role: "user", content: "Do the thing." }],
             });
             assert.equal(result.result.status, 200);
-            assert.equal(result.turnIds.length, 4, "initialization, the empty turn, its reasoning read back, the answer: no private resample");
+            assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the answer: no private resample, no read-back turn");
             const emptyTurn = result.turnIds[1]!;
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
-            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "readback does not trim the source");
+            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "the reasoning source is kept whole at its address");
             assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike sends no notice");
             const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
             assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§empty-turn} the strike is one error row on the turn");
-            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; scheme: string | null; pathname: string | null; rx: string }>({ turn_id: result.turnIds[2]! }))
-                .filter(({ origin, op }) => origin === "_plurnk" && op === "READ");
-            assert.deepEqual(readBack.map(({ status_rx, scheme, pathname }) => [status_rx, scheme, pathname]), [[200, "reasoning", "/1/2"]], "{§reasoning-empty-turn-read} the runtime read the turn's reasoning back");
-            assert.equal(JSON.parse(readBack[0]!.rx).content, reasoning.split("\n").slice(0, 100).join("\n"), "shipped recovery reads the first 100 lines in the model's own words");
+            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2]! }))
+                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
+            assert.deepEqual(readBack, [], "the runtime reads nothing back on the model's behalf ({§reasoning-initial-read} is the only automatic reasoning READ)");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
@@ -218,7 +213,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 7, "{§reasoning-empty-turn-read} no reasoning, or a toxic emission: nothing is read back, no runtime turn follows");
+        assert.equal(result.turnIds.length, 7, "{§empty-turn} nothing is read back after any empty turn; no runtime turn follows");
         const [, workingTurn, proseTurn, toxinTurn, untranslatedTurn, brokenTurn] = result.turnIds;
         const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const notesOf = async (turnId: number) => (await rowsOf(turnId))
@@ -273,7 +268,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             });
             assert.equal(result.result.status, 200);
             assert.equal(provider.received.length, 3, "the empty turn does not infer completion; a recovery request follows");
-            assert.equal(result.turnIds.length, 5, "initialization, the working turn, the empty turn, its reasoning read back, the conclusion");
+            assert.equal(result.turnIds.length, 4, "initialization, the working turn, the empty turn, the conclusion");
             const emptyTurn = result.turnIds[2]!;
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
@@ -281,12 +276,9 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike sends no notice");
-            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; tx: string; rx: string }>({ turn_id: result.turnIds[3]! }))
-                .filter(({ origin, op }) => origin === "_plurnk" && op === "READ");
-            assert.equal(readBack.length, 1, "{§reasoning-empty-turn-read} one runtime READ follows the empty turn");
-            assert.equal(readBack[0]!.status_rx, 200);
-            assert.match(readBack[0]!.tx, /turn 3 emitted no OP/u, "the aside names the turn");
-            assert.match(readBack[0]!.rx, /I still need to work out the next action\./u, "the model reads its own trace");
+            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[3]! }))
+                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
+            assert.deepEqual(readBack, [], "no runtime READ follows the empty turn: the trace stays at its address for the model to READ");
             const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
             assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/1/error"]], "the strike rides the next packet's errors, on the empty turn's own address");

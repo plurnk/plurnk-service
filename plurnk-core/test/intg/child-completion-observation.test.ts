@@ -85,8 +85,9 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal(completions.length, 2);
     assert.ok(completions.every(({ logPath: path }) => String(path).endsWith("/READ")));
     assert.deepEqual(completions.map(({ path: target }) => target), ["ops://child/1", "ops://child/2"]);
-    assert.match(String(completions[0]!.body), /First result line 16/);
-    assert.doesNotMatch(String(completions[0]!.body), /First result line 17/, "automatic observation obeys the ordinary READ preview");
+    assert.match(String(completions[0]!.body), /First result line 1\n/);
+    assert.match(String(completions[0]!.body), /First result line 24/, "automatic observation is a markerless READ: whole when it fits ({§context-fit})");
+    assert.equal(completions[0]!.preview, undefined, "nothing is previewed on the model's behalf");
     assert.match(String(completions[1]!.body), /Second loop failed\./);
     assert.equal(completions[1]!.status, 502);
     assert.equal((await f.db.engine_worker_has_undelivered_child_term.get({ worker_id: f.parent })), undefined);

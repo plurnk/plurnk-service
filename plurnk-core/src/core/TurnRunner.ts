@@ -50,6 +50,7 @@ export const resolveOperatorGrammarPath = (value: string): string => {
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 import ReasoningView from "./ReasoningView.ts";
+import { RECEIPT_RESERVE, reserved, type ContextFit } from "./ContextFit.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence, type TurnRow } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -131,7 +132,6 @@ import { ProviderError, scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
-import KnownToxins from "./KnownToxins.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 
@@ -207,7 +207,8 @@ export type AdmittedTurnResult = {
     readonly emptyTurn: boolean;
 };
 
-const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit.";
+// {§context-hard-413} — the context budget's one terminal: the packet exceeds it with nothing left to cut.
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Context budget overflow: the packet's tokens exceed its budget; retained context cannot fit.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -216,9 +217,9 @@ const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Re
     TOKEN_BUDGET_OVERFLOW_HARD_DETAIL,
     {},
     {
-        usage: pressure.weight,
-        ceiling: pressure.budget,
-        deficit: pressure.excess,
+        tokens: pressure.weight,
+        budget: pressure.budget,
+        excess: pressure.excess,
     },
 );
 
@@ -285,19 +286,20 @@ type TurnContainer = {
     readonly systemCtx: PlurnkSchemeContext;
 };
 
-// What packet assembly reads from the turn; capacity recovery rebuilds from the same facts.
+// What packet assembly reads from the turn; the fit test rebuilds from the same facts ({§context-fit}).
 type PacketFacts = {
     readonly turnId: number;
     readonly seq: number;
     readonly gitStatus: GitStatusSnapshot | null;
     readonly notices: Notice[];
     readonly transientOpenLogEntryId: number | null;
-    promptProjection: "automatic" | "withheld";
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
 // the packet, which the attempt loop re-attributes per call and capacity recovery rebuilds.
 type TurnRequest = PacketFacts & {
+    // {§context-fit} — the measure every row this turn lands is tested against.
+    readonly fit: ContextFit;
     readonly createdTurnIds: number[];
     readonly workerName: string;
     readonly loopSeq: number;
@@ -631,9 +633,11 @@ export default class TurnRunner {
         const createdTurnIds: number[] = [];
         const turnSignal = this.#loopSignal(loopId) ?? signal;
         try {
+            // {§configuration-repair-path} — a retired packet knob refuses inference before any turn opens.
+            PacketBuilder.assertConfiguration();
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
-            if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn);
+            if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn, gitStatus);
             const request = await this.#composeRequest(args, container, gitStatus);
             const overflow = this.#packets.curationOverflow(request.packet);
             if (overflow !== null) return await this.#failCuration(request, overflow);
@@ -811,8 +815,8 @@ export default class TurnRunner {
     // {§worker-initialization-entry} — the worker's first turn is the worked example
     // itself: the actual orienting operations and ordinary NOTEs, executed as a
     // complete turn before the model boundary.
-    async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
-        const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+    async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
+        const { workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         const { workerName, loopSequence, initializationStatements, initializationPolicies } = container;
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
@@ -825,8 +829,7 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
-        if (reasoningRead !== null) initializationStatements.push(reasoningRead);
+        initializationStatements.push(ReasoningView.initialRead(workerName, loopSequence, initializationTurn.sequence));
         // {§worker-initialization-entry} — publish the complete source before its own READ executes.
         // {§emission-row} — reasoning-only work has receipts, never a fabricated content emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
@@ -850,6 +853,7 @@ export default class TurnRunner {
             turnId: initializationTurn.id,
             fromSequence: 1,
             failOnOperationError: true,
+            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId }),
             signal: this.#loopSignal(loopId),
             onDispatch,
             onSettled,
@@ -975,8 +979,12 @@ export default class TurnRunner {
         if (container.modelTurn === null) container.createdTurnIds.push(modelTurn.id);
         const { id: turnId, sequence: seq } = modelTurn;
         const systemCtx = this.#schemeContext(args, turnId);
-        const messages = await this.#publishMessages(args, turnId);
-        let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex);
+        // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
+        // would render now. The drained notices join the same facts below.
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId };
+        const fit = this.#fitFor(args, facts);
+        const messages = await this.#publishMessages(args, turnId, fit);
+        let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
         // {§env-delta-log-pull} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this worker's streams.
@@ -986,7 +994,7 @@ export default class TurnRunner {
         await this.#reapTurnScopedStreams(workerId);
         const ambientEntries = await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += ambientEntries.length;
-        const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex, fit });
         nextActionIndex += streamEntries.length;
         await Turn.observeCompletions(this.#db, turnId);
         // {§notifications-log-entry-notify}: materialized observations are
@@ -999,17 +1007,13 @@ export default class TurnRunner {
         // and every budget rebuild; overflow never shells again.
         // Notices are non-terminal observations, never operation-failure truth.
         // Drain once and thread the same set through every overflow rebuild.
-        const notices = this.#notices.drain(loopId)
-            .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
+        facts.notices.push(...this.#notices.drain(loopId)
+            .filter((event) => (event as { level?: string }).level !== "info") as Notice[]);
         // Build the model request packet ({§packet-stored-shape}). The log build
         // queries log_entries scoped to the worker, including this turn's newly
         // published message arrivals.
-        const facts: PacketFacts = { turnId, seq, gitStatus, notices, transientOpenLogEntryId: container.transientOpenLogEntryId, promptProjection: "automatic" };
-        let packet = await this.#buildPacket(args, facts);
-        // {§context-output-admission} — output admission changes no operation
-        // outcome, authored memory, or turn identity.
-        if (await this.#packets.admitOutput(packet, turnId)) packet = await this.#buildPacket(args, facts);
-        return { ...facts, createdTurnIds: container.createdTurnIds, workerName: container.workerName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
+        const packet = await this.#buildPacket(args, facts);
+        return { ...facts, fit, createdTurnIds: container.createdTurnIds, workerName: container.workerName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
     }
 
     // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
@@ -1019,19 +1023,23 @@ export default class TurnRunner {
     // boundary. Publish each unpublished inbox row oldest-first, exactly once, as an inbound
     // SEND row ({§message-arrival}); its selected paths ride along for the READs that follow.
     async #publishMessages(
-        { workerId, loopId, onDispatch, onSettled }: TurnArgs,
+        { workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs,
         turnId: number,
+        fit: ContextFit,
     ): Promise<{ nextActionIndex: number; openPaths: string[] }> {
         let nextActionIndex = 1;
         const openPaths: string[] = [];
         const unpublished = await this.#db.drain_unpublished_messages_for_loop.all<{
             id: number; ordinal: number; source: string | null; body: string; open_paths: string; path: string; durable_path: string;
         }>({ loop_id: loopId });
-        for (const message of unpublished) {
-            openPaths.push(...assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
+        const selected = unpublished.map((message) => assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
+        const pendingPaths = selected.reduce((count, paths) => count + paths.length, 0);
+        for (const [index, message] of unpublished.entries()) {
+            openPaths.push(...selected[index]!);
             const logEntryId = await this.#materialization.writeArrivalLog({
-                workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
+                workspaceId, workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
                 selfAddressed: message.source !== null && message.source === message.durable_path,
+                fit: reserved(fit, unpublished.length - index - 1 + pendingPaths),
             });
             const published = await this.#db.drain_publish_message.get<{ id: number }>({ id: message.id, log_entry_id: logEntryId });
             if (published === undefined) throw new Error(`TurnRunner.#publishMessages: message ${message.id} was already published`);
@@ -1044,9 +1052,9 @@ export default class TurnRunner {
     // {§methods-loop-run-open-paths}: selected workspace paths belong to the message.
     // Publish it, then dispatch ordinary core READs in that same turn;
     // missing/non-member paths retain their normal 4xx. Returns the next action index.
-    async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number): Promise<number> {
+    async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number, fit: ContextFit): Promise<number> {
         let nextActionIndex = fromSequence;
-        for (const raw of openPaths) {
+        for (const [index, raw] of openPaths.entries()) {
             const fileRead: ReadStatement = {
                 op: "READ", aside: null, lineMarker: null, matcher: null,
                 target: { kind: "local", raw },
@@ -1056,6 +1064,7 @@ export default class TurnRunner {
             await this.#dispatch({
                 statement: fileRead, workspaceId, workerId, loopId, turnId,
                 sequence: nextActionIndex, origin: "_plurnk", onDispatch, onSettled,
+                fit: reserved(fit, openPaths.length - index - 1),
             });
             nextActionIndex++;
         }
@@ -1074,13 +1083,24 @@ export default class TurnRunner {
             gitStatus: facts.gitStatus,
             notices: facts.notices,
             transientOpenLogEntryId: facts.transientOpenLogEntryId,
-            promptProjection: facts.promptProjection,
             turnId: facts.turnId,
         });
     }
 
-    // Retained context cannot fit: the turn completes on the curation failure and
-    // the loop rules the terminal.
+    // {§context-fit} — the budget left for one more row, measured by building the packet as it would
+    // render now: every row landed so far, every KILL already honoured. Null without a budget.
+    #fitFor(args: TurnArgs, facts: PacketFacts): ContextFit {
+        return {
+            remaining: async () => {
+                const packet = await this.#buildPacket(args, facts);
+                const budget = this.#packets.curationBudgetFor(packet);
+                return budget === null ? null : Math.max(0, budget - packet.weight - RECEIPT_RESERVE);
+            },
+        };
+    }
+
+    // {§context-hard-413} — retained context cannot fit: the turn completes on the overflow and the
+    // loop rules the terminal; no provider I/O.
     async #failCuration(request: TurnRequest, overflow: CurationOverflow): Promise<EngineTurnResult> {
         const curationFailure = curationOverflowFailure(overflow);
         await Turn.complete(this.#db, request.turnId, curationFailure.status);
@@ -1229,14 +1249,9 @@ export default class TurnRunner {
                 await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
                 return "reissued";
             }
-            if (!(error instanceof ProviderError)
-                || error.kind !== "capacity_exceeded"
-                || attempts.signal?.aborted === true
-                || !await this.#recoverCapacityPacket(args, request, attempts)) {
-                throw error;
-            }
-            await this.#resendForCapacity(args, request, attempts, modelCall, error);
-            return "reissued";
+            // {§context-hard-413} — a provider capacity rejection after the provider's own retries is this
+            // turn's failure; nothing is withheld to make the request smaller.
+            throw error;
         } finally {
             reasoning.end();
         }
@@ -1407,44 +1422,6 @@ export default class TurnRunner {
         // The response is still owed for this exact input. Failure rows remain
         // durable, but recursively materializing them would mutate and cache-bust
         // the request being recovered. {§provider-recovery}
-    }
-
-    // The first capacity rejection withholds the automatic prompt projection; the
-    // rebuilt request is resent only when it actually changed the wire messages.
-    async #recoverCapacityPacket(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<boolean> {
-        if (request.promptProjection !== "automatic") return false;
-        request.promptProjection = "withheld";
-        const candidate = await this.#buildPacket(args, request);
-        const candidateRequest = await this.#wireMessages(candidate, request.systemCtx, args.provider);
-        if (JSON.stringify(candidateRequest.messages) === JSON.stringify(attempts.wire.messages)) return false;
-        request.packet = candidate;
-        attempts.wire = candidateRequest;
-        return true;
-    }
-
-    // The capacity rejection is durable as a failed call and a problem row; the
-    // replacement request is rebuilt to include that recovery signal while keeping
-    // the selected projection.
-    async #resendForCapacity(
-        args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, modelCall: ModelCall, error: ProviderError,
-    ): Promise<void> {
-        const { workerId, loopId, provider } = args;
-        const failure = TurnRunner.#providerFailure(error, attempts.signal);
-        await modelCall.fail(failure, error.capacity ?? null);
-        attempts.callInFlight = false;
-        await this.#problems.record({
-            workerId,
-            loopId,
-            turnId: request.turnId,
-            sequence: request.nextActionIndex++,
-            origin: "_plurnk",
-            source: "provider",
-            result: failure,
-        });
-        // Include the durable recovery signal in the replacement
-        // request while preserving the selected recovery posture.
-        request.packet = await this.#buildPacket(args, request);
-        attempts.wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
     }
 
     // The attempt row's verdict: accepted, or rejected with the parser's errors. The
@@ -1725,6 +1702,7 @@ export default class TurnRunner {
             turnId: request.turnId,
             fromSequence: request.nextActionIndex,
             maxCommands,
+            fit: request.fit,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
             finalResponse: split.finalResponse,
@@ -1738,7 +1716,6 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        if (executed.emptyTurn) await this.#readEmptyTurnReasoning(args, request, split.packetAssistant);
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             progressed: executed.progressed,
@@ -1746,37 +1723,6 @@ export default class TurnRunner {
             emptyTurn: executed.emptyTurn,
             emissionAttempts: emission.emissionAttempts,
         });
-    }
-
-    // {§reasoning-empty-turn-read} — after a turn with no operation, one runtime turn READs that
-    // turn's reasoning back to the model. A trace or emission carrying a foreign tool-call grammar
-    // is not echoed (`KnownToxins`); a turn without reasoning has nothing to read.
-    async #readEmptyTurnReasoning(args: TurnArgs, request: TurnRequest, { content, reasoning, ops }: PacketAssistant): Promise<void> {
-        const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
-        if (ops.length > 0 || !reasoning?.length || KnownToxins.match(content) !== null || KnownToxins.match(reasoning) !== null) return;
-        const statement = ReasoningView.emptyTurnRead(provider, request.workerName, request.loopSeq, request.seq);
-        if (statement === null) return;
-        const policies = (await CapabilityPolicies.layers(this.#db, workspaceId, loopId)).map((layer) => layer.policy);
-        if (!this.#capabilities.allowsAcross(statement, workspaceId, policies)) return;
-        const turn = await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "operation" });
-        request.createdTurnIds.push(turn.id);
-        const source = TurnOps.renderInternal([statement]);
-        const result = await this.executeAdmittedTurn({
-            statements: TurnOps.parseInternal(source),
-            source,
-            emission: null,
-            origin: "_plurnk",
-            workspaceId,
-            workerId,
-            loopId,
-            turnId: turn.id,
-            fromSequence: 1,
-            failOnOperationError: true,
-            signal: this.#loopSignal(loopId),
-            onDispatch,
-            onSettled,
-        });
-        if (result.status !== 200) throw new Error(`empty-turn reasoning read returned ${result.status}; expected 200`);
     }
 
     // Split the wire-level ProviderResponse into the two destinations:

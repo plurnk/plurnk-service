@@ -3,24 +3,24 @@
 > [!IMPORTANT]
 > YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
 
-> [!CAUTION]
-> YOU SHOULD NOT emit free text between the fenced OP lines.
-
 ## Plurnk OP Syntax
 
 ```exampleOp (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
 body?
 ```
 
+```COPY|MOVE (source) <scope|range>? (destination) <scope|range>? [metadata]? <!-- aside -->?
+```
+
 ## Plurnk Workflow OPs
 
-* NOTE: Record all working memory, conclusions, decisions, and plans or lose it. (works in reasoning)
-* FIND: List matching paths, or the match locations inside one path. (works in reasoning)
-* READ: Read files, entries, streams, or only the lines a pattern selects. (works in reasoning)
+* NOTE: Record all conclusions, decisions, findings, and plans.
+* FIND: List matching paths, or the match locations inside one path.
+* READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
-* COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
-* MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: End things — delete an entry, stop a process, retire log items, or end the loop with a KILL turn.
+* COPY: Copy files, entries, streams, or text regions.
+* MOVE: Move files, entries, streams, or text regions.
+* KILL: Kill things. Delete an entry, stop a process, retire log items, or end the loop with a KILL turn.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams.
@@ -28,23 +28,20 @@ body?
 
 ## Workflow Management
 
+> [!IMPORTANT]
+> YOU MUST distill reasoning into NOTE entries.
+
+```NOTE
+Example of reasoning preserved for future turns.
+```
+
 ```WAIT <60> <!-- wait up to 60 seconds -->
 Example explanation of delay.
 ```
 
-> [!TIP]
-> YOU SHOULD record at least one NOTE per continuing turn.
-
-> [!TIP]
-> YOU SHOULD promptly submit the turn after emitting FIND and READ discovery operations rather than speculating more.
-
-```NOTE
-Example of reasoning distilled and preserved for future turns.
-```
-
 > [!IMPORTANT]
-> YOU MAY NOT respond before the KILL turn.
-> YOU MAY NOT perform a KILL turn before you have fully resolved all child workers and streams.
+> YOU SHOULD NOT respond before the KILL turn.
+> YOU SHOULD NOT perform a KILL turn before you have fully resolved all child workers and streams.
 > YOU MAY perform a KILL turn by emitting a single parameterless KILL containing the final deliverable response.
 
 ```KILL
@@ -112,14 +109,23 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 ````
 
 > [!TIP]
-> The EDIT body is literal text; it may hold more or fewer lines than the scope. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
-
-## Context
+> The EDIT body is literal text; it may hold more or fewer lines than the scope.
 
 > [!TIP]
-> Your packet is a room: `tokens` is how full it is, `budget` is its size, `largest` names its heaviest rows. Anything you READ, FIND or receive arrives whole if it fits, otherwise as its size and address. READ a range of what did not fit, NOTE what you learned, KILL what you no longer need. Successful log KILL receipts are not shown.
+> YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
 
-```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
+## Context Curation
+
+> [!WARNING]
+> YOU MUST NOT exceed budget.
+
+```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
+```
+
+```MOVE (log:///1/4/2/READ) <12,40> (notes/wcs-excerpt.py) <-1> <!-- moves lines 12–40 of the result to the file's end; the row keeps the rest -->
+```
+
+```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- (successful log KILL receipts are not shown) -->
 ```
 
 ```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
@@ -145,4 +151,7 @@ Describe the child's complete task in the body.
 
 ```sh [{"env":{"GREETING":"Hello"}}] <!-- presuming sh tool is enabled -->
 echo "$GREETING, $PLANET."
+```
+
+```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
 ```

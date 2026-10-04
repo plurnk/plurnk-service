@@ -16,6 +16,18 @@ import type { DispatchResult } from "./Dispatcher.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
+// The columns `engine_insert_log_entry` takes, as one dispatch writes them.
+export interface LogRecord extends Record<string, unknown> {
+    worker_id: number; loop_id: number; turn_id: number; sequence: number;
+    origin: WriterTier; source: string | null; model_call_id: number | null;
+    op: string; signal: string | null;
+    scheme: string | null; username: string | null; password: string | null;
+    hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null;
+    lineMarker: string | null;
+    tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
+    weight: number; state: string; outcome: null; attrs: string; initial_folded: string;
+}
+
 export default class LogWriter {
     readonly #db: Db;
     readonly #weighContent: (text: string) => number;
@@ -53,6 +65,23 @@ export default class LogWriter {
             if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
             attrs.pathname = await ExecutionOutputs.claim(this.#db, workspaceId, execRouteOf(statement).runtime);
         }
+        const record = await this.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId });
+        await this.#canonColumns(record, workspaceId);
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(record);
+        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
+        return row.id;
+    }
+
+    // The row a dispatch would write, before it is written: the fit test renders it to weigh it
+    // ({§context-fit}) and writeLog inserts it. A failed result gets its instance here.
+    async record({
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
+    }: {
+        statement: PlurnkStatement; result: DispatchResult;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        curationPlan: LogCurationPlan | null;
+        modelCallId: number | null;
+    }): Promise<LogRecord> {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(primaryTargetOf(durableStatement), workspaceId);
         const lineMarker = primaryLineMarkerOf(durableStatement);
@@ -106,7 +135,7 @@ export default class LogWriter {
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(durableStatement);
         const rxJson = JSON.stringify(result);
-        const record = {
+        const record: LogRecord = {
             worker_id: workerId,
             loop_id: loopId,
             turn_id: turnId,
@@ -143,10 +172,7 @@ export default class LogWriter {
             attrs,
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         };
-        await this.#canonColumns(record, workspaceId);
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(record);
-        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
-        return row.id;
+        return record;
     }
 
 }

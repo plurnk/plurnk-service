@@ -282,7 +282,7 @@ test("{§find-result-unit} a glob remains resource mode when it resolves to one 
     } finally { await db.close(); }
 });
 
-test("markerless exact matcher FIND returns the first 16 locations and <1,-1> returns all", async () => {
+test("{§markerless-first-page} a markerless exact matcher FIND returns every location; <1,-1> is the same selection", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "many.md", Array.from({ length: 20 }, (_, i) => `target ${i + 1}`).join("\n"));
@@ -291,12 +291,13 @@ test("markerless exact matcher FIND returns the first 16 locations and <1,-1> re
             parseOp<FindStatement>("````FIND (worker:///many.md) [{\"pattern\":\"*target*\"}]````", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
-        assert.equal(first.results.length, 16);
+        assert.equal(first.results.length, 20);
         assert.equal(first.matchingPathCount, 1);
         assert.equal(first.matchLocationCount, 20);
         assert.equal(first.range?.unit, "matchLocation");
         assert.equal(first.range?.total, 20);
-        assert.deepEqual(first.range?.returned, [1, 16]);
+        assert.deepEqual(first.range?.requested, [1, -1]);
+        assert.deepEqual(first.range?.returned, [1, 20]);
 
         const all = await worker.find(
             parseOp<FindStatement>("````FIND (worker:///many.md) <1,-1> [{\"pattern\":\"*target*\"}]````", "FIND"),

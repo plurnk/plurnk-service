@@ -21,7 +21,11 @@ for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "d
             const cancelled = deadline || mode.startsWith("cancel");
             const reason = deadline ? LOOP_TIMEOUT_REASON : new Error("owner cancelled preparation");
             let thrown: unknown;
-            t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async () => {
+            // {§context-fit} — initialization measures its own rows through the same builder; the failure under
+            // test belongs to the inference turn's preparation, after initialization completed.
+            const build = PacketBuilder.prototype.buildRequestPacket;
+            t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, args: Parameters<PacketBuilder["buildRequestPacket"]>[0]) {
+                if (args.currentTurnSeq === 1) return build.call(this, args);
                 if (mode !== "internal") controller.abort(reason);
                 if (mode.endsWith("wrapped") || mode === "cancel-context") {
                     try {

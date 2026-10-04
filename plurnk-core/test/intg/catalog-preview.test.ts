@@ -22,7 +22,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs 
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
-        // model memory is not governed by the file cap — its ordinary first page contains all 3 entries.
+        // model memory is not governed by the file cap — its survey contains all 3 entries.
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -168,7 +168,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
 test("the turn-0 initialization consists of the real orienting operations", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each survey whole at turn 0
         const provider = mock();
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);

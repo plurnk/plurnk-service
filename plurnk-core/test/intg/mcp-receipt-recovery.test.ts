@@ -65,7 +65,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(automatic);
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
-        assert.equal(automatic.range, "<1,16> of 40 lines");
+        assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
         const failed = (await packet(3)).find((row) => row.path === invocation.logPath && row.status === 416);
         assert.ok(failed);
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);

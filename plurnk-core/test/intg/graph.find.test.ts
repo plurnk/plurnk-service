@@ -126,7 +126,7 @@ test("{§range-extent}: a graph matcher selecting no resources returns 204 with 
             range: {
                 unit: "resource",
                 total: 0,
-                requested: [1, 16],
+                requested: [1, -1],
             },
         });
     } finally { db.close(); }

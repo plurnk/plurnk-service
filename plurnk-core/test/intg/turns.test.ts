@@ -257,7 +257,7 @@ test("Turn: producer is immutable and model calls require inference", async () =
     } finally { await db.close(); }
 });
 
-test("{§context-output-admission} inference history prevents changing the turn producer", async () => {
+test("{§turn-record} inference history prevents changing the turn producer", async () => {
     const { db, loopId } = await setup();
     try {
         const emitted = await Turn.open(db, { loopId, producer: "model", kind: "inference" });

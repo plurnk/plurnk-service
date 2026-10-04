@@ -110,9 +110,9 @@ test("a model's execution result surfaces visibly in the next turn without an ex
     });
 });
 
-// {§exec-stream-page} — a 30-line structured result closes as its FIRST page (a markerless READ) with
-// the extent; the channel itself stays complete and typed.
-test("a generated JSON result publishes its first page with the extent through the next-turn packet", async () => {
+// {§exec-stream-page} {§context-fit} — a 30-line structured result closes as a markerless READ: whole,
+// because it fits, with the extent; the channel itself stays complete and typed.
+test("a generated JSON result publishes whole with the extent through the next-turn packet", async () => {
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sqlite\n" + query + "\n````\n````WAIT\nwaiting\n````", 10),
@@ -143,9 +143,9 @@ test("a generated JSON result publishes its first page with the extent through t
 
             const result = JSON.parse(observation.rx) as { content: string; mimetype: string; startLine: number; range: { total: number; returned: [number, number] } };
             assert.equal(result.mimetype, "application/json", "a markerless READ keeps the channel's mimetype");
-            assert.equal(result.content.split("\n").length, 16, "only the first page of the 30-line document is published");
+            assert.equal(result.content.split("\n").length, 30, "the 30-line document is published whole: it fits");
             assert.equal(result.startLine, 1);
-            assert.deepEqual([result.range.total, result.range.returned], [30, [1, 16]], "the extent names the whole document");
+            assert.deepEqual([result.range.total, result.range.returned], [30, [1, 30]], "the extent names the whole document");
             assert.equal(observation.weight, contentWeight(result.content), "the stream delta stores its published body's weight");
 
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
@@ -153,9 +153,9 @@ test("a generated JSON result publishes its first page with the extent through t
             const entry = logEntries(packet).find((candidate) =>
                 String(candidate.logPath).endsWith("/READ") && String(candidate.path ?? "").startsWith("sqlite:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
-            assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
+            assert.equal(entry.preview, undefined, "nothing is previewed on the model's behalf");
             assert.match(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is what the model sees");
-            assert.doesNotMatch(packetSection(packet, "log"), /30:\{"n":30,/, "the document's tail is not delivered unasked");
+            assert.match(packetSection(packet, "log"), /30:\{"n":30,/, "and so is its tail: whole when it fits");
         } finally {
             ws.close();
         }

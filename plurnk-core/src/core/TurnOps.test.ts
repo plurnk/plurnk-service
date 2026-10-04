@@ -8,17 +8,8 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 const SOURCE = "ops://analyst/1/2";
 const aside = `<!-- Automatically truncated op body: READ (${SOURCE}) to retrieve in full -->`;
 
-const withPreview = (t: import("node:test").TestContext, lines: string, chars: string): void => {
-    const saved = { lines: process.env.PLURNK_SERVICE_PREVIEW_LINES, chars: process.env.PLURNK_SERVICE_PREVIEW_CHARS };
-    process.env.PLURNK_SERVICE_PREVIEW_LINES = lines;
-    process.env.PLURNK_SERVICE_PREVIEW_CHARS = chars;
-    t.after(() => {
-        for (const [key, value] of [["PLURNK_SERVICE_PREVIEW_LINES", saved.lines], ["PLURNK_SERVICE_PREVIEW_CHARS", saved.chars]] as const) {
-            if (value === undefined) delete process.env[key];
-            else process.env[key] = value;
-        }
-    });
-};
+import { contentWeight } from "./content-weight.ts";
+import { EMISSION_HEAD_WEIGHT } from "./EmissionHead.ts";
 
 test("{§emission-row} the frozen projection keeps every header and body within the preview bound, and adds no nested operations", () => {
     const headers = [
@@ -71,28 +62,40 @@ for (const [name, body] of [
     }
 }
 
-test("{§emission-row} a body over the line bound keeps its head, and its closer names the source", (t) => {
-    withPreview(t, "3", "16000");
-    const body = Array.from({ length: 10 }, (_line, index) => `line ${index + 1}`).join("\n");
+const longLines = (count: number): string => Array.from({ length: count }, (_line, index) => `line ${String(index + 1).padStart(2, "0")} ${"x".repeat(40)}`).join("\n");
+
+test("{§emission-row} a body over the head keeps whole lines up to about a hundred tokens, and its closer names the source", () => {
+    const body = longLines(10);
     const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", body));
-    assert.equal(TurnOps.renderEmission(statements, SOURCE), `${PlurnkParser.frame("EDIT (worker:///notes.md)", "line 1\nline 2\nline 3")} ${aside}`);
+    const rendered = TurnOps.renderEmission(statements, SOURCE);
+    assert.ok(rendered.endsWith(` ${aside}`), "the closer names the source");
+    const [kept] = TurnOps.parseInternal(rendered.slice(0, -aside.length - 1));
+    const head = (kept as EditStatement).body!;
+    const lines = head.split("\n");
+    assert.ok(lines.length >= 2 && lines.length < 10, `the head is whole lines, got ${lines.length}`);
+    assert.ok(body.startsWith(head), "the head is the body's own opening");
+    assert.ok(contentWeight(`${head}\n`) <= EMISSION_HEAD_WEIGHT, "the head fits the hundred tokens");
+    assert.ok(contentWeight(`${head}\n${body.split("\n")[lines.length]}\n`) > EMISSION_HEAD_WEIGHT, "one more line would not");
 });
 
-test("{§emission-row} a line over the character bound is cut mid-line, and the aside still rides its own closer", (t) => {
-    withPreview(t, "100", "10");
-    const statements = TurnOps.parseInternal(PlurnkParser.frame("SEND (worker://helper)", "abcdefghijklmnopqrstuvwxyz"));
+test("{§emission-row} a first line longer than the head is cut inside itself, and the aside still rides its own closer", () => {
+    const statements = TurnOps.parseInternal(PlurnkParser.frame("SEND (worker://helper)", "a".repeat(400)));
     const rendered = TurnOps.renderEmission(statements, SOURCE);
-    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", "abcdefghij")} ${aside}`);
+    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", "a".repeat(EMISSION_HEAD_WEIGHT * 2))} ${aside}`);
     assert.match(rendered.split("\n").at(-1)!, /^``` <!-- Automatically truncated op body: /u, "the aside sits on the closer's own line");
 });
 
-test("{§emission-row} a worker that copies the aside onto its own closer keeps its body; the aside is outside text", (t) => {
-    withPreview(t, "2", "16000");
-    const copied = TurnOps.renderEmission(TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree")), SOURCE);
+test("{§emission-row} a body within the head renders whole, with no aside", () => {
+    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree"));
+    assert.equal(TurnOps.renderEmission(statements, SOURCE), PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree"));
+});
+
+test("{§emission-row} a worker that copies the aside onto its own closer keeps its body; the aside is outside text", () => {
+    const copied = TurnOps.renderEmission(TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", longLines(10))), SOURCE);
     const parsed = PlurnkParser.parse(copied);
     const [statement] = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
     assert.equal(statement!.op, "EDIT");
-    assert.equal((statement as EditStatement).body, "one\ntwo");
+    assert.ok(longLines(10).startsWith((statement as EditStatement).body!), "the head is kept as the body");
     assert.ok(parsed.items.some((item) => item.kind === "text" && item.content.includes("Automatically truncated op body")), "the copied aside is outside text");
 });
 

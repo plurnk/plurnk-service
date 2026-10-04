@@ -10,6 +10,7 @@ import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Fork from "../../src/core/fork.ts";
 import NativeContent from "../../src/core/NativeContent.ts";
+import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
 import { userText } from "./_mock.ts";
 
 // The member tree is a plain directory: the service member definition admits it, as the harness does.
@@ -112,8 +113,8 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
 
-test("{§context-output-admission}: withholding native output does not deliver it; only another READ reattaches it", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-image-overflow-"));
+test("{§context-fit}: a READ that does not fit is a bodiless receipt; native output that fits attaches, and another READ attaches it again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-image-fit-"));
     try {
         await writeFile(join(root, "logo.png"), PNG);
         await writeFile(join(root, "large.txt"), "evidence ".repeat(100_000));
@@ -127,28 +128,35 @@ test("{§context-output-admission}: withholding native output does not deliver i
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "native-output-admission", projectRoot: root });
+                await rpcCall(ws, 1, "workspace.create", { name: "native-context-fit", projectRoot: root });
                 const run = await rpcCall(ws, 2, "loop.run", { prompt: "Review logo.png and large.txt.", policy: { proposals: "accept" } });
                 const loopId = (run.result as { loopId: number }).loopId;
                 await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20_000 });
-                const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
-                const rows = await db.engine_render_log.all<{ op: string; pathname: string; output_withheld: number; rx: string }>({ worker_id: loop!.worker_id });
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                 const images = rows.filter(({ op, pathname }) => op === "READ" && pathname === "logo.png");
                 assert.equal(images.length, 2);
-                assert.equal(images[0]!.output_withheld, 1);
-                assert.equal(images[1]!.output_withheld, 0);
+                assert.deepEqual(images.map(({ status_rx }) => status_rx), [200, 200], "the picture fits twice");
                 assert.equal(JSON.parse(images[0]!.rx).nativeContentHash, JSON.parse(images[1]!.rx).nativeContentHash, "both observations retain the same immutable source bytes");
+                const large = rows.find(({ op, pathname }) => op === "READ" && pathname === "large.txt");
+                assert.ok(large, "the explicit READ of the large file has its row");
+                assert.equal(large.status_rx, 413, "the whole file does not fit the remaining budget");
+                const receipt = JSON.parse(large.rx) as { content: string | null; problem: { type: string; lines: number; tokens: number; remaining: number } };
+                assert.equal(receipt.content, null, "a receipt carries no body: not a head, not a page");
+                assert.equal(receipt.problem.type, RESULT_EXCEEDS_BUDGET);
+                assert.equal(receipt.problem.lines, 1, "the size is stated in the projection's own units");
+                assert.ok(receipt.problem.tokens > receipt.problem.remaining, "the receipt states what remained");
             } finally { ws.close(); }
         });
         const closings = provider.received.map((messages) => messages.at(-1)!);
-        assert.equal(typeof closings[1]!.content, "string", "the overflow request carries no native part");
-        assert.equal(typeof closings[2]!.content, "string", "old omission cannot silently reattach the image");
-        assert.match(userText(provider.received[1]!), /output lines not shown; the log exceeded logTokensMax when this row was withheld/u);
-        assert.match(userText(provider.received[1]!), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
+        assert.ok(Array.isArray(closings[1]!.content), "the picture that fit rides natively in the next request");
+        const text = userText(provider.received[1]!);
+        assert.match(text, /"status":413/u, "the receipt for the READ that did not fit is visible to the model");
+        assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
+        assert.doesNotMatch(text, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§context-gauge})");
         const renewed = closings[3]!.content;
         assert.ok(Array.isArray(renewed));
         const image = renewed.find((part) => part.type === "file");
-        assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG));
+        assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "another READ attaches the picture again");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 

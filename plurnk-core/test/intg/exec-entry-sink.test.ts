@@ -262,7 +262,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
 
         // The packet gate (the render the model actually sees): body-suppressed by default, the metadata line
         // projects the machine-created entry as an ordinary system READ. Durable storage remains
-        // the typed EDIT above; only the currently visible row contributes logTokens.
+        // the typed EDIT above; only the currently visible row contributes tokens.
         const view = (initial_folded: readonly (readonly [number, number])[]): object[] => [{
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
@@ -273,7 +273,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
         const [folded] = parseLogRecords(foldedLine);
         assert.equal(folded?.logPath, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
-        assert.equal(folded?.logTokens, countTokens(foldedLine), "metadata-only observations still report their full context cost");
+        assert.equal(folded?.tokens, countTokens(foldedLine), "metadata-only observations still report their full context cost");
         assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the suppressed body is withheld");
         assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "suppressed = no body rides the packet");

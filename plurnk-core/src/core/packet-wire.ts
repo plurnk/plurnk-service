@@ -12,13 +12,12 @@ import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
-import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
-import BodyPreview from "../content/body-preview.ts";
 import ScopeFormat from "../content/scope-format.ts";
 import PatternEdits from "../content/pattern-edits.ts";
 import { Results as SchemeResults, type MatchEvidence } from "@plurnk/plurnk-schemes";
@@ -41,6 +40,8 @@ interface ActionTarget {
     pathname?: string | null;
     query?: string | null;
     fragment?: string | null;
+    username?: string | null;
+    password?: string | null;
 }
 // The durable statement supplies operand identity and bodies without asking the
 // packet mirror to re-serialize the model's complete emission tag.
@@ -78,12 +79,21 @@ interface RxView {
     receipt?: unknown;
     effects?: unknown;
 }
+// One `log_entries` row joined to its loop and turn, as `engine_render_log` yields it.
+export interface StoredLogRow {
+    id: number | null; loop_seq: number; turn_seq: number; sequence: number;
+    origin: string; op: string | null; signal: string | null;
+    scheme: string | null; username: string | null; password: string | null;
+    hostname: string | null; port: number | null; pathname: string | null;
+    query: string | null; fragment: string | null;
+    status_rx: number; rx: string; mimetype_rx: string;
+    tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
+    producer: string;
+}
 interface LogEntryView {
     id?: number | null;
-    output_admission_turn_id?: number | null;
-    output_withheld?: boolean;
-    newOverflow?: boolean;
     coordinate?: unknown;
+    signal?: unknown;
     op?: unknown;
     origin?: unknown;
     status?: unknown;
@@ -112,7 +122,6 @@ interface SectionView { name?: unknown; slot?: unknown; header?: unknown; conten
 interface Packet { sections?: SectionView[] }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
-    readonly promptProjectionWeight?: number;
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
@@ -120,7 +129,7 @@ interface RenderLogOptions {
 
 interface ReclaimableLogItem {
     readonly path: string;
-    readonly logTokens: number;
+    readonly tokens: number;
 }
 
 export interface RenderedLog {
@@ -132,8 +141,6 @@ export interface RenderedLog {
     readonly attachments: readonly PacketAttachment[];
     // {§emission-row} — the emissions the rendered rows announce, in row order.
     readonly emissions: readonly RenderedEmission[];
-    readonly unadmittedOutput: readonly number[];
-    readonly newOverflow: boolean;
 }
 
 // {§emission-row} — an announced emission: its row's coordinate, its frozen canonical text, and the
@@ -153,8 +160,6 @@ interface RenderedLogRow {
     readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
     readonly emission: RenderedEmission | null;
-    readonly unadmittedOutput: number | null;
-    readonly newOverflow: boolean;
 }
 
 interface VisibleLogBody {
@@ -226,8 +231,7 @@ export default class PacketWire {
     }
 
     // Non-terminal model-facing observations are deliberately separate from
-    // operation failures. Producer messages are normalized and bounded by the
-    // shared preview limit; typed positions remain legible.
+    // operation failures. Producer messages are normalized; typed positions remain legible.
     static renderNotices(notices: unknown): string {
         const observations = Array.isArray(notices) ? notices as NoticeView[] : [];
         return observations.map((notice) => {
@@ -235,9 +239,7 @@ export default class PacketWire {
             const rawMessage = typeof notice.message === "string"
                 ? notice.message.replace(/\s+/g, " ").trim()
                 : "";
-            const message = rawMessage.length > 0
-                ? PacketWire.#preview(rawMessage).text
-                : "";
+            const message = rawMessage;
             const position = notice.position?.type === "content-offset"
                 ? ` @ ${String(notice.position.line)}:${String(notice.position.column)}`
                 : "";
@@ -277,11 +279,11 @@ export default class PacketWire {
         return PacketWire.renderLogWithAccounting(entries, weighContent, options).content;
     }
 
-    // {§tokenomics-pressure-inventory} — the wire row and its reclaimable-body
-    // accounting come from one render pass; packet assembly never re-parses its text.
+    // {§context-gauge} — the wire row and its reclaimable-body accounting come from one render
+    // pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], emissions: [], unadmittedOutput: [], newOverflow: false };
+        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], emissions: [] };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         const records = rows.map(({ content }) => content);
         return {
@@ -291,8 +293,6 @@ export default class PacketWire {
                 curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
             emissions: rows.flatMap(({ emission }) => emission === null ? [] : [emission]),
-            unadmittedOutput: rows.flatMap(({ unadmittedOutput }) => unadmittedOutput === null ? [] : [unadmittedOutput]),
-            newOverflow: rows.some(({ newOverflow }) => newOverflow),
         };
     }
 
@@ -539,152 +539,6 @@ export default class PacketWire {
         return `log:///${coordinate}/${leaf}`;
     }
 
-    // One preview function for every bounded model-facing projection. Lines
-    // protect ordinary documents and Unicode characters protect a single-line
-    // bomb. Once a physical line is complete, a character cut retreats to that
-    // line boundary rather than exposing a partial coordinate prefix.
-    static #preview(text: string): { text: string; cut: boolean; chunk: string | null } {
-        const coordinates = new TextCoordinates(text);
-        const physicalLines = coordinates.logicalLines();
-        const { end } = BodyPreview.select(text);
-        const cut = end < text.length;
-        return {
-            text: text.slice(0, end),
-            cut,
-            chunk: cut ? PacketWire.#chunk(coordinates, physicalLines, end, text.length) : null,
-        };
-    }
-
-    static #chunk(
-        coordinates: TextCoordinates,
-        lines: readonly TextLine[],
-        end: number,
-        completeEnd: number,
-    ): string {
-        const finalCompleteLine = lines.findIndex((line) =>
-            line.separator.length > 0 && line.end === end);
-        if (finalCompleteLine !== -1) {
-            const selected = ScopeFormat.lines(1, finalCompleteLine + 1);
-            if (finalCompleteLine + 1 === lines.length) {
-                throw new Error("a bounded body chunk must differ from its complete line extent");
-            }
-            return `${selected} of ${ScopeFormat.count("line", lines.length)}`;
-        }
-
-        const selectedRegion = coordinates.regionFromOffsets(0, end);
-        const completeRegion = coordinates.regionFromOffsets(0, completeEnd);
-        if (selectedRegion === null || completeRegion === null) {
-            throw new Error("a character-bound body chunk must resolve to exact text coordinates");
-        }
-        const selected = ScopeFormat.region(selectedRegion);
-        const complete = ScopeFormat.region(completeRegion);
-        if (selected === complete) {
-            throw new Error("a bounded body chunk must differ from its complete text extent");
-        }
-        return `${selected} of ${complete}`;
-    }
-
-    static #sparseChunk(
-        completeContent: string,
-        visibleContent: string,
-        visibleOrdinals: readonly number[],
-        projectedContent: string,
-    ): string {
-        const end = projectedContent.length;
-        const coordinates = new TextCoordinates(visibleContent);
-        const lines = coordinates.logicalLines();
-        const finalCompleteLine = lines.findIndex((line) =>
-            line.separator.length > 0 && line.end === end);
-        if (finalCompleteLine !== -1) {
-            const selectedOrdinals = visibleOrdinals.slice(0, finalCompleteLine + 1);
-            const runs: Array<[number, number]> = [];
-            for (const ordinal of selectedOrdinals) {
-                const previous = runs.at(-1);
-                if (previous === undefined || ordinal !== previous[1] + 1) {
-                    runs.push([ordinal, ordinal]);
-                } else {
-                    previous[1] = ordinal;
-                }
-            }
-            const selected = runs.map(([start, finish]) => ScopeFormat.lines(start, finish)).join(",");
-            return `${selected} of ${ScopeFormat.count("line", TextCoordinates.logicalLines(completeContent).length)}`;
-        }
-
-        const local = coordinates.regionFromOffsets(0, end);
-        const complete = new TextCoordinates(completeContent)
-            .regionFromOffsets(0, completeContent.length);
-        if (local === null || complete === null) {
-            throw new Error("a sparse character-bound chunk must resolve to exact text coordinates");
-        }
-        const startLine = visibleOrdinals[local.startLine - 1];
-        const endLine = visibleOrdinals[local.endLine - 1];
-        if (startLine === undefined || endLine === undefined) {
-            throw new Error("a sparse character-bound chunk must map to canonical body lines");
-        }
-        return `${ScopeFormat.region({
-            ...local,
-            startLine,
-            endLine,
-        })} of ${ScopeFormat.region(complete)}`;
-    }
-
-    static #promptProjection(
-        body: ReturnType<typeof LogBody.resolve>,
-        budget: number,
-        weighContent: WeighContent,
-        render: (content: string) => string = (content) =>
-            PacketWire.#renderContentBody(content, body.startLine, null),
-    ): { text: string; cut: boolean; chunk: string | null } {
-        const weightAt = (end: number): number => weighContent(render(body.content.slice(0, end)));
-        if (weightAt(body.content.length) <= budget) {
-            return { text: body.content, cut: false, chunk: null };
-        }
-        if (budget <= 0) return { text: "", cut: true, chunk: null };
-
-        const coordinates = new TextCoordinates(body.content);
-        const lines = coordinates.logicalLines();
-        const completeLineEnds = lines
-            .filter((line) => line.separator.length > 0 && line.end < body.content.length)
-            .map((line) => line.end);
-        let low = 0;
-        let high = completeLineEnds.length;
-        while (low < high) {
-            const middle = Math.floor((low + high) / 2);
-            if (weightAt(completeLineEnds[middle]!) <= budget) low = middle + 1;
-            else high = middle;
-        }
-        const completeLineEnd = low === 0 ? 0 : completeLineEnds[low - 1]!;
-        if (completeLineEnd > 0) {
-            return {
-                text: body.content.slice(0, completeLineEnd),
-                cut: true,
-                chunk: PacketWire.#chunk(coordinates, lines, completeLineEnd, body.content.length),
-            };
-        }
-
-        const firstLineEnd = lines[0]?.contentEnd ?? body.content.length;
-        const offsets = [0];
-        let offset = 0;
-        for (const codePoint of body.content.slice(0, firstLineEnd)) {
-            offset += codePoint.length;
-            offsets.push(offset);
-        }
-        low = 0;
-        high = offsets.length;
-        while (low < high) {
-            const middle = Math.floor((low + high) / 2);
-            if (weightAt(offsets[middle]!) <= budget) low = middle + 1;
-            else high = middle;
-        }
-        const characterEnd = low === 0 ? 0 : offsets[low - 1]!;
-        if (characterEnd === 0) return { text: "", cut: true, chunk: null };
-        return {
-            text: body.content.slice(0, characterEnd),
-            cut: true,
-            chunk: PacketWire.#chunk(coordinates, lines, characterEnd, body.content.length),
-        };
-    }
-
     static #visibleBody(
         entry: LogEntryView,
         body: ReturnType<typeof LogBody.resolve>,
@@ -720,63 +574,6 @@ export default class PacketWire {
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
     }
 
-    // {§message-projection} — a peer worker's message takes the ordinary bounds; every other
-    // arrival, the loop's own assignment included, shares the allowance.
-    static isExteriorArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown; readonly source?: unknown }): boolean {
-        return PacketWire.isArrival(e) && !(typeof e.source === "string" && e.source.startsWith("worker://"));
-    }
-
-    static #promptProjectionWeights(
-        entries: readonly LogEntryView[],
-        bodies: readonly ReturnType<typeof LogBody.resolve>[],
-        visibility: readonly VisibleLogBody[],
-        weighContent: WeighContent,
-        budget: number | undefined,
-    ): ReadonlyMap<number, number> {
-        if (budget === undefined) return new Map();
-        if (!Number.isSafeInteger(budget) || budget < 0) {
-            throw new RangeError(`promptProjectionWeight must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
-        }
-        const costs = entries.flatMap((entry, index) => {
-            // {§message-projection} — an arrival from outside the workspace shares the allowance;
-            // a peer worker's message takes the ordinary bounds.
-            if (!PacketWire.isExteriorArrival(entry) || bodies[index]!.content.length === 0) return [];
-            const body = bodies[index]!;
-            const visible = visibility[index]!;
-            const width = body.startLine === null || visible.totalLines === 0
-                ? 0
-                : String(body.startLine + visible.totalLines - 1).length;
-            const rendered = PacketWire.#renderContentBody(
-                body.content,
-                body.startLine,
-                null,
-                null,
-                width,
-                body.startLine === null ? null : visible.ordinals,
-            );
-            return [{ index, cost: weighContent(rendered) }];
-        });
-        const allocations = new Map<number, number>();
-        let remaining = budget;
-        let active = costs;
-        while (active.length > 0) {
-            const share = Math.floor(remaining / active.length);
-            const complete = active.filter(({ cost }) => cost <= share);
-            if (complete.length === 0) {
-                const extra = remaining % active.length;
-                active.forEach(({ index }, position) => allocations.set(index, share + (position < extra ? 1 : 0)));
-                break;
-            }
-            for (const { index, cost } of complete) {
-                allocations.set(index, cost);
-                remaining -= cost;
-            }
-            const completed = new Set(complete.map(({ index }) => index));
-            active = active.filter(({ index }) => !completed.has(index));
-        }
-        return allocations;
-    }
-
     static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
         const bodies = entries.map((e) => {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
@@ -791,25 +588,74 @@ export default class PacketWire {
         });
         const visibility = entries.map((entry, index) =>
             PacketWire.#visibleBody(entry, bodies[index]!));
-        const visibleBodies = bodies.map((body, index) => ({
-            ...body,
-            content: visibility[index]!.fullyFolded ? "" : visibility[index]!.content,
-        }));
-        const promptProjectionWeights = PacketWire.#promptProjectionWeights(
-            entries,
-            visibleBodies,
-            visibility,
-            weighContent,
-            options.promptProjectionWeight,
-        );
         return entries.map((e, index) => {
             const identity = PacketWire.#rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
             const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]!);
-            const projected = PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts, promptProjectionWeights.get(index), weighContent);
+            const projected = PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts);
             return PacketWire.#rowAccounting(identity, e, bodies[index]!, visibility[index]!, projected, weighContent, options);
         });
+    }
+
+    static #attrsOf(e: { readonly attrs?: unknown }): Record<string, unknown> {
+        const attrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
+        return attrs !== null && typeof attrs === "object" && !Array.isArray(attrs) ? attrs as Record<string, unknown> : {};
+    }
+
+    // One stored log row as the renderer sees it: the durable columns decoded once, a transient
+    // open row rendered open ({§invalid-emission-attempts}).
+    static entryView(r: StoredLogRow, transientOpenLogEntryId: number | null = null): LogEntryView {
+        const tx = (r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx) as StatementTx | string | null;
+        const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
+        const readResult = LogEntryProjection.op(r) === "READ" && r.status_rx === 200 && rx !== null && typeof rx === "object";
+        const rawLineAnchors = readResult && Object.hasOwn(rx, "lineAnchors") ? (rx as { lineAnchors: unknown }).lineAnchors : undefined;
+        if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
+            throw new TypeError("A READ result's lineAnchors field must be an array.");
+        }
+        const lineAnchors = rawLineAnchors as readonly string[] | undefined;
+        const rawLineNumberWidth = readResult && Object.hasOwn(rx, "lineNumberWidth") ? (rx as { lineNumberWidth: unknown }).lineNumberWidth : undefined;
+        if (rawLineNumberWidth !== undefined && !LineAnchors.isLineNumberWidth(rawLineNumberWidth)) {
+            throw new TypeError("A READ result's lineNumberWidth field must be a valid decimal line width.");
+        }
+        if ((rawLineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
+            throw new TypeError("A READ result's lineAnchors and lineNumberWidth fields must appear together.");
+        }
+        return {
+            id: r.id,
+            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
+            origin: r.origin,
+            op: r.op,
+            signal: r.signal === null ? null : JSON.parse(r.signal),
+            target: {
+                scheme: r.scheme,
+                username: r.username, password: r.password,
+                hostname: r.hostname, port: r.port,
+                pathname: r.pathname,
+                query: r.query,
+                fragment: r.fragment,
+            },
+            status: r.status_rx,
+            rx,
+            mimetype_rx: r.mimetype_rx,
+            tx,
+            mimetype_tx: r.mimetype_tx,
+            initial_folded: r.id === transientOpenLogEntryId ? LogVisibility.OPEN : LogVisibility.parse(r.initial_folded),
+            folded: LogVisibility.parse(r.folded),
+            source: r.source,
+            attrs: r.attrs === null ? null : JSON.parse(r.attrs),
+            producer: r.producer,
+            ...(lineAnchors === undefined ? {} : { lineAnchors }),
+            ...(rawLineNumberWidth === undefined ? {} : { lineNumberWidth: rawLineNumberWidth as number }),
+        };
+    }
+
+    // {§context-fit} — the tokens one row would charge the packet, rendered exactly as the log
+    // would render it, so the fit test and the gauge agree.
+    static rowTokens(view: LogEntryView, weighContent: WeighContent, options: RenderLogOptions = {}): number {
+        const [row] = PacketWire.#renderLogEntries([view], weighContent, options);
+        if (row === undefined) throw new Error("rowTokens: one view renders one row");
+        return row.curationTarget?.tokens ?? 0;
     }
 
     // The row's identity and authored facts: who wrote it, what it addressed, and the statuses
@@ -1065,18 +911,15 @@ export default class PacketWire {
         };
     }
 
-    // The body the row shows: the canonical full body is shared with log READ, log FIND, and
-    // search derivation. READ/FIND own selection bounds, NOTE, lifecycle bodies and admitted programs remain
-    // complete, and exterior arrivals share their packet allowance. Structured mutation receipts own
-    // their join bound; every remaining body uses the ordinary fixed preview.
+    // The body the row shows: the canonical full body, shared with log READ, log FIND and search
+    // derivation, whole. Whether a result fit was decided where it landed ({§context-fit}); the packet
+    // cuts nothing but the emission head ({§emission-row}).
     static #rowBody(
         identity: RowIdentity,
         e: LogEntryView,
         fullBody: ResolvedLogBody,
         bodyVisibility: VisibleLogBody,
         facts: RowResultFacts,
-        promptProjectionWeight: number | undefined,
-        weighContent: WeighContent,
     ): RowBody {
         const { meta, op } = identity;
         const projectedBody = {
@@ -1084,10 +927,6 @@ export default class PacketWire {
             content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
         };
         const emptyFind = op === "FIND" && e.status === 200 && facts.findItems === 0;
-        const previewExempt = op === "READ"
-            || op === "FIND"
-            || op === "NOTE" || typeof op === "string" && TurnDisposition.isOp(op)
-            || facts.structuredMutationReceipt;
         const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
         const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
         if (lineAnchors !== null) {
@@ -1103,26 +942,8 @@ export default class PacketWire {
         const sourceOrdinals = bodyVisibility.fullyFolded
             ? bodyVisibility.readableOrdinals
             : bodyVisibility.ordinals;
-        const projection = promptProjectionWeight !== undefined
-            ? PacketWire.#promptProjection(
-                projectedBody,
-                promptProjectionWeight,
-                weighContent,
-                (content) => PacketWire.#renderContentBody(
-                    content,
-                    bodyStartLine,
-                    null,
-                    null,
-                    numericLineNumberWidth,
-                    bodyStartLine === null
-                        ? null
-                        : sourceOrdinals.slice(0, TextCoordinates.logicalLines(content).length),
-                ),
-            )
-            : previewExempt
-            ? { text: projectedBody.content, cut: false, chunk: null }
-            : PacketWire.#preview(projectedBody.content);
-        const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
+        const projectedText = projectedBody.content;
+        const projectedLineCount = TextCoordinates.logicalLines(projectedText).length;
         const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
         if (facts.matches !== undefined && !bodyVisibility.fullyFolded) {
             const physicalLines = projectedOrdinals.map((ordinal) => fullBody.lineOrdinals?.[ordinal - 1]
@@ -1132,15 +953,12 @@ export default class PacketWire {
                 ...(region === undefined ? {} : { region: ScopeFormat.region(region) }),
                 ...(enclosingRegion === undefined ? {} : { enclosingRegion: ScopeFormat.region(enclosingRegion) }),
             }));
-            if (evidence.length > 0) {
-                meta.matches = BodyPreview.items(evidence, JSON.stringify);
-                if ((meta.matches as unknown[]).length !== evidence.length) meta.matchLocationCount = evidence.length;
-            }
+            if (evidence.length > 0) meta.matches = evidence;
         }
-        const body = emptyFind || projection.text.length === 0
+        const body = emptyFind || projectedText.length === 0
             ? ""
             : PacketWire.#renderContentBody(
-                projection.text,
+                projectedText,
                 bodyStartLine,
                 lineAnchors,
                 lineNumberWidth,
@@ -1162,29 +980,15 @@ export default class PacketWire {
 
         const display = bodyVisibility.readableContent.length === 0
             ? "none"
-            : bodyVisibility.fullyFolded || e.output_withheld === true
+            : bodyVisibility.fullyFolded
                 ? "folded"
                 : body.length === 0
                     ? "none"
                     : "open";
-        const projectedChunk = projection.chunk !== null
-            && bodyVisibility.folded.length > 0
-            && !bodyVisibility.fullyFolded
-            ? PacketWire.#sparseChunk(
-                fullBody.content,
-                projectedBody.content,
-                sourceOrdinals,
-                projection.text,
-            )
-            : projection.chunk;
-        if (display === "open" && projectedChunk !== null) {
-            meta.preview = projectedChunk;
-            delete meta.lines;
-        }
         return { body, projectedLineCount, display };
     }
 
-    // The row's native attachment, its withholding receipt, and the accounting field that
+    // The row's native attachment, a landed-unfit arrival's size, and the accounting field that
     // participates in the row it measures: iterate until its decimal width and therefore the
     // rendered row's curation weight are stable. {§packet-token-accounting}
     static #rowAccounting(
@@ -1197,31 +1001,26 @@ export default class PacketWire {
         options: RenderLogOptions,
     ): RenderedLogRow {
         const { meta, op, coordinate, path, target } = identity;
-        const { body, projectedLineCount, display } = projected;
+        const { body, display } = projected;
         const nativeCandidate = op === "READ" && typeof e.status === "number" && e.status >= 200 && e.status < 300
             ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
         const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
             ? nativeCandidate : null;
-        const outputWithheld = e.output_withheld === true
-            && ((!bodyVisibility.fullyFolded && body.length > 0) || native !== null);
-        if (outputWithheld) {
-            const omitted = body.length > 0
-                ? `${projectedLineCount} output lines${native === null ? "" : " and native content"}`
-                : "native content";
-            meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
-        }
+        // {§context-fit} — an arrival that did not fit landed folded with its size beside it: the lines
+        // and tokens of the body the model can READ at this row's address.
+        const unfit = PacketWire.#attrsOf(e).unfit;
+        if (unfit !== null && typeof unfit === "object") meta.size = unfit;
         // {§log-wire-format}: one descriptive heading, the facts, the body.
-        let logTokens = 0;
+        let tokens = 0;
         const renderRow = (): string => {
-            const lines = [`### ${path}${identity.description === null ? "" : ` ${identity.description}`} · ${logTokens}`];
+            const lines = [`### ${path}${identity.description === null ? "" : ` ${identity.description}`} · ${tokens}`];
             if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
             if (display === "open") lines.push(body);
             return lines.join("\n");
         };
 
         // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
-        const attachment = e.output_withheld !== true
-            && !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
+        const attachment = !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
             ? native
             : null;
         if (attachment !== null) meta.tokensAttachment = attachment.weight;
@@ -1232,21 +1031,15 @@ export default class PacketWire {
             : null;
         for (let pass = 0; pass < 8; pass += 1) {
             const next = weighContent(renderRow()) + (attachment?.weight ?? 0) + (emission?.weight ?? 0);
-            if (next === logTokens) {
+            if (next === tokens) {
                 return {
                     content: renderRow(),
-                    curationTarget: { path, logTokens },
+                    curationTarget: { path, tokens },
                     attachment,
                     emission,
-                    unadmittedOutput: (display === "open" || attachment !== null)
-                        && fullBody.provenance === "returned"
-                        && e.output_admission_turn_id == null
-                        && typeof e.id === "number"
-                            ? e.id : null,
-                    newOverflow: outputWithheld && e.newOverflow === true,
                 };
             }
-            logTokens = next;
+            tokens = next;
         }
         throw new Error("packet log row accounting did not converge");
     }

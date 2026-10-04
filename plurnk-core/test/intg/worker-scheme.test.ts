@@ -628,13 +628,13 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         );
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
-        assert.equal(done.content, lines.slice(0, 16).join("\n"));
+        assert.equal(done.content, lines.join("\n"), "a markerless READ is the whole deliverable ({§markerless-first-page})");
         assert.equal(Object.hasOwn(done, "lineAnchors"), false, "an actor's deliverable is not an editable entry");
         assert.deepEqual(done.range, {
             unit: "line",
             total: 20,
-            requested: [1, 16],
-            returned: [1, 16],
+            requested: [1, -1],
+            returned: [1, 20],
         });
 
         const tail = await lookThroughScheme("worker", null, {
@@ -652,7 +652,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
             raw: `${bodyTarget.raw}#body`,
             fragment: "body",
         }), ctx);
-        assert.equal(body.content, lines.slice(0, 16).join("\n"));
+        assert.equal(body.content, lines.join("\n"));
         assert.equal(body.channel, "body");
 
         const failedWorker = await insertWorker(db, workspaceId, null, "worker-failed");

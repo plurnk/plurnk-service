@@ -24,8 +24,45 @@ export interface A2aTaskContent {
     readonly resources: readonly A2aResource[];
 }
 
-const serialized = <T>(codec: { toJSON(value: T): unknown }, value: T): string =>
-    `${JSON.stringify(codec.toJSON(value), null, 2)}\n`;
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+// {§a2a-part-resources} — the protocol JSON stays readable, but a raw Part's bytes never ride it: the
+// Part names its resource and its byte count, the same address the body channel links to.
+const partsWithResources = (parts: unknown, authority: string, parent: string): unknown => {
+    if (!Array.isArray(parts)) return parts;
+    const names = new ResourceNames();
+    return parts.map((part, index) => {
+        if (!isRecord(part) || typeof part.raw !== "string") return part;
+        const { raw, ...rest } = part;
+        const filename = typeof part.filename === "string" ? part.filename : "";
+        const pathname = `${parent}/resources/${names.allocate(filename, `${parent}/${index}`)}`;
+        return { ...rest, resource: `a2a://${authority}${pathname}`, bytes: Buffer.from(raw, "base64").length };
+    });
+};
+
+const messageJson = (message: unknown, authority: string): unknown => {
+    if (!isRecord(message) || typeof message.messageId !== "string") return message;
+    return { ...message, parts: partsWithResources(message.parts, authority, A2aProjection.messagePath(message.messageId)) };
+};
+
+const artifactJson = (artifact: unknown, authority: string, taskId: string): unknown => {
+    if (!isRecord(artifact) || typeof artifact.artifactId !== "string") return artifact;
+    return { ...artifact, parts: partsWithResources(artifact.parts, authority, A2aProjection.artifactPath(taskId, artifact.artifactId)) };
+};
+
+const taskJson = (task: unknown, authority: string): unknown => {
+    if (!isRecord(task) || typeof task.id !== "string") return task;
+    const status = isRecord(task.status) ? { ...task.status, ...("message" in task.status ? { message: messageJson(task.status.message, authority) } : {}) } : task.status;
+    return {
+        ...task,
+        ...(Array.isArray(task.artifacts) ? { artifacts: task.artifacts.map((artifact) => artifactJson(artifact, authority, task.id as string)) } : {}),
+        ...(Array.isArray(task.history) ? { history: task.history.map((message) => messageJson(message, authority)) } : {}),
+        ...(status === undefined ? {} : { status }),
+    };
+};
+
+const serialized = <T>(codec: { toJSON(value: T): unknown }, value: T, project: (json: unknown) => unknown = (json) => json): string =>
+    `${JSON.stringify(project(codec.toJSON(value)), null, 2)}\n`;
 
 /** Model-oriented projections of canonical A2A v1 resources. */
 export default class A2aProjection {
@@ -139,7 +176,7 @@ export default class A2aProjection {
                 artifacts,
                 "",
             ].join("\n"),
-            json: serialized(Task, task),
+            json: serialized(Task, task, (json) => taskJson(json, authority)),
             resources,
         };
     }
@@ -159,7 +196,7 @@ export default class A2aProjection {
                         ].join("\n"),
                         mimetype: "text/markdown",
                     },
-                    json: { content: serialized(Message, message), mimetype: "application/json" },
+                    json: { content: serialized(Message, message, (json) => messageJson(json, authority)), mimetype: "application/json" },
                 },
                 attributes: {
                     kind: "message",
@@ -188,7 +225,7 @@ export default class A2aProjection {
                         ].join("\n"),
                         mimetype: "text/markdown",
                     },
-                    json: { content: serialized(Artifact, artifact), mimetype: "application/json" },
+                    json: { content: serialized(Artifact, artifact, (json) => artifactJson(json, authority, task.id)), mimetype: "application/json" },
                 },
                 attributes: {
                     kind: "artifact",

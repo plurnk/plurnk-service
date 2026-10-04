@@ -349,7 +349,7 @@ test("File.read: long content round-trips", async () => {
         await addMember(ctx, "big.txt");
         const result = await readFileScheme(readStmt(filePath("big.txt")), ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content, big.slice(0, 2560), "markerless READ bounds the long line");
+        assert.equal(result.content, big, "a markerless READ is the whole resource ({§markerless-first-page}); no character bound cuts a line");
         const complete = await readFileScheme({ ...readStmt(filePath("big.txt")), lineMarker: { marks: [1, -1] } }, ctx);
         assert.equal(complete.status, 200);
         assert.equal(complete.content, big, "the explicitly requested full content round-trips unchanged");
@@ -379,17 +379,18 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
     });
 });
 
-test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> returns all", async () => {
+test("{§markerless-first-page} File.read: a markerless exact READ and an explicit <1,-1> both return every line", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
         await writeFile(join(root, "bounded.txt"), content);
         await addMember(ctx, "bounded.txt");
 
-        const bounded = await readFileScheme(parseRead("````READ (bounded.txt)````"), ctx);
-        assert.equal(bounded.status, 200);
-        assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
-        assert.equal(bounded.range?.total, 20);
-        assert.deepEqual(bounded.range?.returned, [1, 16]);
+        const whole = await readFileScheme(parseRead("````READ (bounded.txt)````"), ctx);
+        assert.equal(whole.status, 200);
+        assert.equal(whole.content, content);
+        assert.equal(whole.range?.total, 20);
+        assert.deepEqual(whole.range?.requested, [1, -1], "no scope means the whole resource");
+        assert.deepEqual(whole.range?.returned, [1, 20]);
 
         const all = await readFileScheme(parseRead("````READ (bounded.txt) <1,-1>````"), ctx);
         assert.equal(all.status, 200);

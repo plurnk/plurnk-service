@@ -26,8 +26,8 @@ test("input capacity subtracts the total output budget once; reasoning is only i
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
-        assert.match(await run(10000), /"logTokensMax":7000\b/u, "the total output budget is subtracted once");
-        assert.match(await run(5000), /"logTokensMax":2000\b/u, "a narrower window retains the same total output budget");
+        assert.match(await run(10000), /"budget":7000\b/u, "the total output budget is subtracted once");
+        assert.match(await run(5000), /"budget":2000\b/u, "a narrower window retains the same total output budget");
         await assert.rejects(() => run(3000), /must leave positive input capacity/, "an output envelope cannot consume the complete context window");
     } finally {
         KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
@@ -56,8 +56,8 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
         const packet = JSON.parse(row.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
         // provider window 4000 − fixture total output budget 1280 = 2720
-        assert.match(budget, /"logTokensTotal":\s*\d+,"logTokensMax":2720\b/u, "state carries the provider-derived maximum and assembled total");
-        const usage = Number(/"logTokensTotal":\s*(\d+)/.exec(budget)?.[1]);
+        assert.match(budget, /"tokens":\s*\d+,"budget":2720\b/u, "state carries the provider-derived maximum and assembled total");
+        const usage = Number(/"tokens":\s*(\d+)/.exec(budget)?.[1]);
         assert.ok(usage > 0 && usage < 2720, `active total ${usage} within (0, 2720)`);
         assert.equal(usage, packet.weight, "the model-facing token label projects the exact stored curation weight");
     } finally { await db.close(); }
@@ -113,17 +113,21 @@ test("{§configuration-repair-path} retired service-side capacity knobs fail val
 });
 
 test("{§configuration-repair-path} current panel keys and their aliases outrank retired-prefix diagnostics", () => {
-    assert.equal(PacketBuilder.validateConfiguration({
-        PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
-        PLURNK_SERVICE_PROMPT_PROJECTION_local: "30%",
-    }), 0.25);
+    assert.doesNotThrow(() => PacketBuilder.validateConfiguration({
+        PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
+        PLURNK_SERVICE_BUDGET_LARGEST_ITEMS_local: "3",
+    }));
     assert.throws(() => PacketBuilder.validateConfiguration({
-        PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
+        PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
         PLURNK_SERVICE_REASONING_local: "2048",
     }), /PLURNK_SERVICE_REASONING_local is retired/u);
+    for (const key of ["PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
+        assert.throws(() => PacketBuilder.validateConfiguration({ [key]: "1" }), new RegExp(`${key} is retired`, "u"), `${key} names its successor rule`);
+        assert.throws(() => PacketBuilder.validateConfiguration({ [`${key}_local`]: "1" }), new RegExp(`${key}_local is retired`, "u"), "an alias scope of a retired knob is retired too");
+    }
 });
 
-test("{§configuration-repair-path} a malformed prompt projection refuses packet construction, not the repair environment", async () => {
+test("{§configuration-repair-path} a retired packet knob refuses packet construction, not the repair environment", async () => {
     const previous = process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
     const db = await openMigrated();
     try {
@@ -131,12 +135,12 @@ test("{§configuration-repair-path} a malformed prompt projection refuses packet
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "inspect");
         const provider = new Mock({ contextWindow: 16_384, responses: [] });
-        for (const invalid of ["25", "0%", "100%", "oops%"] as const) {
-            process.env.PLURNK_SERVICE_PROMPT_PROJECTION = invalid;
+        for (const value of ["25%", "0%", "oops%"] as const) {
+            process.env.PLURNK_SERVICE_PROMPT_PROJECTION = value;
             const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
             await assert.rejects(
                 packets.buildRequestPacket({ workspaceId, workerId, loopId, provider, currentTurnSeq: 1, gitStatus: null, initialMessages: [{ role: "user", content: "inspect" }] }),
-                /PLURNK_SERVICE_PROMPT_PROJECTION must be a percentage in \(0, 100\)/,
+                /PLURNK_SERVICE_PROMPT_PROJECTION is retired: a result arrives whole when it fits the budget and as its size otherwise/,
             );
         }
     } finally {

@@ -8,7 +8,6 @@ import type {
 import { Slicer } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
-import BodyPreview from "./body-preview.ts";
 import LineAnchors from "./line-anchors.ts";
 import LineMarkerOps from "./line-marker.ts";
 import ByteView, { type ByteSource } from "./byte-view.ts";
@@ -112,8 +111,8 @@ export default class ReadProjector {
         }
     }
 
-    // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: the
-    // markerless default is the same `<1,16>`, `<a,b>` selects bytes, `<1,-1>` is everything.
+    // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: without a
+    // scope every byte ({§markerless-first-page}), `<a,b>` selects bytes, `<1,-1>` is everything.
     // The source is sized, then only the window is read; the source mimetype is never relabelled.
     static async #projectBytes(
         statement: ReadStatement,
@@ -156,7 +155,7 @@ export default class ReadProjector {
                 matches: PatternEdits.visible(matches, projected.lineOrdinals ?? []),
             };
         }
-        const marker: LineMarker = statement.lineMarker ?? BodyPreview.firstPage();
+        const marker: LineMarker = statement.lineMarker ?? LineMarkerOps.whole();
         const window = LineMarkerOps.window(marker, total, "byte");
         if (window.status !== 200) {
             return {

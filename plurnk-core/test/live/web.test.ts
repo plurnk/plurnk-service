@@ -59,10 +59,10 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             assert.equal(entry.authority, "www.google.com", "the entry's authority is the origin host");
             const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
             assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
-            assert.ok((body?.content.split("\n").length ?? 0) > 100, "the entry retains content beyond the shipped first page");
-            // The first page ships at a hundred units (4f14bc639); the live tier reads the shipped
-            // panel, so this asserts the same value shipped-defaults.test.ts pins for the Mock tier's
-            // sixteen-line fixture override. A stale 16 here hid for a day because live never gates.
-            assert.deepEqual((r.range as { returned?: readonly number[] } | undefined)?.returned, [1, 100]);
+            assert.ok((body?.content.split("\n").length ?? 0) > 100, "the entry retains a page far longer than a hundred lines");
+            // {§markerless-first-page} — a markerless READ is the whole page; the live tier reads the
+            // shipped panel, so nothing but the budget bounds it.
+            const range = r.range as { total?: number; returned?: readonly number[] } | undefined;
+            assert.deepEqual(range?.returned, [1, range?.total ?? -1], "the whole page, whatever its length");
         } finally { await schemes.close(); await db.close(); }
     });

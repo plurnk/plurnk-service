@@ -1,91 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Mock } from "@plurnk/plurnk-providers";
 import ReasoningView from "./ReasoningView.ts";
-import ProviderInstantiate from "./ProviderInstantiate.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
-test("{§reasoning-initial-read}: view limits use the selected alias and reject malformed configuration", () => {
-    const keys = ["PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_VIEW_LINES_viewtest"];
-    const before = keys.map((key) => process.env[key]);
-    const provider = new Mock({ contextWindow: 100_000, responses: [] });
-    ProviderInstantiate.registerConfigurationScope(provider, "viewtest");
-    try {
-        process.env.PLURNK_REASONING_VIEW_LINES = "-1";
-        delete process.env.PLURNK_REASONING_VIEW_LINES_viewtest;
-        assert.equal(ReasoningView.lines(provider), -1);
-        for (const value of ["0", "1", "8", "200"]) {
-            process.env.PLURNK_REASONING_VIEW_LINES_viewtest = value;
-            assert.equal(ReasoningView.lines(provider), Number(value));
-        }
-        process.env.PLURNK_REASONING_VIEW_LINES_viewtest = "";
-        assert.equal(ReasoningView.lines(provider), -1, "an empty alias override is unset in the shared cascade");
-        for (const value of ["1.5", "-2", "NaN", " 8 ", "9007199254740992"]) {
-            process.env.PLURNK_REASONING_VIEW_LINES_viewtest = value;
-            assert.throws(() => ReasoningView.lines(provider), /PLURNK_REASONING_VIEW_LINES must be -1, 0, or a positive integer\./);
-        }
-        delete process.env.PLURNK_REASONING_VIEW_LINES_viewtest;
-        process.env.PLURNK_REASONING_VIEW_LINES = "";
-        assert.throws(() => ReasoningView.lines(provider), /PLURNK_REASONING_VIEW_LINES must be/);
-        delete process.env.PLURNK_REASONING_VIEW_LINES;
-        assert.throws(() => ReasoningView.lines(provider), /PLURNK_REASONING_VIEW_LINES must be/);
-        process.env.PLURNK_REASONING_VIEW_LINES = "-1";
-        process.env.PLURNK_REASONING_VIEW_LINES_viewtest = "0";
-        ProviderInstantiate.registerConfigurationScope(provider, null);
-        assert.equal(ReasoningView.lines(provider), -1, "an exact route does not inherit another alias's cap");
-    } finally {
-        keys.forEach((key, index) => {
-            if (before[index] === undefined) delete process.env[key];
-            else process.env[key] = before[index];
-        });
-    }
-});
-
-test("{§reasoning-initial-read}: initialization reads its own source with the configured scope", () => {
-    const before = process.env.PLURNK_REASONING_VIEW_LINES;
-    const provider = new Mock({ contextWindow: 100_000, responses: [] });
-    try {
-        for (const limit of [-1, 0, 1, 8, 32, 100]) {
-            process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
-            const read = ReasoningView.initialRead(provider, "alice", 3, 8);
-            if (limit === 0) assert.equal(read, null);
-            else {
-                assert.equal(read?.target?.raw, "reasoning://alice/3/8");
-                assert.equal(read?.aside, "inspect this turn's reasoning");
-                assert.equal(read?.matcher, null);
-                assert.deepEqual(read?.lineMarker, { marks: [1, limit] });
-            }
-        }
-    } finally {
-        if (before === undefined) delete process.env.PLURNK_REASONING_VIEW_LINES;
-        else process.env.PLURNK_REASONING_VIEW_LINES = before;
-    }
-});
-
-test("{§reasoning-empty-turn-read}: an empty turn reads its own reasoning back under its own knob", () => {
-    const keys = ["PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"];
-    const before = keys.map((key) => process.env[key]);
-    const provider = new Mock({ contextWindow: 100_000, responses: [] });
-    try {
-        process.env.PLURNK_REASONING_VIEW_LINES = "0";
-        for (const limit of [-1, 0, 1, 8, 32, 100]) {
-            process.env.PLURNK_REASONING_EMPTY_TURN_LINES = String(limit);
-            const read = ReasoningView.emptyTurnRead(provider, "alice", 3, 8);
-            if (limit === 0) assert.equal(read, null);
-            else {
-                assert.equal(read?.target?.raw, "reasoning://alice/3/8");
-                assert.equal(read?.aside, "turn 8 emitted no OP");
-                assert.deepEqual(read?.lineMarker, { marks: [1, limit] }, "the initialization knob does not govern this read");
-            }
-        }
-        delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES;
-        assert.throws(() => ReasoningView.emptyTurnRead(provider, "alice", 3, 8), /PLURNK_REASONING_EMPTY_TURN_LINES must be -1, 0, or a positive integer\./);
-    } finally {
-        keys.forEach((key, index) => {
-            if (before[index] === undefined) delete process.env[key];
-            else process.env[key] = before[index];
-        });
-    }
+test("{§reasoning-initial-read}: initialization reads its own source without a scope — whole when it fits ({§context-fit})", () => {
+    const read = ReasoningView.initialRead("alice", 3, 8);
+    assert.equal(read.target?.raw, "reasoning://alice/3/8");
+    assert.equal(read.aside, "inspect this turn's reasoning");
+    assert.equal(read.matcher, null);
+    assert.equal(read.lineMarker, null, "no knob pages the rationale; the budget decides whether it lands whole");
 });
 
 test("{§reasoning-operations}: the authored rationale retains the complete reasoning program", () => {

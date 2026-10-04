@@ -15,16 +15,18 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 
 // Alias-scoped packet-policy flags are read through one scoped key list, and MD_* via a
 // startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
-const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_LIVE_TIMEOUT"]);
+const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
 // Named by the source only to be refused: a retired key is declared nowhere, by design.
 const RETIRED = new Set([
     "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_EFFECT_POLICY",
+    // {§context-fit} {§context-gauge} — the preview, projection and pressure knobs.
+    "PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE",
     "PLURNK_SERVICE_EXEC_POLL_SEC", "PLURNK_SERVICE_EXEC_POLL_TURNS",
     // {§skills-sources} — the vendor installer's knobs.
     "PLURNK_SERVICE_SKILLS_CLI", "PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS",
     "PLURNK_SERVICE_SKILLS_REGISTRY_URL", "PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT", "PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS",
 ]);
-const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_PROMPT_PROJECTION_", "PLURNK_SERVICE_SAFETY_"];
+const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_SAFETY_"];
 
 test("every shipped service flag has an adjacent description for CLI help", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");

@@ -155,7 +155,7 @@ test("an exact log FIND rejects a supplied /OP delimiter that disagrees with an 
     } finally { await db.close(); }
 });
 
-test("markerless log FIND returns the first 16 rows with a compact selection extent", async () => {
+test("{§markerless-first-page} a markerless log FIND returns every row; an explicit <1,-1> is the same selection", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         for (let sequence = 4; sequence <= 20; sequence++) {
@@ -171,11 +171,12 @@ test("markerless log FIND returns the first 16 rows with a compact selection ext
         }
         const log = new Log();
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        const bounded = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
-        assert.equal(bounded.results.length, 16);
-        assert.equal(bounded.range?.total, 20);
-        assert.deepEqual(bounded.range?.returned, [1, 16]);
-        assert.ok(bounded.itemsWeightTotal > bounded.returnedItemsWeightTotal);
+        const whole = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
+        assert.equal(whole.results.length, 20);
+        assert.equal(whole.range?.total, 20);
+        assert.deepEqual(whole.range?.requested, [1, -1]);
+        assert.deepEqual(whole.range?.returned, [1, 20]);
+        assert.equal(whole.itemsWeightTotal, whole.returnedItemsWeightTotal, "nothing is held back");
 
         const all = await log.find({
             ...findStmt(urlPath("log", "/1/1")),

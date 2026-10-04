@@ -1,12 +1,13 @@
 // Shared exact-target READ projection for entry-bearing schemes, File, and Log.
-// Matchers supply visible source lines; this layer applies READ scope and preview.
+// Matchers supply visible source lines; this layer applies the READ scope. Without one the
+// selection is the whole text ({§markerless-first-page}); whether it fits is decided where the
+// row lands ({§context-fit}).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import type { SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LineMarkerOps from "./line-marker.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
-import BodyPreview from "./body-preview.ts";
 import LineSelection from "./line-selection.ts";
 
 export interface ReadSliceResult extends SchemeResultBase {
@@ -21,17 +22,6 @@ export interface ReadSliceResult extends SchemeResultBase {
 }
 
 export default class ReadResolve {
-    // The marker of an unmarked read: the body preview's marks, mapped back onto the visible
-    // source lines when the read is a visible-line selection.
-    static #previewMarker(content: string, visibleLines: readonly number[] | undefined): LineMarker {
-        const preview = BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker;
-        if (visibleLines === undefined || visibleLines.length === 0) return preview;
-        return { marks: preview.marks.map((mark, index) => {
-            if (preview.marks.length === 4 && index % 2 === 1) return mark;
-            return visibleLines[Math.min(mark, visibleLines.length) - 1]!;
-        }) as LineMarker["marks"] };
-    }
-
     static async resolve(opts: {
         content: string;
         mimetype: string;
@@ -39,7 +29,9 @@ export default class ReadResolve {
         visibleLines?: readonly number[];
     }): Promise<ReadSliceResult> {
         const { content, mimetype, lineMarker, visibleLines } = opts;
-        const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines);
+        // {§markerless-first-page} — without a scope, everything: the whole text, or the whole visible selection.
+        const marker: LineMarker = lineMarker
+            ?? (visibleLines !== undefined && visibleLines.length > 0 ? { marks: [visibleLines[0]!, visibleLines.at(-1)!] } : LineMarkerOps.whole());
         const sliced = LineMarkerOps.sliceLines(content, marker);
         if (sliced.status === 416) {
             return {

@@ -40,9 +40,9 @@ under the receipt's `stream` address, such as `sh:///ab3d5678`: `#stdout` is
 the default channel and `#stderr` the second; both are `text/stream`. While it
 runs, the packet's `## Delegation` streams list reports each channel's size and
 growth, and READ can inspect any range. On completion, the harness adds one
-`_plurnk` READ per channel: its first page, `range` extent, and terminal exit
-status. READ the observation's `path` for more; the `log:///…/READ` item holds
-only its recorded page:
+`_plurnk` READ per channel: the whole output when it fits the context budget,
+otherwise a bodiless receipt naming its size, with the `range` extent and the
+terminal exit status. READ a range of the observation's `path` for any part:
 
 ```READ (sh:///ab3d5678#stdout) <17,40>
 ```

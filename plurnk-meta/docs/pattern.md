@@ -44,7 +44,7 @@ For source `const first = connect(); const second = connect();`:
 | `EDIT (client.js) <1,15,1,22> /connect/`, body `open` | Only the first occurrence changes |
 
 A source scope narrows mutation and transfer selections to complete matches inside it.
-A READ preview limits what is shown, not what a later pattern selects.
+A READ shows the whole selection when it fits the budget and its size otherwise; what a later pattern selects is never limited by what was shown.
 Coordinates always refer to the addressed source channel, not receipt
 decorations or another channel's rendered text.
 

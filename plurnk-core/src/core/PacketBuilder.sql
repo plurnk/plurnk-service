@@ -110,7 +110,6 @@ SELECT
     le.tx, le.mimetype_tx,
     le.state, le.outcome, le.initial_folded, le.folded,
     le.source, le.weight, le.attrs,
-    le.output_admission_turn_id, le.output_withheld,
     -- {§emission-row}: an emission row names its author, the producer of its turn.
     t.producer
 FROM active_log_entries le
@@ -148,12 +147,6 @@ WHERE le.worker_id = $worker_id
       AND le.source IS NULL
   )
 ORDER BY l.sequence, t.sequence, le.sequence;
-
--- PREP: engine_admit_log_outputs
-UPDATE log_entry_projections
-SET output_admission_turn_id = $turn_id, output_withheld = $withheld
-WHERE log_entry_id IN (SELECT value FROM json_each($ids))
-  AND active = 1 AND output_admission_turn_id IS NULL;
 
 -- PREP: engine_open_messages
 -- {§send-response-receipt}: only an executed reply to this exact published message answers it.

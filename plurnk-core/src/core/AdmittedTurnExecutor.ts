@@ -18,6 +18,7 @@ import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
+import { isContextReceipt, reserved, type ContextFit } from "./ContextFit.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedEmission } from "./TurnRunner.ts";
@@ -72,6 +73,7 @@ export default class AdmittedTurnExecutor {
         emptyTurn = false,
         finalResponse = TurnDisposition.requestsCompletion(statements),
         bare,
+        fit,
         signal,
         onDispatch,
         onSettled,
@@ -94,6 +96,8 @@ export default class AdmittedTurnExecutor {
         emptyTurn?: boolean;
         finalResponse?: boolean;
         bare?: BareExecution;
+        // {§context-fit} — the turn's measure of the budget left for one more result; absent, rows land whole.
+        fit?: ContextFit;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
@@ -299,6 +303,7 @@ export default class AdmittedTurnExecutor {
                             logSelectionMaxId,
                             editSequence,
                             finalResponse: completionEligible,
+                            ...(fit === undefined ? {} : { fit: reserved(fit, scheduled.length - index - 1) }),
                             onDispatch,
                             onSettled,
                         });
@@ -312,7 +317,7 @@ export default class AdmittedTurnExecutor {
             progressed ||= isProgress(statement, result.status);
             results.push(result);
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
-            if (failOnOperationError && result.status >= 400) {
+            if (failOnOperationError && result.status >= 400 && !isContextReceipt(result)) {
                 throw new OperationFailureError(result);
             }
             for (const normalization of result.scopeNormalizations ?? []) {

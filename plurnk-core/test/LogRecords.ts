@@ -27,7 +27,7 @@ export const parseLogRecords = (source: string): Array<Record<string, unknown>> 
     return source.split(/\n\n(?=### log:\/\/\/)/).map((record) => {
         const lines = record.split(/\r\n|\r|\n/);
         const heading = ADDRESS.exec(lines.shift() ?? "");
-        assert.ok(heading, "packet log record is missing its address heading with its logTokens charge");
+        assert.ok(heading, "packet log record is missing its address heading with its tokens charge");
         const modifiers = heading[2];
         const op = heading[1]!.split("/").at(-1)!;
         let metadata: Record<string, unknown> = {};
@@ -36,13 +36,13 @@ export const parseLogRecords = (source: string): Array<Record<string, unknown>> 
             assert.ok(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed), "packet log metadata must be one JSON object");
             metadata = parsed as Record<string, unknown>;
         }
-        for (const key of ["logTokens", "path", "from", "to", "matcher", "logPath", "body"]) {
+        for (const key of ["tokens", "path", "from", "to", "matcher", "logPath", "body"]) {
             assert.equal(Object.hasOwn(metadata, key), false, `${key} is not packet metadata: identity, resources, patterns and charge ride the heading`);
         }
         assert.ok(lines.every((line) => COORDINATE.test(line)), "packet log body line is missing its coordinate prefix");
         return {
             logPath: heading[1],
-            logTokens: Number(heading[3]),
+            tokens: Number(heading[3]),
             ...(modifiers === undefined ? {} : { modifiers, ...operands(modifiers, op) }),
             ...metadata,
             ...(lines.length === 0 ? {} : { body: `${lines.join("\n")}\n` }),

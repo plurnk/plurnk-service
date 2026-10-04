@@ -93,19 +93,13 @@ BEGIN
     WHERE e.worker_id = NEW.parent_worker_id
     ORDER BY e.id;
 
-    -- Current projection: membership, folded intervals, and the admission turn, remapped.
+    -- Current projection: membership and folded intervals. The retired admission columns
+    -- ({§context-output-selection}) stay at their defaults on the fork.
     UPDATE log_entry_projections
     SET active = source.active,
-        folded = source.folded,
-        output_admission_turn_id = source.admission_turn_id,
-        output_withheld = source.output_withheld
+        folded = source.folded
     FROM (
-        SELECT ne.id AS log_entry_id, op.active, op.folded, op.output_withheld,
-               (SELECT at2.id FROM turns at1
-                JOIN loops al1 ON al1.id = at1.loop_id
-                JOIN loops al2 ON al2.worker_id = NEW.id AND al2.sequence = al1.sequence
-                JOIN turns at2 ON at2.loop_id = al2.id AND at2.sequence = at1.sequence
-                WHERE at1.id = op.output_admission_turn_id) AS admission_turn_id
+        SELECT ne.id AS log_entry_id, op.active, op.folded
         FROM log_entries oe
         JOIN log_entry_projections op ON op.log_entry_id = oe.id
         JOIN turns ot ON ot.id = oe.turn_id

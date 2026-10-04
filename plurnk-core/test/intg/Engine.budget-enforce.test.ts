@@ -1,4 +1,4 @@
-// SPEC {§context-output-admission} — the budget overflow recovery. The model "behaves" here (a clean SEND each
+// SPEC {§context-hard-413} {§context-budget} — budget enforcement before and at the provider. The model "behaves" here (a clean SEND each
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
@@ -14,7 +14,7 @@ import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
-import { packetSection, logEntries } from "./_packet.ts";
+import { logEntries } from "./_packet.ts";
 import { concludeStmt, noteStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
@@ -212,7 +212,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
     } finally { await db.close(); }
 });
 
-test("an upstream 413 withholds the automatic prompt body and retries without spending an emission attempt", async () => {
+test("{§context-budget}: an upstream capacity rejection is a provider failure — one request, no resend, durable evidence", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prompt-capacity-${crypto.randomUUID()}`);
@@ -221,7 +221,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
             db,
             workerId,
             1,
-            `${PROMPT_CAPACITY_SENTINEL}\n${"large prompt body\n".repeat(10_000)}`,
+            `${PROMPT_CAPACITY_SENTINEL}\n${"large prompt body\n".repeat(3_000)}`,
         );
         const provider = new UpstreamPromptCapacityMock({
             contextWindow: 100_000,
@@ -236,32 +236,28 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
             turnNumber: 1,
         });
 
-        assert.equal(result.status, 200);
-        assert.equal(result.emissionAttempts, 1, "only the completed response consumes a grammar-emission attempt");
-        assert.equal(provider.remaining, 0, "capacity recovery consumes the one queued model response exactly once");
-        assert.equal(provider.requests.length, 2, "one rejected physical request is followed by one changed request");
+        assert.equal(result.status, 413, "the provider's own rejection is the turn's outcome");
+        assert.equal(result.capacityHardStop, true);
+        assert.equal(result.capacityFailure?.problem?.capacityStage, "upstream", "the failure names where it was judged");
+        assert.equal(provider.requests.length, 1, "the rejected request is the only physical request: nothing is withheld and resent on the model's behalf");
+        assert.equal(provider.remaining, 1, "the queued response is never consumed");
         assert.ok(requestChars(provider.requests[0]) > UpstreamPromptCapacityMock.maxRequestChars);
-        assert.ok(requestChars(provider.requests[1]) <= UpstreamPromptCapacityMock.maxRequestChars, "withholding the automatic prompt body makes the request fit");
-        assert.ok(!provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the withheld prompt body is absent from the changed request");
-        assert.ok(provider.requests[1].some((message) => /"path":"message:\/\/[^/]+\/[0-9a-f]{8}"/.test(chatMessageText(message))), "the Open Messages pointer retains the immutable message source the model can READ");
+        assert.ok(provider.requests[0].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the arrival rode whole: by the packet's own ruler it fit");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
-        assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
-        assert.ok(calls.every(({ capacity }) => capacity !== null), "both logical requests retain request-shaped capacity evidence");
+        assert.deepEqual(calls.map(({ state }) => state), ["error"]);
+        assert.ok(calls.every(({ capacity }) => capacity !== null), "the logical request retains its request-shaped capacity evidence");
         const attempts = await db.test_turn_attempts.all<{ accepted: number | null }>({ turn_id: result.turnId });
-        assert.deepEqual(
-            attempts.map(({ accepted }) => accepted),
-            [null, 1],
-            "the response-less call remains unclassified and only the completed exchange is admitted",
-        );
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [null], "the response-less call remains unclassified");
         const requests = await db.test_provider_requests.all<{ outcome: string }>({ turn_id: result.turnId });
-        assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "response"], "both physical requests remain cardinal accounting facts");
+        assert.deepEqual(requests.map(({ outcome }) => outcome), ["error"], "the physical request remains a cardinal accounting fact");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const entries = logEntries(packet);
-        assert.equal(entries.find(({ logPath: path }) => String(path).endsWith("/SEND"))?.body, undefined, "the arrival row's body is withheld");
-        assert.equal(entries.find(({ logPath: path, path: target }) => String(path).endsWith("/READ") && /\/SEND$/u.test(String(target))), undefined, "no second copy of the message exists to fall back on; the row itself is the source");
-        assert.match(packetSection(packet, "errors"), /"status":413,"path":"log:\/\/\/[^"]+\/error"/, "the recovered rejection remains visible to the model");
+        const arrival = logEntries(packet).find(({ logPath: path }) => String(path).endsWith("/SEND"));
+        assert.ok(arrival && typeof arrival.body === "string" && arrival.body.includes(PROMPT_CAPACITY_SENTINEL), "the stored request is the request that was sent: the arrival, whole");
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        assert.equal(errors.length, 1, "the failure is one durable error row");
+        assert.equal((JSON.parse(errors[0]!.rx) as { problem?: { status?: number } }).problem?.status, 413);
     } finally {
         await db.close();
     }

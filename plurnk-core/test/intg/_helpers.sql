@@ -784,9 +784,7 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
        state, outcome, attrs, initial_folded,
        projection.active AS projection_active,
-       projection.folded AS projection_folded,
-       projection.output_admission_turn_id,
-       projection.output_withheld
+       projection.folded AS projection_folded
 FROM log_entries
 JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
 WHERE worker_id = $worker_id

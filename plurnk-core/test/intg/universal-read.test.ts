@@ -237,14 +237,14 @@ test("entry-backed data schemes inherit exact READ projection", async () => {
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.content, lines.slice(0, 16).join("\n"));
+        assert.equal(result.content, lines.join("\n"), "a markerless READ is the whole resource ({§markerless-first-page})");
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.startLine, 1);
         assert.deepEqual(result.range, {
             unit: "line",
             total: 20,
-            requested: [1, 16],
-            returned: [1, 16],
+            requested: [1, -1],
+            returned: [1, 20],
         });
     } finally {
         await db.close();

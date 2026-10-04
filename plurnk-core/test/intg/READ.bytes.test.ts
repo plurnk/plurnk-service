@@ -48,15 +48,15 @@ const setup = async () => {
     return { root, db, ctx };
 };
 
-test("{§read-bytes} a binary member reads as hex lines under the same <1,16> default, ranges, and 416", async () => {
+test("{§read-bytes} a binary member reads as hex lines: whole without a scope, ranges, and 416", async () => {
     const { root, db, ctx } = await setup();
     try {
         const head = await lookThroughScheme("file", null, readStmt("blob.bin"), ctx);
         assert.equal(head.status, 200, JSON.stringify(head.problem));
-        assert.equal(head.content, ByteView.hexLines(BLOB.subarray(0, 16)), "the markerless default is the first sixteen bytes");
+        assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, every byte ({§markerless-first-page})");
         assert.equal(head.startLine, 1);
         assert.equal(head.mimetype, "application/octet-stream", "the source mimetype is never relabelled");
-        assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, 16], returned: [1, 16] });
+        assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, -1], returned: [1, 40] });
         assert.equal((head as { projection?: string }).projection, "hex");
 
         const tail = await lookThroughScheme("file", null, readStmt("blob.bin", { marks: [17, -1] }), ctx);
@@ -120,26 +120,23 @@ test("{§find-bytes} a FIND over a binary member matches bytes and reports byte 
     }
 });
 
-test("{§markerless-first-page} one knob is the first page of every markerless retrieval, whatever its unit", async () => {
+test("{§markerless-first-page} a retrieval without a scope is the whole thing, whatever its unit", async () => {
     const { root, db, ctx } = await setup();
-    const prior = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     try {
         for (let n = 1; n <= 7; n += 1) {
             await writeFile(join(root, `page${n}.md`), "findable\n");
             await EntryCrud.writeEntry({ authority: "", pathname: `page${n}.md` }, { channels: { body: { content: "findable\n", mimetype: "text/markdown" } } }, ctx, "file");
         }
-        process.env.PLURNK_SERVICE_PREVIEW_LINES = "5";
 
         const bytes = await lookThroughScheme("file", null, readStmt("blob.bin"), ctx);
-        assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, 5], returned: [1, 5] }, "bytes of a byte view");
+        assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, -1], returned: [1, 40] }, "every byte of a byte view");
 
         const found = await new File().find(findStmt("page*.md", "findable"), ctx);
         assert.equal(found.status, 200, JSON.stringify(found.problem));
-        assert.deepEqual(found.range?.requested, [1, 5], "positions of a FIND");
-        assert.deepEqual(found.range?.returned, [1, 5]);
-        assert.equal(found.range?.total, 7, "the complete result stays addressable");
+        assert.deepEqual(found.range?.requested, [1, -1], "every position of a FIND");
+        assert.deepEqual(found.range?.returned, [1, 7]);
+        assert.equal(found.range?.total, 7, "the complete result is the result");
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES; else process.env.PLURNK_SERVICE_PREVIEW_LINES = prior;
         await db.close();
         await rm(root, { recursive: true, force: true });
     }

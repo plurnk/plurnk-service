@@ -36,6 +36,8 @@ import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
+import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
+import { resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
@@ -76,6 +78,8 @@ export type DispatchContext = {
     // {§read-fan-out} — set on a READ dispatched on behalf of a glob: the row it writes
     // carries this under `attrs.fanout`, so a client presents the authored statement once.
     fanout?: { readonly target: string; readonly matched: number; readonly index: number; readonly count: number };
+    // {§context-fit} — the turn's measure of the budget left for one more result; absent, a result lands whole.
+    fit?: ContextFit;
 };
 
 export type DispatchResult = SchemeResult;
@@ -624,6 +628,7 @@ export default class Dispatcher {
                 }
             }
         }
+        result = await this.#fitResult(context, statement, result);
         // {§configuration-repair-path}: decide admission before persisting a proposed row.
         let autoAccept = false;
         if (Dispatcher.#isProposal(statement, result)) {
@@ -734,6 +739,34 @@ export default class Dispatcher {
         }
         await this.#notifySettled(context, logEntryId);
         return result;
+    }
+
+    // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;
+    // otherwise the row is its size and address, and the result stays where it was read from.
+    async #fitResult(context: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<DispatchResult> {
+        if (context.fit === undefined || (statement.op !== "READ" && statement.op !== "FIND")) return result;
+        if (result.status >= 300 || typeof result.content !== "string" || result.content.length === 0) return result;
+        const remaining = await context.fit.remaining();
+        if (remaining === null) return result;
+        const tokens = await this.#rowTokens(context, statement, result);
+        if (tokens <= remaining) return result;
+        const range = (result as { range?: unknown }).range;
+        const retained = statement.op === "READ"
+            ? { content: null, mimetype: null, channel: (result as { channel?: unknown }).channel ?? null, ...(range === undefined ? {} : { range }) }
+            : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, (result as Record<string, unknown>)[key]]] : [])) };
+        return unfitResult(retained, resultSize(result as { range?: never; content?: unknown }), tokens, remaining, statement.op);
+    }
+
+    // The tokens the row would charge the packet, rendered as the log renders it ({§context-fit}).
+    async #rowTokens({ workspaceId, workerId, loopId, turnId, sequence, origin }: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<number> {
+        const record = await this.#logWriter.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan: null, modelCallId: null });
+        const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
+        if (seqs === undefined) throw new Error(`Dispatcher.#rowTokens: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
+        const row: StoredLogRow = {
+            ...record, id: null, loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq,
+            folded: LogVisibility.serialize(LogVisibility.OPEN), producer: origin === "model" ? "model" : "_plurnk",
+        };
+        return PacketWire.rowTokens(PacketWire.entryView(row), this.#weighContent, { projectRoot: await this.#workspaceRoot(workspaceId) });
     }
 
     async #notifySettled(context: DispatchContext, logEntryId: number): Promise<void> {

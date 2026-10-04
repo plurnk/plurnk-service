@@ -78,9 +78,9 @@ const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture
 };
 
 const budgetOf = (packet: RequestPacket): {
-    logTokensTotal: number;
-    logTokensMax: number;
-    logTokensLargest?: Array<{ path: string; tokensBody: number; logTokens: number }>;
+    tokens: number;
+    budget: number;
+    largest?: Array<{ path: string; tokensBody: number; tokens: number }>;
 } => JSON.parse(packetSection(packet, "budget").split("\n")[0]!);
 
 test("{§packet-token-accounting} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
@@ -95,24 +95,24 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const state = budgetOf(packet);
     const rows = logEntries(packet);
     const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
-    assert.ok(Number(read.logTokens) < state.logTokensTotal, "a visible READ cannot outweigh its complete packet");
-    assert.equal(state.logTokensTotal, packet.weight, "the total retains the measured curation ruler");
+    assert.ok(Number(read.tokens) < state.tokens, "a visible READ cannot outweigh its complete packet");
+    assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
     // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
     assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
-    assert.equal(state.logTokensMax, Math.floor(provider.inputCapacity! / factor));
+    assert.equal(state.budget, Math.floor(provider.inputCapacity! / factor));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
-    assert.ok(state.logTokensLargest?.some(({ path }) => path === read.logPath), "pressure identifies the dominant body");
-    for (const item of state.logTokensLargest!) {
+    assert.ok(state.largest?.some(({ path }) => path === read.logPath), "pressure identifies the dominant body");
+    for (const item of state.largest!) {
         const row = rows.find(({ logPath: path }) => path === item.path)!;
-        assert.equal(item.logTokens, row.logTokens, "the same row has the same cost in the pressure inventory");
+        assert.equal(item.tokens, row.tokens, "the same row has the same cost in the pressure inventory");
         assert.equal(item.tokensBody, row.tokensBody);
     }
     assert.equal(f.packets.curationOverflow(packet), null);
 });
 
-test("{§tokenomics-prompt-projection-share} new shared-model samples cannot resize the cached log or prompt prefix", async (t) => {
+test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples cannot resize the cached log or the folded prompt", async (t) => {
     const prompt = "A".repeat(40_000);
     const f = await fixture(t, prompt);
     const provider = providerAt(20_000, [response()]);
@@ -122,18 +122,19 @@ test("{§tokenomics-prompt-projection-share} new shared-model samples cannot res
     const persisted = (await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet;
     const before = await f.build(provider);
     const arrival = logEntries(before).find(({ logPath: path }) => String(path).endsWith("/SEND"));
-    assert.ok(arrival && typeof arrival.body === "string" && arrival.body.length > 16 && arrival.body.length < prompt.length);
-    assert.ok(arrival.preview, "the cached message is genuinely bounded, not a vacuous short fixture");
+    assert.ok(arrival, "the arrival row is in the packet");
+    assert.equal(arrival.body, undefined, "the message did not fit the budget: it landed folded, its row its size and address");
+    assert.deepEqual(Object.keys(arrival.size as object).sort(), ["lines", "tokens"], "the folded arrival states its size, never a preview");
     await recordSamples(f);
     const after = await f.build(provider);
-    assert.notEqual(budgetOf(before).logTokensMax, budgetOf(after).logTokensMax, "the ceiling uses new model evidence");
+    assert.notEqual(budgetOf(before).budget, budgetOf(after).budget, "the ceiling uses new model evidence");
     assert.equal(packetSection(after, "log"), packetSection(before, "log"), "all historical rows, including the bounded prompt, stay byte-identical");
     const prefix = (packet: RequestPacket) => PacketWire.packetToWireMessages(packet, f.packets.emissionsFor(packet))
-        .map(({ content }) => content.split("## Context Curation")[0]).join("\n");
+        .map(({ content }) => content.split("## Context")[0]).join("\n");
     assert.equal(prefix(after), prefix(before), "the complete prefix before the volatile budget remains reusable");
     await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);
     const tighter = await f.build(provider);
-    assert.ok(budgetOf(tighter).logTokensMax < budgetOf(before).logTokensMax, "the inverse direction is exercised too");
+    assert.ok(budgetOf(tighter).budget < budgetOf(before).budget, "the inverse direction is exercised too");
     assert.equal(prefix(tighter), prefix(before), "a shrinking allowance does not resize cached historical content either");
     assert.equal((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet, persisted, "calibration never rewrites request history");
 });
@@ -149,7 +150,7 @@ test("{§tokenomics-calibrated-readout} only the latest five positive emission s
     await recordSamples(f, [0, 0, 0]);
     await recordSamples(f, [10_000, 10_000, 10_000], "other-model");
     assert.equal(await TokenCalibration.forModel(f.db, "mock"), factor, "zero counts and other models cannot displace eligible evidence");
-    assert.equal(budgetOf(await f.build()).logTokensMax, Math.floor(100_000 / factor), "a different worker consumes the same model evidence");
+    assert.equal(budgetOf(await f.build()).budget, Math.floor(100_000 / factor), "a different worker consumes the same model evidence");
 });
 
 test("{§tokenomics-calibrated-readout} overflow and attribution copies use the allowance captured at packet build", async (t) => {
@@ -164,7 +165,7 @@ test("{§tokenomics-calibrated-readout} overflow and attribution copies use the 
     assert.equal(f.packets.curationOverflow(after), null, "new packets may use the larger converted allowance");
     assert.deepEqual(f.packets.curationOverflow(before), expected, "new samples do not reinterpret an older candidate");
     assert.deepEqual(f.packets.curationOverflow({ ...before, attributions: [] }), expected);
-    assert.equal(f.packets.curationBudgetFor(before), budgetOf(before).logTokensMax);
+    assert.equal(f.packets.curationBudgetFor(before), budgetOf(before).budget);
     assert.throws(() => f.packets.curationOverflow({ ...before, sections: [...before.sections] }), /packet was not built by this PacketBuilder/u);
 });
 
@@ -179,9 +180,9 @@ test("{§tokenomics-client-gauge} the response cannot retroactively change its o
     const state = budgetOf(packet);
     const usage = await f.engine.loopUsage(f.loopId);
     assert.notEqual(await TokenCalibration.forModel(f.db, "mock"), priorFactor, "the response changes the conversion for subsequent packets");
-    assert.equal(state.logTokensMax, Math.floor(provider.inputCapacity! / priorFactor));
-    assert.equal(usage.curationBudget, state.logTokensMax);
-    assert.equal(usage.curationWeight, state.logTokensTotal);
+    assert.equal(state.budget, Math.floor(provider.inputCapacity! / priorFactor));
+    assert.equal(usage.curationBudget, state.budget);
+    assert.equal(usage.curationWeight, state.tokens);
     assert.equal(usage.curationWeight, packet.weight);
     assert.equal(usage.contextCapacity, provider.inputCapacity, "physical capacity is not converted");
     assert.equal(usage.contextTokens, 17_000, "reported usage stays provider-token evidence");
@@ -223,9 +224,9 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
             const usage = await f.engine.loopUsage(f.loopId);
             assert.equal("assistant" in packet, false, "no failed or rejected request invents an accepted assistant response");
             assert.equal(usage.curationWeight, packet.weight);
-            assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
+            assert.equal(budgetOf(packet).tokens, packet.weight);
             assert.equal(usage.curationBudget, Math.floor(provider.inputCapacity! / factor));
-            assert.equal(usage.curationBudget, budgetOf(packet).logTokensMax);
+            assert.equal(usage.curationBudget, budgetOf(packet).budget);
         });
     }
 });
@@ -243,9 +244,9 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     assert.equal(trimmedRead.body, undefined);
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
         .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)} `))!;
-    assert.equal(read.logTokens, contentWeight(renderedRead(before)));
+    assert.equal(read.tokens, contentWeight(renderedRead(before)));
     assert.equal(read.tokensBody, undefined);
-    assert.equal(Number(read.logTokens) - Number(trimmedRead.logTokens),
+    assert.equal(Number(read.tokens) - Number(trimmedRead.tokens),
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");
@@ -253,10 +254,10 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const killed = await f.build();
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {
-        assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
+        assert.equal(budgetOf(packet).tokens, packet.weight);
         // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
     assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
-        assert.equal(budgetOf(packet).logTokensMax, budgetOf(before).logTokensMax);
+        assert.equal(budgetOf(packet).budget, budgetOf(before).budget);
     }
     assert.deepEqual(await f.db.tok_log_weight.get({ id: readId }), raw, "curation cannot alter the immutable READ result or its write-time weight");
     const source = await f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.txt", scheme: "worker", name: "body" });
@@ -267,10 +268,12 @@ test("{§tokenomics-calibrated-readout} unknown and unseen-model capacities do n
     const f = await fixture(t);
     await recordSamples(f);
     const fresh = await f.build(providerAt(25_000, [], "unseen-model"));
-    assert.equal(budgetOf(fresh).logTokensMax, 25_000);
-    assert.equal(budgetOf(fresh).logTokensTotal, fresh.weight);
+    assert.equal(budgetOf(fresh).budget, 25_000);
+    assert.equal(budgetOf(fresh).tokens, fresh.weight);
     const unknown = await f.build(providerAt(null));
-    assert.equal(packetSection(unknown, "budget"), "");
+    const gauge = JSON.parse(packetSection(unknown, "budget")) as { tokens: number; budget?: number; largest: unknown[] };
+    assert.deepEqual(Object.keys(gauge), ["tokens", "largest"], "without a capacity the gauge has no budget to name, and no mandate replaces it");
+    assert.equal(gauge.tokens, unknown.weight);
     assert.equal(f.packets.curationBudgetFor(unknown), null);
     assert.equal(f.packets.curationOverflow(unknown), null);
 });
@@ -280,10 +283,10 @@ test("{§tokenomics-calibrated-readout} a converted zero allowance takes ordinar
     await recordSamples(f, [10_000, 10_000, 10_000]);
     const provider = providerAt(1);
     const packet = await f.build(provider);
-    assert.equal(budgetOf(packet).logTokensMax, 0);
+    assert.equal(budgetOf(packet).budget, 0);
     assert.deepEqual(f.packets.curationOverflow(packet), { weight: packet.weight, budget: 0, excess: packet.weight });
     const result = await f.engine.runTurn({ ...f, provider, messages });
     assert.equal(result.status, 413);
-    assert.equal(result.curationFailure?.problem?.ceiling, 0);
+    assert.equal(result.curationFailure?.problem?.budget, 0);
     assert.equal(provider.received.length, 0, "no representable curation allowance cannot produce an admitted request");
 });

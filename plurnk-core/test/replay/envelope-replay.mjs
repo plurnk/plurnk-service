@@ -119,7 +119,7 @@ const firstOp = (text) => {
     return m === null ? null : `${m[1]}${m[2].trim().length > 0 ? ` ${m[2].trim().split(/\s+/u)[0]}` : ""}`;
 };
 // A packet echo: the reply continues the packet's own shape instead of answering it.
-const echoes = (content) => /^### log:\/\/\/|^## (Log|Worker|Delegation|Open Messages|Context Curation)/mu.test(content);
+const echoes = (content) => /^### log:\/\/\/|^## (Log|Worker|Delegation|Open Messages|Context(?: Curation)?)/mu.test(content);
 const restarts = (reasoning) => /(understand|analy[sz]e|look at|re-?read|figure out) (the|this) (task|issue|problem|repository|codebase)/iu.test((reasoning ?? "").slice(0, 600));
 
 const cells = [];

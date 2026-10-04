@@ -319,8 +319,9 @@ identity: tests assert lifecycle state, content, media type, and addressability,
 not a prose template.
 
 §a2a-part-resources Received raw Parts are ordinary typed resources, not base64
-placeholders. Their parent Message or Artifact links to them in Part order;
-the exact protocol JSON remains independently readable.
+placeholders. Their parent Message or Artifact links to them in Part order, and the
+protocol JSON remains independently readable with each raw Part's bytes replaced by its
+resource address and byte count: base64 never reaches model text through either channel.
 
 | Part | Ordinary resource projection |
 |---|---|

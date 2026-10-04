@@ -27,8 +27,11 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
     const release = Promise.withResolvers<void>();
     const build = PacketBuilder.prototype.buildRequestPacket;
     t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, ...args: Parameters<typeof build>) {
-        preparing.resolve();
-        await release.promise;
+        // The initialization turn builds packets too ({§context-fit}); the witness holds the inference turn's.
+        if (args[0].currentTurnSeq > 1) {
+            preparing.resolve();
+            await release.promise;
+        }
         return build.apply(this, args);
     });
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\ndone\n````")] });

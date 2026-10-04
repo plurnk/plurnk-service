@@ -25,7 +25,7 @@ const pdfRow = () => readRow({
     mimetype_rx: "text/plain",
 });
 
-test("{§packet-attachment-parts} audio duration weighs the retained source, with a byte fallback and ordinary admission", async () => {
+test("{§packet-attachment-parts} audio duration weighs the retained source, with a byte fallback", async () => {
     const row = readRow({
         target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" },
         tx: { target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" } },
@@ -36,7 +36,6 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
     assert.equal(audioWeight(null, 20044), 5011);
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///clip.wav", scheme: "file", pathname: "/clip.wav", mimetype: "audio/wav", kind: "audio" as const, duration: 1.25, weight: 40 }]);
     assert.match(rendered.content, /"tokensAttachment":40/u);
-    assert.equal(PacketWire.renderLogWithAccounting([{ ...row, output_withheld: true }], weigh).attachments.length, 0);
     const textOnly = PacketWire.renderLogWithAccounting([row], weigh, { acceptedAttachmentKinds: new Set() });
     assert.equal(textOnly.attachments.length, 0);
     assert.doesNotMatch(textOnly.content, /tokensAttachment/u);
@@ -64,7 +63,7 @@ test("{§packet-attachment-parts} a visible READ of an image weighs the picture 
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///logo.png", scheme: "file", pathname: "/logo.png", mimetype: "image/png", kind: "image", width: 640, height: 480, weight: 410 }]);
     assert.match(rendered.content, /"tokensAttachment":410/);
     const active = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/m.exec(rendered.content)?.[1]);
-    assert.ok(active > 410, `logTokens carries the picture: ${active}`);
+    assert.ok(active > 410, `tokens carries the picture: ${active}`);
 });
 
 test("{§packet-attachment-parts} a visible READ of a PDF weighs its pages and becomes a pdf attachment", () => {
@@ -189,15 +188,14 @@ test("{§packet-wire-envelope} {§emission-row} native attachments ride the clos
     assert.deepEqual(closing[2], { type: "file", data: bytes, mediaType: "image/png" });
 });
 
-test("{§packet-attachment-parts} native-only observations are weighed, reclaimable, and subject to output admission", () => {
-    const row = readRow({ id: 42, output_admission_turn_id: null, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
+test("{§packet-attachment-parts} native-only observations are weighed and reclaimable", () => {
+    const row = readRow({ id: 42, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);
     const charge = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/mu.exec(rendered.content)?.[1]);
     assert.equal(charge, weigh(rendered.content) + 410);
-    assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", logTokens: charge }]);
-    assert.deepEqual(rendered.unadmittedOutput, [42]);
+    assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", tokens: charge }]);
     assert.equal(rendered.attachments.length, 1);
     assert.doesNotMatch(rendered.content, /tokensBody|tokensActive/);
-    const withheld = PacketWire.renderLogWithAccounting([readRow({ ...row, output_withheld: true })], weigh);
-    assert.equal(withheld.attachments.length, 0);
+    const folded = PacketWire.renderLogWithAccounting([readRow({ ...row, initial_folded: [[1, -1]] })], weigh);
+    assert.equal(folded.attachments.length, 1, "a bodyless native row folds nothing: the picture is the row");
 });

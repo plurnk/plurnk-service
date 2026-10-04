@@ -94,7 +94,7 @@ test("entry_channels.weight honors an injected ruler override (test seam)", asyn
     } finally { await db.close(); }
 });
 
-test("context token budget carries a populated active-total/maximum state", async () => {
+test("{§context-gauge} the gauge carries populated tokens, budget and largest fields", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
@@ -106,10 +106,11 @@ test("context token budget carries a populated active-total/maximum state", asyn
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const state = JSON.parse(budget) as { logTokensTotal: number; logTokensMax: number };
-        assert.deepEqual(Object.keys(state), ["logTokensTotal", "logTokensMax"], `context token budget carries active total and maximum; got: ${budget}`);
-        assert.equal(budget.split("\n").length, 1, "the model-facing budget is one JSON line");
-        const usage = state.logTokensTotal; const ceiling = state.logTokensMax;
+        const state = JSON.parse(budget) as { tokens: number; budget: number; largest: Array<{ path: string; tokens: number }> };
+        assert.deepEqual(Object.keys(state), ["tokens", "budget", "largest"], `the gauge is its three fields; got: ${budget}`);
+        assert.equal(budget.split("\n").length, 1, "the model-facing gauge is one JSON line");
+        assert.ok(state.largest.every(({ path, tokens }) => path.startsWith("log:///") && Number.isSafeInteger(tokens) && tokens > 0), "largest names log rows with their tokens");
+        const usage = state.tokens; const ceiling = state.budget;
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
         assert.ok(usage < ceiling, "the admitted packet stays below the displayed maximum");
@@ -141,10 +142,10 @@ test("context token budget carries active total and maximum without a percent", 
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const state = JSON.parse(budget) as { logTokensTotal: number; logTokensMax: number };
-        assert.ok(Number.isSafeInteger(state.logTokensTotal) && state.logTokensTotal > 0, "active total is a populated integer");
-        assert.ok(Number.isSafeInteger(state.logTokensMax) && state.logTokensMax > 0, "maximum is a populated integer");
-        assert.ok(state.logTokensTotal < state.logTokensMax, "the admitted packet stays below the displayed maximum");
+        const state = JSON.parse(budget) as { tokens: number; budget: number };
+        assert.ok(Number.isSafeInteger(state.tokens) && state.tokens > 0, "active total is a populated integer");
+        assert.ok(Number.isSafeInteger(state.budget) && state.budget > 0, "maximum is a populated integer");
+        assert.ok(state.tokens < state.budget, "the admitted packet stays below the displayed maximum");
         assert.doesNotMatch(budget, /%/u, "the readout carries no percent — total and maximum make it derivable");
     } finally { await db.close(); }
 });
@@ -177,12 +178,12 @@ test("an unrecoverable curation overflow preserves exact pressure evidence in it
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
         const plan = rows.find((row) => row.op === "NOTE" && row.origin === "_plurnk");
         assert.equal(plan, undefined, "admission never manufactures a cleanup note");
-        const problem = result.curationFailure?.problem as { usage?: number; ceiling?: number; deficit?: number } | undefined;
-        assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence");
-        const { usage, ceiling, deficit } = problem;
-        assert.ok(typeof usage === "number" && typeof ceiling === "number" && typeof deficit === "number");
-        assert.ok(usage > ceiling, `usage ${usage} exceeds the ceiling of ${ceiling}`);
-        assert.equal(deficit, usage - ceiling, "the deficit reconciles exactly");
+        const problem = result.curationFailure?.problem as { tokens?: number; budget?: number; excess?: number } | undefined;
+        assert.ok(problem !== undefined, "the terminal admission failure owns exact pressure evidence ({§context-hard-413})");
+        const { tokens, budget: ceiling, excess } = problem;
+        assert.ok(typeof tokens === "number" && typeof ceiling === "number" && typeof excess === "number");
+        assert.ok(tokens > ceiling, `tokens ${tokens} exceed the budget of ${ceiling}`);
+        assert.equal(excess, tokens - ceiling, "the excess reconciles exactly");
     } finally {
         partitionKeys.forEach((key, index) => {
             const previous = previousPartition[index];
@@ -223,10 +224,10 @@ test("{§tokenomics-calibrated-readout} three reported prompt counts convert the
         for (let turn = 1; turn <= 4; turn += 1) {
             const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
-            const m = packetSection(packet, "budget").match(/"logTokensTotal":\s*(\d+)/);
+            const m = packetSection(packet, "budget").match(/"tokens":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
             shown.push(Number(m![1]));
-            ceilings.push(Number(packetSection(packet, "budget").match(/"logTokensMax":\s*(\d+)/)?.[1]));
+            ceilings.push(Number(packetSection(packet, "budget").match(/"budget":\s*(\d+)/)?.[1]));
             weights.push(packet.weight);
         }
         assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");

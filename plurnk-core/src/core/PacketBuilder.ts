@@ -20,20 +20,16 @@ import { acceptedKinds } from "./attachments.ts";
 // Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-import PacketWire from "./packet-wire.ts";
+import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
-import { scopeEnvToAlias } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
-import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
-import LogVisibility from "./LogVisibility.ts";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
@@ -114,8 +110,8 @@ export interface CurationOverflow {
     readonly excess: number;
 }
 
-// Packet assembly ({§packet-assembly}) and model-facing budget admission
-// ({§context-output-admission}). Deliberate curation stays in scoped KILL.
+// Packet assembly ({§packet-assembly}) and the one budget check ({§context-hard-413}). Deliberate
+// curation stays in scoped KILL; what fits was decided where each row landed ({§context-fit}).
 export default class PacketBuilder {
     #db: Db;
     // {§tokenomics-calibrated-readout} — admission and client gauges consume
@@ -123,7 +119,6 @@ export default class PacketBuilder {
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
     readonly #emissions = new WeakMap<readonly StoredPacketSection[], ReadonlyMap<string, string>>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
-    readonly #unadmittedOutput = new WeakMap<readonly StoredPacketSection[], readonly number[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
@@ -132,8 +127,6 @@ export default class PacketBuilder {
     // {§functionality-documents} — family-generated documents of a Worker's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
-    // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
-    // through the same environment contract as provider configuration.
 
     constructor({ db, schemes, executors }: {
         db: Db;
@@ -150,19 +143,26 @@ export default class PacketBuilder {
         this.#functionalityDocuments = documents;
     }
 
-    // Prompt projection is Core policy, scoped through the same alias contract as providers.
-    static #KNOBS = ["PLURNK_SERVICE_PROMPT_PROJECTION"] as const;
     static #declaredKnobs: readonly string[] | undefined;
 
-    // {§configuration-repair-path} {§tokenomics-prompt-projection-share}
-    static validateConfiguration(env: NodeJS.ProcessEnv = process.env): number {
+    // {§configuration-repair-path} — retired knobs fail naming what replaced them: the context
+    // budget has one rule ({§context-fit}) and one gauge ({§context-gauge}).
+    static validateConfiguration(env: NodeJS.ProcessEnv = process.env): void {
         const declared = PacketBuilder.#declaredKnobs ??= Object.keys(parseEnv(readFileSync(new URL("../../.env.defaults", import.meta.url), "utf8")));
+        const oneRule = "a result arrives whole when it fits the budget and as its size otherwise ({§context-fit}); nothing is previewed, projected or paged";
         const retired: Record<string, string> = {
             PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
             PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
+            PLURNK_SERVICE_PREVIEW_LINES: oneRule,
+            PLURNK_SERVICE_PREVIEW_CHARS: oneRule,
+            PLURNK_SERVICE_PROMPT_PROJECTION: oneRule,
+            PLURNK_SERVICE_BUDGET_PRESSURE: "the gauge carries no threshold and no mandate ({§context-gauge})",
+            PLURNK_REASONING_VIEW_LINES: "the initialization reasoning READ carries no scope ({§reasoning-initial-read})",
+            PLURNK_REASONING_EMPTY_TURN_LINES: "an empty turn reads nothing back; its 422 row is the whole receipt ({§empty-turn})",
         };
+        const retiredKey = new RegExp(`^(${Object.keys(retired).join("|")})(?:_.*)?$`, "u");
         for (const key of Object.keys(env)) {
-            const match = /^(PLURNK_SERVICE_PROMPT_BUDGET|PLURNK_SERVICE_SAFETY)(?:_.*)?$/u.exec(key);
+            const match = retiredKey.exec(key);
             const reason = match === null ? undefined : retired[match[1]!];
             if (reason !== undefined) throw new ConfigurationError(key, `${key} is retired: ${reason}.`);
         }
@@ -178,13 +178,14 @@ export default class PacketBuilder {
             const match = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/u.exec(key);
             if (match !== null) throw new ConfigurationError(key, `${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
         }
-        return Knob.percent("PLURNK_SERVICE_PROMPT_PROJECTION", env);
     }
 
-    #promptProjectionFor(alias: string): number {
-        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
-        try { return PacketBuilder.validateConfiguration(view); }
-        catch (cause) {
+    // {§configuration-repair-path} — the same refusal as an operation failure: a 503 Problem naming the
+    // key, so a loop reports the failed demand instead of dying on an unshaped exception.
+    static assertConfiguration(env: NodeJS.ProcessEnv = process.env): void {
+        try {
+            PacketBuilder.validateConfiguration(env);
+        } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             throw new OperationFailureError(Results.configurationFailure(cause), { cause });
         }
@@ -208,7 +209,6 @@ export default class PacketBuilder {
     async buildRequestPacket({
         initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
-        promptProjection = "automatic",
         turnId = null,
     }: {
         initialMessages: ChatMessage[];
@@ -226,12 +226,10 @@ export default class PacketBuilder {
         // One packet may expose a durably suppressed row without mutating its
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
-        // Capacity recovery may withhold automatic arrival bodies while keeping
-        // their rows READable by log coordinate ({§message-projection}).
-        promptProjection?: "automatic" | "withheld";
         turnId?: number | null;
     }): Promise<RequestPacket> {
-        const projectionShare = this.#promptProjectionFor(ProviderInstantiate.configurationAliasOf(provider) ?? "");
+        // {§configuration-repair-path} — a retired packet knob refuses packet construction, never startup.
+        PacketBuilder.assertConfiguration();
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
         await LoopPolicyReader.read(this.#db, loopId);
@@ -265,17 +263,11 @@ export default class PacketBuilder {
         const log = await this.#buildLog(workerId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
+        // {§context-budget} — one room: the provider's input capacity in curation weight, bounding the
+        // whole packet. Nothing here sizes a part of it.
         const inputCapacity = provider.inputCapacity;
         const calibration = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
         const curationBudget = TokenCalibration.capacity(inputCapacity, calibration);
-        // {§tokenomics-prompt-projection-share} — the cold-start allocation
-        // preserves prompt bytes as rolling calibration changes the overall ceiling.
-        const projectionBudget = TokenCalibration.capacity(inputCapacity);
-        const promptProjectionWeight = promptProjection === "withheld"
-            ? 0
-            : projectionBudget === null
-                ? null
-                : Math.floor(projectionBudget * projectionShare);
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
@@ -322,7 +314,6 @@ export default class PacketBuilder {
             {
                 projectRoot: workspaceRow?.project_root ?? null,
                 acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
-                ...(promptProjectionWeight === null ? {} : { promptProjectionWeight }),
             },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
@@ -353,9 +344,8 @@ export default class PacketBuilder {
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
-            // Familiar token language is a deliberate final model projection;
-            // internally this is curation weight, never provider admission.
-            { name: "budget", slot: "user", header: "Context Curation", content: budgetReadout },
+            // {§context-gauge} — the model's word for curation weight is tokens; this is never provider admission.
+            { name: "budget", slot: "user", header: "Context", content: budgetReadout },
             // The messages section closes the status clump as a pointer list of open
             // arrivals; bodies arrive through their inbound SEND rows ({§message-arrival}).
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },
@@ -373,7 +363,7 @@ export default class PacketBuilder {
             .filter(({ coordinate }) => emissions.has(coordinate))
             .reduce((sum, { weight }) => sum + weight, 0);
         const budgetSection = drafts.find((section) => section.name === "budget");
-        if (budgetSection !== undefined && curationBudget !== null) {
+        if (budgetSection !== undefined) {
             const transformedLog = drafts.find((section) => section.name === "log");
             const curationTargets = transformedLog?.content === renderedLog.content
                 ? renderedLog.curationTargets
@@ -385,7 +375,7 @@ export default class PacketBuilder {
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
                     + attachmentsWeight
                     + emissionsWeight;
-            }, curationTargets, renderedLog.newOverflow);
+            }, curationTargets);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections. {§packet-items} — the
@@ -403,20 +393,7 @@ export default class PacketBuilder {
         this.#curationBudgets.set(packet.sections, curationBudget);
         this.#emissions.set(packet.sections, emissions);
         this.#streamObservations.set(packet.sections, openChannels);
-        this.#unadmittedOutput.set(packet.sections, renderedLog.unadmittedOutput);
         return packet;
-    }
-
-    // {§context-output-selection} — one statement commits the first-presentation
-    // decision. Speculative packet builds never call this mutation boundary.
-    async admitOutput(packet: RequestPacket, turnId: number): Promise<boolean> {
-        const ids = this.#unadmittedOutput.get(packet.sections);
-        if (ids === undefined) throw new Error("Cannot admit output from an unbuilt request packet.");
-        if (ids.length === 0) return false;
-        const withheld = this.curationOverflow(packet) !== null;
-        const result = await this.#db.engine_admit_log_outputs.run({ ids: JSON.stringify(ids), turn_id: turnId, withheld: withheld ? 1 : 0 });
-        if (result.changes !== ids.length) throw new Error("Log output admission changed during packet assembly.");
-        return withheld;
     }
 
     async recordObservations(packet: RequestPacket): Promise<void> {
@@ -470,7 +447,8 @@ export default class PacketBuilder {
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
-    // {§context-output-admission} — measurement never mutates visibility.
+    // {§context-hard-413} — measurement never mutates visibility; an over-budget packet is the
+    // turn's honest terminal, never a silent cut.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
         const budget = this.curationBudgetFor(packet);
         if (budget === null) return null;
@@ -508,78 +486,7 @@ export default class PacketBuilder {
         // User prompts are first-class actionless log entries written by
         // runTurn. They surface naturally in this query without synthetic
         // EDIT/READ delivery rows.
-        const rows = await this.#db.engine_render_log.all<{
-            id: number; loop_seq: number; turn_seq: number; sequence: number;
-            origin: string; op: string | null; signal: string | null;
-            scheme: string | null; username: string | null; password: string | null;
-            hostname: string | null; port: number | null; pathname: string | null;
-            query: string | null; fragment: string | null;
-            status_rx: number; rx: string; mimetype_rx: string;
-            output_admission_turn_id: number | null; output_withheld: number;
-            tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
-            producer: string;
-        }>({ worker_id: workerId, turn_id: turnId });
-        return rows.map((r) => {
-            const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
-            const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
-            const rawLineAnchors = LogEntryProjection.op(r) === "READ"
-                && r.status_rx === 200
-                && rx !== null
-                && typeof rx === "object"
-                && Object.hasOwn(rx, "lineAnchors")
-                ? (rx as { lineAnchors: unknown }).lineAnchors
-                : undefined;
-            if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
-                throw new TypeError("A READ result's lineAnchors field must be an array.");
-            }
-            const lineAnchors = rawLineAnchors as readonly string[] | undefined;
-            const rawLineNumberWidth = LogEntryProjection.op(r) === "READ"
-                && r.status_rx === 200
-                && rx !== null
-                && typeof rx === "object"
-                && Object.hasOwn(rx, "lineNumberWidth")
-                ? (rx as { lineNumberWidth: unknown }).lineNumberWidth
-                : undefined;
-            if (
-                rawLineNumberWidth !== undefined
-                && !LineAnchors.isLineNumberWidth(rawLineNumberWidth)
-            ) {
-                throw new TypeError("A READ result's lineNumberWidth field must be a valid decimal line width.");
-            }
-            if ((rawLineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
-                throw new TypeError("A READ result's lineAnchors and lineNumberWidth fields must appear together.");
-            }
-            const lineNumberWidth = rawLineNumberWidth;
-            return {
-                id: r.id,
-                output_admission_turn_id: r.output_admission_turn_id,
-                output_withheld: r.output_withheld === 1,
-                newOverflow: turnId !== null && r.output_admission_turn_id === turnId,
-                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
-                origin: r.origin,
-                op: r.op,
-                signal: r.signal === null ? null : JSON.parse(r.signal),
-                target: {
-                    scheme: r.scheme,
-                    username: r.username, password: r.password,
-                    hostname: r.hostname, port: r.port,
-                    pathname: r.pathname,
-                    query: r.query,
-                    fragment: r.fragment,
-                },
-                status: r.status_rx,
-                rx,
-                mimetype_rx: r.mimetype_rx,
-                tx,
-                mimetype_tx: r.mimetype_tx,
-                initial_folded: r.id === transientOpenLogEntryId ? LogVisibility.OPEN : LogVisibility.parse(r.initial_folded),
-                folded: LogVisibility.parse(r.folded),
-                source: r.source,
-                attrs: r.attrs === null ? null : JSON.parse(r.attrs),
-                producer: r.producer,
-                ...(lineAnchors === undefined ? {} : { lineAnchors }),
-                ...(lineNumberWidth === undefined ? {} : { lineNumberWidth }),
-            };
-        });
+        const rows = await this.#db.engine_render_log.all<StoredLogRow>({ worker_id: workerId, turn_id: turnId });
+        return rows.map((r) => PacketWire.entryView(r, transientOpenLogEntryId));
     }
 }

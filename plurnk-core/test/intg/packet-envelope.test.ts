@@ -6,6 +6,7 @@ import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-provider
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
+import EmissionHead from "../../src/core/EmissionHead.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { RequestPacket, StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -90,7 +91,8 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     const edit = PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", body);
     const first = `${edit}\n\n${PlurnkParser.frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
     const reasoning = PlurnkParser.frame("NOTE", "REASONING-MEMORY: independent reasoning note.");
-    const head = body.split("\n").slice(0, Number(process.env.PLURNK_SERVICE_PREVIEW_LINES)).join("\n");
+    const head = EmissionHead.cut(body).head.replace(/\r?\n$/u, "");
+    assert.ok(head.split("\n").length < 20, "the head is a flat ~100-token cut, far short of the 120-line body ({§emission-row})");
     const header = `${PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", head)} <!-- Automatically truncated op body: READ (ops://analyst/1/2) to retrieve in full -->`;
     const { db, result, provider, rows, workerId } = await run("envelope-header-history", "Work, curate, then inspect your original program.", [
         say(first, reasoning),

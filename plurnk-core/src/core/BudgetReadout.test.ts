@@ -3,171 +3,132 @@ import assert from "node:assert/strict";
 import BudgetReadout from "./BudgetReadout.ts";
 import { contentWeight } from "./content-weight.ts";
 
+interface Gauge { tokens: number; budget?: number; largest: Array<{ path: string; tokens: number }> }
+
 const resolve = (
-    ceiling: number,
+    budget: number | null,
     baseWeight: number,
-    largestLogItems: ReadonlyArray<{ path: string; logTokens: number }> = [],
-): { content: string; usage: number } => {
+    largest: ReadonlyArray<{ path: string; tokens: number }> = [],
+): { content: string; usage: number; gauge: Gauge } => {
     const prefix = "x".repeat(baseWeight * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const content = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, largestLogItems);
-    return { content, usage: measure(content) };
+    const content = BudgetReadout.resolve(BudgetReadout.draft(budget), budget, measure, largest);
+    return { content, usage: measure(content), gauge: JSON.parse(content) as Gauge };
 };
 
-test("{§tokenomics-neutral-telemetry} BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
-    const { content, usage } = resolve(100_000, 100);
-    assert.equal(content.split("\n").length, 1, "neutral telemetry is one JSON line");
-    const parsed = JSON.parse(content) as { logTokensTotal: number; logTokensMax: number };
-    assert.equal(parsed.logTokensTotal, usage);
-    assert.equal(parsed.logTokensMax, 100_000);
+test("{§context-gauge} the gauge is one JSON object: tokens as the exact render-weight, the budget, and the largest rows", () => {
+    const { content, usage, gauge } = resolve(100_000, 100);
+    assert.equal(content.split("\n").length, 1, "one JSON line and nothing beneath it");
+    assert.deepEqual(gauge, { tokens: usage, budget: 100_000, largest: [] });
+    assert.deepEqual(Object.keys(gauge), ["tokens", "budget", "largest"]);
+});
+
+test("{§context-gauge} the gauge reads the same at one percent as at ninety-nine: no threshold, no warning, no mandate", () => {
+    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
+    for (const base of [0, 700, 950]) {
+        const { content, usage, gauge } = resolve(1_000, base, items);
+        assert.doesNotMatch(content, /WARNING|MUST/u, `at ${base} of 1000 the gauge carries no mandate`);
+        assert.equal(gauge.tokens, usage);
+        assert.deepEqual(gauge.largest, items);
+    }
+    const over = resolve(9, 62);
+    assert.ok(over.gauge.tokens > 9, "an over-budget packet reports its tokens honestly");
+    assert.doesNotMatch(over.content, /WARNING|MUST/u);
 });
 
 test("BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
-        { name: "two-digit total", ceiling: 100, baseWeight: 62 },
-        { name: "total expands from two digits to three", ceiling: 200, baseWeight: 77 },
-        { name: "small total under a wide ceiling", ceiling: 2_801, baseWeight: 0 },
-        { name: "total overshoots a tiny ceiling", ceiling: 9, baseWeight: 62 },
-        { name: "converted capacity cannot fit one curation unit", ceiling: 0, baseWeight: 62 },
+        { name: "two-digit total", budget: 100, baseWeight: 62 },
+        { name: "total expands from two digits to three", budget: 200, baseWeight: 77 },
+        { name: "small total under a wide budget", budget: 2_801, baseWeight: 0 },
+        { name: "total overshoots a tiny budget", budget: 9, baseWeight: 62 },
+        { name: "converted capacity cannot fit one curation unit", budget: 0, baseWeight: 62 },
     ] as const;
-
     for (const specimen of cases) {
         await t.test(specimen.name, () => {
-            const { content, usage } = resolve(specimen.ceiling, specimen.baseWeight);
-            const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
-            assert.equal(parsed.logTokensTotal, usage, "the displayed total is the exact render-weight");
-            assert.equal(parsed.logTokensMax, specimen.ceiling);
+            const { usage, gauge } = resolve(specimen.budget, specimen.baseWeight);
+            assert.equal(gauge.tokens, usage, "the displayed total is the exact render-weight");
+            assert.equal(gauge.budget, specimen.budget);
         });
     }
 });
 
-test("{§tokenomics-negative-pressure} BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
-    const { content, usage } = resolve(9, 62);
-    assert.match(content, /\n\n> \[!WARNING\]\n> YOU MUST KILL/u);
-    const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };
-    assert.equal(parsed.logTokensTotal, usage);
-    assert.equal(parsed.logTokensMax, 9);
-    assert.doesNotMatch(content, /logTokensLargest/u, "no inventory without candidate rows");
-});
-
-test("{§tokenomics-pressure-inventory}: the largest reclaimable log bodies appear only at pressure", () => {
+test("{§context-gauge} largest: ranked by tokens then path, bounded by PLURNK_SERVICE_BUDGET_LARGEST_ITEMS, always present", () => {
     const items = [
-        { path: "log:///1/1/6/READ", logTokens: 70 },
-        { path: "log:///1/1/2/READ", logTokens: 110 },
-        { path: "log:///1/1/5/READ", logTokens: 80 },
-        { path: "log:///1/1/4/READ", logTokens: 90 },
-        { path: "log:///1/1/3/READ", logTokens: 100 },
-        { path: "log:///1/1/1/READ", logTokens: 110 },
+        { path: "log:///1/1/6/READ", tokens: 70 },
+        { path: "log:///1/1/2/READ", tokens: 110 },
+        { path: "log:///1/1/5/READ", tokens: 80 },
+        { path: "log:///1/1/4/READ", tokens: 90 },
+        { path: "log:///1/1/3/READ", tokens: 100 },
+        { path: "log:///1/1/1/READ", tokens: 110 },
     ];
-
-    const below = resolve(1_000, 700, items);
-    assert.doesNotMatch(below.content, /"path":/u, "neutral telemetry omits the inventory below 80%");
-    assert.doesNotMatch(below.content, /YOU MUST KILL/u, "the happy path retains only the stable SHOULD guidance");
-
-    const pressured = resolve(1_500, 1_180, items);
-    assert.match(
-        pressured.content,
-        /^\{"logTokensTotal":\s*\d+,"logTokensMax":1500,"logTokensLargest":\[/u,
-        "the block opens as one JSON payload with the inventory folded in",
-    );
-    assert.match(
-        pressured.content,
-        /\]\}\n\n> \[!WARNING\]\n> YOU MUST KILL superseded, stale, or irrelevant log items and ranges\.$/u,
-        "the recovery mandate follows the JSON that names its targets",
-    );
-    const object = JSON.parse(pressured.content.split("\n\n")[0]!) as {
-        logTokensTotal: number;
-        logTokensLargest: ReadonlyArray<{ path: string; logTokens: number }>;
-    };
-    assert.deepEqual(
-        object.logTokensLargest,
-        [
-            { path: "log:///1/1/1/READ", logTokens: 110 },
-            { path: "log:///1/1/2/READ", logTokens: 110 },
-            { path: "log:///1/1/3/READ", logTokens: 100 },
-            { path: "log:///1/1/4/READ", logTokens: 90 },
-            { path: "log:///1/1/5/READ", logTokens: 80 },
-        ],
-        "rank by active cost, break ties by path, and bound the recovery index at five",
-    );
-    assert.equal(object.logTokensTotal, pressured.usage, "the displayed total includes the conditional inventory");
+    const { content, usage, gauge } = resolve(1_500, 700, items);
+    assert.match(content, /^\{"tokens":\s*\d+,"budget":1500,"largest":\[/u, "one JSON payload with the inventory folded in");
+    assert.deepEqual(gauge.largest, [
+        { path: "log:///1/1/1/READ", tokens: 110 },
+        { path: "log:///1/1/2/READ", tokens: 110 },
+        { path: "log:///1/1/3/READ", tokens: 100 },
+        { path: "log:///1/1/4/READ", tokens: 90 },
+        { path: "log:///1/1/5/READ", tokens: 80 },
+    ], "rank by tokens, break ties by path, and bound the inventory at the shipped five");
+    assert.equal(gauge.tokens, usage, "the displayed total includes the inventory");
+    const prior = process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
+    try {
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "2";
+        assert.equal(resolve(1_500, 700, items).gauge.largest.length, 2, "the operator names how many rows the gauge names");
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "0";
+        assert.deepEqual(resolve(1_500, 700, items).gauge.largest, [], "zero names none, and the field stays");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS; else process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = prior;
+    }
 });
 
-test("{§tokenomics-pressure-inventory}: the optional list yields room before the required warning", () => {
-    const item = {
-        path: `log:///${"1".repeat(200)}/READ`,
-
-        logTokens: 110,
-    };
-    const pressured = resolve(1_000, 850, [item]);
-    assert.doesNotMatch(pressured.content, /"path":/u, "an inventory that cannot fit is omitted");
-    assert.match(pressured.content, /> \[!WARNING\]\n> YOU MUST KILL/u);
-    assert.ok(pressured.usage <= 1_000, "the warned packet remains admissible");
+test("{§context-gauge} the inventory is the largest prefix that fits the budget", () => {
+    const wide = { path: `log:///${"1".repeat(200)}/READ`, tokens: 110 };
+    const narrow = { path: "log:///1/1/2/READ", tokens: 90 };
+    const { usage, gauge } = resolve(1_000, 900, [wide, narrow]);
+    assert.deepEqual(gauge.largest, [], "a prefix that cannot fit is cut down, to nothing when it must");
+    assert.ok(usage <= 1_000, "the gauge never pushes a fitting packet over its budget");
+    const fits = resolve(1_000, 900, [narrow, { ...narrow, path: "log:///1/1/3/READ", tokens: 80 }]);
+    assert.equal(fits.gauge.largest.length, 2, "what fits is named");
+    assert.ok(fits.usage <= 1_000);
 });
 
-test("{§context-output-warning}: actual new omission overrides pressure even below 80%", () => {
-    const content = BudgetReadout.resolve(BudgetReadout.draft(10_000), 10_000, contentWeight, [], true);
-    assert.match(content, /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
-    assert.equal((content.match(/YOU MUST/gu) ?? []).length, 1);
-    assert.equal(JSON.parse(content.split("\n\n")[0]!).logTokensTotal, contentWeight(content));
+test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge carries tokens alone, and names every inventory row", () => {
+    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }, { path: "log:///1/1/2/READ", tokens: 100 }];
+    const { usage, gauge } = resolve(null, 100, items);
+    assert.deepEqual(Object.keys(gauge), ["tokens", "largest"]);
+    assert.equal(gauge.tokens, usage);
+    assert.deepEqual(gauge.largest, items);
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
-        () => BudgetReadout.resolve('{"logTokensMax":100}', 100, () => 10),
-        /must contain \{\{logTokensTotal\}\} exactly once/,
+        () => BudgetReadout.resolve('{"budget":100}', 100, () => 10),
+        /must contain \{\{tokens\}\} exactly once/,
     );
     assert.throws(
         () => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => Number.NaN),
         /packet weight must be a non-negative safe integer/,
     );
+    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(100), 100, () => 10, [{ path: "file:///a", tokens: 1 }]), /one log:\/\/\/ URI/);
 });
 
 test("{§output-allowance-notice} (#826) the readout carries curation state and no output allowance", () => {
     const drafted = BudgetReadout.draft(1000);
-    assert.match(drafted, /"logTokensMax":1000\}$/);
-    assert.doesNotMatch(BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length), /tokensResponseMax/);
-    assert.equal(BudgetReadout.draft(null), "");
+    assert.match(drafted, /"budget":1000\}$/);
+    assert.doesNotMatch(BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length), /tokensResponseMax|allowance|grant/u);
+    assert.equal(BudgetReadout.draft(null), '{"tokens":{{tokens}}}');
 });
 
-test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure without changing cost units", () => {
-    const ceiling = 100;
+test("{§tokenomics-calibrated-readout} a converted budget changes the room without changing cost units", () => {
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const items = [{ path: "log:///1/2/3/READ", logTokens: 44 }];
-    const raw = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure, items);
-    assert.match(raw, /YOU MUST KILL superseded/u, "at factor 1 the raw weight sits above the pressure fraction and the mandate renders");
-    const convertedCeiling = 200;
-    const calibrated = BudgetReadout.resolve(BudgetReadout.draft(convertedCeiling), convertedCeiling, measure, items);
-    const usage = measure(calibrated);
-    assert.match(
-        calibrated,
-        new RegExp(`"logTokensTotal":\\s*${usage},`, "u"),
-        `the displayed figure retains the measured curation units; got: ${calibrated}`,
-    );
-    assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");
-});
-
-test("{§tokenomics-pressure-inventory} the panel says when pressure begins and how many items it names", () => {
-    const items = [
-        { path: "log:///1/1/1/READ", logTokens: 110 },
-        { path: "log:///1/1/2/READ", logTokens: 100 },
-        { path: "log:///1/1/3/READ", logTokens: 90 },
-    ];
-    const prior = { pressure: process.env.PLURNK_SERVICE_BUDGET_PRESSURE, largest: process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS };
-    try {
-        assert.doesNotMatch(resolve(1_000, 700, items).content, /YOU MUST KILL/u, "70% is calm on the shipped panel");
-        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "60%";
-        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "2";
-        const pressured = resolve(1_000, 700, items).content;
-        assert.match(pressured, /YOU MUST KILL/u, "and pressured once the operator moves the line beneath it");
-        const { logTokensLargest } = JSON.parse(pressured.split("\n\n")[0]!) as { logTokensLargest: unknown[] };
-        assert.equal(logTokensLargest.length, 2);
-        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "0.6";
-        assert.throws(() => resolve(1_000, 700, items), /PLURNK_SERVICE_BUDGET_PRESSURE must be a percentage in \(0, 100\); got "0\.6"/u);
-    } finally {
-        for (const [name, value] of [["PLURNK_SERVICE_BUDGET_PRESSURE", prior.pressure], ["PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", prior.largest]] as const) {
-            if (value === undefined) delete process.env[name]; else process.env[name] = value;
-        }
+    const items = [{ path: "log:///1/2/3/READ", tokens: 44 }];
+    for (const budget of [100, 200]) {
+        const rendered = BudgetReadout.resolve(BudgetReadout.draft(budget), budget, measure, items);
+        const usage = measure(rendered);
+        assert.match(rendered, new RegExp(`"tokens":\\s*${usage},"budget":${budget}`, "u"), `the displayed figure retains the measured curation units; got: ${rendered}`);
+        assert.doesNotMatch(rendered, /MUST/u);
     }
 });

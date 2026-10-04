@@ -307,7 +307,7 @@ test("Worker.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find markerless selection returns the first 16 with a compact selection extent", async () => {
+test("{§markerless-first-page} Worker.find without a scope returns every resource; an explicit <1,-1> is the same selection", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const entries = Array.from({ length: 20 }, (_, index): [string, string] => [
@@ -317,11 +317,12 @@ test("Worker.find markerless selection returns the first 16 with a compact selec
         await seedEntries(db, workspaceId, workerId, entries);
         const worker = new Worker();
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
-        const bounded = await worker.find(findStmt(url("")), ctx);
-        assert.equal(bounded.results.length, 16);
-        assert.equal(bounded.range?.total, 20);
-        assert.deepEqual(bounded.range?.returned, [1, 16]);
-        assert.ok(bounded.itemsWeightTotal > bounded.returnedItemsWeightTotal);
+        const whole = await worker.find(findStmt(url("")), ctx);
+        assert.equal(whole.results.length, 20);
+        assert.equal(whole.range?.total, 20);
+        assert.deepEqual(whole.range?.requested, [1, -1]);
+        assert.deepEqual(whole.range?.returned, [1, 20]);
+        assert.equal(whole.itemsWeightTotal, whole.returnedItemsWeightTotal, "nothing is held back");
 
         const all = await worker.find(
             { ...findStmt(url("")), lineMarker: { marks: [1, -1] } },
@@ -350,7 +351,7 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             range: {
                 unit: "resource",
                 total: 0,
-                requested: [1, 16],
+                requested: [1, -1],
             },
         });
     } finally { db.close(); }

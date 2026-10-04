@@ -194,16 +194,16 @@ test("contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null wh
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
-    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_PROMPT_PROJECTION"];
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"];
     const env = {
-        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
+        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
         PLURNK_SERVICE_MAX_TURNS_turboderp: "78848", PLURNK_SERVICE_LOOP_TIMEOUT_turboderp: "4096", PLURNK_SERVICE_EXEC_HOLD_MS_TURBODERP: "8192", // case-folds
     } as NodeJS.ProcessEnv;
     const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
     assert.equal(gemma.PLURNK_SERVICE_MAX_TURNS, "78848");
     assert.equal(gemma.PLURNK_SERVICE_LOOP_TIMEOUT, "4096");
     assert.equal(gemma.PLURNK_SERVICE_EXEC_HOLD_MS, "8192");
-    assert.equal(gemma.PLURNK_SERVICE_PROMPT_PROJECTION, "25%"); // bare fallback intact
+    assert.equal(gemma.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS, "5"); // bare fallback intact
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
     assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");

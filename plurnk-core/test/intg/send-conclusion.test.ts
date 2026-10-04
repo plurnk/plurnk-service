@@ -300,10 +300,7 @@ for (const [label, response, reasoning, notes, outside] of [
     ["empty response", "", null, [], undefined],
     ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."], undefined],
 ] as const) {
-    test(`{§empty-turn}: ${label} preserves sources and strike behavior, repeating only operation-free reasoning`, async () => {
-        // {§reasoning-empty-turn-read} ships off; this witness turns the read-back on.
-        const previousReadBack = process.env.PLURNK_REASONING_EMPTY_TURN_LINES;
-        process.env.PLURNK_REASONING_EMPTY_TURN_LINES = "100";
+    test(`{§empty-turn}: ${label} preserves sources and strike behavior; nothing is read back on the model's behalf`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -315,8 +312,8 @@ for (const [label, response, reasoning, notes, outside] of [
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
             const { id: modelTurn, sequence } = turns.findLast(({ producer }) => producer === "model")!;
             const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: ids.workerId });
-            assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`).map(({ pathname }) => pathname),
-                reasoning !== null && notes.length === 0 ? [`/1/${sequence}`] : [], "{§reasoning-empty-turn-read}: persisted reasoning operations suppress automatic repeat");
+            assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`), [],
+                "{§empty-turn}: the runtime never reads the empty turn's reasoning back; it stays at its address");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
@@ -324,7 +321,7 @@ for (const [label, response, reasoning, notes, outside] of [
                 "reasoning NOTEs are rows that do not count as authored response operations; outside text is none");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
-        } finally { await db.close(); if (previousReadBack === undefined) delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES; else process.env.PLURNK_REASONING_EMPTY_TURN_LINES = previousReadBack; }
+        } finally { await db.close(); }
     });
 }
 

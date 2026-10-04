@@ -66,16 +66,16 @@ test("zero matches read as empty (204) with matched 0", async () => {
     } finally { await db.close(); }
 });
 
-test("a whole-resource pattern READ pages through the selected lines, never the unselected ones", async () => {
+test("{§markerless-first-page} a whole-resource pattern READ returns every selected line, never the unselected ones", async () => {
     const lines = Array.from({ length: 40 }, (_, index) => index % 2 === 0 ? `keep ${index + 1}` : `skip ${index + 1}`);
     const { db, dispatch } = await setup(lines.join("\n"));
     try {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "glob", raw: "keep" }));
         assert.equal(r.status, 200, JSON.stringify(r));
-        assert.equal(r.matched, 20, "every selected line counts, beyond the page");
-        assert.deepEqual(r.lineOrdinals, Array.from({ length: 16 }, (_, index) => index * 2 + 1), "the first page holds the first sixteen selected lines");
+        assert.equal(r.matched, 20, "every selected line counts");
+        assert.deepEqual(r.lineOrdinals, Array.from({ length: 20 }, (_, index) => index * 2 + 1), "every selected line is returned, at its source ordinal");
         assert.doesNotMatch(String(r.content), /skip/);
-        assert.equal((r.matches as unknown[]).length, 16, "match evidence follows the returned page, not the unseen remainder");
+        assert.equal((r.matches as unknown[]).length, 20, "match evidence covers every returned line");
     } finally { await db.close(); }
 });
 

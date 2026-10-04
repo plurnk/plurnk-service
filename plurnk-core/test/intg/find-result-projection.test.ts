@@ -37,7 +37,7 @@ test("{§worker-tool-admission} shallow FIND folder summaries include only admit
     } finally { await db.close(); }
 });
 
-test("{§find-result-projection}: markerless FIND returns the first 16 resources with complete counts", async () => {
+test("{§find-result-projection} {§markerless-first-page}: a markerless FIND returns every resource with complete counts", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-page-${crypto.randomUUID()}`);
@@ -46,15 +46,15 @@ test("{§find-result-projection}: markerless FIND returns the first 16 resources
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest, {  });
         assert.equal(r.status, 200);
-        assert.equal(r.results.length, 16);
+        assert.equal(r.results.length, 20);
         assert.equal(r.matchingPathCount, 20);
         assert.equal(r.matchLocationCount, 0);
         assert.equal(r.mimetype, "application/json");
         assert.deepEqual(r.range, {
             unit: "resource",
             total: 20,
-            requested: [1, 16],
-            returned: [1, 16],
+            requested: [1, -1],
+            returned: [1, 20],
         });
     } finally {
         await db.close();

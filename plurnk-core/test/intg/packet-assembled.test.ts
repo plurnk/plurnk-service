@@ -394,7 +394,7 @@ test("the default wire preserves canonical order and projects the Recap override
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "user slot: worker -> log -> turn -> status clump -> open message pointers -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
-        assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
+        assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
         assert.equal(packet.sections.at(-1)?.content, "CUSTOM_RECAP_SENTINEL");
     } finally { await db.close(); }

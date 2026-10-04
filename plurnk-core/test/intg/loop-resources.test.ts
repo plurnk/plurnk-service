@@ -33,11 +33,11 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     const body = Array.from({ length: 30 }, (_, i) => `Result line ${i + 1}`).join("\n");
     const lifecycle = new LoopLifecycle(db);
     await lifecycle.finish(first, { status: 200, content: body, mimetype: "text/plain" });
-    const page = await dispatch(readStmt(source));
-    assert.equal(page.status, 200);
-    assert.equal(page.content, body.split("\n").slice(0, 16).join("\n"));
-    assert.equal(page.lineAnchors, undefined);
-    assert.deepEqual(page.range, { unit: "line", total: 30, requested: [1, 16], returned: [1, 16] });
+    const whole = await dispatch(readStmt(source));
+    assert.equal(whole.status, 200);
+    assert.equal(whole.content, body, "a markerless READ of a result is the whole result ({§markerless-first-page})");
+    assert.equal(whole.lineAnchors, undefined);
+    assert.deepEqual(whole.range, { unit: "line", total: 30, requested: [1, -1], returned: [1, 30] });
     assert.equal((await dispatch(readStmt(source, { marks: [17, -1] }))).content, body.split("\n").slice(16).join("\n"));
 
     const live = await insertLoop(db, child, 2);

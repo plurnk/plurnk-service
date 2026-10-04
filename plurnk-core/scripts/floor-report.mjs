@@ -4,7 +4,7 @@
 //
 // The metric: input weight of the FIRST model call for a fresh worker in an
 // empty project under the selected config — the price of existing, before any work.
-// Decomposed with the packet's own per-row accounting (logTokens is the
+// Decomposed with the packet's own per-row accounting (tokens is the
 // daemon's exact weigher, embedded in each Markdown-framed log record).
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,7 +59,7 @@ try {
     if (logSection === null) throw new Error("first request has no Log section");
     const logContent = logSection[1].trim();
     const rows = parseLogRecords(logContent).map((row) => {
-        const active = Number(row.logTokens ?? 0);
+        const active = Number(row.tokens ?? 0);
         const body = typeof row.body === "string" ? contentWeight(row.body.trimEnd()) : 0;
         return { logPath: String(row.logPath), active, metadata: active - body };
     });

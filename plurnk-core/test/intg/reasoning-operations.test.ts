@@ -20,7 +20,7 @@ for (const operation of [
     { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
     { name: "FIND", source: frame("FIND (worker:///fact.txt)", null) },
     { name: "READ", source: frame("READ (worker:///fact.txt)", null) },
-]) test(`{§reasoning-empty-turn-read}: an admitted reasoning ${operation.name} suppresses automatic reasoning repetition`, async () => {
+]) test(`{§reasoning-operations} {§empty-turn}: an admitted reasoning ${operation.name} runs, and nothing is read back on the model's behalf`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-no-repeat");
@@ -35,7 +35,7 @@ for (const operation of [
         assert.ok(outcomes.some(({ op, status_rx }) => op === operation.name && status_rx === 200), "the reasoning operation actually ran");
         const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: workerId });
         assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === "/1/2"), [],
-            "recovery does not copy a trace that already contributed an operation");
+            "the runtime never copies a trace into the log; the model READs its reasoning when it wants it");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === result.turnId && kind === "reasoning" && content === reasoning),
             "the complete original reasoning remains available for deliberate READs");

@@ -38,20 +38,18 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // ({§operator-config-shared-keys}). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_PLUGINS_|PLURNK_REASONING_(VIEW|EMPTY_TURN)_LINES$|PLURNK_(?:MEMBERS|SKILLS)_)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_PLUGINS_|PLURNK_(?:MEMBERS|SKILLS)_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     // Provider physics and generation policy ship in the provider package.
     // Core has no parallel token budget or packing-margin contract.
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_BUDGET"), undefined);
     assert.equal(env.get("PLURNK_SERVICE_SAFETY"), undefined);
-    const previewLines = Number(env.get("PLURNK_SERVICE_PREVIEW_LINES"));
-    const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
-    assert.equal(previewLines, 100, "the shipped first page is a hundred units: most files a model reads arrive whole");
-    assert.equal(previewChars, 16000, "the independent character allowance ships at 160 per line of that page");
-    assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the derived curation budget");
-    assert.equal(env.get("PLURNK_REASONING_VIEW_LINES"), "100", "initialization reads at most 100 rationale lines by default");
-    assert.equal(env.get("PLURNK_REASONING_EMPTY_TURN_LINES"), "0", "an empty turn reads no reasoning back by default: the page it would read is the pressure that emptied the turn");
+    // {§context-fit} {§context-gauge} — one rule, no previews, pages, projections, thresholds or read-backs.
+    for (const retired of ["PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
+        assert.equal(env.get(retired), undefined, `${retired} is retired: nothing ships it`);
+    }
+    assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the gauge names the five largest retained rows");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 

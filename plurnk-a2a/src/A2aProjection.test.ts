@@ -3,6 +3,28 @@ import test from "node:test";
 import { Message, Task } from "@a2a-js/sdk";
 import A2aProjection from "./A2aProjection.ts";
 
+// {§a2a-part-resources} — the JSON channel is the protocol JSON with every raw Part's bytes replaced by
+// its resource address and byte count, each under the Message or Artifact that carries it.
+const withResources = (json: unknown, authority: string, resources: readonly { pathname: string }[], taskId?: string): unknown => {
+    const taken = new Map<string, number>();
+    const walk = (value: unknown, parent: string | null): unknown => {
+        if (Array.isArray(value)) return value.map((item) => walk(item, parent));
+        if (value === null || typeof value !== "object") return value;
+        const record = value as Record<string, unknown>;
+        const owner = typeof record.messageId === "string" ? `/messages/${record.messageId}`
+            : typeof record.artifactId === "string" ? `/tasks/${taskId}/artifacts/${record.artifactId}` : parent;
+        if (typeof record.raw === "string") {
+            const { raw, ...rest } = record;
+            const index = taken.get(owner!) ?? 0;
+            taken.set(owner!, index + 1);
+            const { pathname } = resources.filter((resource) => resource.pathname.startsWith(`${owner}/resources/`))[index]!;
+            return { ...rest, resource: `a2a://${authority}${pathname}`, bytes: Buffer.from(raw, "base64").length };
+        }
+        return Object.fromEntries(Object.entries(record).map(([key, inner]) => [key, walk(inner, owner)]));
+    };
+    return walk(json, null);
+};
+
 test("{§a2a-part-resources}: mixed Parts preserve order, exact JSON, safe names and distinct raw sources", () => {
     const message = Message.fromJSON({
         messageId: "answer", contextId: "conversation", role: "ROLE_AGENT",
@@ -18,7 +40,8 @@ test("{§a2a-part-resources}: mixed Parts preserve order, exact JSON, safe names
     });
     const projected = A2aProjection.messageEntry(message, "peer");
     const body = projected.entry.channels.body!.content;
-    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), Message.toJSON(message));
+    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), withResources(Message.toJSON(message), "peer", projected.resources), "the JSON channel names each raw Part's resource and byte count, never its base64");
+    assert.doesNotMatch(projected.entry.channels.json!.content, /"raw"/u);
     assert.match(body, /First comes the explanation\.[\s\S]+resources\/\.\.%2Fsample\.bin[\s\S]+"rows"[\s\S]+https:\/\/example\.invalid\/private-file/u);
     assert.equal(projected.resources.length, 3, "URL Parts are not eagerly fetched or locally fabricated");
     const [first, second, third] = projected.resources;
@@ -54,5 +77,6 @@ test("{§a2a-part-resources}: Task status, history and Artifacts retain their ow
     assert.equal(entries.size, 6);
     assert.match(projected.entry.channels.body!.content, /state: input-required/u);
     assert.match(projected.entry.channels.body!.content, /\/messages\/question\/resources\//u);
-    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), Task.toJSON(task));
+    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), withResources(Task.toJSON(task), "peer", projected.resources, "task"), "artifacts, history and the status message each name their own resources");
+    assert.doesNotMatch(projected.entry.channels.json!.content, /"raw"/u);
 });

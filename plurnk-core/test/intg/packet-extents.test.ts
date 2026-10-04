@@ -52,7 +52,7 @@ test("{§packet-extent-metadata}: READ acquisition, receipt trimming, and READ o
     assert.deepEqual(trimmed.trimmed, ["<1>"]);
     assert.equal(trimmed.folded, undefined);
     assert.equal(trimmed.body, "18:source line 18\n");
-    assert.equal(trimmed.logTokens, weigh(rendered), "the new metadata participates in exact row accounting");
+    assert.equal(trimmed.tokens, weigh(rendered), "the new metadata participates in exact row accounting");
     const reread = await ReadResolve.resolve({
         content: rx.content!, mimetype: "text/plain", lineMarker: { marks: [1, -1] },
         visibleLines: LogVisibility.visibleLineOrdinals(folded, TextCoordinates.lineCount(rx.content!)),

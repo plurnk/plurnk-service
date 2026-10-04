@@ -1,55 +1,45 @@
 import { Knob } from "@plurnk/plurnk-meta";
-const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{logTokensTotal}}";
+const TOKENS_PLACEHOLDER = "{{tokens}}";
 const MAX_WIDTH_PASSES = 64;
 
 type MeasurePacket = (content: string) => number;
 
-interface LargestLogItem {
+export interface LargestLogItem {
     readonly path: string;
-    readonly logTokens: number;
+    readonly tokens: number;
 }
 
-const PRESSURE_MANDATE = "YOU MUST KILL superseded, stale, or irrelevant log items and ranges.";
-const OVERFLOW_MANDATE = "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
-
+// {§context-gauge} — one JSON object the model reads every packet: `tokens`, `budget`, `largest`.
+// State only: no mandate, no threshold, and never a response allowance ({§output-allowance-notice}).
 export default class BudgetReadout {
-    // {§output-allowance-notice} — the readout is curation state only; the output allowance is
-    // not disclosed, a ceiling cut names it (#826).
-    static draft(ceiling: number | null): string {
-        if (ceiling === null) return "";
-        BudgetReadout.#assertCeiling(ceiling);
-        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"logTokensMax":${ceiling}}`;
+    static draft(budget: number | null): string {
+        if (budget === null) return `{"tokens":${TOKENS_PLACEHOLDER}}`;
+        BudgetReadout.#assertBudget(budget);
+        return `{"tokens":${TOKENS_PLACEHOLDER},"budget":${budget}}`;
     }
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final
     // numeric substitution cannot change the measured packet length or oscillate.
+    // The inventory is the largest prefix that fits the budget; without a budget, all of it.
     static resolve(
         template: string,
-        ceiling: number,
+        budget: number | null,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
-        newOverflow = false,
     ): string {
-        BudgetReadout.#assertCeiling(ceiling);
+        if (budget !== null) BudgetReadout.#assertBudget(budget);
         BudgetReadout.#assertTemplate(template);
-        const neutral = BudgetReadout.#resolveTemplate(template, measurePacket);
-        if (!newOverflow && neutral.usage < ceiling * Knob.percent("PLURNK_SERVICE_BUDGET_PRESSURE")) {
-            return neutral.content;
-        }
-
-        const warning = `\n\n> [!WARNING]\n> ${newOverflow ? OVERFLOW_MANDATE : PRESSURE_MANDATE}`;
         const ranked = largestLogItems
             .map((item) => BudgetReadout.#assertLargestLogItem(item))
-            .toSorted((a, b) => a.logTokens === b.logTokens
+            .toSorted((a, b) => a.tokens === b.tokens
                 ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
-                : a.logTokens > b.logTokens ? -1 : 1)
+                : a.tokens > b.tokens ? -1 : 1)
             .slice(0, Knob.integer("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", 0));
         for (let count = ranked.length; count > 0; count -= 1) {
-            const pressured = BudgetReadout.#withInventory(template, ranked.slice(0, count)) + warning;
-            const resolved = BudgetReadout.#resolveTemplate(pressured, measurePacket);
-            if (resolved.usage <= ceiling) return resolved.content;
+            const resolved = BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked.slice(0, count)), measurePacket);
+            if (budget === null || resolved.usage <= budget) return resolved.content;
         }
-        return BudgetReadout.#resolveTemplate(template + warning, measurePacket).content;
+        return BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, []), measurePacket).content;
     }
 
     static #resolveTemplate(
@@ -80,34 +70,31 @@ export default class BudgetReadout {
     }
 
     static #render(template: string, width: number, value: string): string {
-        return template.replace(TOKENS_ACTIVE_TOTAL_PLACEHOLDER, value.padStart(width));
+        return template.replace(TOKENS_PLACEHOLDER, value.padStart(width));
     }
 
-    // The inventory rides inside the same JSON object as a `logTokensLargest`
-    // field, so the block opens as one JSON payload; the recovery mandate follows it.
+    // The inventory rides inside the same JSON object as its `largest` field, so the
+    // section is one JSON payload.
     static #withInventory(template: string, items: readonly LargestLogItem[]): string {
         const largest = items
-            .map(({ path, logTokens }) => JSON.stringify({ path, logTokens }))
+            .map(({ path, tokens }) => JSON.stringify({ path, tokens }))
             .join(",");
-        const object = template.replace(/\}\s*$/u, () => `,"logTokensLargest":[${largest}]}`);
-        return object;
+        return template.replace(/\}\s*$/u, () => `,"largest":[${largest}]}`);
     }
 
     static #assertLargestLogItem(item: LargestLogItem): LargestLogItem {
         if (!item.path.startsWith("log:///") || /[\r\n]/u.test(item.path)) {
             throw new TypeError(`Largest log item path must be one log:/// URI, got ${JSON.stringify(item.path)}`);
         }
-        for (const [name, value] of Object.entries({ logTokens: item.logTokens })) {
-            if (!Number.isSafeInteger(value) || value <= 0) {
-                throw new TypeError(`Largest log item ${name} must be a positive safe integer`);
-            }
+        if (!Number.isSafeInteger(item.tokens) || item.tokens <= 0) {
+            throw new TypeError("Largest log item tokens must be a positive safe integer");
         }
         return item;
     }
 
-    static #assertCeiling(ceiling: number): void {
-        if (!Number.isSafeInteger(ceiling) || ceiling < 0) {
-            throw new TypeError("Budget readout ceiling must be a non-negative safe integer");
+    static #assertBudget(budget: number): void {
+        if (!Number.isSafeInteger(budget) || budget < 0) {
+            throw new TypeError("Budget readout budget must be a non-negative safe integer");
         }
     }
 
@@ -119,8 +106,8 @@ export default class BudgetReadout {
     }
 
     static #assertTemplate(template: string): void {
-        if (template.split(TOKENS_ACTIVE_TOTAL_PLACEHOLDER).length !== 2) {
-            throw new TypeError(`Budget readout template must contain ${TOKENS_ACTIVE_TOTAL_PLACEHOLDER} exactly once`);
+        if (template.split(TOKENS_PLACEHOLDER).length !== 2) {
+            throw new TypeError(`Budget readout template must contain ${TOKENS_PLACEHOLDER} exactly once`);
         }
     }
 }

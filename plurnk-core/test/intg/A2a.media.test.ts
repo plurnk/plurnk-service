@@ -10,6 +10,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
+import ByteView from "../../src/content/byte-view.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 const task = "````NOTE\nInspect the received media.\n````";
@@ -38,9 +39,10 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             const packet = args[0].messages.map(chatMessageText).join("\n");
             let content = response.assistant.content;
             if (content.includes("$PARENT")) {
+                // The parent is the Artifact or Message entry itself, never one of its resources beneath it.
                 const pattern = mode === "complete"
-                    ? /a2a:\/\/remote\/tasks\/[^\s"<>]+\/artifacts\/[^\s"<>]+/gu
-                    : /a2a:\/\/remote\/messages\/[^\s"<>]+/gu;
+                    ? /a2a:\/\/remote\/tasks\/[^\s"<>/]+\/artifacts\/[^\s"<>/]+(?=[\s"<>]|$)/gu
+                    : /a2a:\/\/remote\/messages\/[^\s"<>/]+(?=[\s"<>]|$)/gu;
                 parent = [...packet.matchAll(pattern)].at(-1)?.[0];
                 assert.ok(parent, `the A2A receipt identifies its retained parent resource:\n${packet}`);
                 await retire();
@@ -108,7 +110,15 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         const evidence = await daemon.readEntry({ workspaceId, workerId, target: parent!, channel: "json" });
         assert.equal(evidence.status, 200);
         assert.ok(evidence.entry !== null);
-        assert.equal(JSON.parse(evidence.entry.channels.json!.content).parts[1].raw, media.bytes.toString("base64"), "exact A2A evidence survives offline and after curation");
+        const part = JSON.parse(evidence.entry.channels.json!.content).parts[1] as { raw?: string; resource?: string; bytes?: number };
+        assert.deepEqual([part.raw, part.resource, part.bytes], [undefined, resource, media.bytes.length], "the protocol JSON names the resource and its byte count in place of base64");
+        const pathname = new URL(resource!).pathname;
+        const exact = await daemon.look({ workspaceId, workerId, statement: {
+            op: "READ", aside: null, matcher: null, metadata: null, body: null, position: { line: 1, column: 1 }, lineMarker: { marks: [1, -1] },
+            target: { kind: "url", raw: `${resource}#bytes`, scheme: "a2a", username: null, password: null, hostname: "remote", port: null, pathname, query: null, fragment: "bytes" },
+        } });
+        assert.equal(exact.status, 200);
+        assert.equal(exact.content, ByteView.hexLines(media.bytes), "exact A2A evidence survives offline and after curation, as the resource's own bytes");
     } finally {
         await daemon.stop();
         await db.close();

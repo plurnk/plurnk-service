@@ -11,12 +11,10 @@ import { statement, type Read } from "./reasoning-fixture.ts";
 
 const next = PlurnkParser.frame("NOTE", "Continue.");
 
-for (const limit of [-1, 0, 100]) test(`{§worker-initialization-entry}: initialization executes only reasoning and reads it back with view ${limit}`, async () => {
+test("{§worker-initialization-entry} {§reasoning-initial-read}: initialization executes only reasoning and reads it back whole", async () => {
     const db = await openMigrated();
-    const prior = process.env.PLURNK_REASONING_VIEW_LINES;
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         const workspaceId = await insertWorkspace(db, "reasoning-bootstrap");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
@@ -29,28 +27,24 @@ for (const limit of [-1, 0, 100]) test(`{§worker-initialization-entry}: initial
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const initial = logEntries(packet).find((row) => row.path === "reasoning://alice/3/1");
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
-        if (limit === 0) {
-            assert.equal(initial, undefined);
-            assert.equal(reads.length, 0);
-        } else {
-            assert.ok(initial);
-            assert.equal(initial.origin, "_plurnk");
-            assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
-            assert.match(String(initial.body), /```NOTE/);
-            assert.match(String(initial.body), /```FIND/);
-            assert.match(String(initial.body), /```READ \(reasoning:\/\/alice\/3\/1\)/);
-            assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
-            assert.equal(reads.length, 1);
-            assert.equal(reads[0]!.turn_seq, 1);
-            assert.equal(JSON.parse(reads[0]!.rx).status, 200, "initialization performs an immediately successful ordinary READ");
-        }
+        assert.ok(initial);
+        assert.equal(initial.origin, "_plurnk");
+        assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
+        assert.match(String(initial.body), /```NOTE/);
+        assert.match(String(initial.body), /```FIND/);
+        assert.match(String(initial.body), /```READ \(reasoning:\/\/alice\/3\/1\)/);
+        assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
+        assert.equal(reads.length, 1);
+        assert.equal(reads[0]!.turn_seq, 1);
+        assert.equal(JSON.parse(reads[0]!.rx).status, 200, "initialization performs an immediately successful ordinary READ");
+        assert.equal(JSON.parse(reads[0]!.lineMarker ?? "null"), null, "the initial READ carries no scope: whole, like any markerless READ ({§markerless-first-page})");
         const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
         assert.ok("content" in source && typeof source.content === "string");
         const orientation = "This turn surveys tooling and environment. The log records results; reasoning://alice/3/1 contains the submitted OPs.";
         const operations = PlurnkParser.parseReasoningOperations(source.content);
         assert.equal(operations[0]?.body, orientation);
         assert.ok(operations.some(({ op }) => op === "FIND"));
-        if (limit !== 0) assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
+        assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
         const content = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
         assert.equal(content.status, 204, "no content program is fabricated for a reasoning-only turn");
         assert.equal(content.content ?? "", "");
@@ -69,8 +63,6 @@ for (const limit of [-1, 0, 100]) test(`{§worker-initialization-entry}: initial
         assert.equal(provider.received.length, 1, "the harness rationale costs no model inference");
     } finally {
         await db.close();
-        if (prior === undefined) delete process.env.PLURNK_REASONING_VIEW_LINES;
-        else process.env.PLURNK_REASONING_VIEW_LINES = prior;
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
         else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }

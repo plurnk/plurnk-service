@@ -20,6 +20,12 @@ import type { LineMarker, RangeExtent } from "@plurnk/plurnk-contracts";
 export type { SliceResult, EditResult };
 
 export default class LineMarkerOps {
+    // {§markerless-first-page} — a retrieval without a scope selects everything: `<1,-1>` in whatever unit the
+    // projection counts. A fresh object each time; marks are owned by their statement.
+    static whole(): LineMarker {
+        return { marks: [1, -1] };
+    }
+
     static sliceLines(content: string, marker: LineMarker): SliceResult { return Slicer.lines(content, marker); }
     static sliceLinesRaw(content: string, marker: LineMarker): SliceResult { return Slicer.linesRaw(content, marker); }
     static applyLineMarkerEdit(content: string, marker: LineMarker, body: string): EditResult { return Slicer.lineMarkerEdit(content, marker, body); }

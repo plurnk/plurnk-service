@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 
-test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted JSON coordinates", async (t) => {
+test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -37,9 +37,9 @@ test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted 
         return JSON.parse(row.rx);
     };
     try {
-        const preview = await dispatch(`\`\`\`\`READ (${target})\`\`\`\``);
-        assert.equal(preview.status, 200);
-        assert.equal(preview.content, formatted.split("\n").slice(0, 16).join("\n"));
+        const whole = await dispatch(`\`\`\`\`READ (${target})\`\`\`\``);
+        assert.equal(whole.status, 200);
+        assert.equal(whole.content, formatted, "a markerless READ is the whole formatted document ({§markerless-first-page})");
         const scoped = await dispatch(`\`\`\`\`READ (${target}) <20,22>\`\`\`\``);
         assert.equal(scoped.content, formatted.split("\n").slice(19, 22).join("\n"));
         const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/value19/"}]\`\`\`\``);
