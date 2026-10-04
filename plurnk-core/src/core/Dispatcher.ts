@@ -2,7 +2,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -400,6 +400,8 @@ export default class Dispatcher {
     // records the model's KILL. Schemes that implement kill() (streams) take the scope themselves;
     // the log's scoped KILL is curation.
     readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
+    // {§log-kill-distillation} — the NOTE a log KILL's body becomes, keyed so its row names what it distilled.
+    readonly #distillations = new WeakMap<NoteStatement, string>();
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
@@ -481,7 +483,23 @@ export default class Dispatcher {
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
         }
+        // {§log-kill-distillation} — a log KILL's body is the model's own NOTE row, written after the
+        // kill's receipt at the next sequence, so it never falls inside the kill's own selection.
+        const distillation = Dispatcher.#distillationOf(context.statement);
+        if (distillation !== null && result.status < 300) {
+            const note: NoteStatement = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: distillation, position: context.statement.position };
+            this.#distillations.set(note, (context.statement as KillStatement).target!.raw);
+            const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
+            delete noteContext.fanout;
+            await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
+            result = Results.assert({ ...result, rowsWritten: ((result.rowsWritten as number | undefined) ?? 1) + 1 });
+        }
         return result;
+    }
+
+    static #distillationOf(statement: PlurnkStatement): string | null {
+        if (statement.op !== "KILL" || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
+        return statement.body.trim() === "" ? null : statement.body;
     }
 
     static #globTarget(target: ParsedPath | null): boolean {
@@ -571,7 +589,8 @@ export default class Dispatcher {
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
                     if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
                     const workerName = await WorkerName.forId(this.#db, workerId);
-                    result = { status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
+                    const distilled = this.#distillations.get(statement);
+                    result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
                     // {§turn-disposition} — WAIT is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.

@@ -800,7 +800,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
-| KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; none when targeted |
+| KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; the distillation of what a `log:///` target retires ({§kill-scope}); none for other targets |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
 | WAIT | optional label ({§send-wait-scope}) | non-negative seconds | explanation of the wait |
@@ -875,7 +875,11 @@ anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
 ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
 selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
 The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: string | null }`.
-The body is retained only on parameterless KILL ({§kill-conclusion}); targeted KILL has `body: null`.
+The body is retained on parameterless KILL ({§kill-conclusion}) and on a `log:///` target, where
+it is the model's distillation of what the KILL retires and lands as its own NOTE row
+({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one
+draws the advisory ({§matcher-body-redirect}). Beneath a `log:///` KILL the body is never read as
+a matcher; an inline pattern on the heading line still lifts.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.

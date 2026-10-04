@@ -131,13 +131,20 @@ export default class FencePairing {
         const rest = after.trimStart();
         if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
         const bodiless = FencePairing.#bodiless(name, after);
-        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: name === "KILL" && !bodiless, prose: PROSE.has(name), mutation: name === "EDIT", runtime: native ? null : name };
+        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: native ? null : name };
     }
 
     // FIND, READ, COPY, MOVE and a targeted KILL take no body ({§matcher-body-redirect}, {§read-exact-target},
-    // {§transfer-resource-selections}).
+    // {§transfer-resource-selections}) — except a KILL on the log, whose body is its distillation
+    // ({§log-kill-distillation}).
     static #bodiless(name: string, after: string): boolean {
-        return ["FIND", "READ", "COPY", "MOVE"].includes(name) || name === "KILL" && /^[ \t]*\(/u.test(after);
+        return ["FIND", "READ", "COPY", "MOVE"].includes(name) || name === "KILL" && /^[ \t]*\(/u.test(after) && !/^[ \t]*\(log:\/\/\//u.test(after);
+    }
+
+    // {§terminal-kill} — only the parameterless KILL is the turn's terminal; a targeted one, the log
+    // KILL with its distillation included, is an ordinary fence.
+    static #terminal(name: string, after: string): boolean {
+        return name === "KILL" && !/^[ \t]*\(/u.test(after);
     }
 
     static #known(name: string, options: PairingOptions): boolean {
@@ -168,7 +175,7 @@ export default class FencePairing {
             const name = NAME.exec(tail)?.[0];
             const after = name === undefined ? "" : tail.slice(name.length);
             const opens = name !== undefined && (after === "" || /^[ \t(<[]/u.test(after));
-            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: name === "KILL" && !FencePairing.#bodiless(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
+            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
             if (tail.includes("`")) return { kind: "text" };
         }
         return { kind: "info", character, width };

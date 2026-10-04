@@ -516,7 +516,7 @@ lineMarker: (TextLineMarker | null)
  */
 matcher: (MatcherBody | null)
 /**
- * Parameterless KILL carries the optional final answer. Targeted KILL takes no body; its matcher is the `pattern` option.
+ * Parameterless KILL carries the optional final answer; a `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other targeted KILLs take no body; their matcher is the `pattern` option.
  */
 body: (string | null)
 position: Position

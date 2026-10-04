@@ -606,8 +606,11 @@ export default class AstBuilder {
                 body: AstBuilder.#bodyTextOf(ctx), position,
             };
         }
-        AstBuilder.#adviseBody("KILL", split.below, position);
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null, slots.target);
+        // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
+        // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
+        const distilling = slots.target !== null && slots.target.kind === "url" && slots.target.scheme === "log";
+        if (!distilling) AstBuilder.#adviseBody("KILL", split.below, position);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null, slots.target);
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
@@ -615,7 +618,7 @@ export default class AstBuilder {
             lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
-            body: null,
+            body: distilling && split.below !== null && split.below.trim() !== "" ? split.below : null,
             position,
         };
     }

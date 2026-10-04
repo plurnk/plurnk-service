@@ -116,6 +116,9 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 > [!WARNING]
 > YOU MUST NOT exceed budget.
 
+> [!TIP]
+> YOU SHOULD curate, distill, and summarize your log to optimize for relevant facts and findings.
+
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```
 
@@ -123,9 +126,11 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 ```
 
 ```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- (successful log KILL receipts are not shown) -->
+Optional summarization of removed log item.
 ```
 
 ```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
+Optional summarization of removed log item.
 ```
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
