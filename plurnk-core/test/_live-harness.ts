@@ -134,7 +134,7 @@ export const liveLoop = async (
     id: number,
     params: { prompt: string; workerId?: number; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
     opts?: { timeoutMs?: number; signal?: AbortSignal },
-): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
+): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; loopId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
     opts?.signal?.throwIfAborted();
     let term;
@@ -168,7 +168,7 @@ export const liveLoop = async (
     const lastContent = await lastReply(s.db, term.loopId);
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
-        turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, lastContent,
+        turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, loopId: term.loopId, lastContent,
     };
 };
 
