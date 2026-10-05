@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { SubprocessExecutor } from "@plurnk/plurnk-execs";
+import { SubprocessExecutor, SpawnAccounts } from "@plurnk/plurnk-execs";
 import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 
 // Per-interpreter spawn recipe. `bin` is the executable (probed for presence).
@@ -40,7 +40,7 @@ export const RUNTIME_TAGS: readonly string[] = Object.freeze(Object.keys(RECIPES
 // PATH presence via POSIX `command -v` — robust across interpreters that don't
 // support `--version` (tclsh, bc, some awks). bin is from the fixed table above.
 const onPath = (bin: string): boolean =>
-    spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin]).status === 0;
+    spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin], { ...SpawnAccounts.options() }).status === 0; // {§executor-spawn-account}
 
 // Detection harness: one package claiming the common-REPL tags. probe() lights
 // up only the interpreters present on this host, so the consumer offers the

@@ -5,6 +5,7 @@ import ErrorDetail from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
 import SubprocessInput from "./SubprocessInput.ts";
+import SpawnAccounts from "./SpawnAccount.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
@@ -63,7 +64,8 @@ export default class SubprocessExecutor extends BaseExecutor {
             let settled = false;
             const done = (r: RuntimeAvailability): void => { if (!settled) { settled = true; resolve(r); } };
             let out = "";
-            const child = spawn(bin, ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"] });
+            // {§executor-spawn-account} — probed as the account the runtime will run as.
+            const child = spawn(bin, ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options() });
             child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
             child.on("error", (err) => done((err as NodeJS.ErrnoException).code === "ABORT_ERR"
                 ? { available: false }
@@ -168,9 +170,11 @@ export default class SubprocessExecutor extends BaseExecutor {
             // the exec obligation never resolves: the loop hangs until a client
             // cancel. /dev/null delivers immediate EOF, so it fails fast instead.
             // (The probe path already uses this discipline; matches it.)
+            // {§executor-spawn-account} — the child runs as the configured account, with its name in its environment.
             const child = spawn(cmd, args, {
                 stdio: [interactive || stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
-                shell: useShell, cwd: cwd ?? undefined, env: env ?? process.env, detached: true,
+                shell: useShell, cwd: cwd ?? undefined, env: SpawnAccounts.environment(env ?? process.env), detached: true,
+                ...SpawnAccounts.options(),
             });
 
             // Filter-style runtimes feed their program/input via stdin; closing

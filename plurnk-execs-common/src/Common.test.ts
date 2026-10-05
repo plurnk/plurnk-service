@@ -205,3 +205,16 @@ test("live: perl evaluates -e", { skip: !present("perl") }, async () => {
     assert.equal(result.status, 200);
     assert.equal(out.stdout.trim(), "42");
 });
+
+test("{§executor-spawn-account}: the shell runs as the configured account and sees its name in its environment", async () => {
+    const previous = process.env.PLURNK_EXECS_SPAWN_USER;
+    process.env.PLURNK_EXECS_SPAWN_USER = os.userInfo().username;
+    try {
+        const { result, out } = await run("sh", 'printf "%s %s %s" "$(id -u)" "$USER" "$LOGNAME"');
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.equal(out.stdout, `${os.userInfo().uid} ${os.userInfo().username} ${os.userInfo().username}`);
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_EXECS_SPAWN_USER;
+        else process.env.PLURNK_EXECS_SPAWN_USER = previous;
+    }
+});

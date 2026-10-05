@@ -576,6 +576,8 @@ package discovery also returns them in `Discovery.disabled`.
 Workspace and loop admission remain consumer concerns;
 the framework does not define a second Active/Available state machine.
 
+§executor-spawn-account **Every subprocess runtime spawns as one configured account.** `PLURNK_EXECS_SPAWN_USER` names the account each subprocess runtime's child runs as: an account name, resolved once through the host's account database, or `uid[:gid]` taken as written; unset, the daemon's own. The child's environment names it, `HOME`, `USER` and `LOGNAME` following a named account, applied after the composed environment the service hands over and before the spawn. Availability probes run as the same account, so a runtime the account cannot execute is not advertised. A value that resolves to no account is an invalid configuration at the spawn, named by the knob. The key sits outside the runtime policy grammar above; the privilege to assume the account is the daemon's to have, nothing here grants it.
+
 ## §executor-default-inventory Current installed set
 
 The default `@plurnk/plurnk-service` composition installs the following
