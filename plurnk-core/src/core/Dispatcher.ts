@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
@@ -35,6 +35,8 @@ import ResourceMutations from "./ResourceMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
+import BodyPreview from "../content/body-preview.ts";
+import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
@@ -1300,16 +1302,23 @@ export default class Dispatcher {
     }
 
     // {§reasoning-row} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
-    // source immediately before the emission row, whole, only when the packet has room for it after
-    // everything else this turn lands; without room, no row and nothing else changes.
+    // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
+    // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
+    // this turn lands; without room, no row and nothing else changes.
     async writeReasoning({ reasoning, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence, fit }: {
         reasoning: string; workerName: string; loopSeq: number; turnSeq: number;
         workerId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
     }): Promise<number | null> {
         if (reasoning.length === 0) return null;
         const pathname = `/${loopSeq}/${turnSeq}`;
+        // The row's page: its own length when the operator names one, the shared page otherwise; the
+        // character bound is always the shared one.
+        const pageLines = Knob.optionalInteger("PLURNK_SERVICE_REASONING_TRAILING_LINES", 1) ?? Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
+        const tail = BodyPreview.selectTail(reasoning, pageLines);
+        const lineMarker = tail.whole ? null : tail.marker;
+        const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
         const statement: ReadStatement = {
-            op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            op: "READ", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
                 kind: "url", raw: `reasoning://${workerName}${pathname}`, scheme: "reasoning",
                 username: null, password: null, hostname: workerName, port: null, pathname, query: null, fragment: null,
@@ -1317,7 +1326,9 @@ export default class Dispatcher {
         };
         const durableAttrs = { kind: "reasoning" };
         const tx = JSON.stringify(DurableStatement.project(statement));
-        const rx = JSON.stringify({ status: 200, content: reasoning, mimetype: "text/markdown" });
+        const rx = JSON.stringify(projected === null
+            ? { status: 200, content: reasoning, mimetype: "text/markdown" }
+            : { ...projected, mimetype: "text/markdown" });
         const weight = LogBody.weight({
             op: "READ", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
         }, this.#weighContent);
@@ -1331,7 +1342,7 @@ export default class Dispatcher {
             origin: "_plurnk", source: null, model_call_id: null,
             op: "READ", signal: null,
             scheme: "reasoning", username: null, password: null, hostname: workerName, port: null,
-            pathname, query: null, fragment: null, lineMarker: null,
+            pathname, query: null, fragment: null, lineMarker: lineMarker === null ? null : JSON.stringify(lineMarker),
             tx, mimetype_tx: "application/json",
             rx,
             mimetype_rx: "application/json",

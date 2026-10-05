@@ -44,6 +44,15 @@ export default class Knob {
         return percent / 100;
     }
 
+    // An optional knob ({§operator-config-env-defaults}): a commented declaration ships no value, so unset or empty
+    // is `null` and the panel's other value or the dependency's own default applies — never a literal here.
+    // A present value is validated exactly as `integer`.
+    static optionalInteger(name: string, floor: number, environment: Environment = process.env): number | null {
+        const raw = environment[name];
+        if (raw === undefined || raw.trim().length === 0) return null;
+        return Knob.integer(name, floor, environment);
+    }
+
     // `floor` is a bound on what the operator may say, never a value used in the operator's place.
     static integer(name: string, floor: number, environment: Environment = process.env): number {
         const raw = Knob.text(name, environment);

@@ -149,3 +149,8 @@ test("{§configuration-repair-path} a retired packet knob refuses packet constru
         await db.close();
     }
 });
+
+test("{§configuration-repair-path} a commented declaration is a declared knob: an optional reasoning knob outranks the retired prefix", () => {
+    assert.doesNotThrow(() => PacketBuilder.validateConfiguration({ PLURNK_SERVICE_REASONING_TRAILING_LINES: "40" }));
+});
+

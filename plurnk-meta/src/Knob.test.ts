@@ -83,3 +83,11 @@ test("{§env-knob} a supplied assembled environment is authoritative and never f
         assert.equal(process.env.PLURNK_TEST_KNOB, "ambient", "validation does not write into the process environment");
     });
 });
+
+test("{§env-knob} an optional knob is null when unset or empty and a validated integer when present", () => {
+    withEnv("PLURNK_TEST_OPTIONAL", undefined, () => assert.equal(Knob.optionalInteger("PLURNK_TEST_OPTIONAL", 1), null));
+    withEnv("PLURNK_TEST_OPTIONAL", "", () => assert.equal(Knob.optionalInteger("PLURNK_TEST_OPTIONAL", 1), null, "a commented declaration leaves the key empty"));
+    withEnv("PLURNK_TEST_OPTIONAL", "40", () => assert.equal(Knob.optionalInteger("PLURNK_TEST_OPTIONAL", 1), 40));
+    withEnv("PLURNK_TEST_OPTIONAL", "0", () => assert.throws(() => Knob.optionalInteger("PLURNK_TEST_OPTIONAL", 1), ConfigurationError));
+});
+

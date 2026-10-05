@@ -162,7 +162,13 @@ export default class PacketBuilder {
     // {§configuration-repair-path} — retired knobs fail naming what replaced them: the context
     // budget has one rule ({§context-fit}) and one gauge ({§context-gauge}).
     static validateConfiguration(env: NodeJS.ProcessEnv = process.env): void {
-        const declared = PacketBuilder.#declaredKnobs ??= Object.keys(parseEnv(readFileSync(new URL("../../.env.defaults", import.meta.url), "utf8")));
+        // A commented declaration (`# PLURNK_X=`) is an optional knob, declared like any other
+        // ({§operator-config-env-defaults}; the catalog reads it the same way) — only its value is absent.
+        const declared = PacketBuilder.#declaredKnobs ??= (() => {
+            const text = readFileSync(new URL("../../.env.defaults", import.meta.url), "utf8");
+            const optional = [...text.matchAll(/^#\s*([A-Za-z_][A-Za-z0-9_]*)=/gmu)].map((m) => m[1]!);
+            return [...Object.keys(parseEnv(text)), ...optional];
+        })();
         const oneRule = "a result arrives whole when it fits the budget and as its size otherwise ({§context-fit}); nothing is previewed, projected or paged";
         const retired: Record<string, string> = {
             PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
