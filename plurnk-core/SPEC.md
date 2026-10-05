@@ -1322,7 +1322,7 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
 | Outside response text | Store it as the turn's `outside` source under {§outside-text}; never a row, never delivered, never completion. |
 | Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
-| Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed operational statement. Reasoning FIND/READ count as such statements ({§reasoning-operations}). |
+| Lost boundary before any closed operation | Reject the attempt; outside text is no substitute for a closed operational statement. An admitted reasoning operation is one ({§reasoning-operations}). |
 | Outside text carrying a log-entry heading, other than an emission row's | Reject the attempt ({§fabricated-log-entry}). |
 
 §fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: the transcript shows it before each of the worker's own emissions ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading stays outside text, counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
@@ -2871,8 +2871,8 @@ accounting and model-visible failure evidence remain separately owned by
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
-  Count parsed content operations and reasoning FIND/READs ({§reasoning-operations}); neither
-  reasoning NOTEs nor outside text ({§outside-text}) enter the count. When none exist and no boundary was lost, retain the turn
+  Count parsed content operations and admitted reasoning operations ({§reasoning-operations}), a NOTE in
+  either channel among them; outside text ({§outside-text}) never enters the count. When none exist and no boundary was lost, retain the turn
   and its raw sources and count one progress-contract strike, whether or not the turn carried text. The strike sends no notice of its own: the turn records one `_plurnk`
   error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
   any failure ({§operation-result-uniform-error-channel}); the threshold terminal still says why ({§engine-rails}).

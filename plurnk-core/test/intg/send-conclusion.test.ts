@@ -298,7 +298,6 @@ for (const [label, response, reasoning, notes, outside] of [
     ["prose", "Four.", null, [], "Four."],
     ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
     ["empty response", "", null, [], undefined],
-    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."], undefined],
 ] as const) {
     test(`{§empty-turn}: ${label} preserves sources and strike behavior; nothing is read back on the model's behalf`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
@@ -318,7 +317,7 @@ for (const [label, response, reasoning, notes, outside] of [
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
             assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
-                "reasoning NOTEs are rows that do not count as authored response operations; outside text is none");
+                "a reasoning NOTE beside an empty program is a row of its own; outside text is none");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
         } finally { await db.close(); }
@@ -398,28 +397,28 @@ test("{§kill-conclusion}: a provider output cutoff cannot certify a final respo
     } finally { await db.close(); }
 });
 
-test("{§empty-turn}: reasoning NOTEs do not rescue a response with no authored operations", async () => {
+test("{§empty-turn} {§reasoning-operations}: a reasoning NOTE is the turn's work; a response with no content program is not empty", async () => {
     const { db, turn, provider } = await setup([said("", PlurnkParser.frame("NOTE", "Still calculating.")), said(conclude("Four."))]);
     try {
-        const empty = await turn();
-        assert.equal(empty.status, 102);
-        assert.equal(empty.emptyTurn, true);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: empty.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
+        const noted = await turn();
+        assert.equal(noted.status, 102);
+        assert.equal(noted.emptyTurn, false, "an admitted reasoning NOTE is an authored operation, exactly as a content NOTE");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: noted.turnId });
+        assert.deepEqual(rows.map(({ origin, op }) => `${origin}:${op}`).filter((row) => row !== "_plurnk:SEND"), ["model:NOTE"], "the NOTE row and no strike row");
         assert.equal((await turn()).status, 200);
         assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
-            "{§empty-turn} the strike is silent: the next packet carries the turn, not a complaint about it");
+            "the next packet carries the turn, not a complaint about it");
     } finally { await db.close(); }
 });
 
-test("{§empty-turn}: a reasoning NOTE cannot park no-operation recovery after the messages are answered", async () => {
+test("{§empty-turn}: a reasoning NOTE is work, not a request to wait, after the messages are answered", async () => {
     const { db, turn, ids } = await setup([said("Four."), said("", PlurnkParser.frame("NOTE", "Still checking."))]);
     try {
         assert.equal((await turn()).status, 102);
         await holdChild(db, ids.workspaceId, ids.workerId);
         const empty = await turn();
-        assert.equal(empty.emptyTurn, true);
-        assert.equal(empty.status, 102, "a persisted reasoning NOTE is not an authored response operation or a request to wait");
+        assert.equal(empty.emptyTurn, false, "the reasoning NOTE is an authored operation");
+        assert.equal(empty.status, 102, "a NOTE is never a request to wait; only WAIT parks on the child");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: empty.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
     } finally { await db.close(); }

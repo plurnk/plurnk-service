@@ -33,6 +33,8 @@ for (const operation of [
         const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
         assert.ok(outcomes.some(({ op, status_rx }) => op === operation.name && status_rx === 200), "the reasoning operation actually ran");
+        assert.deepEqual(outcomes.filter(({ op }) => op === "error").map(({ status_rx }) => status_rx), [],
+            `an admitted reasoning ${operation.name} is the turn's work: no empty-turn strike beside it ({§empty-turn})`);
         const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: workerId });
         assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === "/1/2"), [],
             "the runtime never copies a trace into the log; the model READs its reasoning when it wants it");

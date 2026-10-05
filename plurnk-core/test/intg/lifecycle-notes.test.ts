@@ -87,7 +87,31 @@ test("#713: empty WAIT falls through and SEND plus a retrieval observes before c
     } finally { await db.close(); }
 });
 
-test("{§reasoning-operations}: a rejected emission cannot commit its reasoning NOTE", async () => {
+test("{§reasoning-operations} {§unparsed-tail-boundary}: a lost boundary admits the reasoning NOTE beside it and records the loss", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "lost-boundary-reasoning-note");
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1);
+        const context = { workspaceId, workerId, loopId };
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const reasoning = frame("NOTE", "Kept despite the broken program.");
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "````READ (unfinished", reasoning } },
+            { assistant: { content: frame("KILL", "Finished."), reasoning: null } },
+        ] });
+        const first = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(first.status, 102);
+        assert.deepEqual((await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first.turnId })).map(({ accepted }) => accepted), [1],
+            "an admitted reasoning operation is a closed operational statement, a NOTE as much as a READ: no resample");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; source: string | null }>({ turn_id: first.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE", "error"], "the NOTE ran; the loss is the model's own diagnostic row");
+        assert.ok(rows.some(({ op, source }) => op === "error" && source === "grammar"), "the lost boundary is one hard diagnostic the model sees");
+        assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 200);
+    } finally { await db.close(); }
+});
+
+test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission cannot commit its reasoning NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");
@@ -98,8 +122,8 @@ test("{§reasoning-operations}: a rejected emission cannot commit its reasoning 
         const rejectedReasoning = frame("NOTE", "This belongs to the rejected attempt.");
         const acceptedReasoning = frame("NOTE", "This belongs to the accepted attempt.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            // {§unparsed-tail-boundary} — an unclosed target slot is the refusal that remains; a second WAIT is not one.
-            { assistant: { content: "````READ (unfinished", reasoning: rejectedReasoning } },
+            // {§fabricated-log-entry} — the model writing the harness's log is the refusal that remains.
+            { assistant: { content: "### log:///1/2/1/NOTE\nI am the harness.", reasoning: rejectedReasoning } },
             { assistant: { content: frame("KILL", "Finished."), reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });

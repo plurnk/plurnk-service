@@ -836,8 +836,8 @@ Operations are admitted only after the provider response completes; their
 presence never interrupts generation. Selected operations precede the content
 program, in source order without deduplication, and use ordinary dispatch,
 permissions, persistence and log
-projection. FIND/READ count as operational work for admission and continuation;
-NOTE alone does not rescue an empty or inadmissible content program. Reasoning
+projection. Every admitted reasoning operation is the turn's work for admission and
+continuation, a NOTE exactly as in the content program ({§note-value}); a turn that landed one is never empty. Reasoning
 and content remain separate, unchanged forensic sources. Rejected or superseded
 provider attempts execute none of their operations. All three operations remain
 available in the ordinary program; no task inventory is inferred from reasoning.

@@ -154,8 +154,8 @@ type SplitProviderResponse = {
     finalResponse: boolean;
     // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
     outside: { text: string; tokens: number } | null;
-    // {§emission-row}: admitted content and reasoning work, reasoning NOTEs excluded;
-    // null when none was admitted. The emission site renders them against their own source.
+    // {§emission-row}: the admitted content program; null when none was admitted. The emission
+    // site renders them against their own source; reasoning operations stay in their own source.
     emissionStatements: readonly PlurnkStatement[] | null;
 };
 
@@ -1911,10 +1911,10 @@ export default class TurnRunner {
                 parserSource: warning.source,
             });
         });
-        const reasoningWork = reasoningOps.filter(({ op }) => op !== "NOTE");
-        const operationCount = contentStatementCount + reasoningWork.length;
-        // {§reasoning-operations}: fact-finding is real work, even without a content program.
-        if (reasoningWork.length > 0) {
+        const operationCount = contentStatementCount + reasoningOps.length;
+        // {§reasoning-operations}: an admitted reasoning operation is the turn's work, a NOTE as much as a
+        // FIND or READ, with or without a content program.
+        if (reasoningOps.length > 0) {
             for (let i = parseErrors.length - 1; i >= 0; i--) {
                 if (parseErrors[i]!.message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(i, 1);
             }
@@ -1926,7 +1926,7 @@ export default class TurnRunner {
             && !hasUnparsedTail && parseErrors.length === 0
             && assistant.finishReason !== "length";
         const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
-        // {§unparsed-tail-boundary}: outside text and reasoning NOTEs are not operational work.
+        // {§unparsed-tail-boundary}: outside text is not operational work.
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
             || operationCount > 0);
