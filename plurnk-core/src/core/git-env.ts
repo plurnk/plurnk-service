@@ -16,17 +16,24 @@ const PINNED_CONFIG: ReadonlyArray<readonly [string, string]> = Object.freeze([
     ["core.hooksPath", "/dev/null"],
 ]);
 
-export const hermeticGitEnv = (): NodeJS.ProcessEnv => ({
-    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
-    GIT_CONFIG_GLOBAL: "/dev/null",
-    GIT_CONFIG_SYSTEM: "/dev/null",
-    // GIT_CONFIG_COUNT/KEY_n/VALUE_n rank with `-c`: above every configuration file.
-    GIT_CONFIG_COUNT: String(PINNED_CONFIG.length),
-    ...Object.fromEntries(PINNED_CONFIG.flatMap(([key, value], index) => [
-        [`GIT_CONFIG_KEY_${index}`, key],
-        [`GIT_CONFIG_VALUE_${index}`, value],
-    ])),
-});
+// `trusted` is the repository the daemon was pointed at, pinned as `safe.directory`: git's ownership
+// check otherwise refuses a repository another account owns, which is exactly the shape when the
+// model's commands own the workspace ({§executor-spawn-account}). The daemon trusts the root it
+// was given, nothing wider; the blanked global and system configuration cannot grant it.
+export const hermeticGitEnv = (trusted: string | null = null): NodeJS.ProcessEnv => {
+    const pins = trusted === null ? PINNED_CONFIG : [...PINNED_CONFIG, ["safe.directory", trusted] as const];
+    return {
+        ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        // GIT_CONFIG_COUNT/KEY_n/VALUE_n rank with `-c`: above every configuration file.
+        GIT_CONFIG_COUNT: String(pins.length),
+        ...Object.fromEntries(pins.flatMap(([key, value], index) => [
+            [`GIT_CONFIG_KEY_${index}`, key],
+            [`GIT_CONFIG_VALUE_${index}`, value],
+        ])),
+    };
+};
 
 // {§membership-git-hermetic} (#568): the pins above cannot cover a supplied
 // repository's `filter.<name>.clean` / `filter.<name>.process` drivers — the
@@ -37,7 +44,7 @@ export const hermeticGitEnv = (): NodeJS.ProcessEnv => ({
 export const declaredFilterProgram = async (repository: string, signal?: AbortSignal): Promise<string | null> => {
     try {
         const { stdout } = await execFileP("git", ["config", "--get-regexp", "^filter\\..+\\.(clean|process)$"], {
-            cwd: repository, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(),
+            cwd: repository, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(repository),
         });
         const first = stdout.split("\n").find((line) => line.length > 0);
         return first === undefined ? null : first.split(" ", 1)[0]!;

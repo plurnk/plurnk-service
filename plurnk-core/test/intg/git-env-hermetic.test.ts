@@ -280,3 +280,16 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
         await rm(base, { recursive: true, force: true });
     }
 });
+
+test("{§membership-git-hermetic} {§executor-spawn-account}: the daemon trusts the repository it was pointed at by path, and nothing wider", () => {
+    const bare = hermeticGitEnv();
+    assert.equal(bare.GIT_CONFIG_COUNT, "2", "the two program pins and no trust without a root");
+    const trusted = hermeticGitEnv("/srv/work/repo");
+    assert.equal(trusted.GIT_CONFIG_COUNT, "3");
+    assert.equal(trusted.GIT_CONFIG_KEY_2, "safe.directory");
+    assert.equal(trusted.GIT_CONFIG_VALUE_2, "/srv/work/repo");
+    assert.equal(trusted.GIT_CONFIG_KEY_0, "core.fsmonitor");
+    assert.equal(trusted.GIT_CONFIG_KEY_1, "core.hooksPath");
+    assert.equal(trusted.GIT_CONFIG_GLOBAL, "/dev/null");
+    assert.equal(trusted.GIT_CONFIG_SYSTEM, "/dev/null");
+});

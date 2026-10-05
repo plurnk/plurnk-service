@@ -134,7 +134,7 @@ export default class GitMembership {
     // are filtered: a submodule is a repository boundary, not a file member. Empty → [].
     static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
         // NUL-delimited so paths with spaces/newlines survive.
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(root) });
         const files: string[] = [];
         for (const entry of stdout.split("\0")) {
             if (entry.length === 0) continue;
@@ -149,9 +149,15 @@ export default class GitMembership {
     // Resolve a directory to the containing Git repository, or null when absent.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
         try {
-            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv() });
+            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv(dir) });
             return stdout.trim();
-        } catch {
+        } catch (cause) {
+            // {§membership-git-hermetic} — a repository git refuses as another account's is not "no repository":
+            // the daemon was pointed at it and cannot read it, which the operator must hear.
+            const stderr = String((cause as { stderr?: unknown }).stderr ?? "");
+            if (/dubious ownership/u.test(stderr)) {
+                throw new Error(`Git refuses the repository at '${dir}' as owned by another account; point the workspace at the repository root or own it. ${stderr.split("\n")[0]}`, { cause });
+            }
             return null;  // not a git tree (or the dir is gone) — contributes nothing
         }
     }
@@ -206,7 +212,7 @@ export default class GitMembership {
             await GitMembership.#execFileP("git", ["check-ignore", "-q", "--", repositoryPath], {
                 cwd: repository,
                 signal,
-                env: hermeticGitEnv(),
+                env: hermeticGitEnv(repository),
             });
             return true;
         } catch (cause) {
@@ -541,7 +547,7 @@ export default class GitMembership {
             keys.set(repositoryPath, key);
         }
         if (keys.size === 0) return ignored;
-        const child = spawn("git", ["check-ignore", "-z", "--stdin"], { cwd: repository, env: hermeticGitEnv(), signal, stdio: ["pipe", "pipe", "pipe"] });
+        const child = spawn("git", ["check-ignore", "-z", "--stdin"], { cwd: repository, env: hermeticGitEnv(repository), signal, stdio: ["pipe", "pipe", "pipe"] });
         const out: Buffer[] = [];
         const err: Buffer[] = [];
         child.stdout.on("data", (chunk: Buffer) => out.push(chunk));

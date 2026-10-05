@@ -52,7 +52,7 @@ export default class GitState {
         if (root === null) return null;
         let statusOutput: string;
         let repositoryRoot: string;
-        const options = { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() };
+        const options = { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(root) };
         try {
             repositoryRoot = (await GitState.#execFileP("git", ["rev-parse", "--show-toplevel"], options)).stdout.trim();
         } catch {
