@@ -15,7 +15,9 @@ const response = (content: string) => ({
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 const collect = "````READ (worker://child)````\n````WAIT\nCollect the child result.\n````";
-const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
+// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
+// would not ({§matcher-refusal}).
+const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
 
 for (const priorStrike of [false, true]) {
     test(`{§join-blocking-collect} a complete-loop collect parks without a strike${priorStrike ? " after prior failure" : " at maxStrikes=1"}`, async (t) => {
@@ -27,7 +29,7 @@ for (const priorStrike of [false, true]) {
         const childId = await insertWorker(db, workspaceId, workerId, "child");
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            ...(priorStrike ? [response(`${invalidFind}
+            ...(priorStrike ? [response(`${extraSlotCopy}
 \`\`\`\`WAIT
 Await results.
 \`\`\`\``)] : []),
@@ -81,7 +83,7 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
     const loopId = await insertLoop(db, workerId, 1, "Collect the child answer.");
     const childId = await insertWorker(db, workspaceId, workerId, "child");
     await insertLoop(db, childId, 1, "Compute the answer.");
-    const provider = new Mock({ contextWindow: 100000, responses: [response(`${invalidFind}\n${collect}`)] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(`${extraSlotCopy}\n${collect}`)] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });

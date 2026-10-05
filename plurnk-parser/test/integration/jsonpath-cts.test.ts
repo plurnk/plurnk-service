@@ -31,16 +31,15 @@ for (const item of corpus.tests) {
         const statements = parsed.items.flatMap((entry) => entry.kind === "statement" ? [entry.statement] : []);
         const errors = parsed.items.flatMap((entry) => entry.kind === "error" ? [entry.error] : []);
         if (/[\r\n]/u.test(item.selector) || item.invalid_selector && item.selector.startsWith("$")) {
-            assert.deepEqual(statements, []);
-            assert.equal(errors.length, 1);
-            const [error] = errors;
-            assert.equal(error.severity, "error");
-            assert.equal(error.source, "visitor");
-            assert.equal(error.line, 1);
-            assert.equal(error.column, 0);
-            assert.match(error.message, /[\r\n]/u.test(item.selector)
+            // {§matcher-refusal} — the statement is admitted; the matcher carries the refusal and its working form.
+            assert.deepEqual(errors, []);
+            assert.equal(statements.length, 1);
+            const [statement] = statements;
+            if (statement.op !== "READ" || statement.matcher?.dialect !== "unreadable") assert.fail(item.name);
+            assert.match(statement.matcher.message, /[\r\n]/u.test(item.selector)
                 ? /^Matcher has \d+ lines; expected 1\.$/u
                 : /^pattern leads with `\$` but is not a valid jsonpath/u);
+            assert.ok(statement.matcher.recovery.length > 0);
             return;
         }
         assert.deepEqual(errors, []);

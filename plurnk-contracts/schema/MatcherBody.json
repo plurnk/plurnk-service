@@ -2,14 +2,15 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/MatcherBody.json",
     "title": "MatcherBody",
-    "description": "Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.",
+    "description": "Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.",
     "oneOf": [
         { "$ref": "#/$defs/XPathBody" },
         { "$ref": "#/$defs/RegexBody" },
         { "$ref": "#/$defs/JsonPathBody" },
         { "$ref": "#/$defs/FtsBody" },
         { "$ref": "#/$defs/GraphBody" },
-        { "$ref": "#/$defs/GlobBody" }
+        { "$ref": "#/$defs/GlobBody" },
+        { "$ref": "#/$defs/UnreadableBody" }
     ],
     "$defs": {
         "XPathBody": {
@@ -67,6 +68,19 @@
             "properties": {
                 "dialect": { "const": "graph" },
                 "raw": { "type": "string", "pattern": "^&[<>]?[^\\s<>]\\S*$" }
+            }
+        },
+        "UnreadableBody": {
+            "title": "UnreadableBody",
+            "description": "A matcher the parser could not read in the dialect its prefix claims ({§matcher-refusal}): the authored text, the diagnostic, and the working form. The statement is admitted and the operation refuses with that message and recovery; it is never a contract strike.",
+            "type": "object",
+            "required": ["dialect", "raw", "message", "recovery"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "unreadable" },
+                "raw": { "type": "string" },
+                "message": { "type": "string", "minLength": 1 },
+                "recovery": { "type": "string", "minLength": 1 }
             }
         },
         "GlobBody": {

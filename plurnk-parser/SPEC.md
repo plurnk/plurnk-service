@@ -38,4 +38,5 @@ contracts version from the registry.
 
 | sentence | arises when |
 |---|---|
-| A pattern is a regex: write `/url/` to match lines containing url; `*` repeats what precedes it, so `/*url*/` is invalid. | a glob written where a regex is required ({§parse-recovery}) |
+| `/*url*/` was read as the glob `*url*` over each line, the regex `/.*url.*/`; a pattern is a regex, and `*` repeats what precedes it. | a glob written where a regex is required: read, with this advisory ({§regex-dialect-readings}) |
+| A pattern is a regex written `/pattern/flags`; escape a literal `*`, `+`, `?`, `(`, `[` or `.` with `\`. | the working form a broken regex's refusal carries ({§matcher-refusal}, {§parse-recovery}) |

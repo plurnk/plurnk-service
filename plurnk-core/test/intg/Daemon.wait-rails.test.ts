@@ -7,7 +7,9 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
 
-const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
+// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
+// would not ({§matcher-refusal}).
+const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
 const response = (dsl: string) => ({
     assistant: { content: `${dsl}`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -18,15 +20,15 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
             const provider = new Mock({ contextWindow: 100000, responses: [
-                response(`${invalidFind}
+                response(`${extraSlotCopy}
 \`\`\`\`WAIT
 Await results.
 \`\`\`\``),
-                response(`${invalidFind}
+                response(`${extraSlotCopy}
 \`\`\`\`WAIT
 Await results.
 \`\`\`\``),
-                response(`${invalidFind}
+                response(`${extraSlotCopy}
 \`\`\`\`${last}\`\`\`\``),
                 response("````KILL\nMust not reach a fourth model call.\n````"),
             ] });

@@ -1052,6 +1052,42 @@ export default class AstBuilder {
         return `${regex}; ${repeats}. To select files by name, put the glob in the target: \`FIND (${dir}${inner})\`.`;
     }
 
+    // {§matcher-refusal} — a matcher the parser cannot read is the operation's own refusal, never a parse
+    // error: the statement is admitted with the diagnostic and its working form, and the operation lands
+    // as a 400 row carrying that recovery, soft on the rail.
+    static #unreadable(raw: string, message: string, recovery: string): MatcherBody {
+        return { dialect: "unreadable", raw, message, recovery };
+    }
+
+    // {§regex-dialect-readings} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
+    static #readAlternation(pattern: string, pos: Position): string {
+        let out = ""; let read = false;
+        for (let i = 0; i < pattern.length; i += 1) {
+            const ch = pattern[i]!;
+            if (ch === "\\" && i + 1 < pattern.length) {
+                if (pattern[i + 1] === "|") { out += "|"; read = true; i += 1; continue; }
+                out += ch + pattern[i + 1]!; i += 1; continue;
+            }
+            out += ch;
+        }
+        if (read) {
+            AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
+                "`\\|` was read as alternation, `|`; a literal pipe is `[|]`.", "warning"));
+        }
+        return out;
+    }
+
+    // {§regex-dialect-readings} — a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and
+    // is otherwise glob-shaped is read as that glob over each line: `*` is `.*`, `?` is `.`.
+    static #readGlobRegex(inner: string, flags: string, raw: string, pos: Position): { pattern: string; flags: string } | null {
+        if (!/^[\w*?./ -]+$/u.test(inner) || !/[*?]/u.test(inner)) return null;
+        const pattern = inner.replace(/[.]/gu, "\\.").replace(/\*+/gu, ".*").replace(/\?/gu, ".");
+        try { new RegExp(pattern, flags); } catch { return null; }
+        AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
+            `\`${raw}\` was read as the glob \`${inner}\` over each line, the regex \`/${pattern}/${flags}\`; a pattern is a regex, and \`*\` repeats what precedes it.`, "warning"));
+        return { pattern, flags };
+    }
+
     static #parseMatcherBody(body: string, pos: Position, target: ParsedPath | null = null): MatcherBody {
         // At statement EOF ANTLR retains one ordinary terminating line ending in
         // BODY_TEXT; before a following heading the lexer consumes that same EOL as
@@ -1059,32 +1095,24 @@ export default class AstBuilder {
         const raw = body.replace(/(?:\r\n|\r|\n)$/u, "");
         const lineCount = raw.split(/\r\n|\r|\n/u).length;
         if (lineCount !== 1) {
-            throw new PlurnkParseError(
-                pos.line,
-                pos.column,
-                "visitor",
-                `Matcher has ${lineCount} lines; expected 1.`,
-                "error",
-                "Write the pattern on one line, on the opening fence line after the path.",
-            );
+            return AstBuilder.#unreadable(raw, `Matcher has ${lineCount} lines; expected 1.`,
+                "Write the pattern on one line, on the opening fence line after the path.");
         }
         if (raw.startsWith("//")) {
             try { xpath.parse(raw); }
             catch (e) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`, "error",
+                return AstBuilder.#unreadable(raw, `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`,
                     "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`; a text search is a regex, `/needle/`.");
             }
             return { dialect: "xpath", raw };
         }
         // {§naked-pattern} — a matcher opening with `^` is a regex written without slashes or flags.
         if (raw.startsWith("^")) {
-            const inline = AstBuilder.#liftInlineFlags(raw.slice(1), "", pos);
+            const inline = AstBuilder.#liftInlineFlags(AstBuilder.#readAlternation(raw.slice(1), pos), "", pos);
             const pattern = `^${inline.pattern}`;
             try { new RegExp(pattern, inline.flags); }
             catch (e) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`, "error",
+                return AstBuilder.#unreadable(raw, `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`,
                     AstBuilder.#regexRecovery(raw.slice(1), target));
             }
             return { dialect: "regex", raw, pattern, flags: inline.flags };
@@ -1093,16 +1121,14 @@ export default class AstBuilder {
             const regex = AstBuilder.#tryParseSlashRegex(raw, pos);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
             const range = AstBuilder.#sedRange(raw);
-            if (range !== null) throw new PlurnkParseError(pos.line, pos.column, "visitor", range, "error", range.slice(range.indexOf("Match ")));
+            if (range !== null) return AstBuilder.#unreadable(raw, range, range.slice(range.indexOf("Match ")));
             if (regex.reason === "trailing") {
-                throw new PlurnkParseError(
-                    pos.line,
-                    pos.column,
-                    "visitor",
-                    "Regex matcher has trailing text after `/pattern/flags`.",
-                    "error",
-                    "Write only `/pattern/flags` in the matcher; flags are optional.",
-                );
+                return AstBuilder.#unreadable(raw, "Regex matcher has trailing text after `/pattern/flags`.",
+                    "Write only `/pattern/flags` in the matcher; flags are optional.");
+            }
+            if (regex.reason === "invalid") {
+                const glob = AstBuilder.#readGlobRegex(regex.pattern, regex.flags, raw, pos);
+                if (glob !== null) return { dialect: "regex", raw, pattern: glob.pattern, flags: glob.flags };
             }
             const slashRecovery = regex.reason === "invalid"
                 && regex.detail.includes("Invalid flags supplied")
@@ -1112,19 +1138,17 @@ export default class AstBuilder {
             // unambiguous about WHICH body failed (a correct sibling regex must
             // not take the blame for a broken one).
             const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
-            throw new PlurnkParseError(pos.line, pos.column, "visitor",
+            return AstBuilder.#unreadable(raw,
                 regex.reason === "empty"
                     ? "`/` opens a regex matcher but no pattern follows it; write `/pattern/flags`, flags optional."
                     : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``,
-                "error",
                 regex.reason === "empty" ? "Write `/pattern/flags`, flags optional, such as `/timeout/i`." : AstBuilder.#regexRecovery(raw.slice(1, raw.lastIndexOf("/") > 0 ? raw.lastIndexOf("/") : undefined), target));
         }
         if (raw.startsWith("$")) {
             // Compile-only RFC 9535 admission through the shared json-p3 engine.
             try { AstBuilder.#JSONPATH.compile(raw); }
             catch (e) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`, "error",
+                return AstBuilder.#unreadable(raw, `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`,
                     "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`.");
             }
             return { dialect: "jsonpath", raw };
@@ -1132,14 +1156,8 @@ export default class AstBuilder {
         if (raw.startsWith("~")) return { dialect: "fts", raw };
         if (raw.startsWith("&")) {
             if (!AstBuilder.#GRAPH_MATCHER.test(raw)) {
-                throw new PlurnkParseError(
-                    pos.line,
-                    pos.column,
-                    "visitor",
-                    "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
-                    "error",
-                    "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls.",
-                );
+                return AstBuilder.#unreadable(raw, "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
+                    "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls.");
             }
             return { dialect: "graph", raw };
         }
@@ -1180,7 +1198,7 @@ export default class AstBuilder {
         { ok: true; pattern: string; flags: string }
         | { ok: false; reason: "empty" }
         | { ok: false; reason: "trailing" }
-        | { ok: false; reason: "invalid"; detail: string; flags: string } {
+        | { ok: false; reason: "invalid"; detail: string; flags: string; pattern: string } {
         let i = 1;
         let inClass = false;
         while (i < raw.length) {
@@ -1201,20 +1219,26 @@ export default class AstBuilder {
         if (i >= raw.length) {
             // {§unclosed-regex} — the heading's own boundaries make the rest the whole pattern.
             if (raw.length === 1) return { ok: false, reason: "empty" };
-            const inline = AstBuilder.#liftInlineFlags(raw.slice(1), "", pos);
+            const inline = AstBuilder.#liftInlineFlags(AstBuilder.#readAlternation(raw.slice(1), pos), "", pos);
             try { new RegExp(inline.pattern, inline.flags); }
-            catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags: inline.flags }; }
+            catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags: inline.flags, pattern: inline.pattern }; }
             const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
             AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
                 `\`${excerpt}\` has no closing \`/\`; it was read as the whole pattern with no flags. A regex closes with \`/\` and takes its flags after it.`, "warning"));
             return { ok: true, pattern: inline.pattern, flags: inline.flags };
         }
         const authored = raw.slice(i + 1);
-        const trailing = /^([A-Za-z]*)[\t ]/u.exec(authored);
-        const inline = AstBuilder.#liftInlineFlags(raw.slice(1, i), trailing?.[1] ?? authored, pos);
+        // {§regex-dialect-readings} — `-i` after the closing slash is the flag `i`, as a shell would take it.
+        const shell = /^[\t ]*-([A-Za-z]+)[\t ]*$/u.exec(authored);
+        if (shell !== null) {
+            AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
+                `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`, "warning"));
+        }
+        const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
+        const inline = AstBuilder.#liftInlineFlags(AstBuilder.#readAlternation(raw.slice(1, i), pos), shell?.[1] ?? trailing?.[1] ?? authored, pos);
         const { pattern, flags } = inline;
         try { new RegExp(pattern, flags); }
-        catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags }; }
+        catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags, pattern }; }
         if (trailing !== null) return { ok: false, reason: "trailing" };
         return { ok: true, pattern, flags };
     }

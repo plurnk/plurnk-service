@@ -1233,7 +1233,7 @@ The contracts, and the violation of each that strikes:
 
 | Contract | Violation that strikes |
 |---|---|
-| operation contract | a hard operation failure (status ≥ 400) in an admitted turn where no operation succeeded ({§strike-progress-immunity}) — soft statuses below excluded |
+| operation contract | a hard operation failure (status ≥ 400) in an admitted turn where no operation succeeded ({§strike-progress-immunity}) — soft statuses below excluded, and a matcher the parser could not read ({§matcher-refusal}, `grammar/matcher/unreadable-pattern`) is soft: it refuses its one operation and never strikes |
 | review contract | none: an eligible final response joins live obligations ({§completion-joins-live-work}) or continues to observe results ({§completion-defers-to-results}) |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
@@ -1241,7 +1241,8 @@ The contracts, and the violation of each that strikes:
 
 Errors and issues are NOT contract violations. Each keeps its own disposition
 and never strikes: exploration misses (404, 416) and unsupported capability
-(501) are how discovery works; raw 409 outcomes are soft; execution outcomes and `executor/*` problem rows are world evidence;
+(501) are how discovery works; raw 409 outcomes are soft; a fumbled pattern is the operation's
+own `400` with the parser's working form ({§matcher-refusal}); execution outcomes and `executor/*` problem rows are world evidence;
 provider weather (rate limit, network failure, deadline, interruption) recovers
 ({§provider-recovery}); provider capacity has its own packet recovery and
 terminal ({§provider-capacity-failure}); request rejection

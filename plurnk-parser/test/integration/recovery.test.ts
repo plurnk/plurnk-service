@@ -24,16 +24,18 @@ for (const [name, header, body] of [
             const results = separate
                 ? [PlurnkParser.parseStatements(malformed), PlurnkParser.parseStatements(valid)]
                 : [PlurnkParser.parseStatements([malformed, valid].join("\n"))];
+            // {§matcher-refusal} — the malformed matcher is its statement's own refusal; every advisory the
+            // normalization drew stays on that statement's line, and the valid sibling is untouched.
             const diagnostics = results.flatMap(errors);
-            assert.equal(diagnostics.length, 1);
-            assert.equal(diagnostics[0].severity, "error");
-            assert.equal(diagnostics[0].source, "visitor");
-            assert.equal(diagnostics[0].line, 1);
-            assert.match(diagnostics[0].message, /pattern leads with `\$` but is not a valid jsonpath/u);
+            assert.ok(diagnostics.every((diagnostic) => diagnostic.severity === "warning" && diagnostic.line === 1), name);
             const ops = results.flatMap(statements);
-            assert.equal(ops.length, 1);
+            assert.equal(ops.length, 2);
             assert.equal(ops[0].op, "READ");
-            assert.deepEqual("matcher" in ops[0] && ops[0].matcher, { dialect: "jsonpath", raw: "$.ok" });
+            const refused = "matcher" in ops[0] ? ops[0].matcher : null;
+            if (refused === null || refused === undefined || refused.dialect !== "unreadable") assert.fail(name);
+            assert.match(refused.message, /pattern leads with `\$` but is not a valid jsonpath/u);
+            assert.equal(ops[1].op, "READ");
+            assert.deepEqual("matcher" in ops[1] && ops[1].matcher, { dialect: "jsonpath", raw: "$.ok" });
 
             const normalized = PlurnkParser.parseStatements(frame("READ (data.json) <@34> $.ok", null));
             assert.deepEqual(normalized.items.map((item) => item.kind), ["statement", "error"]);

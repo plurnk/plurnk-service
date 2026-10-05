@@ -9,7 +9,7 @@ const one = (source: string) => {
     const result = PlurnkParser.parseStatements(source);
     const ops = statements(result);
     assert.equal(ops.length, 1, source);
-    return { op: ops[0]! as ClientStatement & { matcher?: { dialect: string; raw: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
+    return { op: ops[0]! as ClientStatement & { matcher?: { dialect: string; raw: string; message?: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
 };
 
 test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a trailing aside on the same line stays the aside", () => {
@@ -23,8 +23,9 @@ test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a tra
     assert.deepEqual(slash.diagnostics, []);
     assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/Decision:.*/i", pattern: "Decision:.*", flags: "i" });
     assert.equal(slash.op.aside, "the slash spelling keeps its flags");
-    const broken = PlurnkParser.parseStatements("````READ (notes.md) ^(unclosed\n````\n");
-    assert.match(diagnostics(broken)[0]?.message ?? "", /pattern leads with `\^` but is not a valid regex/u);
+    const broken = one("````READ (notes.md) ^(unclosed\n````\n");
+    assert.deepEqual(broken.diagnostics, [], "{§matcher-refusal}: the statement is admitted");
+    assert.match(broken.op.matcher?.dialect === "unreadable" ? broken.op.matcher.message ?? "" : "", /pattern leads with `\^` but is not a valid regex/u);
 });
 
 test("{§naked-pattern}: a sigil-less glob or literal on the heading line is the matcher on FIND, READ and KILL, silently", () => {
@@ -170,8 +171,8 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
     const scoped = one("````READ (a.md) /(?i:note):.*/\n````\n");
     assert.deepEqual(scoped.diagnostics, [], "a scoped modifier group is valid ECMAScript and passes through");
     assert.equal(scoped.op.matcher?.dialect, "regex");
-    const stillBroken = PlurnkParser.parseStatements("````READ (a.md) /(?x)loose/\n````\n");
-    assert.match(diagnostics(stillBroken)[0]?.message ?? "", /not a valid `\/pattern\/flags` regex/u, "an unsupported modifier keeps the native refusal");
+    const stillBroken = one("````READ (a.md) /(?x)loose/\n````\n");
+    assert.match(stillBroken.op.matcher?.dialect === "unreadable" ? stillBroken.op.matcher.message ?? "" : "", /not a valid `\/pattern\/flags` regex/u, "an unsupported modifier keeps the native refusal ({§matcher-refusal})");
 });
 
 test("{§local-path-fragment}: a bare path's #channel is its fragment, and stringify renders it back", () => {
@@ -206,8 +207,8 @@ test("{§trailing-slots}: a scope, an option block or an aside written after the
     const canonical = one("````READ (a.rs) <1,-1> /fn x/ <!-- note -->\n````\n");
     assert.deepEqual(canonical.diagnostics, [], "the canonical order draws no advisory");
     assert.deepEqual([markerOf(canonical.op), canonical.op.matcher?.raw, canonical.op.aside], [{ marks: [1, -1] }, "/fn x/", "note"]);
-    const twice = PlurnkParser.parseStatements("````READ (a.rs) <1,2> /fn x/ <3,4>\n````\n");
-    assert.match(diagnostics(twice).map(({ message }) => message).join(" "), /trailing text/u, "a second scope is not a slot; it stays trailing text");
+    const twice = one("````READ (a.rs) <1,2> /fn x/ <3,4>\n````\n");
+    assert.match(twice.op.matcher?.dialect === "unreadable" ? twice.op.matcher.message ?? "" : "", /trailing text/u, "a second scope is not a slot; it stays trailing text, the matcher's refusal");
 });
 
 test("{§transparent-inline-closer}: a closing fence mid-heading reads as if it were not written", () => {

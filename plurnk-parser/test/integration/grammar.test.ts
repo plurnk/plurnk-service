@@ -32,6 +32,14 @@ const firstError = (input: string): PlurnkParseError => {
     return error;
 };
 
+// {§matcher-refusal} — a matcher the parser cannot read rides its admitted statement with its diagnostic.
+const refusedMatcher = (input: string): { message: string; recovery: string } => {
+    const statement = oneStatement(input);
+    const matcher = statement.op === "COPY" || statement.op === "MOVE" ? statement.source.matcher : "matcher" in statement ? statement.matcher : null;
+    if (matcher === null || matcher === undefined || matcher.dialect !== "unreadable") assert.fail(`${input} carries no refused matcher`);
+    return { message: matcher.message, recovery: matcher.recovery };
+};
+
 // {§parse-diagnostics} {§error-shape}
 test("PlurnkParseError keeps diagnostic text separate from structured context", () => {
     const error = new PlurnkParseError(3, 7, "lexer", "unrecognized character '-' in signal");
@@ -665,16 +673,14 @@ test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a 
     assert.equal(find?.kind === "statement" ? (find.statement as { matcher?: { raw?: string } | null }).matcher?.raw : null, "/resolveWorkerPrimary/");
 });
 
-test("{§regex-trailing-text} a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
-    const errors = errorsOf('````FIND (**/*.go) <1,-1> [{"pattern": "/require|ABS_MODULE_PATH|module_load/ trailing"}]````');
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0]?.message, "Regex matcher has trailing text after `/pattern/flags`.");
-    assert.doesNotMatch(errors[0]?.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
+test("{§regex-trailing-text} {§matcher-refusal} a malformed regex pattern refuses its matcher with a bounded dialect message that echoes nothing", () => {
+    const refused = refusedMatcher('````FIND (**/*.go) <1,-1> [{"pattern": "/require|ABS_MODULE_PATH|module_load/ trailing"}]````');
+    assert.equal(refused.message, "Regex matcher has trailing text after `/pattern/flags`.");
+    assert.doesNotMatch(refused.message, /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
     for (const pattern of ["/x/z", "/x/ii", "/(/i", "/"]) {
-        const error = firstError(`\`\`\`\`FIND (src/**) [{"pattern": ${JSON.stringify(pattern)}}]\`\`\`\``);
-        assert.equal(error.severity, "error");
-        assert.doesNotMatch(error.message, /Regex matcher has trailing text/u, pattern);
-        assert.match(error.message, /not a valid.*regex|no pattern follows/u, pattern);
+        const { message } = refusedMatcher(`\`\`\`\`FIND (src/**) [{"pattern": ${JSON.stringify(pattern)}}]\`\`\`\``);
+        assert.doesNotMatch(message, /Regex matcher has trailing text/u, pattern);
+        assert.match(message, /not a valid.*regex|no pattern follows/u, pattern);
     }
 });
 
@@ -687,14 +693,13 @@ test("{§unclosed-regex} a /pattern with no closing slash is the whole pattern w
     const advisories = errorsOf(source);
     assert.deepEqual(advisories.map(({ severity }) => severity), ["warning"]);
     assert.match(advisories[0]!.message, /has no closing `\/`; it was read as the whole pattern with no flags/u);
-    // A heading ending in a lone slash has nothing to read.
-    const bare = firstError("````FIND (tests/staticfiles_tests/**) /\n````\n");
-    assert.equal(bare.severity, "error");
+    // A heading ending in a lone slash has nothing to read ({§matcher-refusal}).
+    const bare = refusedMatcher("````FIND (tests/staticfiles_tests/**) /\n````\n");
     assert.match(bare.message, /no pattern follows it/u);
     assert.doesNotMatch(bare.message, /no closing/u);
 });
 
-test("a pattern with flags parses; an invalid one drops only its own statement", () => {
+test("a pattern with flags parses; an invalid one refuses only its own matcher ({§matcher-refusal})", () => {
     for (const flags of ["i", "", "giu"]) {
         const result = PlurnkParser.parse(sections(
             `\`\`\`\`FIND (**/*.ts) <1,-1> [{"pattern": "/disabled-rules|comment|lint\\\\s*\\\\(/${flags}"}] <!-- locate entry points -->\`\`\`\``,
@@ -710,8 +715,10 @@ test("a pattern with flags parses; an invalid one drops only its own statement",
         section("READ", " (package.json)"),
         section("WAIT", "", inventory("inspect")),
     ));
-    assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["FIND", "READ", "WAIT"]);
+    assert.equal(statements[0]!.op === "FIND" ? statements[0]!.matcher?.dialect : null, "unreadable");
 });
 
 // {§misplaced-aside-advisory}
@@ -923,12 +930,8 @@ test("matcher admission rejects multiline patterns before dialect classification
     ].join("\n");
 
     for (const op of ["FIND", "READ", "KILL"] as const) {
-        const result = PlurnkParser.parseStatements(patterned(op, " (source.ts)", renderedRead));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, op);
-        assert.equal(errors[0]?.error.source, "visitor", op);
-        assert.equal(errors[0]?.error.message, "Matcher has 3 lines; expected 1.", op);
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
+        const { message } = refusedMatcher(patterned(op, " (source.ts)", renderedRead));
+        assert.equal(message, "Matcher has 3 lines; expected 1.", op);
     }
 });
 
@@ -964,16 +967,8 @@ test("other option keys beside the pattern stay with the owner, verbatim", () =>
 
 test("graph claims ampersand and validates its complete single-line shape", () => {
     for (const pattern of ["&", "&<", "&>", "&two symbols"] as const) {
-        const result = PlurnkParser.parseStatements(patterned("FIND", " (source/**)", pattern));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, pattern);
-        assert.equal(errors[0]?.error.source, "visitor", pattern);
-        assert.equal(
-            errors[0]?.error.message,
-            "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
-            pattern,
-        );
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, pattern);
+        const { message } = refusedMatcher(patterned("FIND", " (source/**)", pattern));
+        assert.equal(message, "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.", pattern);
     }
 });
 
@@ -1019,7 +1014,7 @@ test("regex patterns retain pattern, flags, escaped delimiters, and character cl
     }
 });
 
-test("declared matcher prefixes fail as their declared dialect instead of falling back", () => {
+test("declared matcher prefixes refuse as their declared dialect instead of falling back ({§matcher-refusal})", () => {
     for (const [pattern, message] of [
         ["/", /no pattern follows/],
         ["/(abc/", /not a valid `\/pattern\/flags` regex/],
@@ -1030,12 +1025,8 @@ test("declared matcher prefixes fail as their declared dialect instead of fallin
         ["$HOME", /not a valid jsonpath/],
         ["$.users[", /not a valid jsonpath/],
     ] as const) {
-        const result = PlurnkParser.parseStatements(patterned("FIND", " (source)", pattern));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, pattern);
-        assert.equal(errors[0]?.error.source, "visitor", pattern);
-        assert.match(errors[0]!.error.message, message, pattern);
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, pattern);
+        const refused = refusedMatcher(patterned("FIND", " (source)", pattern));
+        assert.match(refused.message, message, pattern);
     }
 });
 
@@ -1045,8 +1036,9 @@ test("matcher validation is per section and does not consume siblings", () => {
         patterned("FIND", " (b.txt)", "/bad/i:"),
         section("KILL", " (log:///1/2/3)"),
     ));
-    assert.equal(result.items.filter((item) => item.kind === "statement").length, 2);
-    assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map((statement) => "matcher" in statement ? statement.matcher?.dialect ?? null : null), ["regex", "unreadable", null]);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
 test("ordinary matcher text remains glob and EDIT bodies remain opaque", () => {
@@ -1102,13 +1094,9 @@ test("READ of a glob target stays a schema-valid READ; a matcher keeps its op", 
     }
 });
 
-test("READ matcher admission retains positioned dialect errors", () => {
-    const result = PlurnkParser.parseStatements(patterned("READ", " (page.html)", "// foo {bar}"));
-    assert.equal(result.items.some((item) => item.kind === "statement"), false);
-    const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0]?.error.source, "visitor");
-    assert.match(errors[0]?.error.message ?? "", /not a valid xpath selector/);
+test("READ matcher admission keeps its dialect diagnostic as the matcher's refusal ({§matcher-refusal})", () => {
+    const { message } = refusedMatcher(patterned("READ", " (page.html)", "// foo {bar}"));
+    assert.match(message, /not a valid xpath selector/);
 });
 
 test("COPY and MOVE operands project path, metadata, fragment, and scope independently", () => {

@@ -10,6 +10,8 @@ import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 // including a completion READ ({§exec-stream}).
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
+// {§matcher-refusal} — a fumbled pattern refuses its one operation and is never a contract strike.
+const UNREADABLE_PATTERN = "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern";
 
 export type StrikeOutcome = {
     // The row op: an operation keyword, or an execution's runtime tag.
@@ -25,6 +27,7 @@ export type StrikeSource = "repetition" | "operation" | "no_operation";
 
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
+const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problemType === UNREADABLE_PATTERN;
 
 // {§strike-progress-immunity} — only an operation that acts on the task and succeeds is progress;
 // NOTE, WAIT, a parameterless KILL and a targetless SEND steer the loop instead.
@@ -147,7 +150,8 @@ export default class StrikeRail {
             (outcome) => !isExecutionOp(outcome.op)
                 && outcome.status >= 400
                 && !SOFT_FAILURE_STATUSES.has(outcome.status)
-                && !isExecutorEvidence(outcome),
+                && !isExecutorEvidence(outcome)
+                && !isUnreadablePattern(outcome),
         );
         // {§empty-turn} — a turn with no operation is one progress-contract strike.
         const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;

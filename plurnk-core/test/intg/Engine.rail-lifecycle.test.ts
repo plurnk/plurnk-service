@@ -16,7 +16,9 @@ const response = (operation: string, op: string, timing = "") => ({
     ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
+// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
+// would not ({§matcher-refusal}).
+const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
 
 test("{§loop-rail-continuity}: a resumed task retains its strike streak across a wait and engine reconstruction", async (t) => {
     const db = await openMigrated();
@@ -31,9 +33,9 @@ test("{§loop-rail-continuity}: a resumed task retains its strike streak across 
         content: "42", mimetype: "text/plain", state: "static",
     });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(invalidFind, "NOTE"),
-        response(invalidFind, "WAIT"),
-        response(invalidFind, "NOTE"),
+        response(extraSlotCopy, "NOTE"),
+        response(extraSlotCopy, "WAIT"),
+        response(extraSlotCopy, "NOTE"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,
@@ -61,7 +63,7 @@ test("{§worker-lifecycle-state-machine}: cancellation wins against a pending st
         }
         return verdict;
     });
-    const provider = new Mock({ contextWindow: 100000, responses: [response(invalidFind, "NOTE")] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(extraSlotCopy, "NOTE")] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });

@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
 
+// {§matcher-refusal} — the refusal rides the admitted statement's matcher.
 const errorOf = (source: string): string => {
-    const errors = PlurnkParser.parse(source).items.flatMap((item) => item.kind === "error" ? [item.error.message] : []);
-    assert.ok(errors.length >= 1, source);
-    return errors[0]!;
+    const statements = PlurnkParser.parse(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    const matcher = statements[0] !== undefined && "matcher" in statements[0] ? statements[0].matcher : null;
+    assert.ok(matcher !== null && matcher !== undefined && matcher.dialect === "unreadable", source);
+    return matcher.dialect === "unreadable" ? matcher.message : "";
 };
 
 // The recorded shapes (#853, orox): a sed address range was answered as invalid regex flags.

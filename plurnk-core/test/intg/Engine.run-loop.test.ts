@@ -359,10 +359,10 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "strike out");
-        // A bounded matcher failure is a hard 400 (an empty NOTE is valid); distinct paths keep
-        // the failures out of cycle detection.
+        // A bounded heading failure, a third COPY operand, is a hard 400 ({§extra-path-slot}); a fumbled
+        // matcher would not strike ({§matcher-refusal}). Distinct paths keep the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
-            `\`\`\`\`FIND (worker:///note-${i}) [{"pattern":"$fC"}]\`\`\`\`
+            `\`\`\`\`COPY (worker:///note-${i}) (worker:///b) (worker:///c)\`\`\`\`
 \`\`\`\`NOTE
 going
 \`\`\`\``,

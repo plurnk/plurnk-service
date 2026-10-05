@@ -52,11 +52,11 @@ test("client: an unregistered tag with a slot opens nothing and says so ({§quot
 test("client: LOOK has single-line matcher admission", () => {
     for (const op of ["LOOK"] as const) {
         const result = PlurnkParser.parseClient(PlurnkParser.frame(`${op} (known://notes)`, "first line\nsecond line"));
-        const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, op);
-        assert.equal(errors[0]?.error.source, "visitor", op);
-        assert.equal(errors[0]?.error.message, "Matcher has 2 lines; expected 1.", op);
-        assert.equal(result.items.some((item) => item.kind === "statement"), false, op);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
+        const look = result.items.find((item) => item.kind === "statement");
+        const body = look?.kind === "statement" && look.statement.op === "LOOK" ? look.statement.body : null;
+        // {§matcher-refusal} — the observation is admitted; its matcher carries the refusal.
+        assert.equal(body?.dialect === "unreadable" ? body.message : null, "Matcher has 2 lines; expected 1.", op);
     }
 });
 
@@ -72,10 +72,10 @@ test("client: an empty LOOK section normalizes to a null body", () => {
 
 test("client: a different-lane LOOK heading remains body text and therefore violates the one-line matcher contract", () => {
     const result = PlurnkParser.parseClient("````LOOK (p)\nbody mentions\n\n### LOOK2 (nested)\n````");
-    assert.equal(result.items.some((item) => item.kind === "statement"), false);
-    const errors = result.items.filter((item) => item.kind === "error");
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0]?.error.message, "Matcher has 3 lines; expected 1.");
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    const statement = result.items.find((item) => item.kind === "statement");
+    const body = statement?.kind === "statement" && statement.statement.op === "LOOK" ? statement.statement.body : null;
+    assert.equal(body?.dialect === "unreadable" ? body.message : null, "Matcher has 3 lines; expected 1.", "{§matcher-refusal}");
 });
 
 // -------------------------------------------------------------------------

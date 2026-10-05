@@ -1089,8 +1089,8 @@ FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
 through the `pattern` option ({§matcher-option}); the client-tier LOOK still
 carries its matcher as a body. AstBuilder assigns the dialect from the
 matcher's leading characters. A leading prefix claims its dialect. Invalid
-claimed syntax is a positioned visitor error and never falls back to glob
-matching.
+claimed syntax never falls back to glob matching: it is the operation's own
+refusal ({§matcher-refusal}), not a parse error.
 
 - §heading-boundary-recovery A column-0 heading is the trustworthy boundary. After a
   statement-level error the parser discards the rest of that statement and resumes at the
@@ -1133,6 +1133,21 @@ AstBuilder validation is compile-only and never evaluates a document. Matcher
 evaluation belongs to the runtime's selected mimetype, FTS5, or symbol
 implementation. A matcher admission error is local to its statement; later
 statements remain recoverable when their boundaries are trustworthy.
+
+- §matcher-refusal **A matcher the parser cannot read refuses its operation, never the turn.**
+  A fumbled pattern is not a failure of the core contract: the statement is admitted with
+  `matcher.dialect = "unreadable"` carrying the authored text, the diagnostic as `message`, and the
+  dialect's working form as `recovery` ({§parse-recovery}); the operation lands as its own `400` row,
+  `grammar/matcher/unreadable-pattern`, with that message and recovery, its siblings run, and the
+  rail treats it as soft ({§strike-progress-immunity} in the core SPEC). An unreadable matcher
+  renders back as written ({§statement-rendering}). Only the one-line and string-typed shape of a
+  `pattern` option remains the option block's own admission.
+- §regex-dialect-readings **Three habits of other regex dialects are read, with one advisory each.**
+  `\|` is alternation, `|`, and a literal pipe is `[|]`; `-flags` after the closing slash are the
+  flags; a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and is otherwise
+  glob-shaped is read as that glob over each line, `*` as `.*` and `?` as `.`, so `/*/` is every
+  line and `/*kernel_pca*/` contains `kernel_pca`. A regex that compiles is never rewritten, and
+  the AST keeps the authored `raw` beside the pattern it was read as.
 
 - §pattern-body-single-line Every matcher is one physical line. On the protocol
   operations it is the heading line's text ({§naked-pattern}) or the `pattern` option's
@@ -1730,7 +1745,8 @@ write `/url/` to match lines containing url; `*` repeats what precedes it. To se
 name, put the glob in the target: `FIND (tests/*url*)`. `` — where the glob suggestion is derived
 from the pattern only when it is glob-shaped, and the regex sentence stands alone otherwise. The
 runtime projects `recovery` as the Problem's `recovery` beside the verbatim `message`; an advisory
-carries none, since its statement ran. Before this, a refused regex (`/*url*/`, DeepSeek run429)
+carries none, since its statement ran. A refused matcher carries the same pair into its own
+operation's Problem ({§matcher-refusal}). Before this, a refused regex (`/*url*/`, DeepSeek run429)
 reported `Nothing to repeat` with no way forward and the turn was spent.
 
 §parser-position Parser source locations are points, not text regions. An AST
@@ -1788,10 +1804,12 @@ diagnostics are:
 - §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
   whitespace and trailing text receives one concise trailing-content
   diagnostic, with or without flags, without assuming what the extra text was
-  intended to represent. Invalid patterns or flags retain the native
-  regex failure; no branch silently removes or executes trailing content.
+  intended to represent — except `-flags`, which {§regex-dialect-readings} reads as
+  the flags. Invalid patterns or flags retain the native regex failure; no branch
+  silently removes or executes trailing content. Each diagnostic is the matcher's
+  refusal ({§matcher-refusal}).
 - §regex-sed-range **A sed line range is named as one.** A regex matcher written as a sed
-  address range — `/a/,/b/` or `/a/,+N` — is refused as a range, never as invalid flags: the
+  address range — `/a/,/b/` or `/a/,+N` — is refused ({§matcher-refusal}) as a range, never as invalid flags: the
   diagnostic says a matcher selects only the lines it matches, gives the one regex that
   locates the ends (`/a|b/`, or `/a/`) and the scope that then addresses the span
   (`<first,last>`, or `<N,M>` with M being N plus the range's count).

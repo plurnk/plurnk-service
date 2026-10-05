@@ -18,10 +18,13 @@ for (const [source, expected] of [
     });
 }
 
-test("{§turn-shape} omitted WAIT does not hide a bounded malformed sibling", () => {
+test("{§turn-shape} omitted WAIT does not hide a sibling's refused matcher ({§matcher-refusal})", () => {
     const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*) [{\"pattern\": \"/broken/ trailing\"}]````");
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []),
-        ["Regex matcher has trailing text after `/pattern/flags`."]);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["READ", "FIND"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), []);
+    const find = statements[1]!;
+    assert.equal(find.op === "FIND" && find.matcher?.dialect === "unreadable" ? find.matcher.message : null,
+        "Regex matcher has trailing text after `/pattern/flags`.");
 });

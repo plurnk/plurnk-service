@@ -10,7 +10,9 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
+// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
+// would not ({§matcher-refusal}).
+const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
 const read = "````READ (worker:///answer) <1,-1>````";
 
 const loop = async (responses: string[], maxStrikes: number) => {
@@ -27,7 +29,7 @@ const loop = async (responses: string[], maxStrikes: number) => {
 // The recorded shape (#853, glm): a turn whose READ succeeded beside a hard 400 struck, and two such
 // turns ended productive loops.
 test("{§strike-progress-immunity}: a hard 400 beside a successful READ neither strikes nor survives into the streak", async () => {
-    const { db, loopId, result } = await loop([`${invalidFind}\n${read}`, invalidFind, `${invalidFind}\n${read}`, "````KILL\n42\n````"], 2);
+    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````KILL\n42\n````"], 2);
     try {
         assert.equal(result.result.status, 200, "no productive turn struck, and the lone failing turn was forgiven by the next productive one");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
@@ -35,7 +37,7 @@ test("{§strike-progress-immunity}: a hard 400 beside a successful READ neither 
 });
 
 test("{§strike-progress-immunity}: failures beside only NOTE and WAIT still strike", async () => {
-    const { db, result } = await loop([`${invalidFind}\n\`\`\`\`NOTE\nthinking\n\`\`\`\``, `${invalidFind}\nprose outside the fence`], 2);
+    const { db, result } = await loop([`${extraSlotCopy}\n\`\`\`\`NOTE\nthinking\n\`\`\`\``, `${extraSlotCopy}\nprose outside the fence`], 2);
     try {
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");

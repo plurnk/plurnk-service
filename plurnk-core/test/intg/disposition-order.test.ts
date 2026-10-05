@@ -63,8 +63,8 @@ test("SEND authored first: later operations run in authored order and completion
         const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], [null, 400]],
-            "the reply, mutations, retrieval, and bounded diagnostic retain authored order");
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],
+            "the reply, mutations, retrieval, and the refused matcher ({§matcher-refusal}) retain authored order");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; attrs: string }>({ turn_id: result.turnId });
         const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.ok(read);

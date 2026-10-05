@@ -504,6 +504,18 @@ export default class Dispatcher {
         return result;
     }
 
+    // {§matcher-refusal} — a matcher the parser could not read refuses its one operation with the parser's
+    // diagnostic and working form: the operation's own row, soft on the rail, never a contract strike.
+    static #unreadableMatcher(statement: PlurnkStatement): DispatchResult | null {
+        const matchers = statement.op === "COPY" || statement.op === "MOVE"
+            ? [statement.source.matcher, statement.destination.matcher]
+            : ["matcher" in statement ? statement.matcher : null];
+        const unreadable = matchers.find((matcher) => matcher !== null && matcher !== undefined && matcher.dialect === "unreadable");
+        if (unreadable === undefined || unreadable === null || unreadable.dialect !== "unreadable") return null;
+        return Results.failure("grammar:matcher", "unreadable-pattern", 400, unreadable.message, {},
+            { stage: "matcher", recovery: unreadable.recovery, retryable: false });
+    }
+
     static #distillationOf(statement: PlurnkStatement): string | null {
         if (statement.op !== "KILL" || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
         return statement.body.trim() === "" ? null : statement.body;
@@ -573,7 +585,8 @@ export default class Dispatcher {
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
         const denial = this.#checkWritable(statement, origin, workspaceId)
-            ?? await this.#checkCapabilities(statement, schemeCtx);
+            ?? await this.#checkCapabilities(statement, schemeCtx)
+            ?? Dispatcher.#unreadableMatcher(statement);
         if (denial !== null) {
             result = denial;
         } else {
@@ -835,7 +848,7 @@ export default class Dispatcher {
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
         return ResourceBindings.using(this.#schemes, schemeCtx, async (ctx) => {
             try {
-                const denial = await this.#checkCapabilities(statement, ctx);
+                const denial = await this.#checkCapabilities(statement, ctx) ?? Dispatcher.#unreadableMatcher(statement);
                 return denial ?? await this.#dataRun.run(schemeNameOf(statement.target), statement, ctx);
             } catch (error) {
                 if (error instanceof OperationFailureError) return error.result;

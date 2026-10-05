@@ -677,7 +677,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
     }
 });
 
-test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
+test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = "\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````\n\n````NOTE\ninspect the results next\n````";
@@ -701,15 +701,15 @@ test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher fai
         assert.equal(failed.emissionAttempts, 1, "a trustworthy frame is not blindly resampled");
         assert.equal(failed.emissionExhausted, false);
         assert.ok(
-            failed.outcomes.some(({ op, status }) => op === null && status === 400),
-            "the malformed matcher becomes a failed operation",
+            failed.outcomes.some(({ op, status }) => op === "FIND" && status === 400),
+            "the malformed matcher is the FIND's own refusal, not a parse error",
         );
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             parse_errors: string;
         }>({ turn_id: failed.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        assert.equal(JSON.parse(attempts[0]!.parse_errors).length, 1, "accepted attempts retain their parse evidence");
+        assert.equal(JSON.parse(attempts[0]!.parse_errors).length, 0, "a refused matcher is no parse error");
 
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -719,34 +719,23 @@ test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher fai
             rx: string;
         }>({ turn_id: failed.turnId });
         const authored = rows.filter(({ origin, op }) =>
-            origin === "model" && (op === "NOTE" || op === "error"));
+            origin === "model" && (op === "NOTE" || op === "FIND" || op === "error"));
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
+                { op: "FIND", status_rx: 400 },
                 { op: "NOTE", status_rx: 200 },
-                { op: "error", status_rx: 400 },
             ],
-            "the note and recovered failure retain their authored order",
+            "the refused FIND and the note retain their authored order; no error row is minted",
         );
-        const syntaxFailure = JSON.parse(authored.find(({ op }) => op === "error")!.rx) as {
-            problem?: {
-                type?: string;
-                detail?: string;
-                line?: number;
-                source?: string;
-                siblingsRetained?: boolean;
-            };
+        const refusal = JSON.parse(authored.find(({ op }) => op === "FIND")!.rx) as {
+            problem?: { type?: string; detail?: string; stage?: string; recovery?: string };
         };
-        assert.equal(
-            syntaxFailure.problem?.type,
-            "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax",
-        );
-        assert.match(syntaxFailure.problem?.detail ?? "", /not a valid jsonpath/i);
-        assert.equal(syntaxFailure.problem?.line, 2);
-        assert.equal(syntaxFailure.problem?.source, "visitor");
-        assert.equal(syntaxFailure.problem?.siblingsRetained, true);
+        assert.equal(refusal.problem?.type, "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern");
+        assert.match(refusal.problem?.detail ?? "", /not a valid jsonpath/i);
+        assert.equal(refusal.problem?.stage, "matcher");
         // {§parse-recovery}: the parser's working form rides as the Problem's recovery.
-        assert.equal((syntaxFailure.problem as { recovery?: string } | undefined)?.recovery,
+        assert.equal(refusal.problem?.recovery,
             "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`.");
 
         const recovery = await engine.runTurn({
@@ -758,7 +747,7 @@ test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher fai
         });
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/error"/);
+        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/FIND"/);
         assert.match(
             packetSection(packet, "log"),
             /not a valid jsonpath/i,
@@ -842,7 +831,7 @@ ${renderedRead}
     }
 });
 
-test("a bounded malformed operation defers same-turn completion until the model observes it", async () => {
+test("a bounded malformed operation defers same-turn completion until the model observes it ({§matcher-refusal})", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -863,8 +852,8 @@ test("a bounded malformed operation defers same-turn completion until the model 
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.status, 102, "the malformed operation's result keeps the turn non-terminal");
         assert.ok(
-            result.outcomes.some(({ op, status }) => op === null && status === 400),
-            "the syntax failure participates in strike accounting",
+            result.outcomes.some(({ op, status }) => op === "FIND" && status === 400),
+            "the fumbled matcher is the FIND's own refusal, an unseen failure that defers completion",
         );
         assert.ok(
             result.outcomes.some(({ op, status }) => op === "SEND" && status === 200),
@@ -881,8 +870,8 @@ test("a bounded malformed operation defers same-turn completion until the model 
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
+                { op: "FIND", status_rx: 400 },
                 { op: "SEND", status_rx: 200 },
-                { op: "error", status_rx: 400 },
             ],
         );
     } finally {
@@ -1241,9 +1230,10 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                // Two admitted turns each struck by a bounded matcher failure (an empty NOTE is valid).
-                invalid("````READ (worker:///absent)````\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````"),
-                invalid("````READ (worker:///absent)````\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````"),
+                // Two admitted turns each struck by a bounded heading failure, a third COPY operand
+                // ({§extra-path-slot}); a fumbled matcher would not strike ({§matcher-refusal}).
+                invalid("````READ (worker:///absent)````\n````COPY (worker:///a) (worker:///b) (worker:///c)````"),
+                invalid("````READ (worker:///absent)````\n````COPY (worker:///a) (worker:///b) (worker:///c)````"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],

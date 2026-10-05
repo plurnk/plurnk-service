@@ -197,10 +197,10 @@ export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | C
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
-export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody)
+export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody | UnreadableBody)
 /**
  * Universal PLURNK operation result. Producer-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.
  */
@@ -333,6 +333,16 @@ raw: string
 export interface GlobBody {
 dialect: "glob"
 raw: string
+}
+/**
+ * A matcher the parser could not read in the dialect its prefix claims ({§matcher-refusal}): the authored text, the diagnostic, and the working form. The statement is admitted and the operation refuses with that message and recovery; it is never a contract strike.
+ */
+
+export interface UnreadableBody {
+dialect: "unreadable"
+raw: string
+message: string
+recovery: string
 }
 /**
  * A source point in parsed PLURNK input. Lines are 1-based; columns are 0-based Unicode code points. LF and CRLF delimit lines, while a lone CR occupies one column. The exact pair {line: 0, column: 0} is the sole unknown/degraded position.
@@ -1110,7 +1120,7 @@ op?: string
 
 export type LineMarkerOrNull = (LineMarker | null)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type SendBodyOrNull = (SendBody | null)
