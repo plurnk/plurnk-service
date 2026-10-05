@@ -17,6 +17,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
@@ -155,7 +156,7 @@ test("an exact log FIND rejects a supplied /OP delimiter that disagrees with an 
     } finally { await db.close(); }
 });
 
-test("{§markerless-first-page} a markerless log FIND returns every row; an explicit <1,-1> is the same selection", async () => {
+test("{§markerless-first-page} a markerless log FIND returns its first page of rows, every row when they fit; an explicit <1,-1> is the whole", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         for (let sequence = 4; sequence <= 20; sequence++) {
@@ -174,7 +175,7 @@ test("{§markerless-first-page} a markerless log FIND returns every row; an expl
         const whole = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
         assert.equal(whole.results.length, 20);
         assert.equal(whole.range?.total, 20);
-        assert.deepEqual(whole.range?.requested, [1, -1]);
+        assert.deepEqual(whole.range?.requested, [1, PAGE]);
         assert.deepEqual(whole.range?.returned, [1, 20]);
         assert.equal(whole.itemsWeightTotal, whole.returnedItemsWeightTotal, "nothing is held back");
 

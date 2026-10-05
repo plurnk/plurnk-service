@@ -34,6 +34,7 @@ import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, noteStmt } from "./_dsl.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 // {§worker-scheme} — the authority is a literal Worker name.
 // Control operations carry no entry path; storage operations do.
@@ -628,12 +629,12 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         );
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
-        assert.equal(done.content, lines.join("\n"), "a markerless READ is the whole deliverable ({§markerless-first-page})");
+        assert.equal(done.content, lines.join("\n"), "a markerless READ is the first page of the deliverable; 20 lines fit it ({§markerless-first-page})");
         assert.equal(Object.hasOwn(done, "lineAnchors"), false, "an actor's deliverable is not an editable entry");
         assert.deepEqual(done.range, {
             unit: "line",
             total: 20,
-            requested: [1, -1],
+            requested: [1, PAGE],
             returned: [1, 20],
         });
 

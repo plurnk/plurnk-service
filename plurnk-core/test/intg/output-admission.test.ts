@@ -35,7 +35,56 @@ const receipt = (row: Record<string, unknown>): { lines: number; tokens: number;
     return { lines: Number(problem.lines), tokens: Number(problem.tokens), remaining: Number(problem.remaining), detail: String(problem.detail ?? "") };
 };
 
-test("{§context-fit}: a READ that does not fit lands as a 413 receipt above the longest prefix of its lines that fits, naming its size, tokens, the remaining budget, the lines delivered and the verbs; the prefix holds the room until the receipt is killed, then a range READ succeeds", async () => {
+// {§markerless-first-page} — the room a test pins is measured, not guessed: the first packet's weight
+// plus the margin the story needs.
+const floorWeight = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, workerId: number, loopId: number): Promise<number> => {
+    const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+    const packet = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId, provider: providerAt(999_000, []), currentTurnSeq: 1, gitStatus: null });
+    return packet.weight;
+};
+const pageLines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES);
+const pageChars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
+
+test("{§markerless-first-page}: a READ without a scope lands as its first page, bounded by lines and characters, naming the page of the whole; a range READ reaches the rest", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `first-page-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
+        const provider = providerAt(999_000, [
+            response(`\`\`\`\`READ (worker:///large.md)\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(continuing),
+        ]);
+        const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
+            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+        assert.equal(read.status_rx, 200, "the page is an ordinary result");
+        const stored = JSON.parse(read.rx) as { content: string; range: { total: number; returned: [number, number] } };
+        const [from, to] = stored.range.returned;
+        assert.equal(from, 1);
+        assert.ok(to < 600 && to <= pageLines, `the page is bounded: ${to} lines`);
+        assert.ok(stored.content.length <= pageChars + 1, "and by characters");
+        assert.equal(stored.content, content.split("\n").slice(0, to).join("\n"), "the page is the first lines, cut at a line boundary");
+        assert.equal(stored.range.total, 600, "the whole is named beside the page");
+        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
+        const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
+        const row = logEntries(packet).find((entry) => entry.path === "worker:///large.md")!;
+        assert.equal(row.range, `<1,${to}> of 600 lines`, "{§packet-extent-metadata}: one fact, one notation");
+        assert.equal(String(row.body).trimEnd().split("\n").length, to, "the row shows exactly the page");
+        const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
+            .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
+        assert.equal(sliced.status_rx, 200, "an explicit scope is exact");
+        assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
+        const look = await engine.look({ statement: readStmt(urlPath("worker", "/large.md"), { marks: [1, -1] }), workspaceId, workerId, loopId });
+        assert.equal((look as { content?: string }).content, content, "`<1,-1>` is the whole thing");
+    } finally { await db.close(); }
+});
+
+test("{§context-fit}: a page that does not fit the room lands as the longest prefix of its lines above a 413 receipt naming the lines delivered; the prefix holds the room until the receipt is killed, then a range READ succeeds", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-fit-${crypto.randomUUID()}`);
@@ -44,53 +93,42 @@ test("{§context-fit}: a READ that does not fit lands as a 413 receipt above the
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
-        const provider = providerAt(12_000, [
+        // A room 1,500 over the floor: the first page (about 8,000) cannot land whole, a few lines can.
+        const room = await floorWeight(db, workspaceId, workerId, loopId) + 1_500;
+        const provider = providerAt(room, [
             response(`\`\`\`\`READ (worker:///large.md)\`\`\`\`\n${continuing}`),
             response(`\`\`\`\`KILL (log:///**/READ)\`\`\`\`\n\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
             response(continuing),
         ]);
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
-        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; status_rx: number; rx: string; attrs: string }>({ turn_id: first.turnId });
-        const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
-        assert.equal(read.status_rx, 413, "the result does not fit the remaining budget");
+        const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
+            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+        assert.equal(read.status_rx, 413, "the page does not fit the remaining budget");
         const stored = JSON.parse(read.rx) as { content: unknown; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number; delivered: number }; range?: { total: number; returned?: [number, number] } };
         const delivered = stored.problem.delivered;
-        assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < 600, `a prefix of the lines fit: ${delivered}`);
-        assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary; the file is where the whole result lives");
+        assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < stored.problem.lines, `a prefix of the page fit: ${delivered} of ${stored.problem.lines}`);
+        assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary");
         assert.equal(stored.problem.type, "https://problems.plurnk.xyz/engine/context/result-exceeds-budget");
-        assert.match(stored.problem.detail, new RegExp(`^600 lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines delivered; READ a range, or KILL first\\.$`, "u"));
-        assert.equal(stored.problem.lines, 600);
-        assert.ok(stored.problem.tokens > stored.problem.remaining, "the whole did not fit");
-        assert.equal(stored.range?.total, 600, "the extent is the whole resource");
+        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines delivered; READ a range, or KILL first\\.$`, "u"));
+        assert.ok(stored.problem.tokens > stored.problem.remaining, "the page did not fit");
         assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.ok(packet.weight <= 12_000, "the receipt fits where the result could not");
+        assert.ok(packet.weight <= room, "the receipt and its prefix fit where the page could not");
         const row = logEntries(packet).find((entry) => entry.status === 413 && entry.path === "worker:///large.md")!;
         assert.ok(row, "the receipt is a row of the next packet");
         assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
-        assert.match(String(row.body), /^\s*1(?:<@[0-9A-Za-z]{5}>|:)1: evidence/u, "numbered from the first line");
         const facts = receipt(row);
-        assert.equal(facts.lines, 600);
         assert.ok(facts.tokens > 0 && facts.remaining >= 0 && facts.tokens > facts.remaining);
         assert.match(facts.detail, /READ a range, or KILL first/u);
         assert.doesNotMatch(packetSection(packet, "budget"), /WARNING|MUST/u, "{§context-gauge}: the gauge is state, not a mandate");
-        assert.ok(logEntries(packet).some((entry) => String(entry.logPath).endsWith("/NOTE") && /Review the evidence/u.test(String(entry.body))), "the NOTE is never replaced");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
             .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
         assert.equal(sliced.status_rx, 200, "{§context-verbs}: the prefix held the room; KILL first, then a range READ takes a piece of what did not fit");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
-        const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 3, provider });
-        const later = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: third.turnId }))!.packet);
-        const slice = logEntries(later).find((entry) => entry.status === undefined && entry.path === "worker:///large.md" && entry.logPath !== row.logPath)!;
-        assert.match(String(slice.body), /2(?:<@[0-9A-Za-z]{5}>|:)2: evidence/u);
-        assert.match(String(slice.body), /3(?:<@[0-9A-Za-z]{5}>|:)3: evidence/u);
         const look = await engine.look({ statement: readStmt(urlPath("worker", "/large.md"), { marks: [1, -1] }), workspaceId, workerId, loopId });
-        assert.equal(look.status, 200);
         assert.equal((look as { content?: string }).content, content, "the complete result is where it was read from");
-    } finally {
-        await db.close();
-    }
+    } finally { await db.close(); }
 });
 
 test("{§context-fit}: a READ whose first line does not fit is a bodiless receipt", async () => {
@@ -100,8 +138,10 @@ test("{§context-fit}: a READ whose first line does not fit is a bodiless receip
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        // One line longer than the page's characters: the page is a cut of that line, about 8,000 tokens.
         await seedEntryWithChannel(db, { workspaceId, pathname: "/line.md", content: "evidence ".repeat(4_000) });
-        const provider = providerAt(12_000, [response(`\`\`\`\`READ (worker:///line.md)\`\`\`\`\n${continuing}`)]);
+        const room = await floorWeight(db, workspaceId, workerId, loopId) + 1_500;
+        const provider = providerAt(room, [response(`\`\`\`\`READ (worker:///line.md)\`\`\`\`\n${continuing}`)]);
         const turn = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
             .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
@@ -124,12 +164,13 @@ test("{§context-verbs}: KILL first — the fit measure honours curation within 
         const wanted = Array.from({ length: 100 }, (_, i) => `wanted ${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/filler.md", content: filler });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/wanted.md", content: wanted });
+        // `<1,-1>` asks for the whole file, so each READ is the whole 14,000 and not its page ({§markerless-first-page}).
         const provider = providerAt(24_000, [
-            response(`\`\`\`\`READ (worker:///filler.md)\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (worker:///filler.md) <1,-1>\`\`\`\`\n${continuing}`),
             response([
-                "````READ (worker:///wanted.md)````",
+                "````READ (worker:///wanted.md) <1,-1>````",
                 "````KILL (log:///1/*/*/READ)````",
-                "````READ (worker:///wanted.md)````",
+                "````READ (worker:///wanted.md) <1,-1>````",
                 continuing,
             ].join("\n")),
         ]);

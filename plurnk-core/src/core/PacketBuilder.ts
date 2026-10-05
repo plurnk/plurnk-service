@@ -167,8 +167,6 @@ export default class PacketBuilder {
         const retired: Record<string, string> = {
             PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
             PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
-            PLURNK_SERVICE_PREVIEW_LINES: oneRule,
-            PLURNK_SERVICE_PREVIEW_CHARS: oneRule,
             PLURNK_SERVICE_PROMPT_PROJECTION: oneRule,
             PLURNK_SERVICE_BUDGET_PRESSURE: "the gauge carries no threshold and no mandate ({§context-gauge})",
             PLURNK_REASONING_VIEW_LINES: "initialization authors no reasoning and reads none back ({§worker-initialization-entry})",

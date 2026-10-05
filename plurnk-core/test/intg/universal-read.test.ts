@@ -18,6 +18,7 @@ import { copyStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 type DataSchemeManifest = Extract<SchemeManifest, { category: "data" }>;
 
@@ -237,13 +238,13 @@ test("entry-backed data schemes inherit exact READ projection", async () => {
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.content, lines.join("\n"), "a markerless READ is the whole resource ({§markerless-first-page})");
+        assert.equal(result.content, lines.join("\n"), "a markerless READ is the first page; 20 lines fit it ({§markerless-first-page})");
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.startLine, 1);
         assert.deepEqual(result.range, {
             unit: "line",
             total: 20,
-            requested: [1, -1],
+            requested: [1, PAGE],
             returned: [1, 20],
         });
     } finally {

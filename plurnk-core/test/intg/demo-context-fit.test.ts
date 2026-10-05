@@ -5,10 +5,9 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
 import { assertContextFitEvidence, seedAttachmentFixture } from "../demo/_context-fit.ts";
 
-test("{§methods-loop-run-open-paths} {§context-fit}: one oversized attachment is a bodiless receipt, and a range READ reaches its answer", async () => {
+test("{§methods-loop-run-open-paths} {§markerless-first-page}: one oversized attachment lands as its first page, cut inside its one long line, and a range READ reaches its answer", async () => {
     const fixture = await seedAttachmentFixture();
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
@@ -32,12 +31,13 @@ ${fixture.answer}
                 const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 const attachment = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.pathname === "incident.txt");
                 assert.ok(attachment);
-                assert.equal(attachment.status_rx, 413, "the attachment did not fit");
-                const receipt = JSON.parse(attachment.rx) as { content: string | null; problem: { type: string; lines: number; tokens: number; remaining: number } };
-                assert.equal(receipt.content, null, "a receipt carries no body: not a head, not a page");
-                assert.equal(receipt.problem.type, RESULT_EXCEEDS_BUDGET);
-                assert.equal(receipt.problem.lines, 2, "the size is stated in lines");
-                assert.ok(receipt.problem.tokens > receipt.problem.remaining);
+                assert.equal(attachment.status_rx, 200, "the page is an ordinary result");
+                const page = JSON.parse(attachment.rx) as { content: string; region?: { startLine: number; endLine: number; endColumn: number } };
+                const chars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
+                assert.equal(page.content.length, chars, "the character bound cuts the one long line");
+                assert.equal(content.startsWith(page.content), true, "the page is the head of the line");
+                assert.equal(page.region?.startLine, 1);
+                assert.equal(page.region?.endLine, 1, "the cut is inside line 1 and says so");
                 const answer = rows.find((row) => row.origin === "model" && row.op === "READ" && row.pathname === "incident.txt");
                 assert.ok(answer, "the model's own range READ ran");
                 assert.equal(answer.status_rx, 200);

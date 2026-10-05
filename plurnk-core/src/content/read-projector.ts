@@ -10,6 +10,7 @@ import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.t
 import Results from "../core/results.ts";
 import LineAnchors from "./line-anchors.ts";
 import LineMarkerOps from "./line-marker.ts";
+import BodyPreview from "./body-preview.ts";
 import ByteView, { type ByteSource } from "./byte-view.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
@@ -112,7 +113,7 @@ export default class ReadProjector {
     }
 
     // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: without a
-    // scope every byte ({§markerless-first-page}), `<a,b>` selects bytes, `<1,-1>` is everything.
+    // scope the first page of bytes ({§markerless-first-page}), `<a,b>` selects bytes, `<1,-1>` is everything.
     // The source is sized, then only the window is read; the source mimetype is never relabelled.
     static async #projectBytes(
         statement: ReadStatement,
@@ -155,7 +156,7 @@ export default class ReadProjector {
                 matches: PatternEdits.visible(matches, projected.lineOrdinals ?? []),
             };
         }
-        const marker: LineMarker = statement.lineMarker ?? LineMarkerOps.whole();
+        const marker: LineMarker = statement.lineMarker ?? BodyPreview.firstPage();
         const window = LineMarkerOps.window(marker, total, "byte");
         if (window.status !== 200) {
             return {

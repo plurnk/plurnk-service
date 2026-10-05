@@ -34,24 +34,27 @@ test("{§log-readable-projection}: sparse character scopes retain honest boundar
     assert.equal((await ReadResolve.resolve({ content, mimetype: "text/plain", visibleLines: [], lineMarker: null })).status, 204);
 });
 
-test("{§markerless-first-page}: a markerless READ is the whole text; explicit scopes stay exact", async () => {
+test("{§markerless-first-page}: a markerless READ is the first page, bounded by lines and characters at a line boundary; explicit scopes stay exact", async () => {
     const lines = Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) }));
     const content = lines.join("\n");
-    const whole = await ReadResolve.resolve({ content, mimetype: "application/json", lineMarker: null });
-    assert.equal(whole.content, content, "ten long JSON records arrive whole; whether they fit is decided where the row lands");
-    assert.equal(whole.mimetype, "application/json", "a markerless READ keeps the channel's own mimetype");
-    assert.equal(whole.range?.total, 10);
-    assert.deepEqual(whole.range?.returned, [1, 10]);
+    const chars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
+    const fit = lines.reduce((count, line, index) => lines.slice(0, index + 1).join("\n").length + 1 <= chars ? index + 1 : count, 0);
+    assert.ok(fit > 0 && fit < 10, `the character bound cuts inside ten long records: ${fit} fit`);
+    const page = await ReadResolve.resolve({ content, mimetype: "application/json", lineMarker: null });
+    assert.equal(page.content, lines.slice(0, fit).join("\n"), "the page is the complete records that fit the character bound");
+    assert.equal(page.mimetype, "application/json", "a markerless READ keeps the channel's own mimetype");
+    assert.equal(page.range?.total, 10, "the whole is named beside the page");
+    assert.deepEqual(page.range?.returned, [1, fit]);
     const complete = await ReadResolve.resolve({ content, mimetype: "application/json", lineMarker: { marks: [1, -1] } });
     assert.equal(complete.content, content, "an explicit complete READ remains exact");
     const selected = await ReadResolve.resolve({ content, mimetype: "application/json", lineMarker: { marks: [2, 4] } });
     assert.equal(selected.content, lines.slice(1, 4).join("\n"), "explicit lines are exactly what was asked");
 });
 
-test("{§markerless-first-page}: a single long line and CRLF text return whole, separators and all", async () => {
+test("{§markerless-first-page}: a single long line under the character bound and CRLF text return whole, separators and all", async () => {
     const emoji = await ReadResolve.resolve({ content: "😀".repeat(3000), mimetype: "text/plain", lineMarker: null });
     assert.equal(emoji.status, 200);
-    assert.equal(emoji.content, "😀".repeat(3000), "no character bound cuts a line");
+    assert.equal(emoji.content, "😀".repeat(3000), "the bound counts code points, and three thousand fit");
     const crlf = await ReadResolve.resolve({ content: "ab\r\ncdef\r\ngh", mimetype: "text/plain", lineMarker: null });
     assert.equal(crlf.content, "ab\r\ncdef\r\ngh");
     assert.equal(crlf.range?.total, 3);

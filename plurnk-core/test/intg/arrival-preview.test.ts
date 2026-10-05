@@ -100,23 +100,39 @@ test("{§message-causal-source}: the operator's message is named for the model; 
     ], "left bare, the operator's row reads as the model's own SEND");
 });
 
-test("{§context-fit}: a deliverable that landed renders whole; nothing is previewed", () => {
+test("{§markerless-first-page}: a peer worker's deliverable renders as its first page with the page of the whole named; the character bound cuts a single line exactly", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
+    const lines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES);
+    const chars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
         coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://comparison-checker",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
-        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
+        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" },
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     const [projected] = parseLogRecords(rendered);
     assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the first line is visible");
-    assert.match(String(projected?.body), /400:deranged output line 400/, "and so is the last: a landed row is whole");
-    assert.equal(projected?.preview, undefined, "no preview extent describes a cut that did not happen");
+    assert.doesNotMatch(String(projected?.body), new RegExp(`deranged output line ${lines + 1}$`, "m"), "the page ends where the bound says");
+    assert.equal(projected?.preview, `<1,${lines}> of 400 lines`, "{§packet-extent-metadata}: the page of the whole, in the one notation");
+    assert.equal(projected?.lines, undefined, "the preview fact replaces the redundant line count");
     const oneLine = PacketWire.renderLog([{ ...row, rx: "x".repeat(20_000) }], countTokens);
     const [single] = parseLogRecords(oneLine);
-    assert.equal((String(single?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0), 20_000, "no character bound cuts a line");
-    assert.equal(single?.preview, undefined);
+    assert.equal((String(single?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0), chars, "the character bound cuts a single line");
+    assert.equal(single?.preview, `<1,1,1,${chars + 1}> of <1,1,1,20001>`, "the in-line cut is exact and addressable");
+});
+
+test("{§markerless-first-page}: the operator's message and the model's own rows are never paged", () => {
+    const countTokens = (s: string): number => Math.ceil(s.length / 4);
+    const bomb = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join("\n");
+    const target = { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/x", query: null, fragment: null };
+    const prompt = { coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "agui://anonymous/threads/t/messages/m", target, status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" } };
+    const note = { coordinate: "1/3/1", origin: "model", op: "NOTE", source: null, target: null, status: 200, rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json", tx: { op: "NOTE", body: bomb }, mimetype_tx: "application/json", folded: [], attrs: {} };
+    for (const [row, who] of [[prompt, "the operator's message keeps its own rule"], [note, "a NOTE the model wrote stands whole"]] as const) {
+        const [projected] = parseLogRecords(PacketWire.renderLog([row], countTokens));
+        assert.match(String(projected?.body), /line 400$/m, who);
+        assert.equal(projected?.preview, undefined, who);
+    }
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {

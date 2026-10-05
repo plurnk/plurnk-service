@@ -213,9 +213,10 @@ export default class TurnMaterialization {
             const targetParts = authorityParts(ch.authority);
             // {§exec-stream} — nothing publishes while a stream is active: the Delegation streams
             // section reports its size and growth ({§child-orientation}); the model READs any
-            // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the whole
-            // output when it fits the budget, otherwise its size ({§context-fit}) — with the extent, the
-            // terminal status and Problem, initially visible. {§exec-stream-page}
+            // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the first
+            // page ({§markerless-first-page}, {§exec-stream-page}), whole when it fits the budget and
+            // otherwise its size ({§context-fit}) — with the extent, the terminal status and Problem,
+            // initially visible.
             // {§stream-observation-result} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
             // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.

@@ -14,6 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 
@@ -353,7 +354,7 @@ test("File.read: long content round-trips", async () => {
         await addMember(ctx, "big.txt");
         const result = await readFileScheme(readStmt(filePath("big.txt")), ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content, big, "a markerless READ is the whole resource ({§markerless-first-page}); no character bound cuts a line");
+        assert.equal(result.content, big.slice(0, Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS)), "a markerless READ is the first page: the character bound cuts the single line ({§markerless-first-page})");
         const complete = await readFileScheme({ ...readStmt(filePath("big.txt")), lineMarker: { marks: [1, -1] } }, ctx);
         assert.equal(complete.status, 200);
         assert.equal(complete.content, big, "the explicitly requested full content round-trips unchanged");
@@ -383,7 +384,7 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
     });
 });
 
-test("{§markerless-first-page} File.read: a markerless exact READ and an explicit <1,-1> both return every line", async () => {
+test("{§markerless-first-page} File.read: a markerless exact READ is the first page, which holds all 20 lines; an explicit <1,-1> is the whole", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
         await writeFile(join(root, "bounded.txt"), content);
@@ -393,7 +394,7 @@ test("{§markerless-first-page} File.read: a markerless exact READ and an explic
         assert.equal(whole.status, 200);
         assert.equal(whole.content, content);
         assert.equal(whole.range?.total, 20);
-        assert.deepEqual(whole.range?.requested, [1, -1], "no scope means the whole resource");
+        assert.deepEqual(whole.range?.requested, [1, PAGE], "no scope means the first page");
         assert.deepEqual(whole.range?.returned, [1, 20]);
 
         const all = await readFileScheme(parseRead("````READ (bounded.txt) <1,-1>````"), ctx);

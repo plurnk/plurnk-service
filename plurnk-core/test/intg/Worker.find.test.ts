@@ -8,6 +8,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -307,7 +308,7 @@ test("Worker.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("{§markerless-first-page} Worker.find without a scope returns every resource; an explicit <1,-1> is the same selection", async () => {
+test("{§markerless-first-page} Worker.find without a scope returns its first page of resources, every resource when they fit; an explicit <1,-1> is the whole", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const entries = Array.from({ length: 20 }, (_, index): [string, string] => [
@@ -320,7 +321,7 @@ test("{§markerless-first-page} Worker.find without a scope returns every resour
         const whole = await worker.find(findStmt(url("")), ctx);
         assert.equal(whole.results.length, 20);
         assert.equal(whole.range?.total, 20);
-        assert.deepEqual(whole.range?.requested, [1, -1]);
+        assert.deepEqual(whole.range?.requested, [1, PAGE]);
         assert.deepEqual(whole.range?.returned, [1, 20]);
         assert.equal(whole.itemsWeightTotal, whole.returnedItemsWeightTotal, "nothing is held back");
 
@@ -351,7 +352,7 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             range: {
                 unit: "resource",
                 total: 0,
-                requested: [1, -1],
+                requested: [1, PAGE],
             },
         });
     } finally { db.close(); }

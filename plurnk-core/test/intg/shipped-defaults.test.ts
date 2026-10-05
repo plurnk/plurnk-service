@@ -45,8 +45,11 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // Core has no parallel token budget or packing-margin contract.
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_BUDGET"), undefined);
     assert.equal(env.get("PLURNK_SERVICE_SAFETY"), undefined);
-    // {§context-fit} {§context-gauge} — one rule, no previews, pages, projections, thresholds or read-backs.
-    for (const retired of ["PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
+    // {§markerless-first-page} — the page's two knobs ship: 100 lines, 16000 characters.
+    assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
+    assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");
+    // {§context-fit} {§context-gauge} — one rule, no projections, thresholds or read-backs.
+    for (const retired of ["PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
         assert.equal(env.get(retired), undefined, `${retired} is retired: nothing ships it`);
     }
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the gauge names the five largest retained rows");

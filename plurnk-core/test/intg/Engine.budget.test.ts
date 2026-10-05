@@ -121,7 +121,7 @@ test("{§configuration-repair-path} current panel keys and their aliases outrank
         PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
         PLURNK_SERVICE_REASONING_local: "2048",
     }), /PLURNK_SERVICE_REASONING_local is retired/u);
-    for (const key of ["PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
+    for (const key of ["PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
         assert.throws(() => PacketBuilder.validateConfiguration({ [key]: "1" }), new RegExp(`${key} is retired`, "u"), `${key} names its successor rule`);
         assert.throws(() => PacketBuilder.validateConfiguration({ [`${key}_local`]: "1" }), new RegExp(`${key}_local is retired`, "u"), "an alias scope of a retired knob is retired too");
     }

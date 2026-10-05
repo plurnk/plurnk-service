@@ -12,7 +12,8 @@ import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
-import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
+import BodyPreview from "../content/body-preview.ts";
 import { renderTarget } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
@@ -588,6 +589,84 @@ export default class PacketWire {
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
     }
 
+    // {§markerless-first-page} — a body the model did not author or ask for exactly takes its first page in
+    // the packet: not the model's own row, not a retrieval (paged at its source), not an emission row,
+    // and not the operator's message, which keeps its own rule ({§message-projection}).
+    static #receivedBody(e: LogEntryView, op: string | null): boolean {
+        if (e.origin === "model" || op === "READ" || op === "FIND" || LogEntryProjection.isEmission(e)) return false;
+        if (PacketWire.isArrival(e)) {
+            const source = typeof e.source === "string" ? e.source : null;
+            return source !== null && source.startsWith("worker://");
+        }
+        return true;
+    }
+
+    // One preview function for every bounded model-facing projection. Lines protect ordinary
+    // documents and Unicode characters protect a single-line bomb. Once a physical line is complete,
+    // a character cut retreats to that line boundary rather than exposing a partial coordinate prefix.
+    static #preview(text: string): { text: string; cut: boolean; chunk: string | null } {
+        const coordinates = new TextCoordinates(text);
+        const physicalLines = coordinates.logicalLines();
+        const { end } = BodyPreview.select(text);
+        const cut = end < text.length;
+        return {
+            text: text.slice(0, end),
+            cut,
+            chunk: cut ? PacketWire.#chunk(coordinates, physicalLines, end, text.length) : null,
+        };
+    }
+
+    static #chunk(coordinates: TextCoordinates, lines: readonly TextLine[], end: number, completeEnd: number): string {
+        const finalCompleteLine = lines.findIndex((line) => line.separator.length > 0 && line.end === end);
+        if (finalCompleteLine !== -1) {
+            const selected = ScopeFormat.lines(1, finalCompleteLine + 1);
+            if (finalCompleteLine + 1 === lines.length) {
+                throw new Error("a bounded body chunk must differ from its complete line extent");
+            }
+            return `${selected} of ${ScopeFormat.count("line", lines.length)}`;
+        }
+        const selectedRegion = coordinates.regionFromOffsets(0, end);
+        const completeRegion = coordinates.regionFromOffsets(0, completeEnd);
+        if (selectedRegion === null || completeRegion === null) {
+            throw new Error("a character-bound body chunk must resolve to exact text coordinates");
+        }
+        const selected = ScopeFormat.region(selectedRegion);
+        const complete = ScopeFormat.region(completeRegion);
+        if (selected === complete) {
+            throw new Error("a bounded body chunk must differ from its complete text extent");
+        }
+        return `${selected} of ${complete}`;
+    }
+
+    static #sparseChunk(completeContent: string, visibleContent: string, visibleOrdinals: readonly number[], projectedContent: string): string {
+        const end = projectedContent.length;
+        const coordinates = new TextCoordinates(visibleContent);
+        const lines = coordinates.logicalLines();
+        const finalCompleteLine = lines.findIndex((line) => line.separator.length > 0 && line.end === end);
+        if (finalCompleteLine !== -1) {
+            const selectedOrdinals = visibleOrdinals.slice(0, finalCompleteLine + 1);
+            const runs: Array<[number, number]> = [];
+            for (const ordinal of selectedOrdinals) {
+                const previous = runs.at(-1);
+                if (previous === undefined || ordinal !== previous[1] + 1) runs.push([ordinal, ordinal]);
+                else previous[1] = ordinal;
+            }
+            const selected = runs.map(([start, finish]) => ScopeFormat.lines(start, finish)).join(",");
+            return `${selected} of ${ScopeFormat.count("line", TextCoordinates.logicalLines(completeContent).length)}`;
+        }
+        const local = coordinates.regionFromOffsets(0, end);
+        const complete = new TextCoordinates(completeContent).regionFromOffsets(0, completeContent.length);
+        if (local === null || complete === null) {
+            throw new Error("a sparse character-bound chunk must resolve to exact text coordinates");
+        }
+        const startLine = visibleOrdinals[local.startLine - 1];
+        const endLine = visibleOrdinals[local.endLine - 1];
+        if (startLine === undefined || endLine === undefined) {
+            throw new Error("a sparse character-bound chunk must map to canonical body lines");
+        }
+        return `${ScopeFormat.region({ ...local, startLine, endLine })} of ${ScopeFormat.region(complete)}`;
+    }
+
     static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
         const bodies = entries.map((e) => {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
@@ -958,7 +1037,12 @@ export default class PacketWire {
         const sourceOrdinals = bodyVisibility.fullyFolded
             ? bodyVisibility.readableOrdinals
             : bodyVisibility.ordinals;
-        const projectedText = projectedBody.content;
+        // {§markerless-first-page} — what came back unasked in size is its first page here too; what the
+        // model authored or asked for exactly, and a retrieval's own page, render whole.
+        const projection = PacketWire.#receivedBody(e, op)
+            ? PacketWire.#preview(projectedBody.content)
+            : { text: projectedBody.content, cut: false, chunk: null };
+        const projectedText = projection.text;
         const projectedLineCount = TextCoordinates.logicalLines(projectedText).length;
         const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
         if (facts.matches !== undefined && !bodyVisibility.fullyFolded) {
@@ -969,7 +1053,10 @@ export default class PacketWire {
                 ...(region === undefined ? {} : { region: ScopeFormat.region(region) }),
                 ...(enclosingRegion === undefined ? {} : { enclosingRegion: ScopeFormat.region(enclosingRegion) }),
             }));
-            if (evidence.length > 0) meta.matches = evidence;
+            if (evidence.length > 0) {
+                meta.matches = BodyPreview.items(evidence, JSON.stringify);
+                if ((meta.matches as unknown[]).length !== evidence.length) meta.matchLocationCount = evidence.length;
+            }
         }
         const body = emptyFind || projectedText.length === 0
             ? ""
@@ -1001,6 +1088,14 @@ export default class PacketWire {
                 : body.length === 0
                     ? "none"
                     : "open";
+        // {§packet-extent-metadata} — a page states what it shows of what the row holds.
+        const projectedChunk = projection.chunk !== null && bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded
+            ? PacketWire.#sparseChunk(fullBody.content, projectedBody.content, sourceOrdinals, projection.text)
+            : projection.chunk;
+        if (display === "open" && projectedChunk !== null) {
+            meta.preview = projectedChunk;
+            delete meta.lines;
+        }
         return { body, projectedLineCount, display };
     }
 

@@ -15,6 +15,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_scheme.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -126,7 +127,7 @@ test("{§range-extent}: a graph matcher selecting no resources returns 204 with 
             range: {
                 unit: "resource",
                 total: 0,
-                requested: [1, -1],
+                requested: [1, PAGE],
             },
         });
     } finally { db.close(); }

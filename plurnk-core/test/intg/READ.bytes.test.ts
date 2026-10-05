@@ -11,6 +11,7 @@ import ByteView from "../../src/content/byte-view.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES ??= "104857600";
 
@@ -48,15 +49,15 @@ const setup = async () => {
     return { root, db, ctx };
 };
 
-test("{§read-bytes} a binary member reads as hex lines: whole without a scope, ranges, and 416", async () => {
+test("{§read-bytes} a binary member reads as hex lines: the first page without a scope, ranges, and 416", async () => {
     const { root, db, ctx } = await setup();
     try {
         const head = await lookThroughScheme("file", null, readStmt("blob.bin"), ctx);
         assert.equal(head.status, 200, JSON.stringify(head.problem));
-        assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, every byte ({§markerless-first-page})");
+        assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, the first page of bytes: 40 fit it ({§markerless-first-page})");
         assert.equal(head.startLine, 1);
         assert.equal(head.mimetype, "application/octet-stream", "the source mimetype is never relabelled");
-        assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, -1], returned: [1, 40] });
+        assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, PAGE], returned: [1, 40] });
         assert.equal((head as { projection?: string }).projection, "hex");
 
         const tail = await lookThroughScheme("file", null, readStmt("blob.bin", { marks: [17, -1] }), ctx);
@@ -120,7 +121,7 @@ test("{§find-bytes} a FIND over a binary member matches bytes and reports byte 
     }
 });
 
-test("{§markerless-first-page} a retrieval without a scope is the whole thing, whatever its unit", async () => {
+test("{§markerless-first-page} a retrieval without a scope is its first page, whatever its unit", async () => {
     const { root, db, ctx } = await setup();
     try {
         for (let n = 1; n <= 7; n += 1) {
@@ -129,13 +130,13 @@ test("{§markerless-first-page} a retrieval without a scope is the whole thing, 
         }
 
         const bytes = await lookThroughScheme("file", null, readStmt("blob.bin"), ctx);
-        assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, -1], returned: [1, 40] }, "every byte of a byte view");
+        assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, PAGE], returned: [1, 40] }, "the first page of a byte view, in bytes");
 
         const found = await new File().find(findStmt("page*.md", "findable"), ctx);
         assert.equal(found.status, 200, JSON.stringify(found.problem));
-        assert.deepEqual(found.range?.requested, [1, -1], "every position of a FIND");
+        assert.deepEqual(found.range?.requested, [1, PAGE], "the first page of results of a FIND");
         assert.deepEqual(found.range?.returned, [1, 7]);
-        assert.equal(found.range?.total, 7, "the complete result is the result");
+        assert.equal(found.range?.total, 7, "the total counts every position");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

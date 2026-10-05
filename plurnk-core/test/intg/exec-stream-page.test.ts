@@ -1,6 +1,6 @@
 // {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as a Delegation stream
 // pointer with its size and growth; at close, ONE foisted READ that is exactly a markerless READ: the
-// whole output when it fits the budget ({§context-fit}), the extent, the terminal status. The channel
+// first page of the output ({§markerless-first-page}), the extent, the terminal status. The channel
 // keeps every line for a scoped READ.
 
 import assert from "node:assert/strict";
@@ -9,6 +9,9 @@ import StreamMock from "./_stream-mock.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { logEntries, packetSection } from "./_packet.ts";
+
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE_CHARS = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -21,7 +24,7 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
     }
 };
 
-test("a 40-line stream closes whole with its extent; a scoped READ still reaches line 40", async () => {
+test("a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async () => {
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
@@ -44,16 +47,16 @@ test("a 40-line stream closes whole with its extent; a scoped READ still reaches
                 "log:///1/2/2/sh", "publication identity retains the exact durable invocation relationship");
             const rx = JSON.parse(foisted.rx) as { exitCode: number; content: string; mimetype: string; startLine: number; range: { unit: string; total: number; returned: [number, number] } };
             assert.equal(rx.exitCode, 0, "the exact subprocess conclusion remains durable");
-            assert.equal(rx.content.split("\n").filter((l) => l !== "").length, 40, "the whole output: it fit");
+            assert.equal(rx.content.split("\n").filter((l) => l !== "").length, 40, "the whole output: 40 lines fit the first page");
             assert.equal(rx.content.startsWith("1\n2\n"), true, "from the first line — a markerless READ");
             assert.equal(rx.startLine, 1);
-            assert.deepEqual(rx.range, { unit: "line", total: 40, requested: [1, -1], returned: [1, 40] });
+            assert.deepEqual(rx.range, { unit: "line", total: 40, requested: [1, PAGE], returned: [1, 40] });
             assert.equal(rx.mimetype, "text/stream", "the channel's own mimetype, as a markerless READ keeps it");
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const log = packetSection(packet, "log");
             assert.match(log, /\s1:1\n/, "line 1 is delivered");
-            assert.match(log, /\n40:40(?:\n|$)/, "and so is line 40: whole when it fits");
+            assert.match(log, /\n40:40(?:\n|$)/, "and so is line 40: the first page holds them all");
             const terminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stdout"));
             assert.ok(terminal, "the terminal observation names the read resource under path");
             assert.equal(terminal.target, undefined);
@@ -113,20 +116,26 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
     }));
 });
 
+const RECORDS = Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) }));
+const RECORD_PAGE = Math.floor(PAGE_CHARS / (RECORDS[0]!.length + 1)); // complete records within the character bound
 for (const specimen of [
     {
         name: "long JSON records",
-        content: Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) })).join("\n"),
-        range: { unit: "line", total: 10, requested: [1, -1], returned: [1, 10] },
-        packetRange: "10 lines",
+        content: RECORDS.join("\n"),
+        page: RECORDS.slice(0, RECORD_PAGE).join("\n"),
+        pageLines: RECORD_PAGE,
+        range: { unit: "line", total: 10, requested: [1, RECORD_PAGE], returned: [1, RECORD_PAGE] },
+        packetRange: `<1,${RECORD_PAGE}> of 10 lines`,
     },
     {
         name: "a long Unicode line",
         content: "😀".repeat(3000),
-        range: { unit: "line", total: 1, requested: [1, -1], returned: [1, 1] },
+        page: "😀".repeat(3000),
+        pageLines: 1,
+        range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         packetRange: "1 line",
     },
-]) test(`{§exec-stream-page} {§context-fit}: automatic ${specimen.name} arrives whole when it fits; explicit READ retains the full stream`, async () => {
+]) test(`{§exec-stream-page} {§markerless-first-page}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async () => {
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse(`\`\`\`\`node
@@ -149,10 +158,11 @@ waiting
             assert.ok(delivery, "the model receives the automatic terminal observation");
             assert.equal(delivery.range, specimen.packetRange);
             assert.equal(delivery.region, undefined);
-            assert.match(String(delivery.body), new RegExp(`${content.split("\n").length}:`), "the packet contains the whole output, line-numbered");
+            assert.match(String(delivery.body), new RegExp(`${specimen.pageLines}:`), "the packet carries the page, line-numbered");
+            assert.doesNotMatch(String(delivery.body), new RegExp(`${specimen.pageLines + 1}:`), "and nothing past it");
             const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
-            const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === content);
-            assert.ok(automatic, "the whole result is stored: nothing is cut before or after rendering");
+            const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === specimen.page);
+            assert.ok(automatic, "the page is what was delivered and stored");
             assert.deepEqual(JSON.parse(automatic.rx).range, specimen.range, "the durable range keeps requested and returned coordinates");
             const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
             const explicit = rows.find((row) => row.origin === "model" && row.op === "READ");

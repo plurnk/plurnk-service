@@ -19,8 +19,8 @@ const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
 // Named by the source only to be refused: a retired key is declared nowhere, by design.
 const RETIRED = new Set([
     "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_EFFECT_POLICY",
-    // {§context-fit} {§context-gauge} — the preview, projection and pressure knobs.
-    "PLURNK_SERVICE_PREVIEW_LINES", "PLURNK_SERVICE_PREVIEW_CHARS", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE",
+    // {§context-fit} {§context-gauge} — the projection and pressure knobs; the page's two knobs stand ({§markerless-first-page}).
+    "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE",
     "PLURNK_SERVICE_EXEC_POLL_SEC", "PLURNK_SERVICE_EXEC_POLL_TURNS",
     // {§skills-sources} — the vendor installer's knobs.
     "PLURNK_SERVICE_SKILLS_CLI", "PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS",

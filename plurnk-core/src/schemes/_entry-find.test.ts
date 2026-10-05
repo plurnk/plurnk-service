@@ -44,8 +44,8 @@ test("{§find-result-projection}: a valid exact match without an addressable loc
     assert.deepEqual(result.range, {
         unit: "matchLocation",
         total: 0,
-        requested: [1, -1],
-    }, "{§markerless-first-page}: without a scope every location is requested");
+        requested: [1, Number(process.env.PLURNK_SERVICE_PREVIEW_LINES)],
+    }, "{§markerless-first-page}: without a scope the first page of locations is requested");
 });
 
 test("{§find-result-projection}: exact duplicate locations are materialized and counted once", () => {

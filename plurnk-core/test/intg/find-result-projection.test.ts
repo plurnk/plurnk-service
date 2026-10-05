@@ -8,6 +8,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import { type FindStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
     metadata: null,
@@ -37,7 +38,7 @@ test("{§worker-tool-admission} shallow FIND folder summaries include only admit
     } finally { await db.close(); }
 });
 
-test("{§find-result-projection} {§markerless-first-page}: a markerless FIND returns every resource with complete counts", async () => {
+test("{§find-result-projection} {§markerless-first-page}: a markerless FIND returns its first page of resources with complete counts", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-page-${crypto.randomUUID()}`);
@@ -53,7 +54,7 @@ test("{§find-result-projection} {§markerless-first-page}: a markerless FIND re
         assert.deepEqual(r.range, {
             unit: "resource",
             total: 20,
-            requested: [1, -1],
+            requested: [1, PAGE],
             returned: [1, 20],
         });
     } finally {

@@ -8,6 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { sendStmt, urlPath, noteStmt } from "./_dsl.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 class StructuredFixture {
     static manifest = {
@@ -128,14 +129,14 @@ test("an atomic application/json channel remains hidden until its complete termi
         const terminal = await fixture.runTurn();
         const row = await structuredRow(fixture, terminal.turnId);
         const result = JSON.parse(row.rx) as { content: string; mimetype: string; startLine?: number };
-        // {§exec-stream-page} {§context-fit} — the conclusion is a markerless READ: whole when it fits, with its extent.
+        // {§exec-stream-page} {§markerless-first-page} — the conclusion is a markerless READ: its first page, with its extent.
         assert.deepEqual(result, {
             status: 200,
             terminal: true,
             content: '[{"n":1},{"n":2}]',
             mimetype: "application/json",
             startLine: 1,
-            range: { unit: "line", total: 1, requested: [1, -1], returned: [1, 1] },
+            range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         });
         assert.deepEqual(JSON.parse(row.attrs), { streamEnd: 17 });
     } finally {
@@ -159,7 +160,7 @@ test("application/jsonl publishes nothing while active; its records arrive once,
             content: '{"n":1}\n{"n":2}\n',
             mimetype: "application/jsonl",
             startLine: 1,
-            range: { unit: "line", total: 2, requested: [1, -1], returned: [1, 2] },
+            range: { unit: "line", total: 2, requested: [1, PAGE], returned: [1, 2] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 16 });
     } finally {
@@ -183,7 +184,7 @@ test("an active text channel publishes nothing; its content arrives once, at clo
             content: "event one\nevent two\n",
             mimetype: "text/plain; charset=utf-8",
             startLine: 1,
-            range: { unit: "line", total: 2, requested: [1, -1], returned: [1, 2] },
+            range: { unit: "line", total: 2, requested: [1, PAGE], returned: [1, 2] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 20 });
     } finally {
@@ -191,7 +192,7 @@ test("an active text channel publishes nothing; its content arrives once, at clo
     }
 });
 
-test("a stream that closes with no new content still emits exactly one conclusion — the whole stream", async () => {
+test("a stream that closes with no new content still emits exactly one conclusion", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n');
     try {
         const active = await fixture.runTurn();
@@ -207,7 +208,7 @@ test("a stream that closes with no new content still emits exactly one conclusio
             content: '{"n":1}\n',
             mimetype: "application/jsonl",
             startLine: 1,
-            range: { unit: "line", total: 1, requested: [1, -1], returned: [1, 1] },
+            range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         });
         assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 8 });
     } finally {

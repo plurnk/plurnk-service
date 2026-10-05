@@ -27,6 +27,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -401,7 +402,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
         assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
         assert.equal(rawView.content, "01\n02\n03\n04");
         assert.equal(rawView.mimetype, "application/x-readable-binary");
-        assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, -1], returned: [1, 4] });
+        assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, PAGE], returned: [1, 4] });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
