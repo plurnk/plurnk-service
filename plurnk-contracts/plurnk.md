@@ -116,9 +116,6 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 > [!WARNING]
 > YOU MUST NOT exceed budget.
 
-> [!TIP]
-> YOU SHOULD curate, distill, and summarize your log to optimize for relevant facts and findings.
-
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```
 
