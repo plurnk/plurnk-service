@@ -7,6 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ReadStatement, ExecStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -43,6 +44,25 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
 
         const read = await lookThroughScheme("worker", null, readStmt("roster.html"), ctx);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
+    } finally { await db.close(); }
+});
+
+test("{§naked-pattern} {§readable-channel}: `READ (page.html) #readable`, the channel written after the parenthesis, reads the readable projection", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `trailing-channel-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
+        assert.equal(written.status, 201);
+        const parsed = PlurnkParser.parseStatements("```READ (worker:///roster.html) #readable\n```\n").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
+        assert.equal(parsed.matcher, null, "the token is the channel, not a pattern");
+        const read = await lookThroughScheme("worker", null, parsed, ctx);
+        assert.equal(read.status, 200);
+        assert.equal((read as { channel?: string }).channel, "readable", "the readable projection was selected");
+        assert.equal(read.mimetype, "text/markdown");
+        assert.match(read.content ?? "", /Team Roster/u, "and it is the page as prose");
+        assert.doesNotMatch(read.content ?? "", /<user /u, "not the markup");
     } finally { await db.close(); }
 });
 

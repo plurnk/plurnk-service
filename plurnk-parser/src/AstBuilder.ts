@@ -295,6 +295,15 @@ export default class AstBuilder {
         const options = AstBuilder.metadataOptions(metadata);
         if (options === null || !Object.hasOwn(options, "pattern")) {
             const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
+            // {§naked-pattern} {§local-path-fragment} — `#name` alone after a target that names no channel is the
+            // channel, exactly as if written on the path: the receipt advertises `#readable`, and a model that
+            // writes it after the parenthesis means the channel, not a glob beginning with `#` (#1000).
+            const channel = bare === null || target === null ? null : /^#([A-Za-z][A-Za-z0-9_-]*)$/u.exec(bare.text);
+            if (channel !== null && (target!.fragment === null || target!.fragment === undefined)) {
+                target!.fragment = channel[1]!;
+                if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]!}`;
+                return { matcher: null, metadata: metadata ?? (bare!.metadata === null ? null : [bare!.metadata]), aside: bare!.aside, scope: bare!.scope };
+            }
             return bare === null
                 ? { matcher: null, metadata, aside: null, scope: null }
                 : {

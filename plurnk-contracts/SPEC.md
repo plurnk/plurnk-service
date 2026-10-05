@@ -958,7 +958,8 @@ the path and the rest is the channel (a spelling that opens with `#` names no pa
 whole), exactly as `worker:///a.html#readable` decomposes, so
 the `#channel` a READ receipt advertises (`channels: {"#readable": N}`) is addressable in the
 same bare spelling the receipt used: a model that appends the channel to the path it was just
-shown addresses the same entry. `raw` is therefore always the path alone; a
+shown addresses the same entry, and so does one that writes it after the parenthesis,
+`(page.html) #readable`, which {§naked-pattern} reads as the channel. `raw` is therefore always the path alone; a
 bare path never contains a literal `#`, and `PlurnkParser.stringify` renders the channel back.
 Without a `#` the field is absent, so an older `LocalPath` literal stays valid.
 
@@ -1825,7 +1826,11 @@ diagnostics are:
   scope or option block, the rest of a FIND, READ or KILL heading line is the
   matcher, in whichever dialect its first characters claim
   ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`,
-  `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. Those
+  `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. One
+  spelling is not a matcher: `#name` alone, a `#` followed by one channel token
+  and nothing else, after a target that names no channel, is that target's
+  channel exactly as if written on the path ({§local-path-fragment}); a target
+  that already names a channel keeps such a token as its pattern. Those
   matchers remain independent of owner options: a block without `pattern` never
   erases the heading matcher, and invalid blocks still reach the owning validator.
   These operations take no body, so heading-line text can mean nothing else. On EDIT only

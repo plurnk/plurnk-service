@@ -244,3 +244,27 @@ test("{§transparent-inline-closer}: a closing fence mid-heading reads as if it 
     const block = one("````EDIT (a.md)\nnew content\n````\n");
     assert.equal(block.op.body, "new content");
 });
+
+test("{§naked-pattern} {§local-path-fragment}: `#channel` alone after a target that names no channel is the channel, on bare paths and URLs", () => {
+    const targetOf = (op: unknown): { kind?: string; raw?: string; fragment?: string | null } | undefined => (op as { target?: { kind?: string; raw?: string; fragment?: string | null } }).target;
+    const local = one("```READ (data/users.html) #readable <!-- the page as prose -->\n```\n");
+    assert.deepEqual(local.diagnostics, []);
+    assert.equal(local.op.matcher, null, "no matcher: the token was the channel");
+    assert.deepEqual(targetOf(local.op), { kind: "local", raw: "data/users.html", fragment: "readable" });
+    assert.equal(local.op.aside, "the page as prose");
+    assert.equal(PlurnkParser.stringify([local.op]), "```READ (data/users.html#readable) <!-- the page as prose -->\n```", "it renders back on the path");
+    const url = one("```READ (https://example.org/report) #readable\n```\n");
+    assert.deepEqual(url.diagnostics, []);
+    assert.equal(url.op.matcher, null);
+    assert.equal(targetOf(url.op)?.fragment, "readable");
+    assert.equal(targetOf(url.op)?.raw, "https://example.org/report#readable", "a URL target carries the channel in its raw spelling");
+    const already = one("```READ (data/users.html#readable) #header\n```\n");
+    assert.equal(targetOf(already.op)?.fragment, "readable", "a target that already names a channel keeps it");
+    assert.deepEqual(already.op.matcher, { dialect: "glob", raw: "#header" }, "and the token stays its pattern");
+    const glob = one("```FIND (src/**/*.md) #*.md\n```\n");
+    assert.deepEqual(glob.op.matcher, { dialect: "glob", raw: "#*.md" }, "a `#` followed by more than one channel token is still a glob");
+    const scoped = one("```READ (data/users.html) <1,40> #readable\n```\n");
+    assert.equal(targetOf(scoped.op)?.fragment, "readable");
+    assert.deepEqual((scoped.op as { lineMarker?: unknown }).lineMarker, { marks: [1, 40] }, "the scope rides beside it");
+});
+

@@ -9,8 +9,8 @@ Read and modify web resources through addressable HTTP(S) entries.
 A web URL is an addressable entry. Every exact READ acquires or refreshes a
 complete representation when needed, then core selects the channel and applies
 the requested text/byte scope. An HTML page's `body` is the server source; its
-readable Markdown (a materializer's or the local reader's) is `#readable`, and
-every READ names the page's other channels with their tokens.
+readable Markdown (a materializer's or the local reader's) is `#readable`, read as
+`READ (https://…#readable)`, and every READ names the page's other channels with their tokens.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
@@ -23,7 +23,7 @@ every READ names the page's other channels with their tokens.
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. For matched content, READ
-the returned `#channel` using the `region` as
+the returned `#channel` on the path (`…#channel`) using the `region` as
 `<startLine,startColumn,endLine,endColumn>`. Caller cancellation of an exact
 acquisition returns `499 cancelled`.
 
