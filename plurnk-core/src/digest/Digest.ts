@@ -55,7 +55,7 @@ import type {
     ModelCallRow,
     ProviderRequestRow,
     LogRow,
-    EditRow, EmissionRow,
+    EditRow, EmissionRow, ReasoningRow,
     LogCurationEffectRow,
     WorkerRollupRow,
     OpMixRow,
@@ -118,6 +118,7 @@ export default class Digest {
             logEntries: (db.digest_log_entries as SyncPrep<LogRow>).all(),
             editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
             emissionRows: (db.digest_emissions as SyncPrep<EmissionRow>).all(),
+            reasoningRows: (db.digest_reasonings as SyncPrep<ReasoningRow>).all(),
             curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
             workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
             opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
@@ -131,7 +132,7 @@ export default class Digest {
         };
         let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, editRows, curationEffects, workerRollupRows, opMixRows } = rows;
-        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows } = rows;
+        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows, reasoningRows } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
         if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
         const storage = { ...rows.storage, tables: storageTables };
@@ -233,7 +234,7 @@ export default class Digest {
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
-            logEntriesByTurn, emissionRows, emissionsByWorker, editRows, editRowsByWorker, environments, loopsById, workersById,
+            logEntriesByTurn, emissionRows, reasoningRows, emissionsByWorker, editRows, editRowsByWorker, environments, loopsById, workersById,
             workerRollups, opMixByWorker, search,
         };
 

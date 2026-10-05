@@ -154,6 +154,7 @@ export class SqlRiteSync {
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
 	digest_emissions: SqlRiteSyncPreparedStatements;
+	digest_reasonings: SqlRiteSyncPreparedStatements;
 	digest_edit_statements: SqlRiteSyncPreparedStatements;
 	digest_curation_effects: SqlRiteSyncPreparedStatements;
 	digest_channel_search_state: SqlRiteSyncPreparedStatements;
@@ -748,6 +749,7 @@ export default class SqlRite {
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
 	digest_emissions: SqlRitePreparedStatements;
+	digest_reasonings: SqlRitePreparedStatements;
 	digest_edit_statements: SqlRitePreparedStatements;
 	digest_curation_effects: SqlRitePreparedStatements;
 	digest_channel_search_state: SqlRitePreparedStatements;

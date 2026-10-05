@@ -118,8 +118,8 @@ ORDER BY r.id;
 SELECT worker_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
-  -- {§emission-row}: an emission's announcement is the harness's, never an operation of the worker's.
-  AND COALESCE(json_extract(attrs, '$.kind'), '') <> 'emission'
+  -- {§emission-row}, {§reasoning-row}: harness rows are not model-authored operations.
+  AND COALESCE(json_extract(attrs, '$.kind'), '') NOT IN ('emission', 'reasoning')
 GROUP BY worker_id, op
 ORDER BY worker_id, n DESC, op;
 
@@ -135,6 +135,19 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE json_extract(le.attrs, '$.kind') = 'emission'
+ORDER BY le.id;
+
+-- PREP: digest_reasonings
+-- {§reasoning-row}: every reasoning row landed, retired ones included.
+SELECT le.worker_id,
+       l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
+       json_extract(le.rx, '$.content') AS content,
+       projection.active AS active
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE json_extract(le.attrs, '$.kind') = 'reasoning'
 ORDER BY le.id;
 
 -- PREP: digest_edit_statements

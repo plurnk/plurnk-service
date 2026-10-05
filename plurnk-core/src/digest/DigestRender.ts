@@ -545,6 +545,7 @@ export default class DigestRender {
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
             `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).byWorker.get(worker.id))}`,
             `Emissions:  ${DigestRender.#renderEmissions(worker, m)}`,
+            `Reasonings: ${DigestRender.#renderReasonings(worker, m)}`,
         ].join("\n");
     }
 
@@ -556,6 +557,19 @@ export default class DigestRender {
             .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
             .reduce((sum, turn) => sum + FabricatedLog.echoes(turn.outside ?? ""), 0);
         return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
+    }
+
+    // {§reasoning-row} — landed, retired by the model, and turns that reasoned.
+    static #renderReasonings(worker: WorkerRow, m: DigestModel): string {
+        const rows = m.reasoningRows.filter((row) => row.worker_id === worker.id);
+        const killed = rows.filter((row) => row.active === 0).length;
+        const reasonedTurns = (m.loopsByWorker.get(worker.id) ?? [])
+            .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
+            .filter((turn) => turn.has_reasoning === 1).length;
+        if (reasonedTurns === 0 && rows.length === 0) return "(no reasoning)";
+        if (rows.length === 0) return `0 of ${reasonedTurns} landed (unbudgeted or disabled)`;
+        if (reasonedTurns > rows.length) return `${rows.length} of ${reasonedTurns} landed · ${killed} killed`;
+        return `${rows.length} landed · ${killed} killed`;
     }
 
     static waterfall(m: DigestModel): string {
