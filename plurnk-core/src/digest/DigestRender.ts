@@ -7,7 +7,6 @@ import FabricatedLog from "../core/FabricatedLog.ts";
 import StoredPacket from "../core/StoredPacket.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
-import EntryManifest from "../schemes/_entry-manifest.ts";
 import {
     aggregateProviderAccounting,
     type ProviderAccounting,
@@ -44,6 +43,10 @@ export default class DigestRender {
         const flat = String(text).replace(/\s+/g, " ").trim();
         if (flat.length <= n) return flat;
         return `${flat.slice(0, n)}…`;
+    }
+
+    static #indentLines(text: string, prefix = "    "): string {
+        return text.split("\n").map((line) => line.length > 0 ? `${prefix}${line}` : line).join("\n");
     }
 
     static parseJson(s: unknown, fallback: unknown = null): unknown {
@@ -156,7 +159,7 @@ export default class DigestRender {
         // the waterfall explains WHY each failure happened without opening packets.
         let errLine = "";
         if (le.status_rx >= 400) {
-            errLine = `\n    -> ${DigestRender.#summarize(DigestRender.#rowProblem(le).detail, 140)}`;
+            errLine = `\n    -> ${DigestRender.#rowProblem(le).detail.trim()}`;
         }
         const envLine = DigestRender.envLine(environment);
         const envText = envLine === null ? "" : `\n    ${envLine}`;
@@ -182,22 +185,22 @@ export default class DigestRender {
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
-    // collapse identical rendered outcomes in the Markdown waterfall. Using the
+    // collapse consecutive identical rendered outcomes in the Markdown waterfall. Using the
     // rendered line itself as the key keeps actor, complete target, lifecycle,
     // stream, and visible failure detail structurally aligned with the grouping.
     static #renderOpLines(rows: LogRow[], m: DigestModel): string[] {
-        const groups = new Map<string, { line: string; count: number; firstSeq: number; lastSeq: number }>();
+        const runs: Array<{ line: string; count: number; firstSeq: number; lastSeq: number }> = [];
         for (const row of rows) {
             const line = DigestRender.#renderGroupedOpLine(row, m);
-            const group = groups.get(line);
-            if (group === undefined) {
-                groups.set(line, { line, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
+            const last = runs.at(-1);
+            if (last !== undefined && last.line === line) {
+                last.count++;
+                last.lastSeq = row.sequence;
             } else {
-                group.count++;
-                group.lastSeq = row.sequence;
+                runs.push({ line, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
             }
         }
-        return [...groups.values()].map(({ line, count, firstSeq, lastSeq }) => {
+        return runs.map(({ line, count, firstSeq, lastSeq }) => {
             return count === 1 ? line : `${line} ×${count} (seq ${firstSeq}–${lastSeq})`;
         });
     }
@@ -459,19 +462,26 @@ export default class DigestRender {
         const head = turn.kind === "inference"
             ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${DigestRender.#cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
-        const summary = packetFailure !== null
-            ? `  ↳ provider packet: invalid stored evidence (${packetFailure.error.message})`
-            : packet === null
-            ? null
-            : content.length > 0
-            ? `  ↳ emission: ${DigestRender.#summarize(content, 100)}`
-            : assistant !== null
-            ? "  ↳ emission: (admitted empty)"
-            : rejected > 0
-            ? `  ↳ emission: (none admitted; ${rejected} rejected)`
-            : "  ↳ emission: (none admitted)";
+        let summary: string | null = null;
+        if (packetFailure !== null) {
+            summary = `  ↳ provider packet: invalid stored evidence (${packetFailure.error.message})`;
+        } else if (packet === null) {
+            summary = null;
+        } else if (content.length > 0) {
+            summary = content.includes("\n")
+                ? `  ↳ emission:\n${DigestRender.#indentLines(content.trimEnd(), "    ")}`
+                : `  ↳ emission: ${content.trim()}`;
+        } else if (assistant !== null) {
+            summary = "  ↳ emission: (admitted empty)";
+        } else if (rejected > 0) {
+            summary = `  ↳ emission: (none admitted; ${rejected} rejected)`;
+        } else {
+            summary = "  ↳ emission: (none admitted)";
+        }
         const reasoningLine = reasoning && reasoning.length > 0
-            ? `  ↳ reasoning: ${DigestRender.#summarize(reasoning, 100)}`
+            ? (reasoning.includes("\n")
+                ? `  ↳ reasoning:\n${DigestRender.#indentLines(reasoning.trimEnd(), "    ")}`
+                : `  ↳ reasoning: ${reasoning.trim()}`)
             : null;
         // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
         const wireLine = content.length === 0 && packet !== null && StoredPacket.isAdmitted(packet) ? DigestRender.wireLine(packet.assistantRaw) : null;
@@ -587,15 +597,6 @@ export default class DigestRender {
         lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
         lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
-        if (m.search.dispositions.length > 0) {
-            lines.push("Search dispositions:");
-            for (const row of m.search.dispositions) {
-                const address = `${EntryManifest.toPath(row.scheme, row.authority, row.pathname)}#${row.channel}`;
-                lines.push(`  ${row.disposition} ${address}${row.reason === null ? "" : ` — ${row.reason}`}`);
-            }
-        }
-        // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
-        // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
         const health = m.loops.map((l) => DigestRender.#loopHealth(l, m));
         const clean = health.filter((h) => h.verdict === "CLEAN").length;
         const degen = health.filter((h) => h.verdict === "DEGENERATE-WIN").length;
@@ -626,11 +627,15 @@ export default class DigestRender {
                         : ` — ${h.verdict === "DEGENERATE-WIN" ? "⚠ DEGENERATE-WIN" : h.verdict} (${h.errors} errors, ${h.errorItems} error-items)`;
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
-                    lines.push(`Prompt: ${DigestRender.#summarize(loop.prompt, 160)}`);
+                    if (loop.prompt.includes("\n")) {
+                        lines.push("Prompt:\n" + DigestRender.#indentLines(loop.prompt.trimEnd(), "  "));
+                    } else {
+                        lines.push(`Prompt: ${loop.prompt}`);
+                    }
                     const wake = DigestRender.#wakeLatency(loop, m);
                     if (wake !== null) lines.push(wake);
                     if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
-                        lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${DigestRender.#summarize(terminal.problem.detail, 400)}`);
+                        lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${terminal.problem.detail.trim()}`);
                     }
                     const policy = DigestRender.parseJson(loop.policy, {}) as Record<string, unknown>;
                     const policySummary = Object.entries(policy)
@@ -638,9 +643,16 @@ export default class DigestRender {
                         .join(" ");
                     if (policySummary.length > 0) lines.push(`Policy: ${policySummary}`);
                     lines.push("");
-                    lines.push("```");
-                    for (const t of m.turnsByLoop.get(loop.id) ?? []) lines.push(DigestRender.#renderTurnLine(t, m));
-                    lines.push("```");
+                    const turnLines = (m.turnsByLoop.get(loop.id) ?? []).map((t) => DigestRender.#renderTurnLine(t, m));
+                    const findMaxTicks = (s: string): number => {
+                        const matches = s.match(/`+/g);
+                        return matches ? Math.max(...matches.map((match) => match.length)) : 0;
+                    };
+                    const maxBackticks = turnLines.reduce((max, line) => Math.max(max, findMaxTicks(line)), 0);
+                    const fence = "`".repeat(Math.max(3, maxBackticks + 1));
+                    lines.push(fence);
+                    for (const line of turnLines) lines.push(line);
+                    lines.push(fence);
                 }
             }
         }
