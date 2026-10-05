@@ -743,9 +743,16 @@ export default class DigestRender {
         const cached = DigestRender.#stemCache.get(m);
         if (cached !== undefined) return cached;
         const nested = m.workspaces.length > 1;
-        const segment = (name: string, what: string): string => {
-            if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(name)) throw new TypeError(`digest: ${what} name ${JSON.stringify(name)} cannot name a file`);
-            return name;
+        // {§share-packet-names} — a workspace is commonly named by a path (`~/ptl/x`), which cannot name a
+        // file: the stem carries a slug of the name (#1001), the digest text keeps the name verbatim, and two
+        // names that slug alike are told apart by the row's id.
+        const slugged = new Map<string, number>();
+        const segment = (name: string, id: number): string => {
+            const slug = name.replace(/^~\//u, "").replace(/[^A-Za-z0-9_.-]+/gu, "-").replace(/^[^A-Za-z0-9_]+/u, "").replace(/-+$/u, "");
+            const base = slug.length === 0 ? String(id) : slug;
+            const owner = slugged.get(base);
+            if (owner === undefined) { slugged.set(base, id); return base; }
+            return owner === id ? base : `${base}-${id}`;
         };
         const stems = new Map<number, string>();
         const taken = new Set<string>();
@@ -754,7 +761,7 @@ export default class DigestRender {
             const worker = loop === undefined ? undefined : m.workersById.get(loop.worker_id);
             if (loop === undefined || worker === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop or worker in scope`);
             const workspace = m.workspaces.find(({ id }) => id === worker.workspace_id);
-            const stem = `${nested ? `${segment(workspace?.name ?? String(worker.workspace_id), "workspace")}/` : ""}${segment(worker.name, "worker")}-${loop.sequence}-${turn.sequence}`;
+            const stem = `${nested ? `${segment(workspace?.name ?? String(worker.workspace_id), worker.workspace_id)}/` : ""}${segment(worker.name, worker.id)}-${loop.sequence}-${turn.sequence}`;
             if (taken.has(stem)) throw new TypeError(`digest: two turns share the packet name ${stem}`);
             taken.add(stem);
             stems.set(turn.id, stem);

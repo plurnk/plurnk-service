@@ -5207,7 +5207,9 @@ producer does not affect projection.
 `<worker>-<loop>-<turn>`, the worker's name and the loop and turn sequences that `log:///<loop>/<turn>/…`
 addresses: the model's first turn in its first loop is `<worker>-1-2`, because the initialization
 survey is turn 1 and writes no packet. A digest spanning several workspaces nests each workspace's
-files in a folder named for it. `digest.json` records each turn's stem as `artifact`, so no
+files in a folder named for it; a name that cannot name a file (a workspace named by its path,
+`~/ptl/x`) is slugged for the folder, `ptl-x`, while the digest text keeps the name verbatim, and
+two names that slug alike are told apart by the row's id. `digest.json` records each turn's stem as `artifact`, so no
 consumer reconstructs a name. A name that cannot be a file name, or two turns sharing one, fails.
 
 | Artifact | Present when | Authority |
