@@ -14,7 +14,7 @@ import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatem
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string };
 // {§emission-row} — an admitted emission as the grammar read it, and the turn it announces.
-export type AdmittedEmission = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number };
+export type AdmittedEmission = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number; readonly reasoning: string | null };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -1755,6 +1755,7 @@ export default class TurnRunner {
             emission: split.emissionStatements === null ? null : {
                 content: TurnOps.renderEmission(split.emissionStatements, `ops://${request.workerName}/${request.loopSeq}/${request.seq}`),
                 workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
+                reasoning: split.packetAssistant.reasoning ?? null, // {§reasoning-row}
             },
             sourceModelCallId: emission.modelCallId,
             origin: "model",

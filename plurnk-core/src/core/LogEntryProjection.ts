@@ -37,8 +37,16 @@ export default class LogEntryProjection {
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "emission";
     }
 
+    // {§reasoning-row}: the harness's READ of the turn's reasoning source, addressed by its own leaf.
+    static isReasoning(row: LogEntryProjectionRow): boolean {
+        if (row.op !== "READ") return false;
+        const attrs = LogEntryProjection.#decode(row.attrs, "attrs");
+        return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "reasoning";
+    }
+
     static leaf(row: LogEntryProjectionRow): string {
         if (LogEntryProjection.isEmission(row)) return "emission";
+        if (LogEntryProjection.isReasoning(row)) return "reasoning";
         const op = LogEntryProjection.op(row);
         // An execution row's leaf is its runtime: the op as written.
         if (isExecutionOp(op)) return op;

@@ -1,4 +1,5 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { Knob } from "@plurnk/plurnk-meta";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -165,6 +166,14 @@ export default class AdmittedTurnExecutor {
         // {§emission-row} — the turn's next sequence after its recorded inputs and before its
         // operations, written after the selection snapshot so the emission's own program cannot select it.
         if (emission !== null) {
+            // {§reasoning-row} — the turn's reasoning, one sequence before its emission row, when the room allows.
+            if (emission.reasoning !== null && Knob.flag("PLURNK_SERVICE_REASONING_ROWS")) {
+                const reasoningId = await this.#dispatcher.writeReasoning({
+                    reasoning: emission.reasoning, workerName: emission.workerName, loopSeq: emission.loopSeq, turnSeq: emission.turnSeq,
+                    workerId, loopId, turnId, sequence: rowSequence, fit,
+                });
+                if (reasoningId !== null) { rowSequence++; onDispatch?.(reasoningId); await onSettled?.(reasoningId); }
+            }
             const id = await this.#dispatcher.writeEmission({ ...emission, workerId, loopId, turnId, sequence: rowSequence++ });
             onDispatch?.(id);
             await onSettled?.(id);

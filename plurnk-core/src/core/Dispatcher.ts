@@ -37,7 +37,7 @@ import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
-import { resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
+import { reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
@@ -1296,6 +1296,52 @@ export default class Dispatcher {
             initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
         });
         if (row === undefined) throw new Error("Dispatcher.writeEmission: insert returned no row");
+        return row.id;
+    }
+
+    // {§reasoning-row} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
+    // source immediately before the emission row, whole, only when the packet has room for it after
+    // everything else this turn lands; without room, no row and nothing else changes.
+    async writeReasoning({ reasoning, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence, fit }: {
+        reasoning: string; workerName: string; loopSeq: number; turnSeq: number;
+        workerId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
+    }): Promise<number | null> {
+        if (reasoning.length === 0) return null;
+        const pathname = `/${loopSeq}/${turnSeq}`;
+        const statement: ReadStatement = {
+            op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            target: {
+                kind: "url", raw: `reasoning://${workerName}${pathname}`, scheme: "reasoning",
+                username: null, password: null, hostname: workerName, port: null, pathname, query: null, fragment: null,
+            },
+        };
+        const durableAttrs = { kind: "reasoning" };
+        const tx = JSON.stringify(DurableStatement.project(statement));
+        const rx = JSON.stringify({ status: 200, content: reasoning, mimetype: "text/markdown" });
+        const weight = LogBody.weight({
+            op: "READ", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
+        }, this.#weighContent);
+        if (fit !== undefined) {
+            // One receipt's reserve keeps the room the emission row's head needs ({§context-fit}).
+            const remaining = await reserved(fit, 1).remaining();
+            if (remaining !== null && weight > remaining) return null;
+        }
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+            origin: "_plurnk", source: null, model_call_id: null,
+            op: "READ", signal: null,
+            scheme: "reasoning", username: null, password: null, hostname: workerName, port: null,
+            pathname, query: null, fragment: null, lineMarker: null,
+            tx, mimetype_tx: "application/json",
+            rx,
+            mimetype_rx: "application/json",
+            status_rx: 200,
+            weight,
+            state: "resolved", outcome: null,
+            attrs: JSON.stringify(durableAttrs),
+            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
+        });
+        if (row === undefined) throw new Error("Dispatcher.writeReasoning: insert returned no row");
         return row.id;
     }
 

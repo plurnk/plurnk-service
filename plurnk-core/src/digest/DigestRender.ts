@@ -169,6 +169,10 @@ export default class DigestRender {
         if (row.op === "READ" && attrs.kind === "emission") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", DigestRender.#environmentOf(row, m));
         }
+        // {§reasoning-row}: the turn's reasoning landed as a row, and whether the model retired it.
+        if (row.op === "READ" && attrs.kind === "reasoning") {
+            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", DigestRender.#environmentOf(row, m));
+        }
         const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"

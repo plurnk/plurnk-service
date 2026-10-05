@@ -109,7 +109,7 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
         assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < stored.problem.lines, `a prefix of the page fit: ${delivered} of ${stored.problem.lines}`);
         assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary");
         assert.equal(stored.problem.type, "https://problems.plurnk.xyz/engine/context/result-exceeds-budget");
-        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines delivered; READ a range, or KILL first\\.$`, "u"));
+        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; READ a range, or KILL first\\.$`, "u"));
         assert.ok(stored.problem.tokens > stored.problem.remaining, "the page did not fit");
         assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
