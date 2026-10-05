@@ -108,7 +108,8 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     assert.match(userText(second), /CURATABLE-MEMORY/u, "the content NOTE remains ordinary working memory");
     assert.match(userText(second), /REASONING-MEMORY/u, "reasoning NOTE memory remains independent of assistant history");
     const third = provider.received[2]!;
-    assert.doesNotMatch(third.map(chatMessageText).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u, "curating notes leaves no automatic assistant duplicate");
+    assert.doesNotMatch(assistants(third).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u, "curating notes leaves no automatic assistant duplicate");
+    assert.doesNotMatch(userText(third), /CURATABLE-MEMORY/u, "the curated NOTE row is gone from the log");
     assert.equal(assistants(third)[0], header, "a later request does not change the retained header");
     assert.equal(assistants(third).at(-1), "```KILL (log:///1/2/*/NOTE)\n```", "a bodyless operation renders bare");
     const last = provider.received[3]!;
@@ -117,11 +118,11 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     assert.doesNotMatch(assistants(last).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY|PREVIEWED-BODY line 101/u);
     const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first), "the source READ returns the complete original program, not the header projection");
-    const emitted = rows.find(({ coordinate }) => coordinate === "1/2/2")!;
+    const emitted = rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!;
     assert.equal((JSON.parse(emitted.rx) as { content: string }).content,
         `${header}\n\n${PlurnkParser.frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`,
         "the frozen projection keeps every statement; only the wire omits the NOTE");
-    const record = userText(second).split("\n\n").find((text) => text.startsWith("### log:///1/2/2/emission"))!;
+    const record = userText(second).split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     const charged = Number(/ · (\d+)/u.exec(record)![1]);
     assert.equal(charged, contentWeight(record) + contentWeight(header), "the row charges its record and precisely the assistant bytes it delivers");
     assert.ok(charged < contentWeight(first), "the cut remainder is not charged as assistant history");

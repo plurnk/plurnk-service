@@ -9,6 +9,9 @@ import { logEntries } from "./_packet.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
 
+// {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
+process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
+
 const task = PlurnkParser.frame("NOTE", "Review the result.");
 
 for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§context-fit}: an explicit reasoning READ is exact — ${mode === "fits" ? "whole when it fits" : "a bodiless receipt when it does not"}`, async () => {

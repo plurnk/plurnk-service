@@ -9,6 +9,9 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 import { logEntries } from "./_packet.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
 
+// {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
+process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
+
 const next = PlurnkParser.frame("NOTE", "Continue.");
 
 test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` operation turn — its survey runs as a program, authors no reasoning, and fabricates no emission", async () => {

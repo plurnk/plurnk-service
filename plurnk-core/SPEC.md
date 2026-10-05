@@ -2436,8 +2436,8 @@ like any other row.
 
 ### §reasoning-row The reasoning row
 
-The model's memory of its own reasoning, an experiment arm behind `PLURNK_SERVICE_REASONING_ROWS`
-(default `0`): when it is `1`, every model turn that reasoned lands its reasoning as one row of its
+The model's memory of its own reasoning, behind `PLURNK_SERVICE_REASONING_ROWS` (default `1`):
+when it is `1`, every model turn that reasoned lands its reasoning as one row of its
 own, `log:///<loop>/<turn>/<sequence>/reasoning → reasoning://<worker>/<loop>/<turn>`, the harness's
 READ of the turn's reasoning source, immediately before the turn's emission row, so the transcript
 reads what the model thought and then what it emitted, and the assistant message that follows stays

@@ -16,6 +16,9 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { statement, original, provider, type Resource, type Read } from "./reasoning-fixture.ts";
 
+// {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
+process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
+
 test("{§reasoning-history}: model sources are read-only and hash-free; log observations remain curatable", async () => {
     const db = await openMigrated();
     try {
