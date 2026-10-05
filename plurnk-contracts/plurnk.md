@@ -25,12 +25,6 @@ body?
 
 ## Workflow Management
 
-> [!IMPORTANT]
-> YOU MUST distill reasoning into NOTE entries.
-
-> [!IMPORTANT]
-> YOU SHOULD emit NOTE, FIND, and READ entries during reasoning. Submit right after your FIND and READ ops to discover sooner.
-
 ```NOTE
 Example of information preserved for future turns.
 ```
@@ -38,6 +32,9 @@ Example of information preserved for future turns.
 ```WAIT <60> <!-- wait up to 60 seconds -->
 Example explanation of delay.
 ```
+
+> [!IMPORTANT]
+> YOU MUST conclude continuing turns with at least one NOTE summarizing all conclusions, decisions, findings, and plans.
 
 > [!IMPORTANT]
 > YOU SHOULD NOT respond before the KILL turn.
