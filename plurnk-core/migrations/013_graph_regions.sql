@@ -1,4 +1,5 @@
 -- MIGRATE: 13
+-- Released in 1.27.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§graph-relations}: old derived rows lack match columns. Preserve their sources
 -- and history; ordinary derivation rebuilds the indexes with complete coordinates.
 UPDATE entry_channel_rows SET deep_hash = NULL WHERE deep_hash IS NOT NULL;

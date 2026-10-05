@@ -16,8 +16,8 @@ import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 // release freezes what it shipped, the previous release is the path an existing database takes, and
 // an earlier release keeps its longer path through the versions after it.
 type Release = { readonly version: number; readonly release: string; readonly shape: string };
-const RELEASED: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
-const PREVIOUS: Release = Object.freeze({ version: 11, release: "1.23.0", shape: "e6c30907c5a19216150ed1c29b2f4ba6a8cca1ac0dd08a1a85e31cfa286aa4d3" });
+const RELEASED: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
+const PREVIOUS: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
 const EARLIER: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
 
 const released = async (release: Release): Promise<string> => {
@@ -61,7 +61,7 @@ for (const release of [RELEASED, PREVIOUS, EARLIER]) {
 }
 
 test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier requests and does not fabricate captures", async () => {
-    const path = await released(RELEASED);
+    const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -89,7 +89,7 @@ test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier r
 });
 
 test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
-    const path = await released(RELEASED);
+    const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -120,7 +120,7 @@ test("{§graph-relations}: upgrading preserves source content and invalidates im
 });
 
 test("{§db-migrations} {§child-orientation}: upgrading retains streams without inventing their missing output timestamps", async () => {
-    const path = await released(RELEASED);
+    const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
