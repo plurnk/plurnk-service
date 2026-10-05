@@ -62,7 +62,7 @@ This is an example of the complete, final deliverable response.
 
 * `(path)` may be a glob/extglob, permitting bulk operations.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/OP.
-* FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(page.html#readable)`.
+* FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
 ## `<scope|range>`
