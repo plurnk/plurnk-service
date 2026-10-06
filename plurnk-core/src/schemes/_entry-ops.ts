@@ -1,7 +1,7 @@
 import EntryCrud from "./_entry-crud.ts";
 import EntryReadable from "./_entry-readable.ts";
 import type { RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
-import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import EntryManifest from "./_entry-manifest.ts";
@@ -172,7 +172,7 @@ export default class EntryOps {
 
         // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
         if (existing === undefined && fragment !== null) {
-            return failure("entry-not-found", 404, missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)), { entryId: null, channel: targetChannel });
+            return failure("entry-not-found", 404, missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)), { entryId: null, channel: targetChannel }, missExtensions(scheme, EntryManifest.toPath(scheme, authority, pathname)));
         }
 
         const channel = existing === undefined
@@ -372,7 +372,7 @@ export default class EntryOps {
                 404,
                 missDetail(manifest.name, EntryManifest.toPath(manifest.name, authority, pathname)),
                 {},
-                { target: EntryManifest.toPath(manifest.name, authority, pathname) },
+                missExtensions(manifest.name, EntryManifest.toPath(manifest.name, authority, pathname)),
             );
         }
         // A `#channel` fragment names one channel to delete; the entry and its siblings remain.
@@ -444,7 +444,7 @@ export default class EntryOps {
                 404,
                 missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)),
                 { content: null, mimetype: null, channel: null },
-                { target: EntryManifest.toPath(scheme, authority, pathname) },
+                missExtensions(scheme, EntryManifest.toPath(scheme, authority, pathname)),
             );
         }
         // {§binary-parity} — a DB entry keeps binary bytes base64 in its default channel content; when

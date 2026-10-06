@@ -221,6 +221,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return false;
     }
 
+    // {§exec-near-miss} — an execution id written under another runtime (`sh:///5e8ea474` for
+    // `python3:///5e8ea474`) names the address it holds (#1005).
+    static async #nearMiss(core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number }, pathname: string): Promise<string | undefined> {
+        const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", pathname });
+        return addresses.length === 0 ? undefined : `The execution at ${pathname} is ${addresses.map((address) => `\`${address}\``).join(", ")}.`;
+    }
+
     // {§stream-control} — active KILL routes through the live controller;
     // terminal and missing outcomes resolve from the durable subscription.
     async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
@@ -245,13 +252,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         });
         const target = renderAddress({ scheme, authority: "", pathname });
         if (terminal === null) {
+            const recovery = await Exec.#nearMiss(core, pathname);
             return Results.failure(
                 "scheme:exec",
                 "stream-not-found",
                 404,
                 `No stream exists at ${target}.`,
                 {},
-                { target },
+                { target, ...(recovery === undefined ? {} : { recovery }) },
             );
         }
         // {§stream-control} — the process is already not running, which is what KILL asks for; the
@@ -609,9 +617,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const terminal = await ChannelWrite.execTerminalStatus(core.db, {
             workspaceId: core.workspaceId, scheme: runtime, ...coordinate,
         });
-        return terminal === null
+        if (terminal !== null) return failure("input-closed", 410, "Execution input is closed.");
+        const recovery = await Exec.#nearMiss(core, coordinate.pathname);
+        return recovery === undefined
             ? failure("stream-not-found", 404, "No execution exists at the requested address.")
-            : failure("input-closed", 410, "Execution input is closed.");
+            : { failure: Results.failure("scheme:exec", "stream-not-found", 404, "No execution exists at the requested address.", {}, { recovery, retryable: false }) };
     }
 
     async sendInput(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string): Promise<SchemeResult> {
@@ -1217,6 +1227,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                         runtime,
                         lifetime,
                         stage: "execution",
+                        recovery: `Run it again with a longer lifetime, such as [{"lifetime": "30m"}], or with none to let it run as long as the loop.`,
                         retryable: false,
                     },
                 );

@@ -11,7 +11,7 @@ import type {
     EntryCatalogDefaultChannel,
     EntryStreamLifecycle,
 } from "@plurnk/plurnk-schemes";
-import { renderAddress } from "../core/plurnk-uri.ts";
+import { entryAddress } from "../core/plurnk-uri.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 
 type ManifestRow = {
@@ -64,8 +64,7 @@ export default class EntryManifest {
     static summaryCodePoints(): number { return Knob.integer("PLURNK_SERVICE_CATALOG_SUMMARY_CHARS", 1); }
 
     static toPath(scheme: string, authority: string, pathname: string): string {
-        if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
-        return renderAddress({ scheme, authority, pathname });
+        return entryAddress(scheme, authority, pathname);
     }
 
     // {§line-anchors}: default-channel aliases share the same canonical identity.

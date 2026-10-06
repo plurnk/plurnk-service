@@ -243,6 +243,15 @@ export default class ChannelWrite {
         return row?.close_status ?? null;
     }
 
+    // {§exec-near-miss} — the addresses an execution id holds under any runtime.
+    static async execAddressesAt(
+        db: Db,
+        { workspaceId, authority, pathname }: { workspaceId: number; authority: string; pathname: string },
+    ): Promise<string[]> {
+        const rows = await db.find_exec_runtimes_at_pathname.all<{ scheme: string }>({ workspace_id: workspaceId, authority, pathname });
+        return rows.map(({ scheme }) => renderAddress({ scheme, authority, pathname }));
+    }
+
     static async findActiveSubscription(
         db: Db,
         { entryId }: { entryId: number },

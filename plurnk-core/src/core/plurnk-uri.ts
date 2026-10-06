@@ -74,6 +74,22 @@ export function missDetail(scheme: string | null, target: string): string {
     return scheme === "file" ? `No member of this workspace is at '${target}'.` : `No entry exists at ${target}.`;
 }
 
+// {§membership-read-refusal} — every file miss carries this recovery: path correction, creation and
+// admission stand as alternatives, and none is presumed.
+export const FILE_MISS_RECOVERY = "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.";
+
+// {§fs-canonical-name} — an entry's model-facing address: a file member is its root-relative key,
+// every other scheme its rendered URI.
+export function entryAddress(scheme: string, authority: string, pathname: string): string {
+    if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
+    return renderAddress({ scheme, authority, pathname });
+}
+
+// The extensions every miss carries: its target, and for a file the recovery above.
+export function missExtensions(scheme: string | null, target: string): { readonly target: string; readonly recovery?: string } {
+    return scheme === "file" ? { target, recovery: FILE_MISS_RECOVERY } : { target };
+}
+
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
 export function renderTarget(target: RenderTargetParts): string | null {
     if (target.pathname === null || target.pathname === undefined) return null;

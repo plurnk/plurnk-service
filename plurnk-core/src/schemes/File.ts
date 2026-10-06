@@ -1,7 +1,7 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
-import { missDetail } from "../core/plurnk-uri.ts";
+import { FILE_MISS_RECOVERY, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -232,6 +232,9 @@ export default class File extends CoreSchemeAdapterBase {
             return Results.failure("scheme:file", code, 404, detail, fields, extensions) as SchemeResultBase;
         }
         const occupied = occupant !== null;
+        // {§membership-read-refusal} — admission is the recovery for an untracked file; a file the
+        // repository ignores no model definition admits, so its refusal says who can (#1005).
+        const ignored = occupied && await GitMembership.isIgnored(core.db, core.workspaceId, key, undefined) === true;
         // A bare name that is an executor's is a fence written as a path (`WORK (sh)`, #902): the
         // recovery names the fence, not the membership machinery.
         const executor = !occupied && !key.includes("/") && (core.executors?.availableRuntimes(core.workspaceId).includes(key) ?? false);
@@ -246,10 +249,12 @@ export default class File extends CoreSchemeAdapterBase {
             {
                 target: key,
                 recovery: occupied
-                    ? "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
+                    ? ignored
+                        ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
+                        : "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
                     : executor
                         ? `\`${key}\` is an executor, not a path: run a program with a \`\`\`${key} fence and the program in the body; WORK starts a worker by \`worker://<name>\`.`
-                        : "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.",
+                        : FILE_MISS_RECOVERY,
                 retryable: false,
             },
         ) as SchemeResultBase;
@@ -903,13 +908,13 @@ export default class File extends CoreSchemeAdapterBase {
             ) as DeleteEntryResult;
         }
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, { target: pathname }) as DeleteEntryResult;
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", pathname)) as DeleteEntryResult;
         const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL");
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
         }
-        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, { target: rel }) as DeleteEntryResult;
+        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", rel)) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }
 

@@ -18,7 +18,7 @@ import BodyPreview from "../content/body-preview.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
-import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
@@ -337,7 +337,7 @@ export default class EntryFind {
                     matches: [],
                     code: "entry-not-found",
                     error: missDetail(scheme, target),
-                    extensions: { target },
+                    extensions: missExtensions(scheme, target),
                 };
             }
         }
@@ -403,7 +403,7 @@ export default class EntryFind {
                 matches: [],
                 code: "entry-not-found",
                 error: missDetail(scheme, target),
-                extensions: { target },
+                extensions: missExtensions(scheme, target),
             };
         }
 

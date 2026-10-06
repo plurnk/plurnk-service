@@ -135,6 +135,7 @@ export class SqlRiteSync {
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
+	find_exec_runtimes_at_pathname: SqlRiteSyncPreparedStatements;
 	client_interaction_insert: SqlRiteSyncPreparedStatements;
 	client_interaction_list: SqlRiteSyncPreparedStatements;
 	client_interaction_delete: SqlRiteSyncPreparedStatements;
@@ -730,6 +731,7 @@ export default class SqlRite {
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
+	find_exec_runtimes_at_pathname: SqlRitePreparedStatements;
 	client_interaction_insert: SqlRitePreparedStatements;
 	client_interaction_list: SqlRitePreparedStatements;
 	client_interaction_delete: SqlRitePreparedStatements;

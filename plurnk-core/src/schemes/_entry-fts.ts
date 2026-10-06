@@ -65,9 +65,13 @@ export default class EntryFts {
                 if (!(cause instanceof Error) || !/^(?:fts5: syntax error|unterminated string$|no such column:|expected integer, got )/.test(cause.message)) throw cause;
                 // {§fts-word-phrase} — what remains of "no such column" is FTS5's own column syntax.
                 const column = /^no such column: (.*)$/su.exec(cause.message)?.[1];
-                const recovery = column === undefined
-                    ? "Use a valid FTS5 query expression."
-                    : `\`${column}:\` and \`-${column}\` are FTS5 column filters, and the index has one column; to search for a word write it bare, as \`~${column}\`, and to exclude one write \`NOT\` between terms, as \`~a NOT ${column}\`.`;
+                // {§fts-word-phrase} — parentheses and quotes are FTS5's own syntax; a query that
+                // unbalances them meant the characters, which a phrase or a regex can say (#1005).
+                const recovery = column !== undefined
+                    ? `\`${column}:\` and \`-${column}\` are FTS5 column filters, and the index has one column; to search for a word write it bare, as \`~${column}\`, and to exclude one write \`NOT\` between terms, as \`~a NOT ${column}\`.`
+                    : /[()"]/u.test(query)
+                        ? `FTS5 reads parentheses and quotes as query syntax: quote the phrase, as \`~"${query.replace(/"/gu, "")}"\`, or match the characters with a regex, as \`/${query.replace(/[\\^$.*+?()[\]{}|/]/gu, "\\$&")}/\`.`
+                        : "Use a valid FTS5 query expression.";
                 const failure = Results.failure(
                     "schemes:matcher", "invalid-expression", 400,
                     "The full-text matcher expression is invalid.",

@@ -1377,7 +1377,8 @@ export default class Dispatcher {
         const prompt = [result.content ?? "", statement.body ?? ""].filter((part) => part !== "").join("\n\n");
         if (prompt.trim() === "") {
             return { result: Dispatcher.#failure(
-                "spawn-prompt-empty", 422, `${statement.op} has no prompt text: the resource is empty and there is no body.`, {}, { retryable: false },
+                "spawn-prompt-empty", 422, `${statement.op} has no prompt text: the resource is empty and there is no body.`, {},
+                { recovery: `Write the prompt on the lines beneath the ${statement.op} fence line, or name a resource that holds it.`, retryable: false },
             ) };
         }
         return { statement: { ...statement, target: null, body: prompt } };

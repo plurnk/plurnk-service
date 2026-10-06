@@ -2,7 +2,8 @@
 import type { FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
-import { entryCoordinateOf, missDetail, renderTarget } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, missExtensions, renderTarget } from "./plurnk-uri.ts";
+import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { ReadProjector } from "../content/index.ts";
@@ -98,7 +99,7 @@ export default class DataStatementRunner {
             404,
             missDetail(schemeName, rendered ?? "the requested address"),
             DataStatementRunner.#emptyFields(op),
-            { target: rendered },
+            rendered === null ? { target: rendered } : missExtensions(schemeName, rendered),
         );
     }
 
@@ -126,7 +127,11 @@ export default class DataStatementRunner {
                 501,
                 `Scheme '${schemeName}' is not registered.`,
                 {},
-                { scheme: schemeName, retryable: false },
+                {
+                    scheme: schemeName,
+                    recovery: unregisteredSchemeRecovery(statement.target, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
+                    retryable: false,
+                },
             );
         }
         // An execution is named by its runtime, not an op; its handler method is `exec`.

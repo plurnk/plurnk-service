@@ -8,7 +8,7 @@ import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, StoredEntryData } from "@plurnk/plurnk-schemes";
 export type { EntryData } from "@plurnk/plurnk-schemes";
-import { missDetail, renderAddress } from "../core/plurnk-uri.ts";
+import { entryAddress, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
@@ -68,14 +68,14 @@ export default class EntryCrud {
         }>({ workspace_id: workspaceId, scheme, authority, pathname });
         const entry = rows[0];
         if (entry === undefined) {
-            const target = renderAddress({ scheme, authority, pathname });
+            const target = entryAddress(scheme, authority, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
                 missDetail(scheme, target),
                 { entry: null },
-                { target },
+                missExtensions(scheme, target),
             ) as ReadEntryResult;
         }
 
@@ -139,7 +139,7 @@ export default class EntryCrud {
         if (published === undefined) {
             if (representation.createOnly === true) return Results.failure(
                 `scheme:${scheme}`, "entry-exists", 409,
-                `An entry already exists at ${renderAddress({ scheme, authority, pathname })}.`,
+                `An entry already exists at ${entryAddress(scheme, authority, pathname)}.`,
                 { created: false, entryId: null },
             ) as WriteEntryResult;
             throw new Error("writeEntry: publication returned no row");
@@ -162,14 +162,14 @@ export default class EntryCrud {
         const { authority, pathname } = coordinate;
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme, authority, pathname });
         if (existing === undefined) {
-            const target = renderAddress({ scheme, authority, pathname });
+            const target = entryAddress(scheme, authority, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
                 missDetail(scheme, target),
                 {},
-                { target },
+                missExtensions(scheme, target),
             ) as DeleteEntryResult;
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
@@ -193,14 +193,14 @@ export default class EntryCrud {
             pathname,
         });
         if (existing === undefined) {
-            const target = renderAddress({ scheme, authority, pathname });
+            const target = entryAddress(scheme, authority, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
                 missDetail(scheme, target),
                 {},
-                { target },
+                missExtensions(scheme, target),
             ) as DeleteEntryResult;
         }
         const deleted = await db.crud_delete_channel.get<{ name: string }>({
@@ -213,7 +213,7 @@ export default class EntryCrud {
             if (channel === defaultChannel) await db.crud_delete_readable_channel.run({ entry_id: existing.id });
         }
         if (deleted === undefined) {
-            const target = renderAddress({ scheme, authority, pathname });
+            const target = entryAddress(scheme, authority, pathname);
             return Results.failure(
                 `scheme:${scheme}`,
                 "channel-not-found",

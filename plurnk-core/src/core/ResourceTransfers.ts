@@ -1,7 +1,7 @@
 import type { CopyStatement, EditStatement, LineMarker, MoveStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { missDetail } from "./plurnk-uri.ts";
+import { missDetail, missExtensions } from "./plurnk-uri.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
@@ -752,6 +752,8 @@ export default class ResourceTransfers {
                     "entry-not-found",
                     404,
                     missDetail(selection.scheme, MutationEffects.resourceAddress(selection)),
+                    {},
+                    missExtensions(selection.scheme, MutationEffects.resourceAddress(selection)),
                 );
             }
             const result = Results.assert(await handler.editBatch(

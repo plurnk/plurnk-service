@@ -98,6 +98,16 @@ WHERE e.workspace_id = $workspace_id
 ORDER BY s.closed_at DESC
 LIMIT 1;
 
+-- PREP: find_exec_runtimes_at_pathname
+-- The runtimes holding an execution at one coordinate pathname: what a KILL or input of the same
+-- id under another runtime names ({§exec-near-miss}).
+SELECT DISTINCT e.scheme
+FROM entries e
+JOIN subscriptions s ON s.entry_id = e.id
+WHERE e.workspace_id = $workspace_id
+  AND e.authority = $authority AND e.pathname = $pathname
+ORDER BY e.scheme;
+
 -- INIT: subscriptions_wake_revision
 DROP TRIGGER IF EXISTS subscriptions_wake_revision;
 CREATE TRIGGER subscriptions_wake_revision

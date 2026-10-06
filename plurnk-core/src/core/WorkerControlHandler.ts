@@ -55,7 +55,11 @@ export default class WorkerControlHandler {
         // carry the prompt; by the time the statement reaches here the resource is composed in, so
         // an empty prompt is a real absence.
         if (prompt.trim() === "") {
-            return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, { operation: statement.op, retryable: false });
+            return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, {
+                operation: statement.op,
+                recovery: `Write the prompt on the lines beneath the ${statement.op} fence line.`,
+                retryable: false,
+            });
         }
         // {§env-option} — the child's starting environment rides the heading. WORK and FORK own their
         // slot: a key they do not take is their own refusal, a bad name the family's, both by name and

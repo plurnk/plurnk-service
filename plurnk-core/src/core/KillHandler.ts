@@ -4,7 +4,8 @@ import type { Db } from "./Db.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryCoordinateOf, missDetail, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import { entryAddress, entryCoordinateOf, missDetail, missExtensions, schemeNameOf } from "./plurnk-uri.ts";
+import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -99,11 +100,8 @@ export default class KillHandler {
                 });
                 if (resolved.result !== null) return resolved.result;
                 if (resolved.address === null) {
-                    return this.#failure(
-                        "entry-not-found",
-                        404,
-                        missDetail(schemeName, renderAddress({ scheme: schemeName, ...coordinate })),
-                    );
+                    const target = entryAddress(schemeName, coordinate.authority, coordinate.pathname);
+                    return this.#failure("entry-not-found", 404, missDetail(schemeName, target), {}, missExtensions(schemeName, target));
                 }
                 handlerCtx = new SchemeCtxImpl(ctx, resolved.address.scheme, manifest, this.#liveSubscriptions, {
                     authority: resolved.address.authority,
@@ -171,7 +169,11 @@ export default class KillHandler {
                 501,
                 `Scheme '${schemeName}' is not registered.`,
                 {},
-                { scheme: schemeName, retryable: false },
+                {
+                    scheme: schemeName,
+                    recovery: unregisteredSchemeRecovery(path, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
+                    retryable: false,
+                },
             );
         }
         const handler = binding?.handler as SchemeWithEntryAddress | undefined;

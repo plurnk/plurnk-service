@@ -153,6 +153,41 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
     ? null
     : LogEntryProjection.base(prefix);
 
+// {§log-near-miss} — a coordinate that names no row beside rows that exist names them: the row at
+// that coordinate under its own leaf, else the turn's rows carrying the leaf written, else the
+// turn's rows, else the loop's latest turn. Undefined when the loop holds nothing either (#1005).
+const NEAR_MISS_LISTED = 6;
+const nearMissRecovery = async (
+    coord: LogCoordinate,
+    ctx: { readonly db: PlurnkSchemeContext["db"]; readonly workerId: number },
+    maxLogEntryId: number | null,
+): Promise<string | undefined> => {
+    const under = async (prefix: string): Promise<CoordinateRow[]> => projectedCoordinateRows(await ctx.db.log_match_coordinates.all<CoordinateRow>({
+        worker_id: ctx.workerId,
+        scope_prefix: prefix,
+        max_id: maxLogEntryId,
+    }));
+    const listed = (rows: readonly CoordinateRow[]): string => {
+        const shown = rows.slice(0, NEAR_MISS_LISTED).map((row) => `\`log:///${row.coordinate}\``).join(", ");
+        return rows.length > NEAR_MISS_LISTED ? `${shown} and ${rows.length - NEAR_MISS_LISTED} more` : shown;
+    };
+    const turn = `${coord.loopSeq}/${coord.turnSeq}`;
+    const rows = await under(`${turn}/`);
+    const here = rows.find((row) => LogEntryProjection.base(row.coordinate) === `${turn}/${coord.sequence}`);
+    if (here !== undefined) return `The entry at log:///${turn}/${coord.sequence} is \`log:///${here.coordinate}\`.`;
+    if (rows.length > 0) {
+        const leaf = coord.op?.toLocaleLowerCase("en-US");
+        const same = leaf === undefined ? [] : rows.filter((row) => row.coordinate.split("/")[3]?.toLocaleLowerCase("en-US") === leaf);
+        return same.length > 0
+            ? `Turn ${turn}'s ${coord.op} ${same.length === 1 ? "is" : "rows are"} ${listed(same)}.`
+            : `Turn ${turn} holds ${listed(rows)}.`;
+    }
+    const loop = await under(`${coord.loopSeq}/`);
+    if (loop.length === 0) return undefined;
+    const latest = Math.max(...loop.map((row) => Number(row.coordinate.split("/")[1])));
+    return `Turn ${turn} has no entries; loop ${coord.loopSeq}'s latest turn is ${coord.loopSeq}/${latest}.`;
+};
+
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {
         name: "log",
@@ -239,9 +274,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             folded: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
-        if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
-        if (!LogEntryProjection.accepts(coord.op, row)) {
-            return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
+        if (row === undefined || !LogEntryProjection.accepts(coord.op, row)) {
+            const recovery = await nearMissRecovery(coord, { db, workerId }, null);
+            return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`, {
+                target: `log:///${pathname}`,
+                ...(recovery === undefined ? {} : { recovery }),
+            });
         }
 
         const { content: underlyingContent, mimetype: underlyingMimetype } = LogBody.resolve({
@@ -351,10 +389,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const coordinate = parseCoordinate(scope.pathname);
             if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
             if (await this.#resolveExactId(coordinate, core, maxLogEntryId) === null) {
+                const recovery = await nearMissRecovery(coordinate, core, maxLogEntryId);
                 return empty(
                     404,
                     `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
-                    { target: statement.target?.raw ?? `log:///${scope.pathname}` },
+                    { target: statement.target?.raw ?? `log:///${scope.pathname}`, ...(recovery === undefined ? {} : { recovery }) },
                 );
             }
         }
@@ -853,6 +892,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.status !== 200) {
+            const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
+            const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
             return {
                 result: Results.failure(
                     "scheme:log",
@@ -862,6 +903,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     {},
                     {
                         target: pathname,
+                        ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
                         ...(selected.status === 400
                             ? {
                                 recovery: "Use a log coordinate, prefix, or glob.",
@@ -892,6 +934,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             return { result: Results.assert({ status: selected.status, problem: selected.problem }) as OpenFoldResult, plan: null };
         }
         if (selected.status !== 200) {
+            const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
+            const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
             return {
                 result: Results.failure(
                     "scheme:log",
@@ -901,6 +945,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     {},
                     {
                         target: pathname,
+                        ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
                         ...(selected.status === 400
                             ? {
                                 recovery: "Use a log coordinate, prefix, or glob.",

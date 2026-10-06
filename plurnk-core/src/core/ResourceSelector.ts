@@ -6,7 +6,8 @@ import DurableStatement from "./DurableStatement.ts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
-import { entryCoordinateOf, missDetail, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, missExtensions, schemeNameOf } from "./plurnk-uri.ts";
+import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
@@ -112,6 +113,7 @@ export default class ResourceSelector {
                 {},
                 {
                     scheme,
+                    recovery: unregisteredSchemeRecovery(target, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
                     retryable: false,
                 },
             );
@@ -386,7 +388,7 @@ export default class ResourceSelector {
                 404,
                 missDetail(selection.scheme, MutationEffects.resourceAddress(selection)),
                 {},
-                { target: MutationEffects.resourceAddress(selection) },
+                missExtensions(selection.scheme, MutationEffects.resourceAddress(selection)),
             ) };
         }
         const storageAddress = prepared.address;
