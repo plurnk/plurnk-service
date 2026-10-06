@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-    Module as A2aModule,
+    Exposure as A2aExposure,
     OutboundModule as A2aOutboundModule,
     connectHttpJsonAgent,
 } from "@plurnk/plurnk-a2a";
@@ -75,7 +75,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     });
     routedProvider.bind(callerWorkspace.workspaceId, callerProvider);
     routedProvider.bind(agentWorkspace.workspaceId, agentProvider);
-    const exposure = A2aModule.init({
+    const exposure = A2aExposure.init({
         workspace: {
             name: agentWorkspace.workspaceName,
             projectRoot: agentWorkspace.projectRoot,
@@ -83,7 +83,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let listener: A2aModule | null = null;
+    let listener: A2aExposure | null = null;
     agent.registerModule({
         mounts: A2A_MOUNTS,
         start: async (port) => {
@@ -98,10 +98,11 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         await agent.start();
         assert.ok(listener !== null);
         const agentUrl = serviceUrl(agent);
+        // The face fixture stands in for the A2A package, so discovery never adds the real one.
         caller.registerModule({
             setup: (seam) => seam.registerRuntimes([a2aFace(async (authority) =>
                 authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null)]),
-        }, "test-module");
+        }, "@plurnk/plurnk-a2a");
         await caller.start();
         const worker = await caller.createConversationWorker({
             workspaceId: callerWorkspace.workspaceId,
@@ -214,7 +215,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         projectRoot: null,
     });
     routedProvider.bind(agentWorkspace.workspaceId, agentProvider);
-    const exposure = A2aModule.init({
+    const exposure = A2aExposure.init({
         workspace: {
             name: agentWorkspace.workspaceName,
             projectRoot: agentWorkspace.projectRoot,
@@ -222,7 +223,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let listener: A2aModule | null = null;
+    let listener: A2aExposure | null = null;
     agent.registerModule({
         mounts: A2A_MOUNTS,
         start: async (port) => {

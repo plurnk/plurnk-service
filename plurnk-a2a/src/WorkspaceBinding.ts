@@ -1,5 +1,8 @@
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 
+// The port functions the binding calls.
+export type WorkspacePort = Pick<ApplicationPort, "createWorkspace" | "listWorkspaces">;
+
 export interface A2aWorkspaceConfiguration {
     readonly name: string;
     /** Required only when creating a new workspace; null adopts an existing named workspace. */
@@ -8,11 +11,11 @@ export interface A2aWorkspaceConfiguration {
 
 /** Lazily resolves the workspace owned by one inbound A2A exposure. */
 export default class WorkspaceBinding {
-    readonly #port: ApplicationPort;
+    readonly #port: WorkspacePort;
     readonly #configuration: A2aWorkspaceConfiguration;
     #resolution: Promise<number> | null = null;
 
-    constructor(port: ApplicationPort, configuration: A2aWorkspaceConfiguration) {
+    constructor(port: WorkspacePort, configuration: A2aWorkspaceConfiguration) {
         this.#port = port;
         this.#configuration = structuredClone(configuration);
     }

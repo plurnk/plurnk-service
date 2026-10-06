@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Problems, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
-import { OutboundModule as A2aModule } from "@plurnk/plurnk-a2a";
+import { OutboundModule as A2aOutboundModule } from "@plurnk/plurnk-a2a";
 import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import Daemon from "../../src/server/Daemon.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -16,7 +16,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
     };
     try {
         const workspaceId = await insertWorkspace(db, "resource-definitions");
-        daemon.registerModule(A2aModule.init({
+        daemon.registerModule(A2aOutboundModule.init({
             PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
             PLURNK_A2A_other: JSON.stringify(definitions.a2a),
             PLURNK_A2A_ENABLED: "1",

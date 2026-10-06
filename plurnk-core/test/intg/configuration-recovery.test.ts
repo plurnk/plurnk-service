@@ -4,7 +4,6 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Problems, type Notice, type OperationResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import ServiceModules from "../../src/server/ServiceModules.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
@@ -153,7 +152,6 @@ for (const key of [
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
-        ServiceModules.registerWorkspaceCapabilities(daemon);
         await daemon.start();
         assert.ok(daemon.configurationNotices().some((notice) => notice.key === key));
         const ended: Array<{ loopId: number; result: OperationResult }> = [];
@@ -187,7 +185,6 @@ test("{§configuration-repair-path} retired packet configuration preserves start
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nRepaired.\n````")] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
-    ServiceModules.registerWorkspaceCapabilities(daemon);
     await daemon.start();
     assert.ok(daemon.configurationNotices().some((notice) => notice.key === key));
     const ended: Array<{ loopId: number; result: OperationResult }> = [];
@@ -220,7 +217,6 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     ] });
     const daemon = new Daemon({ db, provider, configuration });
     t.after(async () => { await daemon.stop(); await db.close(); });
-    ServiceModules.registerWorkspaceCapabilities(daemon);
     await daemon.start();
     const ended: Array<{ loopId: number; result: OperationResult }> = [];
     const notices: Notice[] = [];
@@ -269,7 +265,6 @@ for (const [family, key, value] of [
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
-        ServiceModules.registerWorkspaceCapabilities(daemon);
         await daemon.start();
         await assert.rejects(
             daemon.invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId }),

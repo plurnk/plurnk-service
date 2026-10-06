@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import test, { type TestContext } from "node:test";
-import { Module as A2aModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
+import { Exposure as A2aExposure, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
@@ -40,7 +40,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
         daemon.registerModule({
             mounts: A2A_MOUNTS,
             start: async (port) => {
-                const adapter = await A2aModule.init({
+                const adapter = await A2aExposure.init({
                     workspace: { name: workspace.workspaceName, projectRoot: null },
                     card: a2aCard(),
                     ...A2A_EXPOSURE,
@@ -468,7 +468,7 @@ test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes stay
         daemon.registerModule({
             mounts: A2A_MOUNTS,
             start: async (port) => {
-                const adapter = await A2aModule.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
+                const adapter = await A2aExposure.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
                 endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
                 return adapter;
             },

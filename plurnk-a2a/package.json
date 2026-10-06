@@ -15,6 +15,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
         "./package.json": "./package.json"
     },
     "files": [
@@ -64,5 +69,9 @@
     "author": "@wikitopian",
     "publishConfig": {
         "access": "public"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
     }
 }

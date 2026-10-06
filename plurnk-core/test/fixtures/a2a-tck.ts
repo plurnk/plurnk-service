@@ -1,5 +1,5 @@
 // Real Core + exterior adapter; only inference is deterministic. No reference TaskStore.
-import { Module as A2aModule } from "@plurnk/plurnk-a2a";
+import { Exposure as A2aExposure } from "@plurnk/plurnk-a2a";
 import { Mock, type Provider } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, rootOwner, serviceUrl } from "../intg/_a2a.ts";
@@ -80,7 +80,7 @@ daemon.registerModule(rootOwner(), "test-root");
 daemon.registerModule({
     mounts: A2A_MOUNTS,
     start: async (port) => {
-        const adapter = await A2aModule.init({
+        const adapter = await A2aExposure.init({
             workspace: { name: WORKSPACE, projectRoot: null },
             card: a2aCard(),
             ...A2A_EXPOSURE,

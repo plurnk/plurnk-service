@@ -8,7 +8,7 @@ import {
 import {
     A2aMessage,
     connectHttpJsonAgent,
-    Module as A2aModule,
+    Exposure as A2aExposure,
     OutboundModule,
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -71,11 +71,11 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     const daemon = new Daemon({ db, provider, http });
     daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
-    const registration = A2aModule.init({
+    const registration = A2aExposure.init({
         workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let exposure: A2aModule | undefined;
+    let exposure: A2aExposure | undefined;
     daemon.registerModule({ mounts: A2A_MOUNTS, start: async (port) => { exposure = await registration.start(port); return exposure; } }, "test-module");
     daemon.registerModule(rootOwner(), "test-root");
     let calls = 0;
@@ -163,12 +163,12 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         workerId: ordinaryRoot.workerId,
         name: crypto.randomUUID(),
     });
-    const registration = A2aModule.init({
+    const registration = A2aExposure.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let a2a: A2aModule | null = null;
+    let a2a: A2aExposure | null = null;
     daemon.registerModule({
         mounts: A2A_MOUNTS,
         start: async (port) => {
@@ -362,12 +362,12 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         http,
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
-    const registration = A2aModule.init({
+    const registration = A2aExposure.init({
         workspace: { name: workspaceName, projectRoot: null },
         card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let listener: A2aModule | null = null;
+    let listener: A2aExposure | null = null;
     daemon.registerModule({
         mounts: A2A_MOUNTS,
         start: async (port) => {
@@ -393,7 +393,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
             "public Agent Card discovery remains passive",
         );
 
-        const endpoint = (listener as A2aModule).agentCard().supportedInterfaces[0]!.url;
+        const endpoint = (listener as A2aExposure).agentCard().supportedInterfaces[0]!.url;
         for (const [path, expectedStatus] of [["/tasks", 200], ["/tasks/missing-task", 404]] as const) {
             const response = await fetch(`${endpoint}${path}`, { headers: { "a2a-version": "1.0" } });
             const result = await response.json();
@@ -445,8 +445,8 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         name: `a2a-restart-${crypto.randomUUID()}`,
         projectRoot: null,
     });
-    let firstListener: A2aModule | null = null;
-    const firstExposure = A2aModule.init({
+    let firstListener: A2aExposure | null = null;
+    const firstExposure = A2aExposure.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         ...A2A_EXPOSURE,
@@ -482,8 +482,8 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             }),
             http,
         });
-        let secondListener: A2aModule | null = null;
-        const secondExposure = A2aModule.init({
+        let secondListener: A2aExposure | null = null;
+        const secondExposure = A2aExposure.init({
             workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
             card: a2aCard(),
             ...A2A_EXPOSURE,
@@ -544,12 +544,12 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
         name: `a2a-cancel-${crypto.randomUUID()}`,
         projectRoot: null,
     });
-    const registration = A2aModule.init({
+    const registration = A2aExposure.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
         ...A2A_EXPOSURE,
     });
-    let a2a: A2aModule | null = null;
+    let a2a: A2aExposure | null = null;
     daemon.registerModule({
         mounts: A2A_MOUNTS,
         start: async (port) => {

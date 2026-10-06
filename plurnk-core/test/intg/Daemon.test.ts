@@ -268,7 +268,7 @@ test("{§module-action-registration} Daemon: module actions register once during
         await daemon.start();
         // {§functionality-scope} Core families and the discovered default modules register beside the
         // module's own action.
-        const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp."];
+        const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp.", "workspace.a2a."];
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
             name: "example.inspect",
             scope: "worldless",

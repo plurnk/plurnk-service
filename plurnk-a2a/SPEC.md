@@ -51,10 +51,19 @@ independent agent may use the SDK's reference request handler and task store;
 those test actors establish wire behavior and are not the Plurnk task
 architecture.
 
+## §a2a-module The package module
+
+One discovered module composes both halves of the package: it declares `plurnk.kind: "module"`
+({§module-discovery}), always registers the outbound family ({§a2a-functionality}), and claims
+the exposure's mounts and starts the exposure only when `PLURNK_A2A_EXPOSE=1` selects it
+({§module-self-activation}). An invalid exposure setting withholds the exposure alone
+({§module-contained-configuration}): outbound A2A keeps working, and the setting is reported
+under `module:@plurnk/plurnk-a2a`.
+
 ## §a2a-inbound-exposure Inbound exterior exposure
 
-The inbound HTTP+JSON exposure is an exterior adapter over
-`ApplicationPort`, mounted on the daemon's one listener ({§http-host}): the
+The inbound HTTP+JSON exposure is an exterior adapter over the
+`ApplicationPort` calls it makes, mounted on the daemon's one listener ({§http-host}): the
 public Agent Card at the standard well-known path and the interface at
 `PLURNK_A2A_ENDPOINT_PATH`, both on the service address and both claimed before
 setup ({§module-http-mounts}), and it opens no
@@ -110,7 +119,7 @@ silently simulated. The adapter subscribes to live
 application events for streaming and reads durable Worker/Loop/log projections
 for retrieval and restart truth.
 
-§a2a-hosted-card The service generates the hosted standard Agent Card from
+§a2a-hosted-card The exposure generates the hosted standard Agent Card from
 normalized environment identity plus actual adapter capabilities. The adapter,
 not configuration, fixes HTTP+JSON protocol `1.0`, streaming, no push
 notifications, no extended card, no tenant, the security it enforces
@@ -158,7 +167,7 @@ not the Worker directory's creation order.
 
 ## §a2a-functionality Outbound agents as workspace Functionality
 
-The package registers, through `OutboundModule`, one workspace Functionality
+The package module registers, through its `OutboundModule` half, one workspace Functionality
 family named `a2a` ({§functionality-adapter} in core): the package, its keys,
 the family and the scheme share one name. Its definition
 is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,

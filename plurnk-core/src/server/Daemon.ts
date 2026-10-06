@@ -1677,6 +1677,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         for (const { module, owner } of discoveredModules.modules) {
             this.#modules.push({ module, owner });
         }
+        // {§module-contained-configuration} — what a module contained is its own configuration diagnostic.
+        for (const { module, owner } of this.#modules) {
+            for (const { key, message } of module.contained ?? []) this.#configuration.record(`module:${owner}`, new ConfigurationError(key, message));
+        }
         this.#claimMounts();
         const setupSeam: HostSetupSeam = this;
         for (const { module } of this.#modules) {

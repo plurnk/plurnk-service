@@ -411,7 +411,7 @@ for (const built of [false, true]) {
         const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
         for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
-            ["a2a-hosted", "PLURNK_A2A_ENDPOINT_PATH"],
+            ["module:@plurnk/plurnk-a2a", "PLURNK_A2A_ENDPOINT_PATH"],
             ["observability", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],
             ["model-child", "PLURNK_MODEL_CHILD"],

@@ -1,5 +1,5 @@
 // The daemon module contract ({§module-contract}): the lifecycle a module implements and the base
-// setup seam it receives. Each family owns the slice for what modules contribute to it
+// setup seam it receives. Each framework owns the slice for what modules contribute to its kind
 // ({§module-seam-slices}); this package depends on contracts alone (ARCHITECTURE.md § Package principles).
 import type {
     ApplicationActionContext,
@@ -106,6 +106,13 @@ export interface FunctionalitySeam<Runtime = never, SchemeFacet = never> {
     registerFunctionalityAdapter(adapter: FunctionalityAdapter<Runtime, SchemeFacet>): FunctionalityFamilyHandle;
 }
 
+// {§module-contained-configuration} One setting a module contained: it withheld the part the setting
+// configures and kept the rest working.
+export interface ContainedConfiguration {
+    readonly key: string;
+    readonly message: string;
+}
+
 export interface StartedModule {
     // {§module-shutdown-order} Producers settle before observers are released.
     stop?(): void | Promise<void>;
@@ -118,6 +125,8 @@ export interface DaemonModule<SetupSeam = ModuleSetupSeam, StartSeam = Applicati
     // {§module-http-mounts} The HTTP route prefixes this module mounts at `start`, claimed before any
     // module sets up.
     readonly mounts?: readonly string[];
+    // {§module-contained-configuration} Settings this module contained, read by the host at registration.
+    readonly contained?: readonly ContainedConfiguration[];
     setup?(seam: SetupSeam): void | Promise<void>;
     start?(seam: StartSeam): void | StartedModule | Promise<void | StartedModule>;
 }

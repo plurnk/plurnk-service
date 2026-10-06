@@ -21,7 +21,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
 }
 ```
 
-What a module contributes to another family is typed by that family: scheme registration and
+What a module contributes to another kind is typed by that kind's framework: scheme registration and
 facets by `@plurnk/plurnk-schemes`, runtimes by `@plurnk/plurnk-execs`, and the installed plugin
 set by `@plurnk/plurnk-agent-plugins`.
 

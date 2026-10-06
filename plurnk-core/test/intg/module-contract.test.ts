@@ -131,6 +131,22 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
     assert.equal(await get("/package"), "", "the root owner answers what no module claimed");
 });
 
+test("{§module-contained-configuration} a contained setting is the module's own notice, and the rest of the module works", async (t) => {
+    environment(t, {});
+    const { daemon } = await boot(t);
+    let setUp = false;
+    daemon.registerModule({
+        contained: [{ key: "ACME_EXPOSURE", message: "ACME_EXPOSURE must be 0 or 1." }],
+        setup() { setUp = true; },
+    }, "@acme/contained");
+    await daemon.start();
+    assert.equal(setUp, true, "the part that works still sets up");
+    assert.deepEqual(daemon.configurationNotices().filter(({ owner }) => owner === "module:@acme/contained"), [{
+        source: "engine:configuration", kind: "configuration_unavailable", level: "warn",
+        owner: "module:@acme/contained", key: "ACME_EXPOSURE", message: "ACME_EXPOSURE must be 0 or 1.",
+    }]);
+});
+
 test("{§module-discovery} an untrusted module is skipped and reported, never imported", async (t) => {
     environment(t, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1", ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
     const warn = mock.method(console, "warn", () => undefined);

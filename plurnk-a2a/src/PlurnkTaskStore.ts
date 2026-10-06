@@ -103,11 +103,15 @@ const terminalArtifact = (result: OperationResult | null, content: string | unde
     }];
 };
 
+// The port functions the store calls.
+export type TaskStorePort = Pick<ApplicationPort,
+    "cancelWorker" | "listWorkerLoops" | "listWorkers" | "pendingClientInteractions" | "readMessages" | "readWorker">;
+
 export default class PlurnkTaskStore implements TaskStore {
-    readonly #port: ApplicationPort;
+    readonly #port: TaskStorePort;
     readonly #workspace: WorkspaceBinding;
 
-    constructor(port: ApplicationPort, workspace: WorkspaceBinding) {
+    constructor(port: TaskStorePort, workspace: WorkspaceBinding) {
         this.#port = port;
         this.#workspace = workspace;
     }

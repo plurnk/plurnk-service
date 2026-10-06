@@ -19,6 +19,7 @@ type names only what the module uses.
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
 | `close` | Nothing | Releases observers and remaining resources after producers settle. |
 | `mounts` | Declared, not called | The HTTP route prefixes the module mounts at `start` ({§module-http-mounts}). |
+| `contained` | Declared, not called | Settings the module contained: each withheld the part it configures ({§module-contained-configuration}). |
 
 §module-http-mounts **A module declares the HTTP prefixes it serves.** `mounts` lists absolute
 pathname prefixes ({§http-host}). The host claims every module's mounts before any module sets
@@ -40,6 +41,15 @@ or a factory taking no arguments ({§module-discovery}), so it reads its own kno
 environment its package documents. An unconfigured module is inert: it claims no mounts and
 registers nothing. The host decides nothing on a discovered module's behalf.
 
+§module-contained-configuration **A module contains a setting it cannot use.** When one of its
+own settings is invalid, a module withholds only the part that setting configures, keeps the rest
+working, and lists the setting in `contained`: its key and the exact message. The host reads the
+list when the module registers and reports each entry as a configuration Notice owned by
+`module:<package>` ({§configuration-repair-path}), and the offline check fails on it. The report
+is declared, like `mounts`, because the host passes every module one seam object and cannot
+attribute a call to a module. A module that cannot work at all throws from its factory instead
+({§module-discovery}).
+
 §module-failure **A `setup` or `start` failure fails boot, and stopping releases exactly what was
 acquired.** The host tracks a module that has `stop` or `close` before its `setup`, and a distinct
 lifetime object when `start` returns one. A setup failure leaves later modules neither set up nor
@@ -55,8 +65,8 @@ the host object carries is not contract.
 ## Seam slices
 
 §module-seam-slices **A module's setup seam is the intersection of the slices it uses, and each
-family owns the slice for what modules contribute to it.** A family's slice and its contribution
-types live in that family's package, so this package never depends on a less stable one.
+framework owns the slice for what modules contribute to its kind.** A kind's slice and its
+contribution types live in its framework's package, so this package never depends on a less stable one.
 
 | Slice | Owner | Offers |
 | --- | --- | --- |
@@ -69,7 +79,7 @@ types live in that family's package, so this package never depends on a less sta
 A start seam is a `Pick` of {§application-port} naming the calls the module makes.
 
 §module-compatibility **A module states its compatibility as npm peer ranges.** It declares this
-package, and each family whose slice it uses, as peer dependencies; the host that implements the
+package, and each framework whose slice it uses, as peer dependencies; the host that implements the
 contract is the one package that depends on it directly. There is no manifest version field.
 
 ## Base setup functions

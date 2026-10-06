@@ -3,8 +3,9 @@ export { default as A2aMessage, type A2aMessageIdentity } from "./A2aMessage.ts"
 export { default as A2aProjection, type A2aTaskContent } from "./A2aProjection.ts";
 export { connectHttpJsonAgent, connectHttpJsonAgentFromCard, discoverAgentCard, type HttpJsonConnectionOptions } from "./HttpJsonClient.ts";
 export { default as A2aFunctionality, A2A_FAMILY, A2A_OWNER, aliasOfCard, renderAgent } from "./Functionality.ts";
-export { default as OutboundModule } from "./OutboundModule.ts";
-export { default as Module, type A2aModuleOptions, type A2aModuleRegistration } from "./Module.ts";
+export { default as OutboundModule, type OutboundSetupSeam } from "./OutboundModule.ts";
+export { default as Exposure, type A2aExposureOptions, type A2aExposureRegistration, type ExposurePort } from "./Exposure.ts";
+export { default as Module } from "./Module.ts";
 export type { A2aWorkspaceConfiguration } from "./WorkspaceBinding.ts";
 export {
     connectTimeoutMs,

@@ -7,17 +7,33 @@ import { openMigrated } from "./_db.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];
 
-test("{§mcp-module} {§schedule-module} a bare daemon discovers the MCP and schedule families", async (t) => {
+test("{§mcp-module} {§schedule-module} {§a2a-module} a bare daemon discovers the MCP, schedule and A2A families", async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const names = daemon.listModuleActions().map(({ name }) => name);
-    for (const family of ["mcp", "schedule"]) {
+    for (const family of ["mcp", "schedule", "a2a"]) {
         assert.deepEqual(
             names.filter((name) => name.startsWith(`workspace.${family}.`)).map((name) => name.slice(`workspace.${family}.`.length)).filter((verb) => VERBS.includes(verb)).toSorted(),
             VERBS,
             `the ${family} family arrives without explicit composition`,
         );
     }
+});
+
+test("{§a2a-module} {§module-contained-configuration} an invalid exposure setting is reported and outbound A2A keeps working", async (t) => {
+    const prior = process.env.PLURNK_A2A_EXPOSE;
+    process.env.PLURNK_A2A_EXPOSE = "yes";
+    t.after(() => { if (prior === undefined) delete process.env.PLURNK_A2A_EXPOSE; else process.env.PLURNK_A2A_EXPOSE = prior; });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.a2a.list"), "the outbound family is registered");
+    assert.deepEqual(
+        daemon.configurationNotices().filter(({ owner }) => owner === "module:@plurnk/plurnk-a2a").map(({ key }) => key),
+        ["PLURNK_A2A_EXPOSE"],
+        "the contained setting is the module's own configuration notice",
+    );
 });

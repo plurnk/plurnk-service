@@ -68,8 +68,13 @@ const textOf = (message: Message): string => {
     return text;
 };
 
+// The port functions the executor calls.
+export type ExecutorPort = Pick<ApplicationPort,
+    | "cancelWorker" | "createConversationWorker" | "forkWorker" | "pendingClientInteractions"
+    | "readWorker" | "resolveClientInteraction" | "runLoop" | "subscribeToEvents">;
+
 export default class PlurnkAgentExecutor implements AgentExecutor {
-    readonly #port: ApplicationPort;
+    readonly #port: ExecutorPort;
     readonly #workspace: WorkspaceBinding;
     readonly #store: PlurnkTaskStore;
     readonly #proposals: HostedProposals;
@@ -77,7 +82,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     readonly #ownedContexts = new Set<string>();
     readonly #activeTasks = new Set<string>();
 
-    constructor(port: ApplicationPort, workspace: WorkspaceBinding, store: PlurnkTaskStore, proposals: HostedProposals) {
+    constructor(port: ExecutorPort, workspace: WorkspaceBinding, store: PlurnkTaskStore, proposals: HostedProposals) {
         this.#port = port;
         this.#workspace = workspace;
         this.#store = store;

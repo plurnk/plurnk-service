@@ -16,14 +16,10 @@ import EnvDefaults from "./core/env-defaults.ts";
 import HostPaths from "./core/HostPaths.ts";
 import LegacyHome from "./core/LegacyHome.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
-import Meta from "@plurnk/plurnk-meta";
+import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
-import {
-    Module as A2aModule,
-    hostedAgentConfiguration,
-} from "@plurnk/plurnk-a2a";
 import ServiceModules from "./server/ServiceModules.ts";
 import { discoverDaemonModules } from "./server/module-discovery.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
@@ -119,11 +115,14 @@ export default class Service {
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
         // {§module-self-activation} — a discovered module validates its own configuration as its factory
-        // constructs it; the offline check constructs every one and starts none.
-        const { configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#installedNodeModules()), hostPaths: Service.#hostPaths });
-        if (configurationErrors.length > 0) {
-            throw new Error(configurationErrors.map(({ cause }) => cause.message).join("\n"), { cause: configurationErrors[0]!.cause });
-        }
+        // constructs it; the offline check constructs every one, starts none, and fails on what any
+        // contained ({§module-contained-configuration}).
+        const { modules, configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#installedNodeModules()), hostPaths: Service.#hostPaths });
+        const causes = [
+            ...configurationErrors.map(({ cause }) => cause),
+            ...modules.flatMap(({ module }) => (module.contained ?? []).map(({ key, message }) => new ConfigurationError(key, message))),
+        ];
+        if (causes.length > 0) throw new Error(causes.map(({ message }) => message).join("\n"), { cause: causes[0] });
         validateObservabilityConfiguration();
     }
 
@@ -253,10 +252,7 @@ export default class Service {
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
             observability = await configuration.capture("observability", () => startObservability());
-            const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
-            ServiceModules.registerWorkspaceCapabilities(daemon);
-            if (a2a !== null) daemon.registerModule(A2aModule.init(a2a), "@plurnk/plurnk-a2a");
             // {§rpc}: AG-UI claims the root of the daemon's listener ({§module-http-mounts}); the
             // socket never closes or rebinds between admission and readiness.
             daemon.registerModule(aguiModule, "@plurnk/plurnk-agui");

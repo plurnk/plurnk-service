@@ -49,8 +49,8 @@ Declared agents start enabled. `PLURNK_A2A_research_ENABLED=0` disables that
 agent without hiding its definition; `PLURNK_A2A_ENABLED=0` changes the family
 default. Aliases are lowercase; `_` represents `-` in environment names.
 
-In the service those definitions are the baseline of the workspace `a2a`
-Functionality family (`OutboundModule`): every Worker lists, discovers, adds,
+The service discovers the package as one module ({§a2a-module}). Those definitions are the baseline
+of its workspace `a2a` Functionality family: every Worker lists, discovers, adds,
 enables, disables, and removes outbound agents through the common
 `workspace.a2a.*` actions or the generated ```` ```a2a ```` manager, and the
 `a2a://<alias>` scheme resolves an alias against the workspace's enabled
