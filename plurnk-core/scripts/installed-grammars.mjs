@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-// {§default-plugin-ownership}: resolve only within the clean consumer, never
+// {§default-extension-ownership}: resolve only within the clean consumer, never
 // through the checkout's development dependencies or export conditions.
 export function installedGrammars(cwd) {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", `
@@ -23,7 +23,7 @@ export function installedGrammars(cwd) {
         try {
             for (const { mimetype, slug, extensions, optional } of TREE_SITTER_REGISTRY) {
                 if (optional === true) {
-                    // {§mimetype-optional-grammars}: an optional leaf is absent from the default
+                    // {§mimetype-optional-grammars}: an optional grammar extension is absent from the default
                     // composition and its language degrades honestly rather than failing.
                     const result = await mimetypes.process({
                         content: "\\n",

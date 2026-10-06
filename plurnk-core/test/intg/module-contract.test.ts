@@ -65,11 +65,11 @@ before(async () => {
 after(async () => { await rm(root, { recursive: true, force: true }); });
 
 const environment = (t: TestContext, values: Readonly<Record<string, string | undefined>>): void => {
-    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_PLUGINS_TRUSTED_ONLY", "ACME_PACKAGE_ROUTE", "ACME_BUNDLE_ROUTE"];
+    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_EXTENSIONS_TRUSTED_ONLY", "ACME_PACKAGE_ROUTE", "ACME_BUNDLE_ROUTE"];
     const prior = new Map(keys.map((key) => [key, process.env[key]]));
     t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
     for (const key of keys) {
-        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_PLUGINS_TRUSTED_ONLY: "0", ...values }[key];
+        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0", ...values }[key];
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
 };
@@ -132,7 +132,7 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
 });
 
 test("{§module-discovery} an untrusted module is skipped and reported, never imported", async (t) => {
-    environment(t, { PLURNK_PLUGINS_TRUSTED_ONLY: "1", ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
+    environment(t, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1", ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
     const warn = mock.method(console, "warn", () => undefined);
     t.after(() => warn.mock.restore());
     const { daemon, lines } = await boot(t);

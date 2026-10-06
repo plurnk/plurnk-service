@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 
-// {§http-materializer-plugins} — the pluggable page-materialization contract.
+// {§http-materializer-extensions} — the pluggable page-materialization contract.
 // A third-party package declares `plurnk: { kind: "http-materializer", materializers:
 // [{ id, module }] }` and exports one HttpMaterializer per entry. The operator
 // selects one by id (`PLURNK_SCHEMES_HTTP_MATERIALIZER`); unset means the built-in
@@ -11,8 +11,8 @@ import Meta from "@plurnk/plurnk-meta";
 // own eligibility (credentials, URL support) decides per request, and the
 // built-in projection remains the fallback for recoverable outcomes.
 //
-// Discovery mirrors the executor family ({§plugin-discovery}): scope-agnostic
-// package scan, trust gate ({§plugin-trust-boundary}), one flat id namespace —
+// Discovery mirrors the executor family ({§extension-discovery}): scope-agnostic
+// package scan, trust gate ({§extension-trust-boundary}), one flat id namespace —
 // two packages claiming one id fail hard, never silently shadow.
 
 export type MaterializerEvidence = ReadonlyArray<{ readonly name: string; readonly value: string }>;

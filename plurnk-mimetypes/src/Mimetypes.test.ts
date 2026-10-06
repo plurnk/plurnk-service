@@ -8,7 +8,7 @@ import os from "node:os";
 import Mimetypes from "./Mimetypes.ts";
 import BaseHandler from "./BaseHandler.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
-import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeExtensionError from "./MimetypeExtensionError.ts";
 import MimetypeDerivationError from "./MimetypeDerivationError.ts";
 import MimetypeInputError from "./MimetypeInputError.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
@@ -343,7 +343,7 @@ describe("Mimetypes — getHandler", () => {
         await assert.rejects(
             () => m.getHandler("text/plain"),
             (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.equal(error.packageName, plainInfo.packageName);
                 assert.equal(error.mimetype, plainInfo.mimetype);
                 assert.strictEqual(error.cause, cause);
@@ -360,7 +360,7 @@ describe("Mimetypes — getHandler", () => {
         await assert.rejects(
             () => m.getHandler("text/plain"),
             (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.ok(error.cause instanceof TypeError);
                 return true;
             },
@@ -375,7 +375,7 @@ describe("Mimetypes — getHandler", () => {
         await assert.rejects(
             () => m.getHandler("text/plain"),
             (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.ok(error.cause instanceof TypeError);
                 return true;
             },
@@ -433,7 +433,7 @@ describe("Mimetypes — process: metadata + error paths", () => {
         });
         await assert.rejects(
             () => m.process({ path: "foo.txt", content: "raw" }),
-            MimetypePluginError,
+            MimetypeExtensionError,
         );
     });
 
@@ -901,7 +901,7 @@ describe("Mimetypes — query", () => {
                 );
             },
             (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.equal(error instanceof UnsupportedDialectError, false);
                 assert.equal(error.packageName, plainInfo.packageName);
                 assert.equal(error.mimetype, plainInfo.mimetype);

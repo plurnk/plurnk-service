@@ -4,9 +4,9 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Meta, { TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts";
+import Meta, { TEACHING_CORPUS, type ExtensionAttributionContext } from "./index.ts";
 
-const attributionContext: PluginAttributionContext = {
+const attributionContext: ExtensionAttributionContext = {
     workspaceId: "workspace-7",
     workerId: "worker-11",
     loop: 2,
@@ -32,7 +32,7 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
 
 test("isTrusted: gate off ('' / '0') trusts everything", () => {
     for (const v of ["", "0"]) {
-        assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_PLUGINS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
+        assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_EXTENSIONS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
     }
 });
 
@@ -41,7 +41,7 @@ test("isTrusted: gate off ('' / '0') trusts everything", () => {
 // unset answer changes with it.
 test("isTrusted: an unset key is answered by this package's own panel", () => {
     const panel = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
-    const declared = /^PLURNK_PLUGINS_TRUSTED_ONLY=(.*)$/mu.exec(panel)?.[1];
+    const declared = /^PLURNK_EXTENSIONS_TRUSTED_ONLY=(.*)$/mu.exec(panel)?.[1];
     assert.ok(declared !== undefined, "the owner declares the key it is asked about");
     const off = declared.trim() === "" || declared.trim() === "0";
     assert.equal(Meta.isTrusted("@acme/rogue", {}), off, `the shipped declaration ${JSON.stringify(declared)} governs an unset environment`);
@@ -49,15 +49,15 @@ test("isTrusted: an unset key is answered by this package's own panel", () => {
 });
 
 test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
-    const env = { PLURNK_PLUGINS_TRUSTED_ONLY: "acme-plugin, @firewolf/firepad" };
+    const env = { PLURNK_EXTENSIONS_TRUSTED_ONLY: "acme-extension, @firewolf/firepad" };
     assert.equal(Meta.isTrusted("@plurnk/plurnk-schemes-http", env), true);
-    assert.equal(Meta.isTrusted("acme-plugin", env), true);
+    assert.equal(Meta.isTrusted("acme-extension", env), true);
     assert.equal(Meta.isTrusted("@firewolf/firepad", env), true);
-    assert.equal(Meta.isTrusted("evil-plugin", env), false);
-    assert.equal(Meta.isTrusted("evil-plugin", { PLURNK_PLUGINS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
+    assert.equal(Meta.isTrusted("evil-extension", env), false);
+    assert.equal(Meta.isTrusted("evil-extension", { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
-test("declaresKind: one exact string identifies one plugin family", () => {
+test("declaresKind: one exact string identifies one kind", () => {
     assert.equal(Meta.declaresKind({ kind: "exec" }, "exec"), true);
     assert.equal(Meta.declaresKind({ kind: "scheme" }, "exec"), false);
     assert.equal(Meta.declaresKind({ kind: ["exec", "scheme"] }, "exec"), false);
@@ -79,7 +79,7 @@ test("normalizeAttribution: malformed declarations fail at their shared boundary
     for (const raw of [42, {}, "", ["ok", ""], ["ok", 42]]) {
         assert.throws(
             () => Meta.normalizeAttribution(raw, "pkg"),
-            /plugin 'pkg': plurnk\.attribution must be a non-empty string or string\[\]/,
+            /extension 'pkg': plurnk\.attribution must be a non-empty string or string\[\]/,
             `invalid declaration ${JSON.stringify(raw)} must not be partially admitted`,
         );
     }
@@ -97,12 +97,12 @@ test("normalizeAttribution: only @plurnk packages may claim the reserved @plurnk
     assert.deepEqual(Meta.normalizeAttribution("@acme/widgets", "evil-pkg"), ["@acme/widgets"]);
 });
 
-test("runtimeAttribution: a plugin authors no, one, or many attempt-time tags", () => {
-    let received: PluginAttributionContext | undefined;
+test("runtimeAttribution: an extension authors no, one, or many attempt-time tags", () => {
+    let received: ExtensionAttributionContext | undefined;
     const source = {
         marker: "source",
-        attributions(context: PluginAttributionContext) {
-            assert.equal(this.marker, "source", "the hook retains its plugin-object receiver");
+        attributions(context: ExtensionAttributionContext) {
+            assert.equal(this.marker, "source", "the function retains its extension-object receiver");
             received = context;
             return ["folksonomy:search", "creator:ada"];
         },
@@ -127,9 +127,9 @@ test("runtimeAttribution: the reserved lane and structural failures remain packa
     );
     assert.throws(
         () => Meta.runtimeAttribution({ attributions: ["not callable"] }, attributionContext, "@acme/plugin"),
-        /plugin '@acme\/plugin': attributions must be a function/,
+        /extension '@acme\/plugin': attributions must be a function/,
     );
-    const cause = new Error("plugin decision failed");
+    const cause = new Error("extension decision failed");
     assert.throws(
         () => Meta.runtimeAttribution({ attributions: () => { throw cause; } }, attributionContext, "@acme/plugin"),
         (error: Error) => error.cause === cause,
@@ -146,13 +146,13 @@ test("composeAttributions: composition has one stable deduplicated representatio
 });
 
 test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plugins-scan-"));
+    const root = await mkdtemp(join(tmpdir(), "extensions-scan-"));
     try {
         const outer = join(root, "node_modules");
         const nm = join(root, "fixture", "node_modules");
         await mkdir(join(outer, "unrelated-ancestor"), { recursive: true });
         await mkdir(join(nm, "@plurnk", "plurnk-fake"), { recursive: true });
-        await mkdir(join(nm, "acme-plugin"), { recursive: true });
+        await mkdir(join(nm, "acme-extension"), { recursive: true });
         await mkdir(join(nm, ".bin"), { recursive: true });
         await mkdir(join(nm, ".cache"), { recursive: true });
         const real = join(root, "workspace-member");
@@ -164,7 +164,7 @@ test("packageDirs: enumerates the fixture plus legitimate packages farther up th
         assert.equal(byName.size, candidates.length, "each package name has one nearest candidate");
         assert.equal(byName.get("@plurnk/plurnk-fake"), join(nm, "@plurnk", "plurnk-fake"));
         assert.equal(byName.get("@plurnk/plurnk-linked"), join(nm, "@plurnk", "plurnk-linked"));
-        assert.equal(byName.get("acme-plugin"), join(nm, "acme-plugin"));
+        assert.equal(byName.get("acme-extension"), join(nm, "acme-extension"));
         assert.equal(byName.get("unrelated-ancestor"), join(outer, "unrelated-ancestor"));
         assert.equal(byName.has(".bin"), false);
         assert.equal(byName.has(".cache"), false);
@@ -178,7 +178,7 @@ test("packageDirs: missing node_modules yields []", async () => {
 });
 
 test("packageDirs: merges npm's nested peer graph with ancestor packages, nearest name wins", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plugins-chain-"));
+    const root = await mkdtemp(join(tmpdir(), "extensions-chain-"));
     try {
         const outer = join(root, "node_modules");
         const inner = join(root, "packages", "service", "node_modules");
@@ -200,9 +200,9 @@ test("packageDirs: merges npm's nested peer graph with ancestor packages, neares
     }
 });
 
-// {§plugin-manifest-read}
+// {§extension-manifest-read}
 test("readManifest: the family claim of one package.json, or null for anything that is not one", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plugins-manifest-"));
+    const root = await mkdtemp(join(tmpdir(), "extensions-manifest-"));
     try {
         const pkg = async (name: string, content: string): Promise<string> => {
             await mkdir(join(root, name), { recursive: true });
@@ -234,7 +234,7 @@ test("readManifest: the family claim of one package.json, or null for anything t
 });
 
 test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plugins-walk-"));
+    const root = await mkdtemp(join(tmpdir(), "extensions-walk-"));
     try {
         await mkdir(join(root, "node_modules", "@plurnk"), { recursive: true });
         const deep = join(root, "packages", "member", "src");
@@ -248,7 +248,7 @@ test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent",
     }
 });
 
-test("{§plugin-manifest-read} an Agent Plugin supplies one native declaration through either distribution", async (t) => {
+test("{§extension-manifest-read} an Agent Plugin supplies one native declaration through either distribution", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-native-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const native = { kind: "module", module: "ai.plurnk/plugin.js" };
@@ -270,7 +270,7 @@ test("{§plugin-manifest-read} an Agent Plugin supplies one native declaration t
     assert.equal(await Meta.readManifest(root, "module"), null, "another client's declaration is not ours");
 });
 
-test("{§plugin-manifest-read} invalid or duplicate plugin declarations never fall through to package metadata", async (t) => {
+test("{§extension-manifest-read} invalid or duplicate extension declarations never fall through to package metadata", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-invalid-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const native = { kind: "module", module: "ai.plurnk/plugin.js" };
@@ -318,8 +318,8 @@ test("{§agent-plugins-containment} native entry paths and manifests cannot esca
     await assert.rejects(Meta.readManifest(plugin, "module"), /plugin.json does not resolve to a regular file/);
 });
 
-test("{§plugin-manifest-read} standard bundles preserve each native family's declaration", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-families-"));
+test("{§extension-manifest-read} standard bundles preserve each native family's declaration", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "agent-plugin-declarations-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const declarations = [
         { kind: "exec", runtimes: [{ name: "example", summary: "Example runtime" }] },
@@ -344,7 +344,7 @@ test("{§plugin-manifest-read} standard bundles preserve each native family's de
     }
 });
 
-test("{§plugin-manifest-read} a linked npm bundle resolves native files against its canonical plugin root", async (t) => {
+test("{§extension-manifest-read} a linked npm bundle resolves native files against its canonical plugin root", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-linked-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const plugin = join(root, "source");
@@ -358,4 +358,10 @@ test("{§plugin-manifest-read} a linked npm bundle resolves native files against
     const manifest = await Meta.readManifest(linked, "http-materializer");
     assert.ok(manifest);
     assert.equal(await Meta.moduleFile(manifest, "ai.plurnk/native.mjs"), join(plugin, "ai.plurnk/native.mjs"));
+});
+
+test("{§extension-trust-boundary} the trust setting's retired name fails hard and names its successor", () => {
+    const retired = "PLURNK_PLUGINS_TRUSTED_ONLY"; // lexicon-allow: the witness names the retired setting
+    assert.throws(() => Meta.isTrusted("@acme/anything", { [retired]: "1" }), (error: Error & { key?: string }) =>
+        error.key === retired && /is retired: PLURNK_EXTENSIONS_TRUSTED_ONLY is the extension trust setting/u.test(error.message));
 });

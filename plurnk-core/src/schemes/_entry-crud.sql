@@ -237,7 +237,7 @@ DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';
 -- INIT: entry_channels_invalidate_derivation
 -- A changed channel representation cannot retain search evidence derived from
 -- its predecessor. This trigger is the one invalidation owner for every write
--- path, including model EDIT, plugin channel capabilities, and streams.
+-- path, including model EDIT, extension channel capabilities, and streams.
 DROP TRIGGER IF EXISTS entry_channels_invalidate_derivation;
 CREATE TRIGGER entry_channels_invalidate_derivation
 AFTER UPDATE OF content_id, buffer, mimetype ON entry_channel_rows

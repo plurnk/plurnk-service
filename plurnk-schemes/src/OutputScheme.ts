@@ -18,7 +18,7 @@ export interface RuntimeDecl {
 }
 
 export default class OutputScheme {
-    // {§executor-scheme-output}: read-only model access to plugin-produced data.
+    // {§executor-scheme-output}: read-only model access to extension-produced data.
     // Per-call output mimetypes override the declared channel seeds at stream time.
     static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
         return {

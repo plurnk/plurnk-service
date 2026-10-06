@@ -18,7 +18,7 @@ flowchart LR
     SKILLS["Agent Skills Specification"] --- PLURNK
     PLUGINS["Agent Plugins Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
-    PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
+    EXTENSION["Plurnk extension<br/>(exec · scheme · mimetype · provider · module)<br/>plurnk-owned interface"] --- PLURNK
 
     PLURNK --- A2A["A2A Specification"]
 ```
@@ -72,8 +72,8 @@ package; this root document does not restate their teaching.
 | Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
 | Agent Skills documents and resource trees                 | `@plurnk/plurnk-agent-skills`                                | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md)                                               |
 | Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
-| Addressable capability framework                          | `@plurnk/plurnk-schemes` and installed scheme packages       | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
-| Executable capability framework                           | `@plurnk/plurnk-execs` and installed executor packages       | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |
+| Scheme framework                                          | `@plurnk/plurnk-schemes` and installed scheme extensions     | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
+| Executor framework                                        | `@plurnk/plurnk-execs` and installed executor extensions     | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |
 | Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
@@ -90,10 +90,10 @@ client-interface module that publishes that protocol.
 
 Family packages define extension contracts. Installed adapters implement those
 contracts. Core composes them but does not absorb their domain logic. Shared
-facts have one schema and one specification owner. Capability frameworks do not
-depend on their leaf consumers; the service manifest is the sole owner of its
-default leaf set, while compatible third-party leaves extend it through the
-same installation and discovery path ({§default-plugin-ownership}).
+facts have one schema and one specification owner. Frameworks do not depend on
+the extensions of their kind; the service manifest is the sole owner of its
+default extensions, while compatible third-party extensions join them through the
+same installation and discovery path ({§default-extension-ownership}).
 
 ### Package principles
 
@@ -111,8 +111,30 @@ plus dependents: 0 for a package everything depends on, 1 for one nothing depend
 | Stable Abstractions | The more stable a package, the more abstract it is. |
 
 The root lint enforces Acyclic and Stable Dependencies over every workspace's dependencies and peer
-dependencies, naming the cycle or the edge; the other four are design review rules. A plugin
-family's API therefore sits beneath both its host and its plugins, never inside the host.
+dependencies, naming the cycle or the edge; the other four are design review rules. An extension
+kind's API therefore sits beneath both its host and its extensions, never inside the host.
+
+## Extension vocabulary
+
+One word per concept, defined here and enforced by the root lint, which refuses every retired form
+by name with its successor (#1009). A quotation that must name a retired form carries
+`lexicon-allow`.
+
+| Term | Meaning | Not |
+| --- | --- | --- |
+| plugin | An Agent Plugin: the standard package (`plugin.json`, `skills/`, `mcp.json`, `extensions`) | Native code of any kind |
+| component | A plugin's portable content: a skill or an MCP server | |
+| extension | Native Plurnk code the daemon loads, of one kind, declared once in `package.json#plurnk` or a plugin's `extensions.ai.plurnk` | A file extension, always said in full; a protocol's extension, always protocol-qualified |
+| kind | Which seam an extension fills: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer`, `module` | A family, which manages definitions |
+| framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the host loads | A capability, which is what policy admits |
+| module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
+| family | Core's six-verb manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind |
+| definition | One managed datum of a family; components are the standard-portable definitions | |
+| face | A module role that serves a protocol: AG-UI, inbound A2A, ACP | |
+| hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |
+| organ | A subsystem that is not an extension point | |
+| capability | The admission policy's word, and what it admits | A package or framework |
+| runtime, tool | The fence the model invokes; one invocation inside it | |
 
 ## Documentation authority
 
@@ -158,7 +180,7 @@ a second home for a choice, and it will eventually disagree with the first.
 
 - **The system environment is the mechanism.** Node, the shell and CI all speak
   it. Each package declares its own keys in `.env.defaults` (under `ai.plurnk/`
-  for an Agent Plugin native extension); a
+  for an Agent Plugin's extension); a
   key's prefix names its owner; one package owns a key. The daemon assembles
   every installed package's file into one floor, set-if-unset beneath every
   operator source, so a declared key is always present
@@ -230,8 +252,8 @@ flowchart LR
     daemon <-->|SQLite file I/O| database[(Durable database)]
 ```
 
-`@plurnk/plurnk-service` is the only long-running platform process. Plugin and
-module packages run inside it; a package boundary is not a security boundary.
+`@plurnk/plurnk-service` is the only long-running platform process. Extension
+packages, modules included, run inside it; a package boundary is not a security boundary.
 AG-UI owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
 `{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server

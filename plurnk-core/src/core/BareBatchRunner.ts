@@ -1,5 +1,5 @@
 import type { BareStatement } from "@plurnk/plurnk-contracts";
-import { type PluginAttributionContext } from "@plurnk/plurnk-meta";
+import { type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import { randomUUID } from "node:crypto";
 import Results, { type SchemeResult } from "./results.ts";
@@ -19,12 +19,12 @@ type Notice = Parameters<NoticeChannel["push"]>[3];
 
 export default class BareBatchRunner {
     readonly #db: Db;
-    readonly #providerAttributions: (provider: Provider, context: PluginAttributionContext) => string[];
+    readonly #providerAttributions: (provider: Provider, context: ExtensionAttributionContext) => string[];
     readonly #providerFailure: (error: unknown, signal: AbortSignal | undefined) => SchemeResult;
 
     constructor({ db, providerAttributions, providerFailure }: {
         db: Db;
-        providerAttributions: (provider: Provider, context: PluginAttributionContext) => string[];
+        providerAttributions: (provider: Provider, context: ExtensionAttributionContext) => string[];
         providerFailure: (error: unknown, signal: AbortSignal | undefined) => SchemeResult;
     }) {
         this.#db = db;
@@ -98,7 +98,7 @@ export default class BareBatchRunner {
                 continue;
             }
             const providerWorkerId = randomUUID();
-            const attributionContext: PluginAttributionContext = Object.freeze({
+            const attributionContext: ExtensionAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
                 workerId: providerWorkerId,
                 loop: loopSequence,

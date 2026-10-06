@@ -31,7 +31,7 @@
         "instance": {
             "type": "string",
             "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*:",
-            "description": "Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate."
+            "description": "Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when an extension cannot know the durable coordinate."
         },
         "stage": {
             "type": "string",

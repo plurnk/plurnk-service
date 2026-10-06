@@ -42,7 +42,7 @@ import {
 import { ProviderError } from "@plurnk/plurnk-providers/errors";
 ```
 
-The package root composes the complete Node provider runtime, including plugin
+The package root composes the complete Node provider runtime, including extension
 discovery and environment-file defaults.
 
 ## Configure a model
@@ -126,10 +126,10 @@ flowchart TD
   shrink known capacity or declare unknown capacity, never enlarge known limits.
   Prompt projection and initialization reasoning READ limits are separate Core policy.
 
-## Provider plugins
+## Provider extensions
 
 Most integrations should use an MCP server, executor, scheme, or a provider
-declaration. A provider plugin is only needed for a protocol binding unavailable
+declaration. A provider extension is only needed for a protocol binding unavailable
 through the catalog and installed SDK packages.
 
 It may use any npm scope. Its package manifest declares the PLURNK name:
@@ -149,16 +149,16 @@ It may use any npm scope. Its package manifest declares the PLURNK name:
 
 The default export is an AI SDK provider with
 `languageModel(modelId)`. PLURNK adapts that language model into its own
-contract, so plugins do not reproduce retries, usage normalization, envelopes,
+contract, so extensions do not reproduce retries, usage normalization, envelopes,
 notices, or RFC 9457 failure normalization.
 
 The manifest may declare always-on `plurnk.attribution`. The default export may
 also implement synchronous `attributions(context)` and decide per provider
 attempt whether to return no, one, or many additional opaque tags
-({§plugin-attribution}).
+({§extension-attribution}).
 
 Discovery is scope-agnostic and rejects duplicate names.
-Third-party discovery uses the shared pre-import trust contract ({§plugin-trust-boundary}).
+Third-party discovery uses the shared pre-import trust contract ({§extension-trust-boundary}).
 
 ## Local endpoints
 
@@ -206,7 +206,7 @@ opt-in for endpoints that emit a leading `<think>` envelope, not a reasoning swi
 | Cost | Provider monetary evidence wins; known usage and catalog rates yield an estimate, not a settled charge. |
 
 For uncataloged compatible endpoints, declare the SDK, URL, and credential-variable
-name together; the examples are in the defaults reference. A provider plugin is
+name together; the examples are in the defaults reference. A provider extension is
 needed only when the protocol cannot be expressed by the installed adapters.
 
 ## Configured-provider packet conformance matrix

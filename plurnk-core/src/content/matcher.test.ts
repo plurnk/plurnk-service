@@ -12,8 +12,8 @@ import { InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-m
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 
-// Stub the one plugin method matcher.ts invokes. The impl receives
-// (input, matcher) and returns (or throws) what the plugin would.
+// Stub the one mimetypes method matcher.ts invokes. The impl receives
+// (input, matcher) and returns (or throws) what the mimetypes framework would.
 const stubQuery = (impl: (input: { content: string; hint: string }, matcher: ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes =>
     ({ query: impl } as unknown as Mimetypes);
 

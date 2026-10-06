@@ -1299,7 +1299,7 @@ test("READ: a present empty HTML projection succeeds and retains its HTML eviden
     assert.equal(inspect().closed, null);
 });
 
-test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-materializer-plugins})", async () => {
+test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-materializer-extensions})", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({

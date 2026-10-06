@@ -71,7 +71,7 @@ calling an interpreter through `sh`.
 
 Per-tag kill-switches (`PLURNK_EXECS_<TAG>=0`) and the
 `PLURNK_EXECS_ONLY` allowlist are honored by framework discovery, uniformly
-across every plugin ({§executor-policy}). A disabled tag is not registered and
+across every extension ({§executor-policy}). A disabled tag is not registered and
 never reaches this executor.
 
 ## Tests

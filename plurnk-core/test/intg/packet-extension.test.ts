@@ -11,14 +11,14 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.t
 import { packetSection } from "./_packet.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
-// Plugin packet control: a trusted scheme rewrites the engine's default section
+// Extension packet control: a trusted scheme rewrites the engine's default section
 // list through transformSections — the in-process seam that lets a third-party
-// plugin add / remove / reorder packet sections without forking the engine. The
+// extension add / remove / reorder packet sections without forking the engine. The
 // client wire never reaches the packet; this does.
-test("plugin packet control: a scheme adds, removes, and reorders packet sections", async () => {
+test("extension packet control: a scheme adds, removes, and reorders packet sections", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `pkt-plugin-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `pkt-extension-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const schemes = new SchemeRegistry();
@@ -35,7 +35,7 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
             },
             transformSections(sections: PacketSectionDraft[]): PacketSectionDraft[] {
                 return [
-                    { name: "demo", slot: "user", header: "Demo Plugin", content: "hello from the plugin" },
+                    { name: "demo", slot: "user", header: "Demo Extension", content: "hello from the extension" },
                     ...sections.filter((s) => s.name !== "budget"),
                 ];
             },
@@ -46,7 +46,7 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 
         // ADD: the plugin's section is in the packet, carrying its content.
-        assert.equal(packetSection(packet, "demo"), "hello from the plugin");
+        assert.equal(packetSection(packet, "demo"), "hello from the extension");
         const demo = (packet.sections as StoredPacketSection[]).find((section) => section.name === "demo");
         assert.ok(demo !== undefined);
         assert.equal(demo.weight, contentWeight(PacketWire.renderSection(demo)), "core assigns the durable render-weight");
@@ -54,12 +54,12 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         assert.equal(packetSection(packet, "budget"), "");
         // REORDER: the plugin's section leads the user slot.
         const userOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "user").map((s) => s.name);
-        assert.equal(userOrder[0], "demo", "plugin section leads the user slot");
+        assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
     } finally { await db.close(); }
 });
 
-test("plugin packet control: duplicate section names fail at the owning scheme boundary", async () => {
+test("extension packet control: duplicate section names fail at the owning scheme boundary", async () => {
     const schemes = new SchemeRegistry();
     schemes.register("broken", {
         manifest: {

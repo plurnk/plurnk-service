@@ -29,7 +29,7 @@ export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
 export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
 export const MATERIALIZER_ID_HEADER = "x-plurnk-materializer-id";
-// The operator's materializer selection ({§http-materializer-plugins}): a
+// The operator's materializer selection ({§http-materializer-extensions}): a
 // discovered materializer id; unset/empty means the built-in local projection
 // is the only body producer.
 export const MATERIALIZER_ENV = "PLURNK_SCHEMES_HTTP_MATERIALIZER";
@@ -99,7 +99,7 @@ export default class WebFetcher implements WebMaterializer {
         return (process.env[MATERIALIZER_ENV]?.trim() ?? "").length > 0;
     }
 
-    // {§http-materializer-plugins} — resolve the operator-selected materializer
+    // {§http-materializer-extensions} — resolve the operator-selected materializer
     // and consult its per-request eligibility; null → built-in projection.
     static async #selectedMaterializer(url: string, signal?: AbortSignal): Promise<{ materializer: HttpMaterializer; identity: string } | null> {
         const id = (process.env[MATERIALIZER_ENV]?.trim() ?? "");

@@ -15,7 +15,7 @@ const manifest: SchemeManifest = {
     modelVisible: true,
 };
 
-test("SchemeCtxImpl exposes only the public plugin context", () => {
+test("SchemeCtxImpl exposes only the public extension context", () => {
     const internal: PlurnkSchemeContext = {
         db: {} as Db,
         workspaceId: 1,

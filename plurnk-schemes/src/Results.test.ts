@@ -35,7 +35,7 @@ test("shape guards are mutually exclusive and optional on a scheme result", () =
     assert.equal(Results.isPassthrough(results[3]), false);
 });
 
-test("SchemeResult permits plugin-owned metadata without adopting a conventional shape", () => {
+test("SchemeResult permits extension-owned metadata without adopting a conventional shape", () => {
     const result: SchemeResult = {
         status: 207,
         cursor: "next-page",
@@ -64,7 +64,7 @@ test("problem mints a stable RFC 9457 type and title", () => {
     assert.equal(problem.detail, "No entry exists at notes:///missing.");
 });
 
-test("failure carries plugin metadata beside one problem", () => {
+test("failure carries extension metadata beside one problem", () => {
     const result = Results.failure(
         "scheme:notes",
         "entry-not-found",
@@ -239,7 +239,7 @@ test("match evidence requires a locator or a complete exact/enclosing TextRegion
     );
 });
 
-test("match evidence lists validate every plugin-produced item", () => {
+test("match evidence lists validate every extension-produced item", () => {
     const evidence = [
         { locator: "//item" },
         { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 } },

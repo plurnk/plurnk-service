@@ -27,7 +27,7 @@ export const discover = Discover.scan;
 export { default as Policy } from "./policy.ts";
 
 // Universal operation-result helpers. Executors return the same result shape as
-// schemes; the consuming daemon validates it at the plugin boundary.
+// schemes; the consuming daemon validates it at the extension boundary.
 export { Results } from "@plurnk/plurnk-schemes";
 export type { ProblemDetails, SchemeResult } from "@plurnk/plurnk-schemes";
 export { renderJsonResult } from "@plurnk/plurnk-contracts";
@@ -54,7 +54,7 @@ export type {
     RuntimeToolRegistry,
     RuntimeSummaryDecl,
     RuntimeDecl,
-    RuntimesHook,
+    RuntimesFunction,
     ExecInfo,
     ExecRegistry,
     Discovery,
@@ -67,7 +67,7 @@ export type { Executor, RuntimeRegistration } from "./module-slice.ts";
 // Transient observation contract, re-exported for executor authors.
 export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";
 export type {
-    PluginAttributionContext,
-    PluginAttributionDeclaration,
-    PluginAttributionSource,
+    ExtensionAttributionContext,
+    ExtensionAttributionDeclaration,
+    ExtensionAttributionSource,
 } from "@plurnk/plurnk-meta";

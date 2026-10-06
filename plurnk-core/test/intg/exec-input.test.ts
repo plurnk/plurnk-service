@@ -75,7 +75,7 @@ const fixture = async (executor: Executor, workspaceScoped = false) => {
         close: async () => { await (schemes.get("exec") as Exec).idle(); await db.close(); } };
 };
 
-test("{§exec-input}: SEND reaches an invocation-local plugin receiver without altering output authority", async () => {
+test("{§exec-input}: SEND reaches an invocation-local extension receiver without altering output authority", async () => {
     const executor = new Dialogue();
     const f = await fixture(executor);
     try {

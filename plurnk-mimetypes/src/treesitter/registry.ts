@@ -26,7 +26,7 @@ export interface TreeSitterLanguageEntry {
      */
     readonly importMapping: () => Promise<TreeSitterLanguageMapping>;
     /**
-     * An optional grammar is not part of the composed service's default leaf set: its leaf is
+     * An optional grammar is not part of the composed service's default extensions: its extension is
      * installed only by an operator who wants it, and until then the language degrades exactly as
      * any detected language with an absent leaf does ({§mimetype-optional-grammars}).
      */
@@ -220,7 +220,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         revision: "1",
         importMapping: () => import("./julia.ts"),
     },
-    // F# is optional (#541): its grammar leaf is 12 MB of wasm, twice any other, for a niche
+    // F# is optional (#541): its grammar extension is 12 MB of wasm, twice any other, for a niche
     // audience. `npm i @plurnk/plurnk-mimetypes-grammar-fsharp @plurnk/plurnk-mimetypes-grammar-fsharp-signature`
     // beside the service lights both up; until then `.fs`/`.fsx`/`.fsi` degrade to plain text.
     {

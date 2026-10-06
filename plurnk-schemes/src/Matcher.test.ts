@@ -159,7 +159,7 @@ test("matcher: footprint-less values do not become retrieval content", async () 
     assert.equal(r.body, undefined);
 });
 
-test("matcher: malformed plugin evidence fails at the adapter boundary", async () => {
+test("matcher: malformed extension evidence fails at the adapter boundary", async () => {
     const mts = stubMimetypes(async () => [{
         matched: "broken",
         regions: [{

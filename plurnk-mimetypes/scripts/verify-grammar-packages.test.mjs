@@ -6,7 +6,7 @@ import test from "node:test";
 import { assertGrammarLeafContract } from "./verify-grammar-packages.mjs";
 
 const makeLeaf = async (overrides = {}) => {
-    const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-leaf-contract-"));
+    const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-extension-contract-"));
     const directory = temporary.path;
     await mkdir(path.join(directory, "scripts"));
     const manifest = {

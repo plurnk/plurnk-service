@@ -98,7 +98,7 @@ for (const reported of [{ status: 500, exitCode: 1 }, { status: 102 }, { status:
     });
 }
 
-test("{§notice-level} an executor notice with explicit severity crosses the plugin boundary unchanged", async () => {
+test("{§notice-level} an executor notice with explicit severity crosses the extension boundary unchanged", async () => {
     const notice = {
         source: "exec:honesty",
         kind: "progress",
@@ -129,7 +129,7 @@ test("{§notice-level} an executor notice with explicit severity crosses the plu
     } finally { await db.close(); }
 });
 
-test("{§notice-level} a runtime-JavaScript notice without severity fails at the plugin boundary with its cause", async (t) => {
+test("{§notice-level} a runtime-JavaScript notice without severity fails at the extension boundary with its cause", async (t) => {
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {

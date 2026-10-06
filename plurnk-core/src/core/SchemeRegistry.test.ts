@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
 import { SchemeDiscovery } from "@plurnk/plurnk-schemes";
-import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
-const attributionContext: PluginAttributionContext = {
+const attributionContext: ExtensionAttributionContext = {
     workspaceId: "workspace",
     workerId: "worker",
     loop: 1,
@@ -28,7 +28,7 @@ const handler = (name: string, behavior: object = {}): object => ({ manifest: ma
 // discoverExternal scans cwd/node_modules/@plurnk for plurnk.kind:"scheme"
 // siblings. @plurnk/plurnk-schemes-http is installed, so it's found, registered
 // by its declared name ("https"). Agnostic by kind — the package name is never
-// hardcoded ({§plugin-discovery}).
+// hardcoded ({§extension-discovery}).
 test("{§web-materialization-contract}: the entry sink's web materializer is the https handler's, reached through the registry", async () => {
     const registry = new SchemeRegistry();
     assert.throws(() => registry.webMaterializer(), /requires an installed https scheme handler that publishes it/, "before discovery nothing publishes it; absence is a defect, never a fallback");
@@ -73,7 +73,7 @@ test("discoverExternal retains loaded package handlers as runtime attribution so
     }));
     const registry = new SchemeRegistry();
     await registry.discoverExternal();
-    const source = registry.get("https") as { attributions?: (context: PluginAttributionContext) => string[] };
+    const source = registry.get("https") as { attributions?: (context: ExtensionAttributionContext) => string[] };
     source.attributions = ({ attempt }) => attempt === 1
         ? ["@plurnk/runtime-http", "@plurnk/static-http"]
         : [];

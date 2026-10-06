@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
-import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./scheme-types.ts";
 
-const attributionContext = (attempt: number): PluginAttributionContext => ({
+const attributionContext = (attempt: number): ExtensionAttributionContext => ({
     workspaceId: "workspace",
     workerId: "worker",
     loop: 1,
@@ -35,7 +35,7 @@ class FakeExecutor {
             ? { available: true, detail: undefined }
             : { available: false, detail: "not on PATH" };
     }
-    attributions({ attempt }: PluginAttributionContext): string[] {
+    attributions({ attempt }: ExtensionAttributionContext): string[] {
         return attempt === 2 ? ["runtime:executor"] : [];
     }
 }
@@ -259,7 +259,7 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
     );
 });
 
-test("{§plugin-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {
+test("{§extension-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (msg: string): void => { warnings.push(String(msg)); };

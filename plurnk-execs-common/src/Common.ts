@@ -47,7 +47,7 @@ const onPath = (bin: string): boolean =>
 // model exactly what the platform has — "plurnk supports the host's REPLs out
 // of the box". The operator kill-switch (PLURNK_EXECS_<tag>=0 / _ONLY) is no
 // longer honored here — framework discovery applies it uniformly across every
-// plugin ({§executor-policy}), so a disabled tag never reaches probe(). All run
+// extension ({§executor-policy}), so a disabled tag never reaches probe(). All run
 // arbitrary code → effect `host` (inherited, proposal-gated). Reuses
 // SubprocessExecutor's run() (streaming + process-group abort) via spawnArgs().
 export default class Common extends SubprocessExecutor {

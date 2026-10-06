@@ -123,9 +123,9 @@ export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.
 export type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "./module-slice.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
-    PluginAttributionContext,
-    PluginAttributionDeclaration,
-    PluginAttributionSource,
+    ExtensionAttributionContext,
+    ExtensionAttributionDeclaration,
+    ExtensionAttributionSource,
 } from "@plurnk/plurnk-meta";
 export type {
     PlurnkStatement,

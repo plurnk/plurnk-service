@@ -6,8 +6,8 @@ import { TREE_SITTER_REGISTRY } from "../plurnk-mimetypes/src/treesitter/registr
 
 const run = promisify(execFile);
 
-// {§core-plugin-composition}: capability frameworks own contracts and
-// discovery, never runtime edges to their leaf consumers. The composed host's
+// {§core-extension-composition}: frameworks own contracts and discovery,
+// never runtime edges to the extensions of their kind. The composed host's
 // manifest is the one default-inventory owner ({§bundled-set}).
 const leanFrameworks = new Map([
     ["plurnk-mimetypes/package.json", "@plurnk/plurnk-mimetypes-"],
@@ -32,11 +32,11 @@ export const defaultGrammarViolations = (manifest) => [
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-plugin-ownership}`),
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-extension-ownership}`),
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar leaf and must not ship by default ({§mimetype-optional-grammars})`),
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar extension and must not ship by default ({§mimetype-optional-grammars})`),
 ];
 
 // ARCHITECTURE.md § Package principles — over plurnk dependencies and peer dependencies, the package
@@ -155,7 +155,7 @@ if (import.meta.main) {
             for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
                 for (const name of Object.keys(manifest[section] ?? {})) {
                     if (name.startsWith(leafPrefix)) {
-                        violations.push(`${file}: ${section}.${name} makes the framework depend on a leaf consumer`);
+                        violations.push(`${file}: ${section}.${name} makes the framework depend on an extension of its kind`);
                     }
                 }
             }

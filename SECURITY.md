@@ -23,6 +23,6 @@ boundary escapes, secret disclosure, unsafe package discovery, command
 execution outside documented approval policy, SSRF bypasses, and vulnerable
 release artifacts.
 
-The daemon and plugins execute local tools by design. A report should
+The daemon and its extensions execute local tools by design. A report should
 distinguish intended operator-authorized execution from a bypass of the
 documented authority boundary.

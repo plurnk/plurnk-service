@@ -1,6 +1,6 @@
 // Lockstep version stamp. Usage: node scripts/release-version.mjs <version>
 // Sets every workspace to <version>, pins internal runtime/dev dependencies
-// exactly, and gives plugin-facing peers a compatible-major range.
+// exactly, and gives extension-facing peers a compatible-major range.
 // The root workspaces array is authoritative; a missing manifest crashes.
 import fs from "node:fs/promises";
 import path from "node:path";

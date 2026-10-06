@@ -3,7 +3,7 @@ import { mkdtempDisposable, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveGrammarLeaves, runGrammarLifecycle } from "./update-grammars.mjs";
+import { resolveGrammarExtensions, runGrammarLifecycle } from "./update-grammars.mjs";
 
 const makeFamily = async (slugs = ["alpha", "beta"]) => {
     const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-lifecycle-"));
@@ -41,7 +41,7 @@ test("requires every framework-declared grammar checkout", async () => {
             "@plurnk/plurnk-mimetypes-grammar-missing": "1.0.0",
         },
     }));
-    await assert.rejects(resolveGrammarLeaves(fixture), /missing grammar leaf checkouts: missing/);
+    await assert.rejects(resolveGrammarExtensions(fixture), /missing grammar extension checkouts: missing/);
 });
 
 test("check mode fails when any leaf probe fails", async () => {

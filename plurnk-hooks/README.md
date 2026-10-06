@@ -65,7 +65,7 @@ printf '%s\n' '{"hook_event_name":"Stop","session_id":"7","plurnk":{"workspaceId
   | /usr/bin/node /absolute/path/to/plurnk-hook.mjs
 ```
 
-## Plugin or external tool?
+## Module or external tool?
 
 An ordinary executable needs only the configuration above. An installed daemon
 module can instead use `ApplicationPort.subscribeToEvents` directly. Both

@@ -1,5 +1,5 @@
 // Batteries-included executor coverage — every executor the service-owned
-// default executor leaf set ships, driven end-to-end through the REAL Exec
+// default executor extensions ship, driven end-to-end through the REAL Exec
 // scheme (dispatch → run/accept → spawn → read
 // the captured output channel), not sh alone.
 //

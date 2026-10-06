@@ -158,7 +158,7 @@ const runBin = (args, env = {}) => {
 };
 
 const bootStart = (env = {}, probe) => new Promise((res) => {
-    // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
+    // Run from OUTSIDE the install dir so discovery must resolve extensions package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
     for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_ALLOW_ORIGIN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
@@ -289,19 +289,19 @@ const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
 ok(serviceDependencies.includes(tavilyPackage), "the service bundles the standard Tavily Agent Plugin");
 ok(!existsSync(resolve(mods, "@plurnk", "plurnk-schemes-http-tavily")), "the retired Tavily package is absent from the clean composition");
 const materializerInventory = packedMaterializerInventory();
-ok(materializerInventory.owners.includes(tavilyPackage), "the installed native plugin contributes its own configuration floor");
-ok(materializerInventory.id === "tavily-extract" && materializerInventory.eligibility === null, "the materializer family imports the installed plugin and safely declines without credentials");
+ok(materializerInventory.owners.includes(tavilyPackage), "the installed extension contributes its own configuration floor");
+ok(materializerInventory.id === "tavily-extract" && materializerInventory.eligibility === null, "the materializer kind imports the installed extension and safely declines without credentials");
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
 const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
 const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
 const mimetypeFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-mimetypes").dependencies ?? {});
 ok(
     !execFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-execs-")),
-    "the executor framework contains no leaf-consumer dependency edges",
+    "the executor framework has no dependency edge to its extensions",
 );
 ok(
     !mimetypeFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-mimetypes-")),
-    "the mimetype framework contains no leaf-consumer dependency edges",
+    "the mimetype framework has no dependency edge to its extensions",
 );
 const mimetypeInventory = packedMimetypeInventory();
 const { loaded: grammarSlugs, degraded: optionalGrammars } = installedGrammars(sandbox);

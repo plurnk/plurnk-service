@@ -1,4 +1,4 @@
-// Db-backed implementation of the trusted plugin notification capability.
+// Db-backed implementation of the trusted extension notification capability.
 // plurnk-schemes {§capability-ctx}; core {§notifications-stream-event-on-channel-change}.
 // Worker wake belongs to subscriptions.close because only that seam owns the
 // complete conclusion context. {§scheme-subscriptions}
@@ -30,7 +30,7 @@ export default class DbNotifyCaps implements NotifyCaps {
         const notify = this.#ctx.streamEventNotify;
         if (notify === undefined) return;
         void this.#emit(notify, pathname, channel, state, contentLength).catch((cause: unknown) => {
-            console.error(`Plugin stream/event emission failed for ${this.#scheme}:${pathname}#${channel}:`, cause);
+            console.error(`Extension stream/event emission failed for ${this.#scheme}:${pathname}#${channel}:`, cause);
         });
     }
 

@@ -3,8 +3,8 @@ import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
 import Meta, {
-    type PluginAttribution,
-    type PluginAttributionContext,
+    type ExtensionAttribution,
+    type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { WIRE_FLEX_MARGIN, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget, flexedResponseMax, requestCapacityDecision } from "./capacity.ts";
 import type { InputModality, Effort } from "./types.ts";
@@ -40,7 +40,7 @@ export default class Pool implements Provider {
     // Optional exact tokenizer: present iff every backend exposes one (same
     // vocab, since interchangeable). Delegated; absent when the fleet can't.
     readonly tokenize?: (text: string) => Promise<number[]>;
-    readonly attributions?: (context: PluginAttributionContext) => PluginAttribution;
+    readonly attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
 
     constructor(backends: readonly Provider[]) {
         if (backends.length === 0) throw new Error("Pool: at least one backend is required");

@@ -55,12 +55,12 @@ bound to that authority, so entry capability calls remain pathname-oriented.
 Implement only
 the remaining delegated methods you support—`find`, `editBatch`, `send`, and
 the other optional methods in `SchemeHandler`. COPY and MOVE are engine-owned
-compositions over `ctx.entries` and `editBatch`, so plugins do not override
+compositions over `ctx.entries` and `editBatch`, so extensions do not override
 them or author COPY/MOVE effect envelopes. A regional `editBatch`
 returns `EditBatchResult` with its typed `EditBatchReceipt`; the engine validates
 and projects it.
 The optional synchronous `attributions(context)` hook may return no, one, or
-many opaque tags for each provider emission attempt ({§plugin-attribution}).
+many opaque tags for each provider emission attempt ({§extension-attribution}).
 `implements SchemeHandler` gives compile-time signature checking. The statement
 and path types (`FindStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
 from this package, so you depend on and peer (`^1`) only
@@ -124,7 +124,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` - boolean resource selection over `Mimetypes.query` (glob/regex/jsonpath/xpath), returning locator/exact-region `MatchEvidence`.
 - `Results.problem` / `.failure` / `.assert` / `.assertReadResult` / `.assertMatchEvidenceList` / `.attachInstance` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` - RFC 9457 result builders, validators, durable-occurrence attachment, and guards.
 - `PacketSections.assertDrafts(value, subject?)` — validates the exact tokenless section-draft list returned by a packet transformer.
-- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus canonical static attribution lists for represented packages (SPEC §6, {§plugin-attribution}).
+- `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors plus canonical static attribution lists for represented packages (SPEC §6, {§extension-attribution}).
 
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
 sandbox. The consumer injects its implementation; database layout and private

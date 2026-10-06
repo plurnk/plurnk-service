@@ -25,8 +25,8 @@ test("{§configuration-repair-path} internal failures cannot be contained as con
 test("{§configuration-repair-path} repeated discovery diagnostics are deduplicated without turning shadowing into failure", () => {
     const diagnostics = new ConfigurationDiagnostics();
     const error = new ConfigurationError("fixture/plugin.json", "Broken native declaration.");
-    diagnostics.record("native-plugins", error);
-    diagnostics.record("native-plugins", error);
+    diagnostics.record("extensions", error);
+    diagnostics.record("extensions", error);
     const reports = [
         { root: "/plugins/shadowed", path: "", section: "client", outcome: "shadowed" as const, message: "A nearer definition wins." },
         { root: "/plugins/invalid", path: "mcp.json", section: "client", outcome: "invalid" as const, message: "Invalid configuration." },

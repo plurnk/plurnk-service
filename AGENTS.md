@@ -5,7 +5,7 @@ an agent or a contributor needs to act is here or in the documents it names.
 
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
-grammar authority, the AG-UI server module, and the plugins included in the default installation. The
+grammar authority, the AG-UI server module, and the extensions included in the default installation. The
 terminal and optional web clients are separate repositories.
 
 ## Operations quick reference
@@ -90,7 +90,7 @@ Where things are, for an agent that has to act before it has read everything:
   modules contribute to it.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
-  `plurnk-execs*` own their respective plugin contracts and implementations.
+  `plurnk-execs*` own their respective extension contracts and implementations.
 - `plurnk-meta` contains shared package discovery and model-facing reference
   material. It is not a second orchestration layer.
 
@@ -120,7 +120,7 @@ npm run build
 ```
 
 Use the root lockfile. Keep the dependency graph valid under `npm ls --all`.
-Internal workspace dependencies and plugin peer dependencies use their declared
+Internal workspace dependencies and extension peer dependencies use their declared
 compatible semver ranges; do not force incompatible transitive versions with
 root overrides.
 

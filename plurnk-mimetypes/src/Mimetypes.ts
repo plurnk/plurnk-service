@@ -15,11 +15,11 @@ import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.t
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
-import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeExtensionError from "./MimetypeExtensionError.ts";
 import MimetypeDerivationError from "./MimetypeDerivationError.ts";
 import Meta, {
-    type PluginAttribution,
-    type PluginAttributionContext,
+    type ExtensionAttribution,
+    type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import type {
     DetectInput,
@@ -199,12 +199,12 @@ export default class Mimetypes {
             .toSorted((a, b) => a.mimetype.localeCompare(b.mimetype));
     }
 
-    // {§plugin-attribution} Static package tags remain always-on. Runtime
+    // {§extension-attribution} Static package tags remain always-on. Runtime
     // collection consults only handler objects already loaded by ordinary
     // mimetype work, preserving the family's lazy-loading contract.
-    async attributions(context: PluginAttributionContext): Promise<PluginAttribution> {
+    async attributions(context: ExtensionAttributionContext): Promise<ExtensionAttribution> {
         await this.ready();
-        const lists: PluginAttribution[] = [...this.#discovered.packageAttributions.values()];
+        const lists: ExtensionAttribution[] = [...this.#discovered.packageAttributions.values()];
         const packageSources = new Map<string, Set<BaseHandler>>();
         for (const [mimetype, resolution] of this.#handlerInstances) {
             const info = this.#discovered.handlers.get(mimetype);
@@ -251,7 +251,7 @@ export default class Mimetypes {
 
         const handler = await this.getHandler(mimetype);
         if (handler === null) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "registered handler could not be resolved",
                 packageName: info.packageName,
                 mimetype,
@@ -262,7 +262,7 @@ export default class Mimetypes {
         try {
             configuration = await handler.projectionConfiguration();
         } catch (cause) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "projection configuration failed",
                 packageName: info.packageName,
                 mimetype,
@@ -270,7 +270,7 @@ export default class Mimetypes {
             });
         }
         if (typeof configuration !== "string") {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "projectionConfiguration() must return a string",
                 packageName: info.packageName,
                 mimetype,
@@ -314,7 +314,7 @@ export default class Mimetypes {
                 : await this.#instantiatePackageHandler(metadata, info.packageName, info.mimetype);
             const surfaceFailure = handlerSurfaceFailure(candidate, metadata);
             if (surfaceFailure !== null) {
-                throw new MimetypePluginError({
+                throw new MimetypeExtensionError({
                     reason: "handler surface is incompatible",
                     packageName: info.packageName,
                     mimetype: info.mimetype,
@@ -399,7 +399,7 @@ export default class Mimetypes {
         try {
             mod = await this.#loader(packageName);
         } catch (cause) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "package import failed",
                 packageName,
                 mimetype,
@@ -407,7 +407,7 @@ export default class Mimetypes {
             });
         }
         if (typeof mod !== "object" || mod === null) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "module must expose a default handler constructor",
                 packageName,
                 mimetype,
@@ -416,7 +416,7 @@ export default class Mimetypes {
         }
         const HandlerClass = (mod as { default?: unknown }).default;
         if (typeof HandlerClass !== "function") {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "module must expose a default handler constructor",
                 packageName,
                 mimetype,
@@ -427,7 +427,7 @@ export default class Mimetypes {
             const Ctor = HandlerClass as new (m: HandlerMetadata) => unknown;
             return new Ctor(metadata);
         } catch (cause) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "handler construction failed",
                 packageName,
                 mimetype,
@@ -443,7 +443,7 @@ export default class Mimetypes {
         const { lookupTreeSitterLanguage } = await import("./treesitter/registry.ts");
         const entry = lookupTreeSitterLanguage(info.mimetype);
         if (entry === null) {
-            throw new MimetypePluginError({
+            throw new MimetypeExtensionError({
                 reason: "framework registry entry is absent",
                 packageName: info.packageName,
                 mimetype: info.mimetype,
@@ -741,7 +741,7 @@ export default class Mimetypes {
             const { lookupTreeSitterLanguage } = await import("./treesitter/registry.ts");
             const entry = lookupTreeSitterLanguage(info.mimetype);
             if (entry === null) {
-                throw new MimetypePluginError({
+                throw new MimetypeExtensionError({
                     reason: "framework registry entry is absent",
                     packageName: info.packageName,
                     mimetype: info.mimetype,
@@ -760,7 +760,7 @@ export default class Mimetypes {
                 return `sha256:${createHash("sha256").update(wasm).digest("hex")}`;
             } catch (cause) {
                 if (isMissingFile(cause)) return "absent";
-                throw new MimetypePluginError({
+                throw new MimetypeExtensionError({
                     reason: "grammar artifact fingerprint failed",
                     packageName: info.packageName,
                     mimetype: info.mimetype,

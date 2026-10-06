@@ -20,7 +20,7 @@ import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.t
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
-import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
@@ -76,7 +76,7 @@ export type AiSdkProviderConfig = {
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
     languageModel?: LanguageModel;            // native AI SDK provider model
-    attributions?: (context: PluginAttributionContext) => PluginAttribution;
+    attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
     droppedOutputTokens?: number;             // {§provider-output-dropped} billed output tokens beyond streamed characters that void a response; zero/unset disables
@@ -323,7 +323,7 @@ export default class AiSdkProvider implements Provider {
     #rawBody: boolean;
     #servedModel: string | undefined;
     #requiresOutputBudget: boolean | undefined;
-    readonly attributions?: (context: PluginAttributionContext) => PluginAttribution;
+    readonly attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
 
     // Optional capability ({§provider-local-capabilities}): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
@@ -374,7 +374,7 @@ export default class AiSdkProvider implements Provider {
                 this.#supportedEfforts,
             );
         }
-        // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
+        // Loud guard: an out-of-date consumer (stale extension dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
         if (config.temperature === undefined || config.repeatPenalty === undefined) {

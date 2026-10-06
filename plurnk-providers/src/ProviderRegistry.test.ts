@@ -24,7 +24,7 @@ const catalogRatesOf = (provider: string, model: string) => {
         ...(cost.cacheWritePer1M === undefined ? {} : { cacheWrite: cost.cacheWritePer1M }),
     };
 };
-import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), grammarStyles: new Map() });
@@ -73,9 +73,9 @@ test("instantiateProvider: an installed AI SDK provider resolves through discove
     assert.deepEqual(calls, ["@acme/ai-provider", "model-a"]);
 });
 
-test("instantiateProvider: a selected plugin composes its static and runtime attribution sources", async () => {
+test("instantiateProvider: a selected extension composes its static and runtime attribution sources", async () => {
     resetDiscoveryCache();
-    const context: PluginAttributionContext = {
+    const context: ExtensionAttributionContext = {
         workspaceId: "workspace",
         workerId: "worker",
         loop: 3,
@@ -84,7 +84,7 @@ test("instantiateProvider: a selected plugin composes its static and runtime att
     };
     const sdkProvider = {
         languageModel: () => ({} as never),
-        attributions: ({ attempt }: PluginAttributionContext) => attempt === 1
+        attributions: ({ attempt }: ExtensionAttributionContext) => attempt === 1
             ? ["runtime:provider", "static:provider"]
             : [],
     };
@@ -173,7 +173,7 @@ test("instantiateProvider: an untrusted (skipped) provider gives a precise error
         () => instantiateProvider("foo", { ...fullEnv }, "m",
             async (s) => { imports.push(s); return {}; },
             mapOf({}, { foo: "@acme/acme-provider-foo" })), // discovered but trust-declined
-        /provider "foo" resolves to @acme\/acme-provider-foo, but it is untrusted under PLURNK_PLUGINS_TRUSTED_ONLY/,
+        /provider "foo" resolves to @acme\/acme-provider-foo, but it is untrusted under PLURNK_EXTENSIONS_TRUSTED_ONLY/,
     );
     assert.deepEqual(imports, []); // never imported an untrusted package
 });
@@ -324,7 +324,7 @@ test("an explicit malformed cache-affinity override still fails at its owning co
     );
 });
 
-test("a catalog provider with unknown model metadata never falls through to plugin discovery", async () => {
+test("a catalog provider with unknown model metadata never falls through to extension discovery", async () => {
     let scanned = false;
     await assert.rejects(
         () => instantiateProvider(
@@ -334,7 +334,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
                 CLOUDFLARE_API_KEY: "token",
             },
             "vendor/model-outside-snapshot",
-            async () => { throw new Error("plugin import must not run"); },
+            async () => { throw new Error("extension import must not run"); },
             async () => {
                 scanned = true;
                 return {
@@ -359,7 +359,7 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
             PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
         },
         "vendor/model-outside-snapshot",
-        async () => { throw new Error("plugin import must not run"); },
+        async () => { throw new Error("extension import must not run"); },
         async () => {
             scanned = true;
             return {

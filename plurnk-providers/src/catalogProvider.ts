@@ -40,7 +40,7 @@ import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
-import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
 // can carry; an unknown model declares none.
@@ -173,8 +173,8 @@ export const providerFromSdkModel = ({
     headers?: Readonly<Record<string, string>>;
     contextWindow: number;
     info?: ModelInfo;
-    attributions?: (context: PluginAttributionContext) => PluginAttribution;
-    // {§provider-grammar-transport} — plugin-declared constrained-decoding
+    attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
+    // {§provider-grammar-transport} — extension-declared constrained-decoding
     // capability; "none" keeps the grammar off the wire.
     grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;

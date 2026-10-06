@@ -1,5 +1,5 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
-// the transport-free plugin-module seam ({§rpc}).
+// the transport-free module seam ({§rpc}).
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -197,9 +197,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#provider = provider ?? null;
-        // Plugin discovery resolves from the SERVICE's node_modules (its exec/scheme/mimetype
+        // Extension discovery resolves from the SERVICE's node_modules (its exec/scheme/mimetype
         // deps), NOT process.cwd() — else a globally-installed daemon started from a project dir
-        // finds no plugins. The bin passes the package-relative path; cwd default holds for
+        // finds no extensions. The bin passes the package-relative path; cwd default holds for
         // in-repo tests. discover() takes a cwd and joins node_modules, so derive the parent.
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
@@ -1070,7 +1070,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // full scheme resolver and return its content, writing NO log row — the client's out-of-band
     // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
     // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
-    // required by plugin context and relative log:/// addresses without impersonating an active
+    // required by extension context and relative log:/// addresses without impersonating an active
     // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
     // {§op-look} — the segment is the acting worker's; the READ resolves as the perspective worker.
     async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement; perspectiveWorkerId?: number }): Promise<{ status: number; [key: string]: unknown }> {
@@ -1632,7 +1632,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // packages; pre-warm it so first index render doesn't pay the cost.
         await this.#mimetypes.ready();
         for (const name of await this.#mimetypes.skippedPackages()) {
-            console.warn(`mimetype discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+            console.warn(`mimetype discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
         }
 
         // Discover + probe the installed executor siblings, then hand the
@@ -1661,7 +1661,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#schemes.registerRuntimeSchemes(executors);
         // Discover external @plurnk/plurnk-schemes-* siblings + register them
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
-        // no further engine change — #run wraps their context in SchemeCtxImpl ({§plugin-discovery}).
+        // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
         // {§module-discovery} — third-party daemon-module composition: trusted
         // packages declaring `plurnk.kind: "module"` register beside the
@@ -1672,7 +1672,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         for (const { family, cause } of discoveredModules.configurationErrors) this.#configuration.record(family, cause);
         this.#configuration.pluginReports(discoveredModules.reports);
         for (const packageName of discoveredModules.skipped) {
-            console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+            console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
         }
         for (const { module, owner } of discoveredModules.modules) {
             this.#modules.push({ module, owner });

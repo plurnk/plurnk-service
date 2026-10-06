@@ -123,7 +123,7 @@ the entry's `WebMaterializedResult`, and `materializedChannels(result, request?)
 out as entry channels. The result and error shapes (`WebFetchResult`,
 `WebMaterializedResult`, `WebMaterializationError`) are this framework's. The `https`
 handler publishes it; the service's entry sink resolves it through the scheme registry and
-names no leaf package, so a compatible leaf replaces it through the ordinary installation
+names no extension package, so a compatible extension replaces it through the ordinary installation
 and discovery path.
 
 §scheme-operation-dispatch Sister scheme handlers implement op methods consumed by plurnk-service via
@@ -167,7 +167,7 @@ prepares authored body syntax before this boundary ({§zero-width-column-one-ins
 handlers apply the supplied replacement literally, including at zero-width spans.
 The barrel's
 compatibility export named `EditStatement` aliases this resolved shape, so
-existing plugins do not inherit the model parser's anchor representation.
+existing extensions do not inherit the model parser's anchor representation.
 The anchor precondition remains core-private. A public handler declaring
 `textEditScopes: true` MUST route its standard textual mutation through
 `ctx.entries.operations.editBatch`, which rechecks that precondition at the
@@ -230,7 +230,7 @@ non-`200` content remains eligible for transfer.
 
 Entry, channel, notification, subscription, mutation, proposal, client-read, and cancellation capabilities use that same workspace coordinate. Caller identity supplies provenance, not resource ownership or an alternate namespace. READ checks model write eligibility only to publish EDIT anchors ({§line-anchor-write-authority}); COPY checks the destination and MOVE also checks source mutability before any destination effect.
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK` is a client-facing operation, log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned worker/program operations; none is dispatchable to a plugin scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. `LOOK` is a client-facing operation, log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned worker/program operations; none is dispatchable to an extension scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
 §handler-lifecycle A registered handler object is a process-lived shared
 instance and may receive overlapping operation calls. Retained handler state is
@@ -332,7 +332,7 @@ coalesce and coordinate jumps expose an omitted middle. A deletion instead
 contains up to `C` lines on each side of its join.
 
 The engine validates that receipt and owns the ordered COPY/MOVE resource
-effects shown to consumers; plugins do not invent a second effect envelope.
+effects shown to consumers; extensions do not invent a second effect envelope.
 `parseIssues`, when present, carries nonnegative parser-recovery counts for the
 complete source and resulting revisions. It is omitted when both are clean or
 either inspection is unavailable. The hint is advisory: inspection failure
@@ -522,7 +522,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 - `Results.isErrorStatus(status)` — `status >= 400`.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
-- `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
+- `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed extension output.
 - `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, enclosingRegion?, matched? }` shape and shared `TextRegion` contract.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
@@ -530,7 +530,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 A handler owns its failure classification and explanation. A retained failure's
 `instance` continues to identify its original occurrence; reading it does not create
 a different failure. When absent, the daemon adds the committed log coordinate. A
-malformed handler result is a plugin contract violation and fails hard; the
+malformed handler result is an extension contract violation and fails hard; the
 consumer does not invent a fallback error or reinterpret arbitrary fields.
 The same discrimination applies to every `SchemeCtx` capability result:
 entries and channels never return a bare failure status.
@@ -553,9 +553,9 @@ entries and channels never return a bare failure status.
 
 ### §capability-ctx §3.bis Capability ctx — the stable trusted-extension surface
 
-Scheme plugins are trusted in-process Node.js code. `SchemeCtx` is not a
-sandbox or a security boundary; an installed plugin already has the process's
-authority. It is the stable semantic API that keeps plugins independent of
+Scheme extensions are trusted in-process Node.js code. `SchemeCtx` is not a
+sandbox or a security boundary; an installed extension already has the process's
+authority. It is the stable semantic API that keeps extensions independent of
 database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
@@ -651,12 +651,12 @@ in the consumer. This package defines their stable interfaces and pure helpers
 Installed schemes may legitimately own network connections, subprocesses,
 caches, pools, or other host resources under {§handler-lifecycle}. These powers
 are why installation is a trust decision and why contained interoperability
-belongs in MCP rather than an in-process plugin.
+belongs in MCP rather than an in-process extension.
 
-The supported compatibility boundary is `@plurnk/plurnk-schemes`. Plugins
+The supported compatibility boundary is `@plurnk/plurnk-schemes`. Extensions
 should not import private service modules, depend on database layout, or call
 prepared statements directly: those are unstable implementation details, not
-additional plugin capabilities. Use `SchemeCtx` or propose a new semantic
+additional extension capabilities. Use `SchemeCtx` or propose a new semantic
 capability when the public surface cannot express a coherent extension.
 
 ## Module slice
@@ -673,12 +673,12 @@ owns.** They complete the module contract's slices ({§module-seam-slices}).
 
 A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
 
-- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§plugin-family-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this family; each name has exactly one owner.
-- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?, attribution?}[], packageAttributions, skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list; two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_PLUGINS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by all four family-head scanners; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
-- **Attribution is package-authored.** `packageAttributions` carries one canonical validated static tag list per admitted package. `SchemeInfo.attribution` remains the published per-scheme projection when a declaration exists; a loaded handler may additionally implement the shared runtime hook ({§plugin-attribution}). Neither the descriptor nor the consumer owns another policy.
-- **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme plugins. The daemon declares its bundled plugins as direct dependencies, and additional plugins are installed at the application root. Plugins declare the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
+- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§extension-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this family; each name has exactly one owner.
+- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?, attribution?}[], packageAttributions, skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list; two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_EXTENSIONS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by all four family-head scanners; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
+- **Attribution is package-authored.** `packageAttributions` carries one canonical validated static tag list per admitted package. `SchemeInfo.attribution` remains the published per-scheme projection when a declaration exists; a loaded handler may additionally implement the shared runtime `attributions` function ({§extension-attribution}). Neither the descriptor nor the consumer owns another policy.
+- **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme extensions. The daemon declares its bundled extensions as direct dependencies, and additional plugins are installed at the application root. Plugins declare the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
 - **The default bundle is the daemon's own `dependencies`**, not an aggregator package. Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
-- **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§plugin-trust-boundary}).
+- **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§extension-trust-boundary}).
 
 ## Message sources
 

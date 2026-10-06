@@ -8,7 +8,7 @@ import {
     workspaceNpmConfigViolations,
 } from "./dependency-policy.mjs";
 
-describe("default grammar composition ({§default-plugin-ownership})", () => {
+describe("default grammar composition ({§default-extension-ownership})", () => {
     const leaf = ({ slug }) => `@plurnk/plurnk-mimetypes-grammar-${slug}`;
     const dependencies = Object.fromEntries(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map((entry) =>
         [leaf(entry), "1.0.0"]));
@@ -23,12 +23,12 @@ describe("default grammar composition ({§default-plugin-ownership})", () => {
         assert.deepEqual(defaultGrammarViolations({ dependencies }), []);
     });
 
-    it("refuses an optional grammar leaf in the default composition ({§mimetype-optional-grammars})", () => {
+    it("refuses an optional grammar extension in the default composition ({§mimetype-optional-grammars})", () => {
         assert.ok(optionalLeaves.length > 0, "the registry declares at least one optional grammar");
         assert.deepEqual(defaultGrammarViolations({
             dependencies: { ...dependencies, ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
         }), optionalLeaves.map((name) =>
-            `plurnk-core/package.json: dependencies.${name} is an optional grammar leaf and must not ship by default ({§mimetype-optional-grammars})`));
+            `plurnk-core/package.json: dependencies.${name} is an optional grammar extension and must not ship by default ({§mimetype-optional-grammars})`));
     });
 
     it("leaves an optional grammar to the operator: absent is not a violation", () => {
@@ -41,7 +41,7 @@ describe("default grammar composition ({§default-plugin-ownership})", () => {
             assert.deepEqual(defaultGrammarViolations({
                 dependencies: rest,
                 [section]: { "@plurnk/plurnk-mimetypes-grammar-cpp": cpp },
-            }), ["plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§default-plugin-ownership}"]);
+            }), ["plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§default-extension-ownership}"]);
         });
     }
 });

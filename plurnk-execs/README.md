@@ -3,7 +3,7 @@
 Lean framework and contract for `@plurnk/plurnk-execs-*` runtime packages. Core
 uses it to discover runtime tags, admit calls, and stream each runtime's output
 under its own tag-addressed scheme. The default service manifest, not this
-framework, owns the standard installed leaf set ({§bundled-set}).
+framework, owns the standard installed extensions ({§bundled-set}).
 
 ## Install
 
@@ -11,7 +11,7 @@ framework, owns the standard installed leaf set ({§bundled-set}).
 npm install @plurnk/plurnk-execs
 ```
 
-Install executor leaves beside the framework to assemble a standalone host.
+Install executor extensions beside the framework to assemble a standalone host.
 Any compatible third-party leaf remains discoverable without changing the
 framework or service.
 
@@ -123,12 +123,12 @@ produce channels; the consumer owns storage and every later READ/FIND. See
 ## Discovery and policy
 
 `discover(options?)` scans scoped and unscoped packages under the nearest
-`node_modules`, applies trust before executable hooks, applies boot policy, and
+`node_modules`, applies trust before importing any runtimes function, applies boot policy, and
 returns `{ registry, packageAttributions, skipped, disabled }`. Tag collisions
 fail hard. Static attribution is normalized once per represented package; an
 executor may additionally decide per provider attempt whether its synchronous
 `attributions(context)` hook returns no, one, or many opaque tags
-({§plugin-attribution}).
+({§extension-attribution}).
 
 | Policy                              | Result                                        |
 | ----------------------------------- | --------------------------------------------- |

@@ -12,9 +12,9 @@ import { discoverDaemonModules } from "./module-discovery.ts";
 import HostPaths from "../core/HostPaths.ts";
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
-// ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// ({§extension-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
 // state their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 const packageOf = async (root: string, name: string, manifest: Record<string, unknown>, moduleBody: string): Promise<{ dir: string; name: string }> => {
     const dir = join(root, "node_modules", name);
@@ -26,7 +26,7 @@ const packageOf = async (root: string, name: string, manifest: Record<string, un
 
 test("{§module-discovery}: trusted object and factory exports load in package-name order", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
-    const priorTrust = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    const priorTrust = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {
         await packageOf(root, "@acme/object-module", {
             plurnk: { kind: "module", module: "./module" },
@@ -52,16 +52,16 @@ test("{§module-discovery}: trusted object and factory exports load in package-n
         assert.deepEqual(skipped, []);
     } finally {
         await rm(root, { recursive: true, force: true });
-        if (priorTrust === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = priorTrust;
+        if (priorTrust === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = priorTrust;
     }
 });
 
 test("{§module-discovery}: the trust gate skips a non-allowlisted declaration", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
-    const priorTrust = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    const priorTrust = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {
-        process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "1";
+        process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "1";
         await packageOf(root, "@acme/untrusted-module", {
             plurnk: { kind: "module", module: "./module" },
         }, "export default { setup: () => {} };");
@@ -72,8 +72,8 @@ test("{§module-discovery}: the trust gate skips a non-allowlisted declaration",
         assert.deepEqual(skipped, ["@acme/untrusted-module"]);
     } finally {
         await rm(root, { recursive: true, force: true });
-        if (priorTrust === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = priorTrust;
+        if (priorTrust === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = priorTrust;
     }
 });
 
@@ -134,7 +134,7 @@ test("{§module-discovery}: primitive exports and primitive factory results fail
     }
 });
 
-test("{§module-discovery}: malformed lifecycle hooks fail at discovery", async () => {
+test("{§module-discovery}: malformed lifecycle members fail at discovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         for (const member of ["setup", "start", "stop", "close"]) {
@@ -152,7 +152,7 @@ test("{§module-discovery}: malformed lifecycle hooks fail at discovery", async 
 });
 
 test("{§module-discovery}: user plugins shadow npm by standard name; project native code never loads", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-native-plugin-"));
+    const root = await mkdtemp(join(tmpdir(), "plurnk-extension-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const hostPaths = new HostPaths({ home: root, env: {} });
     const prior = process.env.PLURNK_SERVICE_ROOTS;
@@ -177,7 +177,7 @@ test("{§module-discovery}: user plugins shadow npm by standard name; project na
 });
 
 test("{§module-discovery}: bad native configuration is diagnosed without excluding a healthy sibling", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-native-plugin-"));
+    const root = await mkdtemp(join(tmpdir(), "plurnk-extension-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const broken = await packageOf(root, "bad-plugin", {}, "export default {};");
     await writeFile(join(broken.dir, "plugin.json"), JSON.stringify({
@@ -188,7 +188,7 @@ test("{§module-discovery}: bad native configuration is diagnosed without exclud
     const found = await discoverDaemonModules({ hostPaths: new HostPaths({ home: root, env: {} }), packageDirs: [broken, healthy] });
     assert.equal(found.modules.length, 1);
     assert.equal(found.configurationErrors.length, 1);
-    assert.equal(found.configurationErrors[0]!.family, "native-plugins", "a declaration error is the plugin family's");
+    assert.equal(found.configurationErrors[0]!.family, "extensions", "a declaration error is the extensions family's");
     assert.match(found.configurationErrors[0]!.cause.message, /native module must be beneath ai.plurnk/);
 });
 
@@ -199,7 +199,7 @@ test("{§module-discovery}: a package names its entry as an export subpath, reso
     const unexported = await packageOf(root, "@acme/unexported", { plurnk: { kind: "module", module: "./missing" } }, "export default {};");
     const found = await discoverDaemonModules({ packageDirs: [filePath, unexported] });
     assert.equal(found.modules.length, 0);
-    assert.deepEqual(found.configurationErrors.map(({ family }) => family), ["native-plugins", "native-plugins"], "a declaration error is the plugin family's");
+    assert.deepEqual(found.configurationErrors.map(({ family }) => family), ["extensions", "extensions"], "a declaration error is the extensions family's");
     assert.match(found.configurationErrors[0]!.cause.message, /@acme\/file-path: plurnk.module 'module.mjs' must be an export subpath such as "\.\/module"/u);
     assert.match(found.configurationErrors[1]!.cause.message, /@acme\/unexported: plurnk.module '\.\/missing' does not resolve through the package's exports/u);
 });

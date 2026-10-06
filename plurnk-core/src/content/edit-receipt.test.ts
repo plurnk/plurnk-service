@@ -249,7 +249,7 @@ test("editReceipt fails hard when its context tuning is missing or malformed", (
     }
 });
 
-test("receipt and resource-effect validators reject malformed plugin results", () => {
+test("receipt and resource-effect validators reject malformed extension results", () => {
     const batch = editReceipt("a", "b", [{
         marker: { marks: [1] },
         body: "b",

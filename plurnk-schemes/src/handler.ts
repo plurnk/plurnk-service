@@ -26,7 +26,7 @@ import type {
     KillStatement,
     ParsedPath,
 } from "@plurnk/plurnk-contracts";
-import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionSource } from "@plurnk/plurnk-meta";
 import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
 import type { WebMaterializer } from "./WebMaterialization.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
@@ -43,7 +43,7 @@ export interface RepresentationPreparationRequest {
     readonly pathname: string;
 }
 
-export interface SchemeHandler extends PluginAttributionSource {
+export interface SchemeHandler extends ExtensionAttributionSource {
     // Per-instance manifest option. Every handler must expose either this or a
     // class-level `static manifest`; Manifest.of validates the resolved value at
     // registration. Per-tag executor schemes derive this instance value from

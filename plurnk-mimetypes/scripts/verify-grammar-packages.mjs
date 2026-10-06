@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Family acceptance for {§grammar-leaf-reproducibility}.
+// Family acceptance for {§grammar-extension-reproducibility}.
 import { spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -130,13 +130,13 @@ const main = async () => {
         .filter((slug) => only === undefined || slug === only)
         .sort();
     invariant(expected.length > 0, only === undefined
-        ? "framework declares no grammar leaf devDependencies"
+        ? "framework declares no grammar extension devDependencies"
         : `unknown grammar slug: ${only}`);
     const present = new Set((await readdir(familyRoot, { withFileTypes: true }))
         .filter((entry) => entry.isDirectory() && entry.name.startsWith(DIRECTORY_PREFIX))
         .map((entry) => entry.name.slice(DIRECTORY_PREFIX.length)));
     const missing = expected.filter((slug) => !present.has(slug));
-    invariant(missing.length === 0, `missing grammar leaf checkouts: ${missing.join(", ")}`);
+    invariant(missing.length === 0, `missing grammar extension checkouts: ${missing.join(", ")}`);
 
     const leaves = expected.map((slug) => ({
         slug,

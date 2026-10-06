@@ -6,7 +6,7 @@ export type {
     ProviderAssistant,
     ProviderAttempt,
     ProviderAttemptFinishReason,
-    AiSdkProviderPlugin,
+    AiSdkProviderExtension,
     ProviderOptions,
     ProviderResponse,
 
@@ -49,7 +49,7 @@ export {
 export { providerReadiness } from "./sdkModels.ts";
 export { catalogEfforts } from "./catalogProvider.ts";
 
-// Scope-agnostic plugin discovery ({§plugin-family-kind}).
+// Scope-agnostic extension discovery ({§extension-kind}).
 export { discover } from "./discover.ts";
 export type { DiscoverOptions, Discovery } from "./discover.ts";
 
@@ -89,9 +89,9 @@ export { providerSource } from "./notices.ts";
 export type { ProviderErrorKind } from "./errors.ts";
 export type { ProviderNotice, ProviderNoticeKind } from "./notices.ts";
 export type {
-    PluginAttributionContext,
-    PluginAttributionDeclaration,
-    PluginAttributionSource,
+    ExtensionAttributionContext,
+    ExtensionAttributionDeclaration,
+    ExtensionAttributionSource,
 } from "@plurnk/plurnk-meta";
 
 export { default as Mock } from "./Mock.ts";

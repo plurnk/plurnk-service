@@ -67,7 +67,7 @@ database. Existing output and overlapping input/output paths are refused.
 
 ## Observability
 
-The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment ({§observability-boundary}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or plugin payloads.
+The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment ({§observability-boundary}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or extension payloads.
 
 ## Full-text search
 

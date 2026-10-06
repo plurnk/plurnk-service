@@ -1,6 +1,6 @@
 // Top-level orchestrator
 export { default as Mimetypes, binaryInputMaximum } from "./Mimetypes.ts";
-export { default as MimetypePluginError } from "./MimetypePluginError.ts";
+export { default as MimetypeExtensionError } from "./MimetypeExtensionError.ts";
 export { default as MimetypeDerivationError } from "./MimetypeDerivationError.ts";
 export { default as MimetypeInputError, isMimetypeInputError } from "./MimetypeInputError.ts";
 export { default as MimetypeInputLimitError } from "./MimetypeInputLimitError.ts";
@@ -47,9 +47,9 @@ export { walkDeepNode } from "./TreeSitterExtractor.ts";
 export { withExtractor } from "./withExtractor.ts";
 export type { HandlerContent } from "./BaseHandler.ts";
 export type {
-    PluginAttributionContext,
-    PluginAttributionDeclaration,
-    PluginAttributionSource,
+    ExtensionAttributionContext,
+    ExtensionAttributionDeclaration,
+    ExtensionAttributionSource,
 } from "@plurnk/plurnk-meta";
 
 // Detection + discovery

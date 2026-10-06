@@ -9,8 +9,8 @@ import type {
 } from "@plurnk/plurnk-execs";
 import Meta, {
     type PackageAttributions,
-    type PluginAttribution,
-    type PluginAttributionContext,
+    type ExtensionAttribution,
+    type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
@@ -32,7 +32,7 @@ export interface RegistryEntry {
     readonly executor: Executor;
     // The claim core arbitrates against the addressable scheme namespace.
     // Installed runtimes retain their npm package; daemon modules retain their
-    // module-local runtime identity. {§plugin-namespace-arbitration}
+    // module-local runtime identity. {§extension-namespace-arbitration}
     readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
     readonly summary: RuntimeSummaryDecl;
@@ -86,7 +86,7 @@ export default class ExecutorRegistry {
     // discover -> probe -> build; this is the setup door for a daemon module whose runtime names
     // depend on operator configuration. The caller owns availability; the SchemeRegistry face is registered
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
-    // Fail hard on a tag already registered: one name, one owner ({§plugin-namespace-arbitration}).
+    // Fail hard on a tag already registered: one name, one owner ({§extension-namespace-arbitration}).
     register(tag: string, entry: RegistryEntry): void {
         this.prepareRegistrations([{ tag, entry }])();
     }
@@ -209,9 +209,9 @@ export default class ExecutorRegistry {
         }
     }
 
-    // {§plugin-attribution} Package-owned executor objects participate once by
+    // {§extension-attribution} Package-owned executor objects participate once by
     // identity even when one object is registered under several runtime tags.
-    attributions(context: PluginAttributionContext): PluginAttribution {
+    attributions(context: ExtensionAttributionContext): ExtensionAttribution {
         const packageSources = new Map<string, Set<Executor>>();
         for (const { executor, namespaceOwner } of this.#byTag.values()) {
             if (namespaceOwner.kind !== "package") continue;
@@ -219,7 +219,7 @@ export default class ExecutorRegistry {
             if (executor !== null) sources.add(executor);
             packageSources.set(namespaceOwner.name, sources);
         }
-        const lists: PluginAttribution[] = [];
+        const lists: ExtensionAttribution[] = [];
         for (const [packageName, sources] of packageSources) {
             const declared = this.#packageAttributions.get(packageName);
             if (declared !== undefined) lists.push(declared);
@@ -232,7 +232,7 @@ export default class ExecutorRegistry {
 
     static async build({ probeTimeoutMs, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         probeTimeoutMs?: number;
-        cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
+        cwd?: string;   // discovery root — the dir whose node_modules holds the exec extensions
         discoverFn?: () => Promise<{
             registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: RuntimeSummaryDecl; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; expandTools?: boolean; packageName: string }>;
             packageAttributions?: PackageAttributions;
@@ -246,11 +246,11 @@ export default class ExecutorRegistry {
             skipped = [],
         } = await (discoverFn ?? (() => discover({ cwd })))();
 
-        // {§plugin-trust-boundary} discover() skips untrusted third-party packages
-        // (PLURNK_PLUGINS_TRUSTED_ONLY) and reports them here — note each, mirror
+        // {§extension-trust-boundary} discover() skips untrusted third-party packages
+        // (PLURNK_EXTENSIONS_TRUSTED_ONLY) and reports them here — note each, mirror
         // of SchemeRegistry's untrusted-scheme warning. Discovered, not loaded.
         for (const name of skipped) {
-            console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+            console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
         }
 
         const infos = [...discovered.values()];
@@ -322,7 +322,7 @@ export default class ExecutorRegistry {
     }
 
     // A family runtime's exact tools, summaries, and invocation contracts
-    // cross the plugin boundary as one validated snapshot. Absence means the
+    // cross the extension boundary as one validated snapshot. Absence means the
     // runtime's static invocation declaration is authoritative.
     toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {
         const entry = this.entry(tag, workspaceId);

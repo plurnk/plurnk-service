@@ -594,7 +594,7 @@ status: number
  */
 detail: string
 /**
- * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
+ * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when an extension cannot know the durable coordinate.
  */
 instance?: string
 /**

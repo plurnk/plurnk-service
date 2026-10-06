@@ -3,7 +3,7 @@
 --
 -- Scope (target) only. The body matcher does NOT belong here:
 -- per plurnk.md "Pattern Filtering" it runs against entry CONTENT, which
--- needs the mimetypes plugin (xpath/jsonpath/regex/glob over structured
+-- needs the mimetypes framework (xpath/jsonpath/regex/glob over structured
 -- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
 -- the selected-channel content this query returns. Static query handles every
 -- filter combination via IS-NULL guards.

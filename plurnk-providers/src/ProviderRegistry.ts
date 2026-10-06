@@ -4,11 +4,11 @@
 // alias-or-route selector to a Provider.
 //
 // {§provider-resolution} Models.dev catalog → PLURNK provider declaration
-// → local protocol adapter → scope-agnostic AI SDK plugin discovery. Generic
+// → local protocol adapter → scope-agnostic AI SDK provider extension discovery. Generic
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.
 
-import type { AiSdkProviderPlugin, Provider } from "./types.ts";
+import type { AiSdkProviderExtension, Provider } from "./types.ts";
 import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-aliases";
@@ -18,8 +18,8 @@ import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 import { contextWindowFromEnv } from "./env.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import Meta, {
-    type PluginAttribution,
-    type PluginAttributionContext,
+    type ExtensionAttribution,
+    type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 
 // Two injectable seams, both defaulting to production behavior and never passed
@@ -66,9 +66,9 @@ export const instantiateProvider = async (
     if (specifier === undefined) {
         const declined = skipped.get(name);
         if (declined !== undefined) {
-            throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_PLUGINS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
+            throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_EXTENSIONS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
         }
-        throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed AI SDK provider plugins`);
+        throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed AI SDK provider extensions`);
     }
     let mod: unknown;
     try {
@@ -76,7 +76,7 @@ export const instantiateProvider = async (
     } catch (cause) {
         throw new Error(`provider "${name}" resolves to ${specifier}, but importing it failed`, { cause });
     }
-    const sdkProvider = (mod as { default?: AiSdkProviderPlugin }).default;
+    const sdkProvider = (mod as { default?: AiSdkProviderExtension }).default;
     if (sdkProvider === undefined || typeof sdkProvider.languageModel !== "function") {
         throw new Error(`${specifier} default export is not an AI SDK provider (missing languageModel)`);
     }
@@ -88,7 +88,7 @@ export const instantiateProvider = async (
         throw new Error(`${specifier}: PLURNK_PROVIDERS_CONTEXT_WINDOW must be set because Models.dev has no metadata for provider "${name}"`);
     }
     const declared = packageAttributions.get(specifier) ?? [];
-    const attributions = (context: PluginAttributionContext): PluginAttribution => Meta.composeAttributions(
+    const attributions = (context: ExtensionAttributionContext): ExtensionAttribution => Meta.composeAttributions(
         declared,
         Meta.runtimeAttribution(sdkProvider, context, specifier),
     );

@@ -5,9 +5,9 @@
 import type { ProviderNotice } from "./notices.ts";
 import type { LanguageModel } from "ai";
 import type {
-    PluginAttribution,
-    PluginAttributionContext,
-    PluginAttributionSource,
+    ExtensionAttribution,
+    ExtensionAttributionContext,
+    ExtensionAttributionSource,
 } from "@plurnk/plurnk-meta";
 import type {
     ProviderCost,
@@ -240,8 +240,8 @@ export interface ProviderGenerateArgs {
 
 export interface Provider {
     // Optional package-authored folksonomy evaluated by the consumer immediately
-    // before a provider emission attempt ({§plugin-attribution}).
-    attributions?(context: PluginAttributionContext): PluginAttribution;
+    // before a provider emission attempt ({§extension-attribution}).
+    attributions?(context: ExtensionAttributionContext): ExtensionAttribution;
     // `grammar` is an optional GBNF string, the operator's own file read by the consumer.
     // Backends that support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar
@@ -342,8 +342,8 @@ export interface ProviderOptions {
     readonly baseUrl?: string;
 }
 
-// A discovered provider plugin default-exports an AI SDK provider. PLURNK owns
-// the adapter into Provider; the plugin owns only its protocol binding.
-export interface AiSdkProviderPlugin extends PluginAttributionSource {
+// A discovered provider extension default-exports an AI SDK provider. PLURNK owns
+// the adapter into Provider; the extension owns only its protocol binding.
+export interface AiSdkProviderExtension extends ExtensionAttributionSource {
     languageModel(model: string): LanguageModel;
 }

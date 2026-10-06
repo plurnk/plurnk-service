@@ -1,13 +1,13 @@
-// {§plugin-attribution}
+// {§extension-attribution}
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import BaseHandler from "./BaseHandler.ts";
 import Mimetypes from "./Mimetypes.ts";
 import type { Discovery, HandlerInfo } from "./types.ts";
 
-const context = (attempt: number): PluginAttributionContext => ({
+const context = (attempt: number): ExtensionAttributionContext => ({
     workspaceId: "workspace",
     workerId: "worker",
     loop: 1,
@@ -36,7 +36,7 @@ const discovery: Discovery = {
 };
 
 class AttributingHandler extends BaseHandler {
-    attributions({ attempt }: PluginAttributionContext): string[] {
+    attributions({ attempt }: ExtensionAttributionContext): string[] {
         return attempt === 2 ? ["runtime:mimetype", "static:mimetype"] : [];
     }
 }

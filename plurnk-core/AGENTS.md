@@ -19,7 +19,7 @@ Core owns:
 
 Core does not own provider transports, content-type behavior, external
 executors, or client rendering. Add those capabilities to the appropriate
-plugin or client package and keep the core integration seam small.
+extension or client package and keep the core integration seam small.
 
 ## Where a change belongs
 

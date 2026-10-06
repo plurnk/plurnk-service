@@ -7,7 +7,7 @@ does not recompute them.
 
 ## Architecture
 
-- §agui-daemon-client **The module is an in-process plugin of the daemon** — the
+- §agui-daemon-client **The module is an in-process module of the daemon** — the
   production host pre-binds its AG-UI+ listener, then daemon activation
   (`registerModule` → the application port) makes the client interface ready.
   AG-UI claims and mounts the root of the daemon's one listener ({§http-host},
@@ -520,7 +520,7 @@ event families:
 
 The schemas are the same executable values used for runtime admission and
 projection. `plurnk-agui` owns the built-in action and notification registry;
-discovery never reconstructs it from handlers. It does not report plugin
+discovery never reconstructs it from handlers. It does not report extension
 catalogs, package versions, or update availability. Object key order is not a
 contract.
 

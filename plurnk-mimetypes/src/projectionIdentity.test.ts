@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";
 import { discover } from "./discover.ts";
 import Mimetypes from "./Mimetypes.ts";
-import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeExtensionError from "./MimetypeExtensionError.ts";
 import type { Discovery, HandlerInfo, HandlerMetadata, Registry } from "./types.ts";
 
 let configuration = "configuration-a";
@@ -76,7 +76,7 @@ describe("mimetype projection identity", () => {
         assert.notEqual(independent, first);
     });
 
-    it("fails a non-string handler configuration at the plugin boundary", async () => {
+    it("fails a non-string handler configuration at the extension boundary", async () => {
         class InvalidConfigurationHandler extends BaseHandler {
             override projectionConfiguration(): never {
                 return 42 as never;
@@ -90,7 +90,7 @@ describe("mimetype projection identity", () => {
         await assert.rejects(
             () => service.projectionIdentity("text/x-community"),
             (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.match(error.message, /projectionConfiguration\(\) must return a string/u);
                 assert.ok(error.cause instanceof TypeError);
                 return true;
@@ -98,7 +98,7 @@ describe("mimetype projection identity", () => {
         );
     });
 
-    it("identifies an unregistered projection without loading plugin code", async () => {
+    it("identifies an unregistered projection without loading extension code", async () => {
         let loads = 0;
         const service = new Mimetypes({
             discovery: {

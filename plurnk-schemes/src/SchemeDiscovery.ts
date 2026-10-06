@@ -2,8 +2,8 @@ import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
     PackageAttributions,
-    PluginAttribution,
-    PluginAttributionDeclaration,
+    ExtensionAttribution,
+    ExtensionAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed scheme-handler packages — the schemes
@@ -20,12 +20,12 @@ import type {
 // first-party involvement ({§scheme-discovery}).
 //
 // Returns DESCRIPTORS, not instantiated handlers: this package is contract-only
-// and must never import a scheme package (that would nest plugins under the
+// and must never import a scheme package (that would nest extensions under the
 // framework and break the top-level scan). The consumer imports each
 // `packageName` and registers `new mod.default()` — exactly as the exec scheme
 // loads executor packages from plurnk-execs' ExecInfo.
 //
-// {§plugin-trust-boundary} PLURNK_PLUGINS_TRUSTED_ONLY filters the scan:
+// {§extension-trust-boundary} PLURNK_EXTENSIONS_TRUSTED_ONLY filters the scan:
 // when on, an untrusted third-party package is discovered but withheld from
 // `schemes` and returned in `skipped` for the consumer's Notice.
 
@@ -39,7 +39,7 @@ export interface SchemeInfo {
     // per name, while one name still has exactly one owner ({§scheme-discovery}).
     readonly exportName?: string;
     // Published per-scheme projection of the package declaration. Discovery
-    // validates it through {§plugin-attribution} before admission.
+    // validates it through {§extension-attribution} before admission.
     readonly attribution?: string | readonly string[];
 }
 
@@ -65,16 +65,16 @@ export default class SchemeDiscovery {
         const { signal } = options;
         const dirs = options.packageDirs ?? await SchemeDiscovery.#defaultPackageDirs(options.cwd ?? process.cwd(), signal);
         const byName = new Map<string, SchemeInfo>();
-        const packageAttributions = new Map<string, PluginAttribution>();
+        const packageAttributions = new Map<string, ExtensionAttribution>();
         const skipped = new Set<string>();
         for (const dir of dirs) {
             signal?.throwIfAborted();
             const manifest = await SchemeDiscovery.#readSchemeManifest(dir, signal);
             if (manifest === null) continue;
-            // Host plugin-trust gate: an untrusted third-party package is
+            // Host extension-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never
             // crashed on. Validation of family fields and attribution follows
-            // this package-level gate ({§plugin-trust-boundary}).
+            // this package-level gate ({§extension-trust-boundary}).
             if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
             const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
             const attribution = SchemeDiscovery.#attributionProjection(manifest.plurnk.attribution, tags);
@@ -100,9 +100,9 @@ export default class SchemeDiscovery {
         return { schemes: [...byName.values()], packageAttributions, skipped: [...skipped].sort() };
     }
 
-    // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME
+    // Host extension-trust gate, read from PLURNK_EXTENSIONS_TRUSTED_ONLY — the SAME
     // env var the host decides once and every scope-agnostic discovery
-    // surface enforces through the shared Meta contract ({§plugin-trust-boundary}):
+    // surface enforces through the shared Meta contract ({§extension-trust-boundary}):
     //   unset / "" / "0" → OFF: every installed package trusted (no regression).
     //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
     //                           allowlist of additionally-trusted package names.
@@ -117,7 +117,7 @@ export default class SchemeDiscovery {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§plugin-manifest-read});
+    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§extension-manifest-read});
     // null for anything else, including an unnamed package. Family field validation happens
     // only after the package trust gate. An abort surfaces (locality of error).
     static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {
@@ -133,7 +133,7 @@ export default class SchemeDiscovery {
     // contract violation and fails hard (locality of error), not a silent skip.
     static #readSchemeInfos(
         { packageName, plurnk: plurnkRec }: SchemePackage,
-        attribution: PluginAttributionDeclaration | undefined,
+        attribution: ExtensionAttributionDeclaration | undefined,
     ): SchemeInfo[] {
         // Only carry the key when credit is actually present — an absent
         // attribution leaves the property off entirely (not `undefined`).
@@ -160,8 +160,8 @@ export default class SchemeDiscovery {
 
     static #attributionProjection(
         raw: unknown,
-        tags: PluginAttribution,
-    ): PluginAttributionDeclaration | undefined {
+        tags: ExtensionAttribution,
+    ): ExtensionAttributionDeclaration | undefined {
         if (raw === undefined || raw === null) return undefined;
         return typeof raw === "string" ? raw : [...tags];
     }

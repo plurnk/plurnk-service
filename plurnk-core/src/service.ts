@@ -46,9 +46,9 @@ export default class Service {
     static #hostPaths = new HostPaths();
     static #configuration = new ConfigurationDiagnostics();
 
-    // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
+    // The node_modules holding the service's extension deps (exec/scheme/mimetype), resolved
     // from this file's REAL location by the shared membership walk. Falls back to CWD.
-    static #pluginsNodeModules(): string {
+    static #installedNodeModules(): string {
         return Meta.nearestNodeModules(Service.#codeDir) ?? resolve(process.cwd(), "node_modules");
     }
 
@@ -120,7 +120,7 @@ export default class Service {
         await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
         // {§module-self-activation} — a discovered module validates its own configuration as its factory
         // constructs it; the offline check constructs every one and starts none.
-        const { configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#pluginsNodeModules()), hostPaths: Service.#hostPaths });
+        const { configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#installedNodeModules()), hostPaths: Service.#hostPaths });
         if (configurationErrors.length > 0) {
             throw new Error(configurationErrors.map(({ cause }) => cause.message).join("\n"), { cause: configurationErrors[0]!.cause });
         }
@@ -224,7 +224,7 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
-        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
+        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the AG-UI module binds
         // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
@@ -254,7 +254,7 @@ export default class Service {
             // implementation loads; teardown already owns the admitted DB.
             observability = await configuration.capture("observability", () => startObservability());
             const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
-            daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
+            daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             ServiceModules.registerWorkspaceCapabilities(daemon);
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a), "@plurnk/plurnk-a2a");
             // {§rpc}: AG-UI claims the root of the daemon's listener ({§module-http-mounts}); the
@@ -449,11 +449,11 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
             process.exit(0);
         }
 
-        // Root/trust flags participate before plugin defaults are admitted to the shared floor.
+        // Root/trust flags participate before extension defaults are admitted to the shared floor.
         const { files: defaultsFiles, configurationErrors, reports } = await EnvDefaults.collect(
-            Service.#projectRoot, Service.#pluginsNodeModules(), { hostPaths: Service.#hostPaths },
+            Service.#projectRoot, Service.#installedNodeModules(), { hostPaths: Service.#hostPaths },
         );
-        for (const cause of configurationErrors) Service.#configuration.record("native-plugins", cause);
+        for (const cause of configurationErrors) Service.#configuration.record("extensions", cause);
         Service.#configuration.pluginReports(reports);
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
 

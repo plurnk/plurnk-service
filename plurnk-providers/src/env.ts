@@ -144,7 +144,7 @@ export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): 
 
 // {§provider-evidence} Data-capture knobs are read identically by every provider
 // (standard AND
-// plugin) so the opt-in surface is one source of truth. Both OFF by default —
+// extension) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
 //   PLURNK_PROVIDERS_TOP_LOGPROBS   "off" or a non-negative int = the OpenAI
 //     `top_logprobs` count (0 captures the chosen token only). Unset -> off.

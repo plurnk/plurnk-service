@@ -1,7 +1,7 @@
 # plurnk-execs — Specification
 
 Author contract for `@plurnk/plurnk-execs-*` runtime packages. Core consumes
-the framework; executor leaves implement it.
+the framework; executor extensions implement it.
 
 ## §executor-role Role and ownership
 
@@ -323,7 +323,7 @@ be reported as successful resource publication.
 `node_modules` for the exact declaration `plurnk.kind === "exec"`. It returns
 `{ registry, packageAttributions, skipped, disabled }`, where the registry maps
 each flat runtime tag to its declaration and package owner and the package map
-carries the canonical attribution fact from {§plugin-attribution}.
+carries the canonical attribution fact from {§extension-attribution}.
 
 ```json
 {
@@ -380,7 +380,7 @@ at boot; changing package membership or configuration requires a restart.
 | `summary`     | Required one-line description, or `{ from: "tools", description?: string }` for an exact family inventory with an optional one-line purpose. |
 | `invocation`  | Required body and target contract, validated and normalized below.                                 |
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
-| `attribution` | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
+| `attribution` | Published per-tag projection of the validated package declaration ({§extension-attribution}).         |
 | `packageName` | Package that owns and default-exports the executor implementation.                                 |
 
 The framework validates and carries the summary source, invocation, and supplemental
@@ -397,8 +397,8 @@ model-facing tool document from either the static invocation or the executor's e
 prose. A
 multi-tag package appears at most once in `Discovery.packageAttributions`, and
 only when at least one of its tags survives discovery policy. An instantiated
-executor may add attempt-time tags through the shared runtime hook
-({§plugin-attribution}).
+executor may add attempt-time tags through the shared runtime `attributions` function
+({§extension-attribution}).
 
 A package `docs/<tag>.md` remains a valid standalone Markdown document. When
 its first line is the exact authoring title `# <tag>`, discovery removes that
@@ -436,8 +436,8 @@ and exclusive buckets and parse as exactly one executor fence for the runtime. A
 signature is presentation, not an executable example; dispatch still enforces
 the invocation's body and target declarations. An invocation declaration
 with a missing field, unknown field, invalid combination, multiline role, or
-wrong primitive type is a fail-hard plugin contract violation before
-registration. Static, dynamic-hook, and module-owned runtimes use this same
+wrong primitive type is a fail-hard extension contract violation before
+registration. Static, dynamic, and module-owned runtimes use this same
 validation path. The enclosing runtime declaration is closed to `name`,
 `glyph`, `summary`, `invocation`, and `details`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
@@ -461,7 +461,7 @@ Each entry owns one canonical literal target, one nonempty one-line summary,
 its complete invocation contract, and optional supplemental Markdown. Its
 invocation declares that target bucket as required and
 `literal`; duplicate targets, divergent example targets, or malformed
-invocations fail the plugin boundary. The exact target must round-trip through
+invocations fail the extension boundary. The exact target must round-trip through
 the language's canonical target-slot escaping. The closed `tools` set replaces the
 runtime's generic invocation for model presentation and dispatch admission:
 an empty set exposes and admits no target, with no generic fallback. Core uses
@@ -476,7 +476,7 @@ I/O boundary rather than making packet assembly perform network discovery.
 
 §executor-tool-catalog A registry may carry each tool's original JSON object as
 `definition`. Definitions are supplied for every tool or none; a partial set or
-non-object definition fails the plugin boundary. The adapter owns the definition's
+non-object definition fails the extension boundary. The adapter owns the definition's
 format and correspondence to the invocation. Core preserves it without interpreting
 or augmenting its fields. Filtering, refresh, and withdrawal operate on the same
 registered tool, never a separately maintained catalog.
@@ -528,7 +528,7 @@ Runtime-name admission is one identity contract:
 | Identity    | The exact name is the fence name, registry key, tool-family identity, and output URI-scheme name.           |
 | Reservation | `only` is unavailable because `PLURNK_EXECS_ONLY` owns that case-insensitive configuration key.               |
 
-Installed static declarations, trusted dynamic-hook declarations, and
+Installed static declarations, trusted dynamic declarations, and
 module-owned declarations use the same validator before detail lookup,
 policy filtering, or registry mutation. A malformed claimed declaration fails
 hard and names its package or module boundary; discovery still ignores an
@@ -548,13 +548,13 @@ hook, or non-array result is a fail-hard contract violation by the admitted
 package. The hook enumerates configuration; reachability remains the per-tag
 probe's job.
 
-### §executor-trust Trust precedes executable discovery hooks
+### §executor-trust Trust precedes executable discovery code
 
-The shared plugin trust predicate runs before a dynamic runtime module is
-imported. A withheld package executes no hook and is returned in
+The shared extension trust predicate runs before a dynamic runtime module is
+imported. A withheld package executes no code and is returned in
 `Discovery.skipped` for consumer presentation. Discovery silently ignores a
 package that does not form a readable executor manifest; once an admitted
-package declares executable hook code, its broken hook is surfaced rather than
+package declares a runtimes function, its broken function is surfaced rather than
 swallowed.
 
 ### §executor-policy Subtractive runtime policy
@@ -632,7 +632,7 @@ kind and role.
 Subprocess leaves inherit stdout/stderr streaming, scoped-environment handoff,
 availability probing, operation results, exit code, and process-group
 cancellation. `CommandSyntaxError` during spawn translation becomes a durable
-400 `invalid-command`; other translation exceptions remain plugin contract
+400 `invalid-command`; other translation exceptions remain extension contract
 violations for the consumer to contain.
 
 ### §executor-cancellation Cancellation and consumer timing
@@ -660,10 +660,10 @@ The consumer:
 class.** A daemon module contributes runtimes as `RuntimeRegistration`s: a namespace owner, the
 runtime declaration ({§executor-runtime-declaration}), the executor, its availability, and an
 optional scheme facet ({§scheme-module-slice}). The host arbitrates the namespace
-({§plugin-namespace-arbitration}) and publishes each registration; these types complete the
+({§extension-namespace-arbitration}) and publishes each registration; these types complete the
 module contract's slices ({§module-seam-slices}).
 
-## Forbidden in executor leaves
+## Forbidden in executor extensions
 
 - Direct database, subscription, packet, or wake access.
 - Imports from `@plurnk/plurnk-service/*`.

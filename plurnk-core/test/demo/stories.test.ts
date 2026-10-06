@@ -173,7 +173,7 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
     // The attachment provides an option, not an oracle requirement. The independent
     // release index is never injected into the model's prompt or workspace.
     if (process.env.BRAVE_API_KEY === undefined) {
-        test.skip("BRAVE_API_KEY is not in the operator environment — the Brave Search demo plugin cannot serve");
+        test.skip("BRAVE_API_KEY is not in the operator environment — the Brave Search demo server cannot serve");
         return;
     }
     const index = await fetch("https://nodejs.org/dist/index.json", {

@@ -104,7 +104,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
-        assert.equal(opened.status, 102, "the public plugin opened its subscription");
+        assert.equal(opened.status, 102, "the public extension opened its subscription");
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
         });

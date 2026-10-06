@@ -1,10 +1,10 @@
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
-    PluginAttribution,
-    PluginAttributionDeclaration,
+    ExtensionAttribution,
+    ExtensionAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
-import MimetypePluginError from "./MimetypePluginError.ts";
+import MimetypeExtensionError from "./MimetypeExtensionError.ts";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
@@ -21,9 +21,9 @@ import type {
 // import; withheld package names return as `skipped` for consumer presentation.
 // Tests and unusual layouts may provide package directories explicitly.
 //
-// Exact `plurnk.kind === "mimetype"` enters this plugin family. Once trusted,
+// Exact `plurnk.kind === "mimetype"` enters this kind. Once trusted,
 // the package must expose one or more peer entries through
-// `plurnk.handlers: HandlerDecl[]` ({§mimetype-plugin-failure}). Each entry
+// `plurnk.handlers: HandlerDecl[]` ({§mimetype-extension-failure}). Each entry
 // produces its own HandlerInfo and routing-map registration. Detection returns
 // the matched name, which flows through to `ProcessResult.mimetype`.
 //
@@ -39,7 +39,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
     const handlers = new Map<string, HandlerInfo>();
-    const discoveredAttributions = new Map<string, PluginAttribution>();
+    const discoveredAttributions = new Map<string, ExtensionAttribution>();
     const skipped = new Set<string>();
 
     for (const dir of dirs) {
@@ -114,8 +114,8 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
 
 function survivingPackageAttributions(
     handlers: ReadonlyMap<string, HandlerInfo>,
-    discovered: ReadonlyMap<string, PluginAttribution>,
-): ReadonlyMap<string, PluginAttribution> {
+    discovered: ReadonlyMap<string, ExtensionAttribution>,
+): ReadonlyMap<string, ExtensionAttribution> {
     const surviving = new Set([...handlers.values()]
         .filter((handler) => handler.source === "package")
         .map((handler) => handler.packageName));
@@ -160,7 +160,7 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
     if (manifest === null) return null;
     const { manifestPath, packageName, plurnk } = manifest;
     if (!isPackageName(packageName)) {
-        throw new MimetypePluginError({
+        throw new MimetypeExtensionError({
             reason: "package name must be a current npm package name",
             packageName,
             manifestPath,
@@ -172,11 +172,11 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
 // Produce one HandlerInfo per valid entry from one trusted family claim.
 function readHandlerInfos(
     manifest: MimetypeManifest,
-    attribution: PluginAttributionDeclaration | undefined,
+    attribution: ExtensionAttributionDeclaration | undefined,
 ): HandlerInfo[] {
     const { manifestPath, packageName, plurnk } = manifest;
     const fail = (reason: string, mimetype?: string): never => {
-        throw new MimetypePluginError({
+        throw new MimetypeExtensionError({
             reason,
             packageName,
             mimetype,
@@ -237,8 +237,8 @@ function readHandlerInfos(
 
 function attributionProjection(
     raw: unknown,
-    tags: PluginAttribution,
-): PluginAttributionDeclaration | undefined {
+    tags: ExtensionAttribution,
+): ExtensionAttributionDeclaration | undefined {
     if (tags.length === 0) return undefined;
     return typeof raw === "string" ? raw : [...tags];
 }

@@ -8,7 +8,7 @@ import Discover from "./discover.ts";
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 // Every temporary directory this suite creates is tracked and removed after the run.
 // mkdtemp otherwise leaks a dir per call permanently, and this suite is the
@@ -73,7 +73,7 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
     await assert.rejects(
         Discover.scan({ packageDirs: [legacy] }),
         /declaration has unknown field 'example'/,
-        "obsolete hot-path examples cannot masquerade as accepted plugin teaching",
+        "obsolete hot-path examples cannot masquerade as accepted extension teaching",
     );
 });
 
@@ -156,7 +156,7 @@ test("discover: validates trusted attribution before admission, but never valida
     });
     await assert.rejects(
         Discover.scan({ packageDirs: [invalid] }),
-        /plugin '@acme\/acme-execs-invalid': plurnk\.attribution must be a non-empty string or string\[\]/,
+        /extension '@acme\/acme-execs-invalid': plurnk\.attribution must be a non-empty string or string\[\]/,
     );
 
     const reserved = await makePkg({
@@ -189,20 +189,20 @@ test("discover: an array kind claims no exec family", async () => {
 });
 
 // {§executor-dynamic-runtimes} Materialize a package whose tags come from a
-// dynamic runtimes hook: write package.json with `plurnk.runtimesModule` and
-// an .mjs module exporting the given hook source. `hookSrc` is the body of an
+// dynamic runtimes function: write package.json with `plurnk.runtimesModule` and
+// an .mjs module exporting the given function source. `source` is the body of an
 // ESM module (must `export` `runtimes` or `default`).
-const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs"): Promise<string> => {
+const makeDynamicPkg = async (name: string, source: string, rel = "runtimes.mjs"): Promise<string> => {
     const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name, plurnk: { kind: "exec", runtimesModule: "./runtimes" },
         exports: { "./runtimes": `./${rel}` },
     }), "utf-8");
-    await fs.writeFile(path.join(dir, rel), hookSrc, "utf-8");
+    await fs.writeFile(path.join(dir, rel), source, "utf-8");
     return dir;
 };
 
-test("discover: dynamic runtimesModule hook materializes per-deployment tags", async () => {
+test("discover: a dynamic runtimes function materializes per-deployment tags", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
@@ -227,7 +227,7 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
     });
 });
 
-test("discover: the dynamic hook accepts a default export and a sync return", async () => {
+test("discover: the dynamic runtimes function may be a default export with a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [{ name: "slack", summary: "Use Slack tools.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
@@ -262,34 +262,34 @@ test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical 
     );
 });
 
-test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
+test("discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
-    await assert.rejects(Discover.scan({ packageDirs: [missing] }), /runtimes hook unloadable: @plurnk\/plurnk-execs-dynamic-fixture/);
+    await assert.rejects(Discover.scan({ packageDirs: [missing] }), /runtimes function unloadable: @plurnk\/plurnk-execs-dynamic-fixture/);
 
     const noFn = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export const runtimes = 42;`);
-    await assert.rejects(Discover.scan({ packageDirs: [noFn] }), /runtimes hook invalid:.*must export 'runtimes'/);
+    await assert.rejects(Discover.scan({ packageDirs: [noFn] }), /runtimes function invalid:.*must export 'runtimes'/);
 
     const threw = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export function runtimes() { throw new Error("boom"); }`);
-    await assert.rejects(Discover.scan({ packageDirs: [threw] }), /runtimes hook threw: @plurnk\/plurnk-execs-dynamic-fixture/);
+    await assert.rejects(Discover.scan({ packageDirs: [threw] }), /runtimes function threw: @plurnk\/plurnk-execs-dynamic-fixture/);
 
     const nonArray = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", `export const runtimes = () => ({ name: "x" });`);
-    await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
+    await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes function returned a non-array/);
 });
 
-test("discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate before import)", async () => {
-    // If the gate failed to guard the import, this hook would throw and the
+test("discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
+    // If the gate failed to guard the import, this function would throw and the
     // rejection would surface — proving execution. Under the gate it must be
     // skipped silently instead.
     const acme = await makeDynamicPkg(
         "@acme/acme-execs-rogue",
-        `export function runtimes() { throw new Error("hook executed — gate breached"); }`,
+        `export function runtimes() { throw new Error("runtimes function executed — gate breached"); }`,
     );
     await withGate("1", async () => {
         const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
         assert.equal(registry.size, 0, "untrusted dynamic package registers nothing");
-        assert.deepEqual(skipped, ["@acme/acme-execs-rogue"], "reported as skipped, hook never ran");
+        assert.deepEqual(skipped, ["@acme/acme-execs-rogue"], "reported as skipped, its runtimes function never ran");
     });
 });
 
@@ -301,7 +301,7 @@ test("discover: static runtimes[] wins when both it and runtimesModule are decla
     }), "utf-8");
     await fs.writeFile(path.join(dir, "runtimes.mjs"), `export function runtimes() { throw new Error("should not load"); }`, "utf-8");
     const { registry } = await Discover.scan({ packageDirs: [dir] });
-    assert.deepEqual([...registry.keys()], ["static"], "static array short-circuits the hook");
+    assert.deepEqual([...registry.keys()], ["static"], "a static array short-circuits the runtimes function");
 });
 
 test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
@@ -423,17 +423,17 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
 });
 
-// {§executor-trust} PLURNK_PLUGINS_TRUSTED_ONLY host trust gate.
+// {§executor-trust} PLURNK_EXTENSIONS_TRUSTED_ONLY host trust gate.
 
 // Run fn with the gate env set to `value` (undefined = unset), restoring after
 // so tests don't leak the gate into one another.
 const withGate = async (value: string | undefined, fn: () => Promise<void>): Promise<void> => {
-    const prev = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    if (value === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = value;
+    const prev = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+    if (value === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+    else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = value;
     try { await fn(); } finally {
-        if (prev === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = prev;
+        if (prev === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prev;
     }
 };
 

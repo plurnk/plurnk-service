@@ -177,7 +177,7 @@ The built-in transports preserve that intent after SDK serialization:
 | Anthropic Messages | `tools: []`, `tool_choice: {"type":"none"}` |
 | Gemini GenerateContent | `tools: []`, `toolConfig: {"functionCallingConfig":{"mode":"NONE"}}` |
 | Bedrock Converse | No tool configuration; the protocol has no `none` choice. |
-| Installed SDK provider plugins | Portable `none` intent; the plugin owns its wire projection. |
+| Installed SDK provider extensions | Portable `none` intent; the extension owns its wire projection. |
 
 This is a text-generation contract, not provider/model tuning or prompt
 teaching. Callers cannot supply tools or override the choice through request
@@ -567,14 +567,14 @@ names; the built-in local `ollama` rail keeps its name (the catalog's
 2. An operator provider declaration:
    `PLURNK_PROVIDERS_PROVIDER_<NAME>_{NPM,BASE_URL,API_KEY_ENV}`.
 3. The local `openai` or `ollama` adapter.
-4. A discovered AI SDK provider plugin.
+4. A discovered AI SDK provider extension.
 5. A precise unknown-provider error.
 
-Earlier sources are authoritative. Installed plugins cannot shadow a cataloged
+Earlier sources are authoritative. Installed extensions cannot shadow a cataloged
 or explicitly declared name. This remains true when a named model is absent
 from the Models.dev snapshot: construction requires an explicit
 `PLURNK_PROVIDERS_CONTEXT_WINDOW` and never falls through to a same-name
-plugin.
+extension.
 
 Model IDs resolve exactly first. A unique catalog suffix is accepted to avoid
 forcing a vendor-owned resource prefix into PLURNK aliases. Ambiguous suffixes
@@ -603,36 +603,36 @@ The named secret remains in the operator environment. `${ENV_NAME}` inside a
 catalog or declared endpoint is expanded at construction and fails clearly
 when absent.
 
-## §6 Provider plugins
+## §6 Provider extensions
 
-Provider plugins are the escape hatch for a protocol binding not represented by
+Provider extensions are the escape hatch for a protocol binding not represented by
 Models.dev, installed SDK providers, or a declaration. Most extensibility
 belongs in MCP, schemes, executors, or mimetypes instead.
 
-A provider plugin:
+A provider extension:
 
-1. declares the exact string `plurnk: { kind: "provider", name }` in `package.json` ({§plugin-family-kind});
+1. declares the exact string `plurnk: { kind: "provider", name }` in `package.json` ({§extension-kind});
 2. may declare always-on package-level `plurnk.attribution` and/or implement the
-   synchronous runtime `attributions(context)` hook under {§plugin-attribution};
+   synchronous runtime `attributions(context)` hook under {§extension-attribution};
 3. may use any npm scope;
 4. default-exports an AI SDK provider with `languageModel(modelId)`;
 5. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
 
-§provider-grammar-transport A plugin whose backend accepts a llama.cpp-style
+§provider-grammar-transport An extension whose backend accepts a llama.cpp-style
 GBNF grammar may declare `plurnk.grammarStyle: "llamacpp"` beside its kind and
 name; the discovery records it and the adapted Provider carries the capability,
 so an operator's grammar file ({§operator-grammar}) rides the wire exactly as
 on a probed llama-server. Absence or `"none"` keeps the grammar off the wire;
-any other value fails discovery loudly. The declaration is the plugin author's
+any other value fails discovery loudly. The declaration is the extension author's
 fact about their backend; the transport evidence on each response
 ({§provider-grammar-evidence}) is where a wrong declaration shows, never by
 degrading admission.
 
-PLURNK adapts the returned language model. The plugin does not implement the
+PLURNK adapts the returned language model. The extension does not implement the
 PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
 
 Discovery is scope-agnostic and memoized per process. Duplicate names fail hard.
-The common plugin trust gate applies before import ({§plugin-trust-boundary}). A plugin absent from
+The common extension trust gate applies before import ({§extension-trust-boundary}). An extension absent from
 Models.dev requires an explicit context-window pin because PLURNK will not guess
 model physics. `Discovery.packageAttributions` carries the canonical package map.
 
@@ -1033,7 +1033,7 @@ alias scoping. Zero, other negative values and non-integers are invalid.
 
 | Boundary | Contract |
 | --- | --- |
-| Identity | Provider instances and aliases sharing the resolved API base URL share one allowance. SDK/plugin-owned endpoints without a resolved URL share their provider identity. Conflicting limits for one identity fail construction, naming the identity and both values; they never create independent queues. The daemon reads its environment once at boot, so an identity's limit cannot change within a process: reconstructing a provider from that environment reuses its allowance, and in-flight leases keep counting. |
+| Identity | Provider instances and aliases sharing the resolved API base URL share one allowance. SDK- or extension-owned endpoints without a resolved URL share their provider identity. Conflicting limits for one identity fail construction, naming the identity and both values; they never create independent queues. The daemon reads its environment once at boot, so an identity's limit cannot change within a process: reconstructing a provider from that environment reuses its allowance, and in-flight leases keep counting. |
 | Admission | FIFO among live waiters. The lease begins before the physical request observer and ends after the complete response or transport failure settles, including streamed bodies. |
 | Cancellation | A queued abort removes that waiter and preserves the caller's reason. It opens no physical request or accounting row. In-flight cancellation signals the transport; capacity is released when that attempt unwinds. A transport still running despite abort does not authorize exceeding the limit. |
 | Retries | Backoff holds no lease. Each retry rejoins admission as a new physical attempt. |
@@ -1067,7 +1067,7 @@ complete-envelope derivation per backend before taking the minimum.
 
 Coverage MUST prove:
 
-- catalog, declaration, local, and plugin resolution;
+- catalog, declaration, local, and extension resolution;
 - exact and unique-suffix model lookup;
 - native SDK request mapping and normalized responses;
 - compatible extension preservation;

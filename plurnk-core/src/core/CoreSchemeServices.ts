@@ -51,7 +51,7 @@ export interface CoreSchemeAdapter {
 
 // Core-owned stores that cannot use `entries` expose one complete canonical
 // representation here. This is deliberately not part of SchemeHandler: public
-// protocol plugins materialize through prepareRepresentation + EntryCaps.
+// protocol extensions materialize through prepareRepresentation + EntryCaps.
 export type CoreRepresentationResolution =
     | {
         readonly representation: StoredEntryData;

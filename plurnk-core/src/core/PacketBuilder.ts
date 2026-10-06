@@ -380,7 +380,7 @@ export default class PacketBuilder {
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
-        // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
+        // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
         // {§emission-row} {§packet-wire-envelope} — an emission rides with its row: the rows present in

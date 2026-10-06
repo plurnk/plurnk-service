@@ -1,15 +1,15 @@
 // The metaproject layer's membership slice — the mechanics every discovery
-// surface shares ({§plugin-discovery} / {§operator-config-env-defaults}):
-//   - declaresKind:      the ONE package → capability-family representation.
-//   - readManifest:       the ONE native declaration read: a family's manifest, or null for
-//                         anything that is not a package of that family. Field
-//                         validation past the family claim is the caller's.
+// surface shares ({§extension-discovery} / {§operator-config-env-defaults}):
+//   - declaresKind:      the ONE package → kind representation.
+//   - readManifest:       the ONE extension declaration read: a kind's manifest, or null for
+//                         anything that is not a package of that kind. Field
+//                         validation past the kind claim is the caller's.
 //   - Knob:               the ONE environment reader: the panel's value by name, or a
 //                         crash by name ({§env-knob}).
 //   - ErrorDetail:        the ONE diagnostic-preview bound, per package knob
 //                         ({§error-detail-bound}).
 //   - isTrusted:          THE trust rule. One implementation; a second definition
-//                         of membership trust anywhere in the family is a bug.
+//                         of membership trust anywhere in the packages is a bug.
 //   - normalizeAttribution:
 //                         one package declaration → one validated tag list.
 //   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node
@@ -42,24 +42,24 @@ export interface PackageCandidate {
     name: string;
 }
 
-const PLUGIN_KINDS = ["exec", "mimetype", "provider", "scheme", "http-materializer", "module"] as const;
-export type PluginKind = typeof PLUGIN_KINDS[number];
+const EXTENSION_KINDS = ["exec", "mimetype", "provider", "scheme", "http-materializer", "module"] as const;
+export type ExtensionKind = typeof EXTENSION_KINDS[number];
 
-// {§plugin-manifest-read} — one native declaration, projected to its owning family.
-export interface PluginManifest {
+// {§extension-manifest-read} — one extension declaration, projected to its owning kind.
+export interface ExtensionManifest {
     readonly manifestPath: string;
     // `name` when it is a non-empty string; the caller decides what an unnamed package is.
     readonly packageName: string | null;
     readonly plurnk: Record<string, unknown>;
 }
 
-// Authored package.json shape retained only where a published family descriptor
-// requires that projection. Discovery and consumers exchange PluginAttribution.
-export type PluginAttributionDeclaration = string | string[];
-export type PluginAttribution = readonly string[];
-export type PackageAttributions = ReadonlyMap<string, PluginAttribution>;
+// Authored package.json shape retained only where a published kind descriptor
+// requires that projection. Discovery and consumers exchange ExtensionAttribution.
+export type ExtensionAttributionDeclaration = string | string[];
+export type ExtensionAttribution = readonly string[];
+export type PackageAttributions = ReadonlyMap<string, ExtensionAttribution>;
 
-export interface PluginAttributionContext {
+export interface ExtensionAttributionContext {
     readonly workspaceId: string;
     readonly workerId: string;
     readonly loop: number;
@@ -67,8 +67,8 @@ export interface PluginAttributionContext {
     readonly attempt: number;
 }
 
-export interface PluginAttributionSource {
-    attributions?(context: PluginAttributionContext): PluginAttributionDeclaration | null | undefined;
+export interface ExtensionAttributionSource {
+    attributions?(context: ExtensionAttributionContext): ExtensionAttributionDeclaration | null | undefined;
 }
 
 const REFERENCE_TEACHING = Object.freeze({
@@ -96,22 +96,27 @@ export type TeachingCorpusSource =
     | (typeof TEACHING_CORPUS.docs)[keyof typeof TEACHING_CORPUS.docs]["source"];
 
 
-const TRUSTED_ONLY = "PLURNK_PLUGINS_TRUSTED_ONLY";
+const TRUSTED_ONLY = "PLURNK_EXTENSIONS_TRUSTED_ONLY";
+
+// {§extension-trust-boundary} — a renamed setting's old name fails hard and names its successor.
+const shedRenamed = (env: Record<string, string | undefined>, oldName: string, newName: string): void => {
+    if (env[oldName] !== undefined) throw new ConfigurationError(oldName, `${oldName} is retired: ${newName} is the extension trust setting.`);
+};
 const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
-const EMPTY_ATTRIBUTION: PluginAttribution = Object.freeze([] as string[]);
+const EMPTY_ATTRIBUTION: ExtensionAttribution = Object.freeze([] as string[]);
 
 export default class Meta {
     static #shippedTrust: string | undefined;
 
-    static declaresKind(manifest: unknown, kind: PluginKind): boolean {
+    static declaresKind(manifest: unknown, kind: ExtensionKind): boolean {
         if (typeof manifest !== "object" || manifest === null) return false;
         return (manifest as { kind?: unknown }).kind === kind;
     }
 
-    // {§plugin-manifest-read} — null for a missing or malformed package.json, a non-object,
-    // no `plurnk` object, or another family: none of those is a package of this family, and
+    // {§extension-manifest-read} — null for a missing or malformed package.json, a non-object,
+    // no `plurnk` object, or another kind: none of those is a package of this kind, and
     // discovery skips them without a word. An abort is the caller's contract and surfaces.
-    static async readManifest(dir: string, kind?: PluginKind, { signal }: { signal?: AbortSignal } = {}): Promise<PluginManifest | null> {
+    static async readManifest(dir: string, kind?: ExtensionKind, { signal }: { signal?: AbortSignal } = {}): Promise<ExtensionManifest | null> {
         const pluginPath = path.join(dir, "plugin.json");
         let plugin: Awaited<ReturnType<typeof AgentPluginFiles.manifest>>;
         try {
@@ -131,8 +136,8 @@ export default class Meta {
             }
             const native = plugin.manifest.extensions?.["ai.plurnk"];
             if (native === undefined) return null;
-            if (!PLUGIN_KINDS.some((family) => Meta.declaresKind(native, family))) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.kind must name one native capability family.`);
+            if (!EXTENSION_KINDS.some((kind) => Meta.declaresKind(native, kind))) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.kind must name one extension kind.`);
             }
             if (kind !== undefined && !Meta.declaresKind(native, kind)) return null;
             const packageName = typeof packageRecord?.name === "string" && packageRecord.name.length > 0
@@ -142,14 +147,14 @@ export default class Meta {
         if (packageRecord === null) return null;
         const plurnk = packageRecord.plurnk;
         if (!isObject(plurnk) || !(kind === undefined
-            ? PLUGIN_KINDS.some((family) => Meta.declaresKind(plurnk, family))
+            ? EXTENSION_KINDS.some((kind) => Meta.declaresKind(plurnk, kind))
             : Meta.declaresKind(plurnk, kind))) return null;
         const packageName = typeof packageRecord.name === "string" && packageRecord.name.length > 0 ? packageRecord.name : null;
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
     }
 
-    // {§plugin-manifest-read} Family loaders resolve their own file declarations through this boundary.
-    static async moduleFile(manifest: PluginManifest, relative: string): Promise<string> {
+    // {§extension-manifest-read} Family loaders resolve their own file declarations through this boundary.
+    static async moduleFile(manifest: ExtensionManifest, relative: string): Promise<string> {
         const dir = path.dirname(manifest.manifestPath);
         if (path.basename(manifest.manifestPath) !== "plugin.json") return path.resolve(dir, relative);
         const root = await AgentPluginFiles.resolved(dir);
@@ -204,6 +209,7 @@ export default class Meta {
     // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
     //                    allowlist; "1" (naming no real package) = on, zero third-party.
     static isTrusted(packageName: string, env: Record<string, string | undefined> = process.env): boolean {
+        shedRenamed(env, "PLURNK_PLUGINS_TRUSTED_ONLY", TRUSTED_ONLY); // lexicon-allow: the shed names the retired setting
         const stated = env[TRUSTED_ONLY];
         const value = (stated === undefined ? Meta.#panelTrust() : stated).trim();
         if (value === "" || value === "0") return true;
@@ -211,17 +217,17 @@ export default class Meta {
         return value.split(",").map((s) => s.trim()).includes(packageName);
     }
 
-    static normalizeAttribution(raw: unknown, packageName: string): PluginAttribution {
+    static normalizeAttribution(raw: unknown, packageName: string): ExtensionAttribution {
         if (raw === undefined || raw === null) return EMPTY_ATTRIBUTION;
         const values = Array.isArray(raw) ? raw : [raw];
         const firstParty = packageName.startsWith(RESERVED_ATTRIBUTION_PREFIX);
         const tags = values.map((value) => {
             if (typeof value !== "string" || value.length === 0) {
-                throw new Error(`plugin '${packageName}': plurnk.attribution must be a non-empty string or string[]`);
+                throw new Error(`extension '${packageName}': plurnk.attribution must be a non-empty string or string[]`);
             }
             if (value.startsWith(RESERVED_ATTRIBUTION_PREFIX) && !firstParty) {
                 throw new Error(
-                    `plugin '${packageName}': '${RESERVED_ATTRIBUTION_PREFIX}' is reserved for `
+                    `extension '${packageName}': '${RESERVED_ATTRIBUTION_PREFIX}' is reserved for `
                     + `${RESERVED_ATTRIBUTION_PREFIX}-scoped packages — '${packageName}' cannot claim '${value}'`,
                 );
             }
@@ -230,30 +236,30 @@ export default class Meta {
         return Object.freeze(tags);
     }
 
-    // {§plugin-attribution} — one synchronous runtime pull with the same shape
+    // {§extension-attribution} — one synchronous runtime pull with the same shape
     // and sole namespace reservation as the static declaration. Tags remain
     // opaque; this boundary validates structure, not meaning.
     static runtimeAttribution(
         source: unknown,
-        context: PluginAttributionContext,
+        context: ExtensionAttributionContext,
         packageName: string,
-    ): PluginAttribution {
+    ): ExtensionAttribution {
         if (source === null || source === undefined) return EMPTY_ATTRIBUTION;
         const hook = (source as { attributions?: unknown }).attributions;
         if (hook === undefined) return EMPTY_ATTRIBUTION;
         if (typeof hook !== "function") {
-            throw new TypeError(`plugin '${packageName}': attributions must be a function when present`);
+            throw new TypeError(`extension '${packageName}': attributions must be a function when present`);
         }
         let raw: unknown;
         try {
             raw = hook.call(source, context);
         } catch (cause) {
-            throw new Error(`plugin '${packageName}': attributions() failed`, { cause });
+            throw new Error(`extension '${packageName}': attributions() failed`, { cause });
         }
         return Meta.normalizeAttribution(raw, packageName);
     }
 
-    static composeAttributions(...lists: readonly PluginAttribution[]): PluginAttribution {
+    static composeAttributions(...lists: readonly ExtensionAttribution[]): ExtensionAttribution {
         if (lists.length === 0) return EMPTY_ATTRIBUTION;
         const tags = [...new Set(lists.flat())].toSorted();
         return tags.length === 0 ? EMPTY_ATTRIBUTION : Object.freeze(tags);

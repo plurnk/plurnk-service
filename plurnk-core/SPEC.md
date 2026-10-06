@@ -18,7 +18,7 @@ Canonical contracts plurnk-service exposes, architecture it implements, promises
 - [Proposals and client interactions](#proposal-proposals-and-client-interactions)
 - [Stream Model](#stream-stream-model)
 - [Storage Model](#storage-model)
-- [Plugin composition](#core-plugin-composition-plugin-composition)
+- [Extension composition](#core-extension-composition-extension-composition)
 - [Bundled Set](#bundled-set-bundled-set)
 - [Grammar Dependency](#grammar-dependency)
 - [Operator Configuration](#operator-config-operator-configuration)
@@ -72,7 +72,7 @@ flowchart LR
 |---|---|
 | **entry** | The unit of canonical state. Identity: `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus scheme-private `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
-| **scheme** | An addressed capability family + handler. Built-ins include `worker`, `log`, `ops`, `reasoning`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes executions but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
+| **scheme** | An addressable namespace and its handler. Built-ins include `worker`, `log`, `ops`, `reasoning`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes executions but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
 | **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider-surface}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
 
@@ -133,7 +133,7 @@ package map. The default installed composition is specified in {§bundled-set}.
 
 OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
 
-Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}); offline checking rejects the same input before loading an SDK. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
+Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}); offline checking rejects the same input before loading an SDK. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
 
 §observability-genai-conventions **GenAI convention projection.** Provider
 request spans follow the [GenAI registry at `c88d504`](https://github.com/open-telemetry/semantic-conventions-genai/tree/c88d504ab3d9879f8e50d3cc87e69775e11db234),
@@ -1373,10 +1373,10 @@ interrupted response evidence, Core stores it unaccepted without duplicating its
 accounting. The failed turn still stores the exact request and never fabricates
 an assistant or a zero-valued observation.
 
-### §attribution Plugin-authored attribution folksonomy
+### §attribution Extension-authored attribution folksonomy
 
-A plugin may declare opaque attribution tags statically or at runtime under the
-shared contract {§plugin-attribution}:
+An extension may declare opaque attribution tags statically or at runtime under the
+shared contract {§extension-attribution}:
 
 ```jsonc
 { "plurnk": { "attribution": "@acme/widgets" } }   // always-on string or string[]
@@ -1384,14 +1384,14 @@ shared contract {§plugin-attribution}:
 
 | Stage                | Contract                                                                                                                                                                                                                                      |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Collection           | Immediately before each emission attempt, Core pulls the admitted scheme, executor, loaded mimetype-handler, and selected provider sources. A BARE call pulls only its selected provider source because it admits no other plugin capability.       |
+| Collection           | Immediately before each emission attempt, Core pulls the admitted scheme, executor, loaded mimetype-handler, and selected provider sources. A BARE call pulls only its selected provider source because it admits no other extension.       |
 | Composition          | Core flattens, deduplicates, and sorts the tags. The resulting non-empty array rides `generate({ attributions })`; an empty set omits that provider field.                                                                                      |
-| Meaning              | Core neither verifies nor infers contribution. Tags are plugin-authored folksonomy for telemetry, optimization, attribution, or downstream rules. The `@plurnk/` reservation is the only namespace policy ({§plugin-attribution}).             |
+| Meaning              | Core neither verifies nor infers contribution. Tags are extension-authored folksonomy for telemetry, optimization, attribution, or downstream rules. The `@plurnk/` reservation is the only namespace policy ({§extension-attribution}).             |
 | Request evidence     | The stored request packet carries the exact set most recently forwarded for that turn. Every generation-kind `inference_calls` row carries that call's exact set, including response-less failures. |
 | Derived reporting    | Turn, loop, digest, and client views project the recorded sets. `loop/terminated.attributions` is their deduplicated sorted union and remains separate from provider usage and charge evidence.                                                 |
 
-Runtime hooks are synchronous and receive only the attempt coordinates. A hook
-failure is an internal plugin-contract failure; Core does not silently discard
+Runtime `attributions` functions are synchronous and receive only the attempt coordinates.
+A function's failure is an internal extension-contract failure; Core does not silently discard
 it or reinterpret a malformed tag list.
 
 §client-metadata **The workspace records which frontend opened it.** A frontend self-identifies (e.g. `@plurnk/plurnk-tui/1.4.0`) at `workspace.create({ settings: { client } })` and the daemon stores it with the workspace. It is validated on write, never forwarded to a provider, and never model-facing. Workspace-stable and self-reported — distinct from attribution's install-grounded tags — and omitted when unset.
@@ -1404,7 +1404,7 @@ it or reinterpret a malformed tag list.
 service-side caching, per-loop selection, context-cap handling, and admission
 of an operator's grammar. Cataloged providers use Models.dev metadata and official AI SDK
 bindings; an operator declaration covers an uncataloged compatible endpoint;
-plugin discovery is the last protocol-extension seam. Cache identity includes
+a provider extension is the last seam for a new protocol. Cache identity includes
 the alias, wire route, and complete provider-knob projection; a registered
 preconstructed handle occupies that same identity and cannot shadow changed
 tuning.
@@ -1447,7 +1447,7 @@ First path segment = provider name; rest = provider-native model id.
 
 ### Mock provider (sibling fixture)
 
-§mock-provider-mock-fixture `Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextWindow, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a plugin export, this contract has no service-side `§`-ref.
+§mock-provider-mock-fixture `Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextWindow, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a package export, this contract has no service-side `§`-ref.
 
 ---
 
@@ -2689,12 +2689,12 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 
 ### §find FIND
 
-- §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
+- §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not an extension seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-line-anchors **A FIND regex anchors each line**, as READ, EDIT and KILL do ({§read-pattern}, {§edit-pattern}): `^` and `$` are a line's ends in every FIND content match — over entries, log rows, turn sources and a binary channel's bytes — so ```` ```FIND (django/urls/resolvers.py) /^from|^import/ ```` locates the same import lines a READ with that pattern shows, never a false 204.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
-- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
+- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit extension contract, never inferred from URL punctuation.
 
   Resource-authority globs select authorities independently of the path scope.
   Matching resources retain their full addresses through pattern matching,
@@ -3347,7 +3347,7 @@ body prefixes.
   wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's
   provenance as the modifier's.
 - §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence, optionally followed by WAIT; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
-- §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address. Web acquisition and materialization are the `https` handler's {§web-materialization-contract}, reached through the scheme registry; core names no leaf package.
+- §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address. Web acquisition and materialization are the `https` handler's {§web-materialization-contract}, reached through the scheme registry; core names no extension package.
 
   | Input / effect | Consumer behavior |
   | --- | --- |
@@ -3355,7 +3355,7 @@ body prefixes.
   | Null path + supplied content | Publish beneath the invocation's `resources/` using {§resource-publication-names}, owned by the calling Worker. |
   | Supplied bytes | Retain the original bytes and declared mimetype in an ordinary channel ({§binary-parity}). |
   | Supplied text | Preserve text resources; HTTP/HTML materialization retains source and derived channels under {§html-materialization}. |
-  | Null content | Acquire an HTTP(S) resource through the checked WebFetcher, using the same configured materializers as exact HTTP acquisition ({§http-materializer-plugins}). |
+  | Null content | Acquire an HTTP(S) resource through the checked WebFetcher, using the same configured materializers as exact HTTP acquisition ({§http-materializer-extensions}). |
   | Durable evidence | One typed EDIT event in the runtime actor, with the calling Worker as causal source. Binary evidence describes the resource; its complete bytes live in the resource channel. |
   | Model orientation | The executor includes returned addresses in its result. Publication does not independently wake inference or broadcast an observer row ({§env-delta-entry-materialization}). READ controls content acquisition and native delivery. |
 
@@ -3540,7 +3540,7 @@ Capability admission precedes this decision, so proposal disposition cannot gran
 
 ### §subscriptions Subscriptions
 
-§subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. Worker cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation hook or database access is part of the plugin contract.
+§subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. Worker cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation hook or database access is part of the extension contract.
 
 The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?, channelResults?)` validates one universal terminal producer result plus exact named channel overrides. One SQLite transition closes the subscription and installs each channel's terminal `producerResult`; its lifecycle state derives from that result. The transition then wakes the worker when appropriate and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result, while `channel_results` preserves historical overrides after a later subscription replaces the channel's current evidence. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channel-state}) + log entries ({§no-chunk-rows}) carry lifecycle.
 
@@ -3561,7 +3561,7 @@ the producer's already obtained outcome into a fictitious cancellation result.
 At process restart every still-open row is necessarily missing its callable owner. Boot
 settles it as interruption (`500`) and errors active channels before evaluating parked
 loops ({§worker-lifecycle-restart-recovery}); it never reports cancellation (`499`) or
-pretends to reconstruct an opaque plugin connection.
+pretends to reconstruct an opaque extension connection.
 
 §subscriptions-causal-resource A subscription's causal Worker belongs to the
 entry's workspace. The active entry has
@@ -3647,7 +3647,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - Tokenization (provider-bound; hot-swap re-tokenizes per {§tokenomics}).
 - Provider dispatch, request-accounting validation, and exact-decimal aggregate projection through the shared contracts-owned path.
 - Scheme-handler invocation (connections, subprocesses, fetch).
-- Plugin loading ({§plugin-discovery}).
+- Extension loading ({§extension-discovery}).
 - Stream AbortController lifecycle.
 - CLI + daemon.
 
@@ -3655,16 +3655,16 @@ When SQL becomes onerous for a specific case, retreat for that case and document
 
 ---
 
-## §core-plugin-composition Plugin composition
+## §core-extension-composition Extension composition
 
 The metaproject contract owns installed membership, the one-family manifest
-shape, and the shared pre-import trust boundary ({§plugin-discovery}). Each
-capability framework owns its typed discovery result and trusted loading path.
+shape, and the shared pre-import trust boundary ({§extension-discovery}). Each
+framework owns its typed discovery result and trusted loading path.
 Core owns only cross-family composition, arbitration, and operator presentation
 of skipped-package evidence.
 
-§plugin-namespace-arbitration **Every addressable scheme name has one claim.**
-For an installed plugin, claim identity is the capability family plus its npm
+§extension-namespace-arbitration **Every addressable scheme name has one claim.**
+For an installed extension, claim identity is its kind plus its npm
 package name. Core's bundled names are reserved claims. A daemon module's
 runtime registration names its module owner and makes one composite executor
 claim: its ordinary output scheme and optional resource facet do not compete
@@ -3675,8 +3675,8 @@ claiming either name, for process-wide and workspace-scoped registrations alike.
 |--------------------------------|---------------------------------------------------------|---------|
 | None                           | Any valid claim                                         | Register it. |
 | Same installed family/package | Rescan of the same name                                 | No-op; retain the one registered handler. |
-| Reserved core name             | Any plugin or module                                    | Fail naming the reserved owner and claimant. |
-| Any plugin/module              | A different owner, including scheme/executor either way | Fail naming both owners. |
+| Reserved core name             | Any extension, a module included                        | Fail naming the reserved owner and claimant. |
+| Any extension                  | A different owner, including scheme/executor either way | Fail naming both owners. |
 | Module runtime                 | Its optional same-registration scheme facet             | Compose one handler under the runtime's single claim. |
 
 Arbitration precedes host registry mutation. External scheme descriptors are
@@ -3692,13 +3692,13 @@ registration.
 
 ## §bundled-set Bundled Set
 
-Family discovery ({§plugin-discovery}) scans installed scoped and unscoped
+Family discovery ({§extension-discovery}) scans installed scoped and unscoped
 packages carrying the applicable `plurnk.kind` declaration.
 
-§default-plugin-ownership `@plurnk/plurnk-service` is the sole manifest owner
-of the default leaf set. Capability frameworks own contracts, discovery, and
-loading; their runtime dependency graphs contain no leaf consumers. A required
-default leaf missing from a service install is a broken install. A direct
+§default-extension-ownership `@plurnk/plurnk-service` is the sole manifest owner
+of the default extensions. Frameworks own contracts, discovery, and loading;
+their runtime dependency graphs contain no extension of their kind. A required
+default extension missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
 Packed executor coverage distinguishes installation from enablement: verify
@@ -3713,19 +3713,19 @@ the checkout's development dependency graph, and proves each optional language
 degrades by name when its leaf is absent.
 
 §install-root-advisory-ownership **The composed service install owns
-third-party advisory detection.** Only that install resolves the default leaves
+third-party advisory detection.** Only that install resolves the default extensions
 and their combined transitive tree. Its audit reports advisories at the
 moderate floor without blocking by default; strict mode makes the same floor a
 gate. A chain rooted through an `@plurnk/*` dependency routes to that package's
 owner, while other direct roots remain service-owned. First-party package-pin
 freshness remains the owning family's concern.
 
-| Family    | Lean framework                     | Service-owned default leaves                                                                                                     |
+| Kind      | Lean framework                     | Service-owned default extensions                                                                                                     |
 |-----------|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | `image`, `application-pdf` (header-only, {§mimetype-pdf-facts}), and every `grammar-{slug}` leaf in the framework's tree-sitter registry ({§mimetype-grammar-leaves}), all under `@plurnk/plurnk-mimetypes-*`. |
+|           |                                    | `image`, `application-pdf` (header-only, {§mimetype-pdf-facts}), and every `grammar-{slug}` extension in the framework's tree-sitter registry ({§mimetype-grammar-extensions}), all under `@plurnk/plurnk-mimetypes-*`. |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
 The independently published `tokenizers` artifact is an opt-in leaf. Installing
@@ -3735,7 +3735,7 @@ native attachment like an image, and the daemon does no extraction (#542).
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
-plugins. `Mock` is its integration fixture. Core contains no vendor protocol.
+extensions. `Mock` is its integration fixture. Core contains no vendor protocol.
 
 **Core schemes:** `file`, `log`, `prompt`, `skill`, and `worker` expose daemon
 state or filesystem orchestration owned by core. `exec` is internal dispatch
@@ -3815,11 +3815,11 @@ Node's pre-script env-file form and the executable's post-script form share the 
 
 | Source | Panel | Admission |
 |---|---|---|
-| Platform capability package | `.env.defaults` at the package root | `@plurnk/*` or a `plurnk` package field; {§plugin-trust-boundary} |
-| Agent Plugin native extension | `ai.plurnk/.env.defaults` | The winning daemon-wide plugin in {§agent-plugins-hosting}, a valid native declaration, and the same trust gate |
+| Extension package | `.env.defaults` at the package root | `@plurnk/*` or a `plurnk` package field; {§extension-trust-boundary} |
+| Agent Plugin extension | `ai.plurnk/.env.defaults` | The winning daemon-wide plugin in {§agent-plugins-hosting}, a valid native declaration, and the same trust gate |
 
 Root and trust flags apply before collection. A project plugin contributes no native panel.
-Non-module native panels follow their npm-only family discovery ({§plugin-manifest-read});
+Non-module native panels follow their npm-only family discovery ({§extension-manifest-read});
 a plain-folder declaration does not suppress an installed capability's panel.
 Linked packages resolve panels against the same canonical root as native code;
 an absent panel is optional, but a panel escaping that root is rejected.
@@ -3938,9 +3938,9 @@ instead of a user's boot, and a dead knob cannot ship.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
-External plugins declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
+External extensions declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
 
-§operator-config-cli-flags **Admin CLI flags derive only from the service package's `.env.defaults`.** Every `PLURNK_*` declared there becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description. Installed plugin defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
+§operator-config-cli-flags **Admin CLI flags derive only from the service package's `.env.defaults`.** Every `PLURNK_*` declared there becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description. Installed extension defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
 
 ### Loop limits
 
@@ -4108,7 +4108,7 @@ even if setup fails. A returned object identical to its module is tracked once.
 
 | Source | Declaration | Lifetime |
 |---|---|---|
-| Platform capability package | `package.json#plurnk` with `kind: "module"` and `module`, an export subpath resolved through the package's own exports as in {§executor-dynamic-runtimes} | Daemon-wide; the form every first-party default module uses |
+| Extension package | `package.json#plurnk` with `kind: "module"` and `module`, an export subpath resolved through the package's own exports as in {§executor-dynamic-runtimes} | Daemon-wide; the form every first-party default module uses |
 | Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
@@ -4119,7 +4119,7 @@ service's explicit composition names its packages the same way. Standard bundles
 order. All trusted modules register before setup. A package the host registered explicitly is
 never also discovered: discovery skips that owner before importing it. Untrusted modules are reported and not imported. Invalid
 declarations, unavailable module files and configuration errors during construction are diagnosed
-at the affected native extension, a declaration's error under the `native-plugins` family and a
+at the affected extension, a declaration's error under the `extensions` family and a
 module's own configuration error under `module:<owner>`; healthy siblings remain available. A factory validates startup
 configuration before `setup` acquires resources. Failures after registration begins follow
 {§module-lifecycle} cleanup, not a partial-registration fallback.
@@ -4844,13 +4844,13 @@ adding a loop to it. LOOK text anchors resolve through the same
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
+| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic extension notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 | §notifications-outside-event `outside/event`                 | `{ workerId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<worker>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
 | §notifications-reasoning-event `reasoning/event`             | `{ workerId, loopId, turnId, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |
 
-§notifications-stream-event-failure-isolation The plugin-facing
+§notifications-stream-event-failure-isolation The extension-facing
 `NotifyCaps.streamEvent()` remains a synchronous advisory call while core
 resolves its entry identity asynchronously.
 
@@ -4888,7 +4888,7 @@ without an origin filter ({§actor-boundary-isolation}).
 ## §packet-assembly Packet assembly
 
 `PacketBuilder.buildRequestPacket` owns the engine's default ordered section
-list. Trusted scheme plugins may transform that first-class list before it is
+list. Trusted scheme extensions may transform that first-class list before it is
 rendered or measured; {§context-fit} remains an engine-owned post-build rail.
 
 ```mermaid
@@ -4913,7 +4913,7 @@ The packet reaches the provider as a transcript, under the roles the model was t
 Only role boundaries are added: joined by blank lines, the user messages are the user slot's
 bytes, in record order. An emission is placed exactly when its row is present in the final log
 section, so curation governs the transcript: a KILLed emission row, or one a trusted transform
-removed ({§packet-plugin-transform}), takes its emission with it, and a log without emission rows
+removed ({§packet-extension-transform}), takes its emission with it, and a log without emission rows
 is one user message. An emission of only NOTE and WAIT delivers nothing, so its record runs on
 into the next user message. The Worker block and the status clump always follow the log, so a
 request never ends on an emission, and the projection refuses one that would. The digest's packet
@@ -4948,7 +4948,7 @@ operator notes and policies can change. Trust is a separate
 admission rule. The system slot contains trusted control-plane material;
 attacker-reachable content stays in the user slot.
 
-### §packet-plugin-transform Trusted whole-list extension seam
+### §packet-extension-transform Trusted whole-list extension seam
 
 `SchemeRegistry.transformSections` pipes the complete default list through
 every registered scheme implementing `transformSections(sections) -> sections`,
@@ -4961,7 +4961,7 @@ sections. It receives no separate engine, database, actor, or request context.
 Emission placement reads the final log section, so a transform that removes an
 emission row's record removes its emission from the transcript ({§packet-wire-envelope}).
 
-This is strictly a trusted in-process seam, admitted through the common plugin
+This is strictly a trusted in-process seam, admitted through the common extension
 trust gate; an external client action cannot invoke it. Whole-list transformation is
 the fork-avoidance valve for alternate packet shapes, while
 overflow recovery and packet projection remain closed engine concerns.
@@ -5114,8 +5114,8 @@ header. A null header renders only its content. Empty content is omitted, traili
 newlines are removed from each section, and rendered sections are separated by one
 blank line. Any node whose content is empty is absent from the wire, except the
 child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}).
-Core owns the order at {§packet-cache-monotone}; a trusted plugin may transform the
-section list before rendering ({§packet-plugin-transform}). The projection preserves
+Core owns the order at {§packet-cache-monotone}; a trusted extension may transform the
+section list before rendering ({§packet-extension-transform}). The projection preserves
 the evidence section owners supply: paths, URI fragments, log coordinates, scopes and
 coordinate-prefixed body lines remain usable without translation; curation and log-row
 measurements stay attached to what they measure ({§tokenomics-agnostic-ruler});
@@ -5164,7 +5164,7 @@ whose INSTEAD OF trigger refuses a turn that is not an open model inference turn
 items, the composition, the bag, and the provider metadata together. Readers of a whole packet
 select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest,
 and every test that inspects a stored packet); statements that need one field read the bag
-directly with `json_extract`. A packet transformed by a plugin, or any non-log section, is one
+directly with `json_extract`. A packet transformed by an extension, or any non-log section, is one
 item. Items no composition references are transient data: `retention_collect_packet_items`
 collects them under the retention policy ({§retention-policy}), which is how a deleted worker's or
 workspace's packets release their space while shared items survive. A fork copies the composition
@@ -5225,7 +5225,7 @@ The external tokenless draft and transformation boundary is owned by
 measured `weight` field for storage. #74 tracks coverage that mistakes the sum
 of section weights for the rendered request weight.
 
-§definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before plugin transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
+§definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before extension transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
 
 §lexicon **Vocabulary follows the standard of its audience.**
 
@@ -5793,7 +5793,7 @@ section because they are language extensions rather than executable tools.
 
 ### §inject system.inject — the operator injection
 
-§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot (definition → policy → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard as {§policy-sections} rules. `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
+§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot (definition → policy → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard as {§policy-sections} rules. `~/` expands to home. It's the operator-side complement to the extension packet transform — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
 
 ### §policy system.policy — the client's policy injection
 

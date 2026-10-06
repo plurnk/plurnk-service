@@ -100,7 +100,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 }
 
-// Resolve only the reproducible leaf artifact ({§mimetype-grammar-leaves}).
+// Resolve only the reproducible leaf artifact ({§mimetype-grammar-extensions}).
 export async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<string> {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
@@ -119,7 +119,7 @@ export async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<s
     }
 }
 
-// Thrown when the grammar leaf is absent. Mimetypes.process() owns the
+// Thrown when the grammar extension is absent. Mimetypes.process() owns the
 // non-strict empty-channel degradation and install Notice.
 export class GrammarNotInstalledError extends Error {
     readonly mimetype: string;

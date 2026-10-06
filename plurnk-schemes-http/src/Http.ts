@@ -729,7 +729,7 @@ export default class Http implements SchemeHandler {
         const isHtml = MimetypeClassifier.isHtml(sourceMimetype);
         const materializerIdentity = Http.#materializerIdentity(header);
         if (materializerIdentity !== undefined) {
-            // {§http-materializer-plugins} — a stored body produced by the current
+            // {§http-materializer-extensions} — a stored body produced by the current
             // configured materializer (or the built-in producers) is current.
             return WebFetcher.materializerCurrent(materializerIdentity);
         }
@@ -758,7 +758,7 @@ export default class Http implements SchemeHandler {
             ...retained.map(({ name, value }) => [name, value] as const),
             ...updates,
         ];
-        // Materializer/provider evidence headers are plugin-owned (unknown names);
+        // Materializer/provider evidence headers are extension-owned (unknown names);
         // a 304 does not re-materialize the stored body, so its evidence is
         // retained verbatim beside the rebuilt framework fields. Framework-owned
         // x-plurnk-* fields (cache-variant, materializer/projection ids, method,

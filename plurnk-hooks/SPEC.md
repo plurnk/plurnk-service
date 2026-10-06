@@ -20,7 +20,7 @@ Core event names and the module subscription contract do not change.
 | Consumer | Integration |
 |---|---|
 | Installed module | `ApplicationPort.subscribeToEvents`, under {§module-lifecycle} |
-| Ordinary executable or script | This package's JSON-stdin adapter; no plugin manifest required |
+| Ordinary executable or script | This package's JSON-stdin adapter; no extension declaration required |
 | Client | The client-interface protocol's projection; not a raw event-bus subscription |
 
 ## §hooks-event-projection Notification vocabulary and payload

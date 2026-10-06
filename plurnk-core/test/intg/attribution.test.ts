@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 const response = (content: string): MockResponse => ({
@@ -30,7 +30,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
         const workerId = await insertWorker(db, workspaceId);
         const workerIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
         const loopId = await insertLoop(db, workerId, 1, "go");
-        const contexts: PluginAttributionContext[] = [];
+        const contexts: ExtensionAttributionContext[] = [];
 
         const schemes = new SchemeRegistry();
         schemes.attributions = ({ attempt }) => ["shared", `scheme:${attempt}`];
@@ -43,7 +43,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
 
         const provider = new Mock({ contextWindow: 100_000, responses: [invalid, valid] });
         const providerWithAttribution = provider as Mock & {
-            attributions?: (context: PluginAttributionContext) => readonly string[];
+            attributions?: (context: ExtensionAttributionContext) => readonly string[];
         };
         providerWithAttribution.attributions = (context) => {
             contexts.push(context);
@@ -70,7 +70,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
                 turn: 2,
                 attempt: 2,
             },
-        ], "plugins receive only the exact provider-attempt coordinates");
+        ], "extensions receive only the exact provider-attempt coordinates");
 
         const attempts = await db.test_turn_attempts.all<{ sequence: number; attributions: string }>({
             turn_id: result.turnId,

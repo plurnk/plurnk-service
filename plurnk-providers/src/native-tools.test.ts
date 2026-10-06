@@ -134,7 +134,7 @@ test("{§provider-native-tools-disabled} request extensions cannot override the 
     assert.equal(dispatched, false);
 });
 
-test("{§provider-native-tools-disabled} opaque SDK plugins receive portable none intent in both modes", async () => {
+test("{§provider-native-tools-disabled} opaque SDK extensions receive portable none intent in both modes", async () => {
     const usage = {
         inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
         outputTokens: { total: 2, text: 2, reasoning: 0 },

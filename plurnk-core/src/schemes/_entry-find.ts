@@ -7,7 +7,7 @@
 //   target  — required scope (path or glob); selects which entries are candidates
 //   body    — matcher (glob/regex/jsonpath/xpath/~full-text/&graph). A content matcher
 //             runs against the addressed channel's CONTENT (Matcher.matchAgainstContent
-//             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
+//             → the mimetypes framework) and INCLUDES/EXCLUDES the entry — e.g.
 //             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
 //   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
@@ -238,7 +238,7 @@ export default class EntryFind {
     // order (rank for ~full-text, candidate order otherwise). Candidate selection (scope +
     // scope) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's addressed-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
-    // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
+    // framework) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
     // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
     // locations remain grouped by resource internally until the target-shaped public projection.
     static async #matchPathnames(

@@ -613,7 +613,7 @@ test("config edit preserves editor arguments and an XDG path containing spaces",
 });
 
 for (const built of [false, true]) {
-    test(`{§operator-config-env-defaults} ${built ? "built" : "source"} root flags govern native plugin defaults before floor collection`, async () => {
+    test(`{§operator-config-env-defaults} ${built ? "built" : "source"} root flags govern extension defaults before floor collection`, async () => {
         const fx = await fixture();
         try {
             const plugin = join(fx.home, ".agents/plugins/root-fixture");
@@ -622,15 +622,15 @@ for (const built of [false, true]) {
                 $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "root-fixture",
                 extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
             }));
-            await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_PLUGIN_CASCADE_FIXTURE=from-root\n");
+            await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_EXTENSION_CASCADE_FIXTURE=from-root\n");
             await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), "throw new Error(\"catalog must not import code\");");
-            const env = { PLURNK_SERVICE_ROOTS: "global", PLURNK_PLUGINS_TRUSTED_ONLY: "0" };
+            const env = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0" };
             const included = await runService(fx, ["config", "defaults"], { env, built });
             assert.equal(included.code, 0, included.stderr);
-            assert.match(included.stdout, /PLURNK_PLUGIN_CASCADE_FIXTURE=from-root/);
+            assert.match(included.stdout, /PLURNK_EXTENSION_CASCADE_FIXTURE=from-root/);
             const excluded = await runService(fx, ["--service-roots=project", "config", "defaults"], { env, built });
             assert.equal(excluded.code, 0, excluded.stderr);
-            assert.doesNotMatch(excluded.stdout, /PLURNK_PLUGIN_CASCADE_FIXTURE/);
+            assert.doesNotMatch(excluded.stdout, /PLURNK_EXTENSION_CASCADE_FIXTURE/);
         } finally { await rm(fx.root, { recursive: true, force: true }); }
     });
 }

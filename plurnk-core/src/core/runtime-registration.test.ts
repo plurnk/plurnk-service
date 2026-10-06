@@ -51,7 +51,7 @@ const registration = (tag: string): {
     },
 });
 
-test("{§plugin-namespace-arbitration} runtime batches publish neither registry when one scheme claim collides", () => {
+test("{§extension-namespace-arbitration} runtime batches publish neither registry when one scheme claim collides", () => {
     const schemes = new SchemeRegistry();
     schemes.register("beta", { manifest: manifest("beta") });
     const executors = new ExecutorRegistry(new Map());

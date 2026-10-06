@@ -10,7 +10,7 @@ import HostPaths from "../core/HostPaths.ts";
 import PluginSources from "./PluginSources.ts";
 import EnvDefaults from "../core/env-defaults.ts";
 
-// {§module-discovery} Standard plugin bundles and capability-library packages
+// {§module-discovery} Standard plugin bundles and extension packages
 // meet the same daemon lifecycle; project roots never supply native code.
 
 interface ModuleManifest {
@@ -73,7 +73,7 @@ export const discoverDaemonModules = async (
     readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
-    // A declaration's error is the plugin family's; a module's own configuration error is the
+    // A declaration's error is the extensions family's; a module's own configuration error is the
     // module's, `module:<owner>`.
     readonly configurationErrors: ReadonlyArray<{ readonly family: string; readonly cause: ConfigurationError }>;
 }> => {
@@ -87,7 +87,7 @@ export const discoverDaemonModules = async (
     ];
     const modules: Array<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }> = [];
     const configurationErrors: Array<{ readonly family: string; readonly cause: ConfigurationError }> = sources.configurationErrors
-        .map((cause) => ({ family: "native-plugins", cause }));
+        .map((cause) => ({ family: "extensions", cause }));
     const skipped: string[] = [];
     for (const candidate of dirs) {
         let manifest: ModuleManifest | null;
@@ -95,7 +95,7 @@ export const discoverDaemonModules = async (
             manifest = await readManifest(candidate.dir);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            configurationErrors.push({ family: "native-plugins", cause });
+            configurationErrors.push({ family: "extensions", cause });
             continue;
         }
         if (manifest === null) continue;

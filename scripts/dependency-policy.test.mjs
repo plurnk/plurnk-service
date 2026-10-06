@@ -21,7 +21,7 @@ test("a layered graph keeps both principles", () => {
     ]), []);
 });
 
-test("a host its plugin imports closes a cycle, refused by name", () => {
+test("a host its module imports closes a cycle, refused by name", () => {
     const violations = packageGraphViolations([
         workspace("contracts"),
         workspace("hooks", ["contracts"], ["service"]),

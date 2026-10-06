@@ -1,5 +1,5 @@
 // Conformance: plurnk-schemes {§scheme-subscriptions} — the streaming
-// open → notifyChunk → close lifecycle a plugin drives against real
+// open → notifyChunk → close lifecycle an extension drives against real
 // SQLite: content appends + stream/events, terminal channel state, registry
 // close, worker wake with the summary, and worker abort → signal + handle cancel.
 

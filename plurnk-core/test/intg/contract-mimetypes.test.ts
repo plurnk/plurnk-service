@@ -397,7 +397,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
             },
         });
         // {§read-bytes} — the marker stays honest (no derived Unicode), and the source still reads as
-        // its bytes: the raw view needs no plugin and never relabels the mimetype.
+        // its bytes: the raw view needs no extension and never relabels the mimetype.
         const rawView = await readFileScheme(readStmt(localPath("document.binary")), limitedCtx);
         assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
         assert.equal(rawView.content, "01\n02\n03\n04");

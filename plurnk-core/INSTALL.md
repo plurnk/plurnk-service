@@ -60,7 +60,7 @@ variables reach its commands through the workspace environment (`/env import .en
 
 For a service-owned variable, strip `PLURNK_`, lowercase, and replace `_` with
 `-` to obtain its CLI flag: `PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`.
-Plugin settings remain environment/configuration values; they do not extend the
+Extension settings remain environment/configuration values; they do not extend the
 service CLI. Boolean flags use `1` and `0`. An empty value is not an unset value;
 the owning declaration specifies its meaning.
 
@@ -68,7 +68,7 @@ the owning declaration specifies its meaning.
 
 | Change | Owner and effect |
 | --- | --- |
-| Startup defaults or installed plugin configuration | The daemon's environment cascade. A remote client's shell does not change it. |
+| Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
 | MCPs, skills, outbound agents, schedules, membership | Workspace Functionality: list, discover, add, enable, disable, remove. Workers share the workspace's current selection. |
 | Command environment | `env` manages worker overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
@@ -141,7 +141,7 @@ Configuration provenance names the definition's environment key, discovered
 `SKILL.md` path, or MCP JSON file and JSON Pointer, not a dotenv file or shadowed history. Local overrides are
 workspace-owned; removing one exposes its current inherited source again.
 
-## Native extensions
+## Extensions
 
 Standard [Agent Plugins](https://agent-plugins.org/specification) keep their portable
 skills and MCP servers and may add one native capability under `extensions.ai.plurnk`.
@@ -170,7 +170,7 @@ package's export conditions select its entry:
 Daemon modules load at startup from installed npm packages and selected user roots:
 `$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
 identifies a plugin across those sources. Project plugins never load native code into the daemon.
-`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_PLUGINS_TRUSTED_ONLY` governs native
+`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs native
 imports, using the npm package name when present or the plugin name otherwise.
 Other native families (executors, schemes, providers, mimetypes and HTTP materializers)
 require npm installation and retain their own loading behavior.

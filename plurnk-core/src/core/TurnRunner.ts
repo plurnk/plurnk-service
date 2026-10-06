@@ -22,7 +22,7 @@ const comparePosition = (
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
-import Meta, { Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
+import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
@@ -512,7 +512,7 @@ export default class TurnRunner {
 
     async #attemptAttributions(
         provider: Provider,
-        context: PluginAttributionContext,
+        context: ExtensionAttributionContext,
     ): Promise<string[]> {
         const tags = Meta.composeAttributions(
             this.#schemes.attributions(context),
@@ -525,7 +525,7 @@ export default class TurnRunner {
 
     #providerAttributions(
         provider: Provider,
-        context: PluginAttributionContext,
+        context: ExtensionAttributionContext,
     ): string[] {
         return [...Meta.composeAttributions(provider.attributions?.(context) ?? [])];
     }
@@ -1276,7 +1276,7 @@ export default class TurnRunner {
         // call still receives its own durable sequence and accounting.
         attempts.currentEmissionAttempt = attempt;
         attempts.modelCallSequence++;
-        const attributionContext: PluginAttributionContext = Object.freeze({
+        const attributionContext: ExtensionAttributionContext = Object.freeze({
             workspaceId: String(workspaceId),
             workerId: attempts.providerWorkerId,
             loop: request.loopSeq,
@@ -1950,7 +1950,7 @@ export default class TurnRunner {
         };
     }
 
-    // #note12 — plugin reference docs are materialized beneath
+    // #note12 — extension reference docs are materialized beneath
     // worker:///_plurnk/plurnk/ by LoopDocs.
 
     // {§exec-lifetime} — a `"turn"` lifetime: abort the worker's open turn-scoped streams via their

@@ -40,12 +40,12 @@ export const expectedGrammarLeaves = (manifest, only) => {
         .filter((slug) => only === undefined || slug === only)
         .sort();
     invariant(expected.length > 0, only === undefined
-        ? "framework declares no grammar leaf devDependencies"
+        ? "framework declares no grammar extension devDependencies"
         : `unknown grammar slug: ${only}`);
     return expected;
 };
 
-export const resolveGrammarLeaves = async ({ frameworkRoot, familyRoot, only }) => {
+export const resolveGrammarExtensions = async ({ frameworkRoot, familyRoot, only }) => {
     const manifest = await readJson(path.join(frameworkRoot, "package.json"));
     const expected = expectedGrammarLeaves(manifest, only);
     const leaves = expected.map((slug) => ({
@@ -60,7 +60,7 @@ export const resolveGrammarLeaves = async ({ frameworkRoot, familyRoot, only }) 
             missing.push(leaf.slug);
         }
     }
-    invariant(missing.length === 0, `missing grammar leaf checkouts: ${missing.join(", ")}`);
+    invariant(missing.length === 0, `missing grammar extension checkouts: ${missing.join(", ")}`);
     return leaves;
 };
 
@@ -137,7 +137,7 @@ export const runGrammarLifecycle = async ({
     only,
     run = defaultRun,
 }) => {
-    const leaves = await resolveGrammarLeaves({ frameworkRoot, familyRoot, only });
+    const leaves = await resolveGrammarExtensions({ frameworkRoot, familyRoot, only });
     const probes = [];
     for (const leaf of leaves) probes.push(await probeLeaf(run, leaf));
     if (check) return probes;

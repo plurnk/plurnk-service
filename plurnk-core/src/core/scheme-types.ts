@@ -24,7 +24,7 @@ export type {
 } from "./types.ts";
 
 // Engine constructs this context for its own orchestration. SchemeCtxImpl
-// projects it into the public capability contract before invoking a plugin.
+// projects it into the public capability contract before invoking an extension.
 // Core-owned adapters receive their daemon dependencies separately; this type
 // must not escape as an extension API.
 export interface PlurnkSchemeContext {

@@ -21,14 +21,14 @@ flowchart LR
     clients["Clients"] <--> agui["AG-UI"]
     agui <--> core["plurnk-service"]
     core <--> providers["Model providers"]
-    plugins["Scheme / executor / mimetype plugins"] --> core
+    extensions["Scheme / executor / mimetype extensions"] --> core
     modules["Daemon modules"] --> core
     project["Project files + Git"] <--> core
     core --> sqlite[(SQLite)]
 ```
 
 The daemon owns durable state and orchestration. Clients submit actions and
-render events; plugins supply capabilities under their own contracts. See
+render events; extensions supply capabilities under their own contracts. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for process boundaries and package ownership.
 
 ## Installation and configuration

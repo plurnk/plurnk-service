@@ -285,12 +285,12 @@ test("LogBody treats a completion observation as an ordinary READ", () => {
 
 test("LogBody gives extension rows the same structural body contract", () => {
     assert.deepEqual(
-        LogBody.resolve({ op: "extension", tx: "", rx: content("plugin result", "text/plain") }),
-        { content: "plugin result", mimetype: "text/plain", startLine: 1, provenance: "returned" },
+        LogBody.resolve({ op: "extension", tx: "", rx: content("extension result", "text/plain") }),
+        { content: "extension result", mimetype: "text/plain", startLine: 1, provenance: "returned" },
     );
     assert.deepEqual(
-        LogBody.resolve({ op: "extension", tx: { body: "plugin statement" }, rx: null, mimetypeTx: "text/markdown" }),
-        { content: "plugin statement", mimetype: "text/markdown", startLine: 1, provenance: "authored" },
+        LogBody.resolve({ op: "extension", tx: { body: "extension statement" }, rx: null, mimetypeTx: "text/markdown" }),
+        { content: "extension statement", mimetype: "text/markdown", startLine: 1, provenance: "authored" },
     );
     assert.equal(LogBody.resolve({ op: "extension", tx: "", rx: null }).content, "");
 });

@@ -1,4 +1,4 @@
-export default class MimetypePluginError extends Error {
+export default class MimetypeExtensionError extends Error {
     readonly packageName: string | null;
     readonly mimetype: string | null;
     readonly manifestPath: string | null;
@@ -16,10 +16,10 @@ export default class MimetypePluginError extends Error {
         const subject = packageName ?? manifestPath ?? "unknown package";
         const target = mimetype === null ? "" : ` (${mimetype})`;
         super(
-            `Mimetype plugin ${subject}${target}: ${args.reason}`,
+            `Mimetype extension ${subject}${target}: ${args.reason}`,
             args.cause === undefined ? undefined : { cause: args.cause },
         );
-        this.name = "MimetypePluginError";
+        this.name = "MimetypeExtensionError";
         this.packageName = packageName;
         this.mimetype = mimetype;
         this.manifestPath = manifestPath;

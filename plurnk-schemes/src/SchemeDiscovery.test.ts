@@ -8,7 +8,7 @@ import SchemeDiscovery from "./SchemeDiscovery.ts";
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 // Every mktemp dir is tracked and removed after the suite — a green OR red run
 // Every temporary package tree is removed after the test.
@@ -74,7 +74,7 @@ test("discover: trusted malformed or reserved attribution fails before scheme ad
     ]);
     await assert.rejects(
         SchemeDiscovery.discover({ cwd: invalid }),
-        /plugin 'bad-credit': plurnk\.attribution must be a non-empty string or string\[\]/,
+        /extension 'bad-credit': plurnk\.attribution must be a non-empty string or string\[\]/,
     );
 
     const reserved = await makeTree([
@@ -90,16 +90,16 @@ test("discover: trust withholding precedes attribution and family-field validati
             plurnk: { kind: "scheme", attribution: ["valid", 42], schemes: [{ name: "broken" }] },
         }],
     ]);
-    const previous = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "1";
+    const previous = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+    process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "1";
     try {
         const result = await SchemeDiscovery.discover({ cwd });
         assert.deepEqual(result.schemes, []);
         assert.deepEqual(result.skipped, ["@acme/broken"]);
         assert.equal(result.packageAttributions.size, 0);
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = previous;
+        if (previous === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = previous;
     }
 });
 
@@ -167,20 +167,20 @@ test("discover: a missing node_modules yields an empty result", async () => {
     assert.deepEqual(skipped, []);
 });
 
-test("discover: PLURNK_PLUGINS_TRUSTED_ONLY withholds untrusted third parties, keeps @plurnk", async () => {
+test("discover: PLURNK_EXTENSIONS_TRUSTED_ONLY withholds untrusted third parties, keeps @plurnk", async () => {
     const cwd = await makeTree([
         ["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")],
         ["@acme/acme-scheme-foo", scheme("@acme/acme-scheme-foo", "foo")],
     ]);
-    const prev = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "1"; // on, no third party allowlisted
+    const prev = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+    process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "1"; // on, no third party allowlisted
     try {
         const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
         assert.deepEqual(schemes.map((s) => s.name), ["http"]); // @plurnk always trusted
         assert.deepEqual(skipped, ["@acme/acme-scheme-foo"]);
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = prev;
+        if (prev === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prev;
     }
 });
 

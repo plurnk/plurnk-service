@@ -1,4 +1,4 @@
-// Public package surface. package.json owns plugin registration {§http-manifest}.
+// Public package surface. package.json owns extension registration {§http-manifest}.
 export { default } from "./Http.ts";
 export { default as Http } from "./Http.ts";
 

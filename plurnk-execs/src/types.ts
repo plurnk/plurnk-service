@@ -101,7 +101,7 @@ export interface ExecPreparation extends SchemeResult {
 }
 
 // Terminal result of a `run()`. The universal operation-result contract applies
-// at this plugin boundary: every failure carries RFC 9457 Problem Details.
+// at this extension boundary: every failure carries RFC 9457 Problem Details.
 // `exitCode` is present only for the subprocess family; `page` only when a tool result
 // is a full page ({§executor-page-receipt}).
 export interface ExecResult extends ChannelProducerResult {
@@ -203,12 +203,12 @@ export interface ExecInfo {
     expandTools?: boolean;
     packageName: string;
     // Published per-tag projection of the package-level attribution declaration.
-    // Discovery validates it through {§plugin-attribution} before admission.
+    // Discovery validates it through {§extension-attribution} before admission.
     attribution?: string | string[];
 }
 
 // One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`
-// manifest entry, and the element type a dynamic runtimes hook returns. `name`
+// manifest entry, and the element type a dynamic runtimes function returns. `name`
 // is the canonical tag from {§executor-runtime-declaration}; the rest are the
 // manifest fields discover() surfaces onto ExecInfo (a per-tag
 // `docs/<tag>.md` file, when present, still wins over inline details).
@@ -227,10 +227,10 @@ export interface RuntimeDecl {
     expandTools?: boolean;
 }
 
-// Dynamic runtime declaration hook ({§executor-dynamic-runtimes}). Discovery
-// imports it only after trust admission. A declared but broken admitted hook is
+// Dynamic runtime declaration function ({§executor-dynamic-runtimes}). Discovery
+// imports it only after trust admission. A declared but broken admitted function is
 // fail-hard; a malformed unrelated package manifest is merely not discovered.
-export type RuntimesHook = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;
+export type RuntimesFunction = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;
 
 // Runtime tag → provider. Tags are a flat global namespace; collisions are a
 // fail-hard install error (see discover()).
@@ -240,7 +240,7 @@ export interface Discovery {
     registry: ExecRegistry;
     // Canonical package-level attribution; a multi-tag package appears once.
     packageAttributions: PackageAttributions;
-    // Installed exec packages skipped by the PLURNK_PLUGINS_TRUSTED_ONLY trust
+    // Installed exec packages skipped by the PLURNK_EXTENSIONS_TRUSTED_ONLY trust
     // gate (untrusted third-party): discovered but NOT registered. discover()
     // never crashes on an untrusted package — it returns them here so the
     // consumer can emit a notices note (discover() has no sink of its own).

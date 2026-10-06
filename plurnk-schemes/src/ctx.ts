@@ -1,5 +1,5 @@
 // Stable context for trusted `@plurnk/plurnk-schemes-*` extensions. This is a
-// semantic compatibility boundary, not a sandbox: installed Node.js plugins
+// semantic compatibility boundary, not a sandbox: installed Node.js extensions
 // already have host-process authority. The interfaces keep extension code
 // independent of database schemas and private service modules while the
 // consumer injects their implementation.

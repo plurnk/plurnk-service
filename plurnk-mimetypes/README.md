@@ -42,7 +42,7 @@ Third-party handler packages are independent in the same way: installing a leaf
 is sufficient for discovery to register its declarations, subject to the shared
 trust gate.
 
-Detection recognizes registry languages independently of grammar-leaf
+Detection recognizes registry languages independently of grammar-extension
 installation. Adding or removing a leaf changes structural availability without
 changing detection code. A detected mimetype whose grammar isn't installed
 **degrades**: `ok` stays true, metadata is real, requested channels come back
@@ -176,9 +176,9 @@ exact string `plurnk.kind === "mimetype"`, returning
 before importing handler code.
 
 - **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
-- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§plugin-trust-boundary}).
-- **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypePluginError` with plugin identity and causal evidence ({§mimetype-plugin-failure}).
-- **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§plugin-attribution}). Attribution collection never forces a lazy handler to load.
+- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§extension-trust-boundary}).
+- **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypeExtensionError` with extension identity and causal evidence ({§mimetype-extension-failure}).
+- **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§extension-attribution}). Attribution collection never forces a lazy handler to load.
 - **Default ordering.** Third-party packages are sorted first and `@plurnk` packages last; later declarations win, so the default scan protects the standard handlers from shadowing.
 - **Explicit ordering.** `packageDirs` bypasses default enumeration and preserves caller order; later declarations still win.
 
@@ -188,7 +188,7 @@ before importing handler code.
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
 | Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, projection identity, artifact seams, lifecycle.   |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
-| Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypePluginError`.                                                              |
+| Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypeExtensionError`.                                                              |
 | Query/projection    | Matcher and dialect primitives, JSON/XML projection, text coordinates, and typed query/coordinate failures.                |
 | Classification      | `classifyMimetype`.                                                                                                        |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |

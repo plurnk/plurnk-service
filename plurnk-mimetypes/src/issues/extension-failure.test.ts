@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import Mimetypes from "../Mimetypes.ts";
-import MimetypePluginError from "../MimetypePluginError.ts";
+import MimetypeExtensionError from "../MimetypeExtensionError.ts";
 import type { Discovery, HandlerInfo } from "../types.ts";
 
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 const roots: string[] = [];
 const info: HandlerInfo = {
@@ -40,8 +40,8 @@ const orchestrator = (loader: () => Promise<unknown>): Mimetypes => new Mimetype
     loader,
 });
 
-function isPluginError(error: unknown, cause?: unknown): boolean {
-    assert.ok(error instanceof MimetypePluginError);
+function isExtensionError(error: unknown, cause?: unknown): boolean {
+    assert.ok(error instanceof MimetypeExtensionError);
     assert.match(error.message, /@fixture\/mimetype-handler/);
     assert.match(error.message, /text\/fixture/);
     if (cause !== undefined) assert.strictEqual(error.cause, cause);
@@ -52,7 +52,7 @@ afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("declared mimetype plugin failures", () => {
+describe("declared mimetype extension failures", () => {
     it("surfaces one declaration failure through ready, process, and query", async () => {
         const root = await mkdtemp(path.join(tmpdir(), "plurnk-invalid-mimetype-"));
         roots.push(root);
@@ -74,7 +74,7 @@ describe("declared mimetype plugin failures", () => {
 
         for (const call of calls) {
             await assert.rejects(call, (error: unknown) => {
-                assert.ok(error instanceof MimetypePluginError);
+                assert.ok(error instanceof MimetypeExtensionError);
                 assert.match(error.message, /@fixture\/invalid-handler/);
                 assert.match(error.message, /handlers/);
                 assert.equal(error.packageName, "@fixture/invalid-handler");
@@ -96,7 +96,7 @@ describe("declared mimetype plugin failures", () => {
             ),
         ];
 
-        for (const call of calls) await assert.rejects(call, (error: unknown) => isPluginError(error, cause));
+        for (const call of calls) await assert.rejects(call, (error: unknown) => isExtensionError(error, cause));
     });
 
     it("preserves a handler constructor failure", async () => {
@@ -109,7 +109,7 @@ describe("declared mimetype plugin failures", () => {
 
         await assert.rejects(
             () => orchestrator(async () => ({ default: BrokenHandler })).getHandler(info.mimetype),
-            (error: unknown) => isPluginError(error, cause),
+            (error: unknown) => isExtensionError(error, cause),
         );
     });
 
@@ -124,7 +124,7 @@ describe("declared mimetype plugin failures", () => {
         await assert.rejects(
             () => orchestrator(async () => ({ default: PartialHandler })).getHandler(info.mimetype),
             (error: unknown) => {
-                assert.equal(isPluginError(error), true);
+                assert.equal(isExtensionError(error), true);
                 assert.ok(error instanceof Error);
                 assert.match(String(error.cause), /handler surface/);
                 assert.doesNotMatch(error.message, /0\.15|predates/);

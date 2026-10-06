@@ -31,7 +31,7 @@ describe("exact module absence", () => {
         assert.equal(isExactModuleAbsent(error, specifier), false);
     });
 
-    it("maps an exactly absent grammar leaf to GrammarNotInstalledError", async () => {
+    it("maps an exactly absent grammar extension to GrammarNotInstalledError", async () => {
         await assert.rejects(
             resolveWasmPath({
                 mimetype: "text/x-definitely-absent",

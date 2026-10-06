@@ -1620,7 +1620,7 @@ discriminated values:
 | `mimetype` | Non-empty `mimetype` media type | `CapabilityDisplay` |
 
 `CapabilityDisplay` is a closed object whose optional `glyph` is a non-empty,
-opaque string. Capability frameworks own and validate their intrinsic
+opaque string. Frameworks own and validate their intrinsic
 declarations; Core owns composition of the installed families; interface
 modules expose this exact shape; clients own rendering, font support, theme,
 and identity fallback when `glyph` is absent. Empty framework sentinels are

@@ -2,12 +2,12 @@ import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
     PackageAttributions,
-    PluginAttribution,
+    ExtensionAttribution,
 } from "@plurnk/plurnk-meta";
 import type { GrammarStyle } from "./AiSdkProvider.ts";
 
 // Scope-agnostic discovery of installed AI SDK provider packages
-// ({§plugin-family-kind}).
+// ({§extension-kind}).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep
 // the ones declaring `plurnk.kind === "provider"`. Scope-agnostic so a THIRD
@@ -21,7 +21,7 @@ import type { GrammarStyle } from "./AiSdkProvider.ts";
 //
 // Cataloged and operator-declared providers resolve before this scan.
 //
-// {§plugin-trust-boundary} Host plugin trust gate (PLURNK_PLUGINS_TRUSTED_ONLY)
+// {§extension-trust-boundary} Host extension trust gate (PLURNK_EXTENSIONS_TRUSTED_ONLY)
 // — enforced uniformly across the four scope-agnostic families. An untrusted
 // package is discovered-but-declined (recorded in `skipped`, never registered,
 // never thrown), so the consumer can name it in a precise error.
@@ -37,7 +37,7 @@ export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
     packageAttributions: PackageAttributions;
-    // {§provider-grammar-transport} — plugin-declared constrained-decoding
+    // {§provider-grammar-transport} — extension-declared constrained-decoding
     // capability per provider name; "none" unless the manifest declares one.
     grammarStyles: Map<string, GrammarStyle>;
 };
@@ -49,7 +49,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 
     const registry = new Map<string, string>();
     const skipped = new Map<string, string>();
-    const packageAttributions = new Map<string, PluginAttribution>();
+    const packageAttributions = new Map<string, ExtensionAttribution>();
     const grammarStyles = new Map<string, GrammarStyle>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
@@ -82,7 +82,7 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
 
 // One inert manifest record for a provider package, or null for anything that
 // isn't one. Attribution remains unknown until trust admission, then the shared
-// {§plugin-attribution} boundary validates it.
+// {§extension-attribution} boundary validates it.
 type ProviderInfo = { name: string; packageName: string; attribution: unknown; grammarStyle: GrammarStyle };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {

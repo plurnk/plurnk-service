@@ -160,7 +160,7 @@ test("HTML → byte response materializes local floor projection when no materia
     });
 });
 
-test("HTML → materializes the configured materializer's Markdown ({§http-materializer-plugins})", async () => {
+test("HTML → materializes the configured materializer's Markdown ({§http-materializer-extensions})", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({

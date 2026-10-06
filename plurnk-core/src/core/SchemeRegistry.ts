@@ -24,8 +24,8 @@ import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import Meta, {
     TEACHING_CORPUS,
-    type PluginAttribution,
-    type PluginAttributionContext,
+    type ExtensionAttribution,
+    type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
 
@@ -55,14 +55,14 @@ export default class SchemeRegistry {
     #readiness = new Map<object, Promise<void>>();
     #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
-    #packageAttributions = new Map<string, PluginAttribution>();
+    #packageAttributions = new Map<string, ExtensionAttribution>();
     #packageAttributionSources = new Map<string, Set<object>>();
     // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///<id>). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
     // One ownership ledger for built-ins, installed schemes, runtime output
-    // faces, and programmatic schemes. {§plugin-namespace-arbitration}
+    // faces, and programmatic schemes. {§extension-namespace-arbitration}
     #claims = new Map<string, NamespaceClaim>();
     #readTeaching: ReadTeaching;
     #referenceDocs: Promise<readonly { name: string; scheme: string | null; content: string }[]> | undefined;
@@ -183,7 +183,7 @@ export default class SchemeRegistry {
 
     // Register one executor tag's scheme face (the boot loop above or daemon-module setup).
     // Cross-family arbitration lives here so boot and module paths share one
-    // namespace. {§plugin-namespace-arbitration}
+    // namespace. {§extension-namespace-arbitration}
     registerRuntimeScheme(
         tag: string,
         executor: Executor,
@@ -312,7 +312,7 @@ export default class SchemeRegistry {
     }
 
     // {§web-materialization-contract} — the https handler publishes web materialization; core
-    // reaches it here and names no leaf package. Absent is a defect of the installation, not a fallback.
+    // reaches it here and names no extension package. Absent is a defect of the installation, not a fallback.
     webMaterializer(): WebMaterializer {
         const handler = this.#handlers.get("https") as SchemeHandler | undefined;
         if (handler?.webMaterializer === undefined) throw new Error("web materialization requires an installed https scheme handler that publishes it");
@@ -422,7 +422,7 @@ export default class SchemeRegistry {
     }
 
 
-    // {§scheme-packet-transform} {§packet-plugin-transform}.
+    // {§scheme-packet-transform} {§packet-extension-transform}.
     async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
         for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {
@@ -438,20 +438,20 @@ export default class SchemeRegistry {
 
     // Discover external scheme siblings — delegated to the framework's SchemeDiscovery
     // (schemes 0.9+): the scope-agnostic node_modules scan for plurnk.kind:"scheme" +
-    // plurnk.name AND the PLURNK_PLUGINS_TRUSTED_ONLY trust gate (untrusted → `skipped`,
-    // never crashed) both live there now, single-sourced across the plugin families
+    // plurnk.name AND the PLURNK_EXTENSIONS_TRUSTED_ONLY trust gate (untrusted → `skipped`,
+    // never crashed) both live there now, single-sourced across the kinds
     // (the "delegate upstream" rule — execs/mimetypes/providers already ship discover()).
     // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
     // is left as-is) and importing + registering the trusted descriptors.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
         const { schemes, packageAttributions, skipped } = await SchemeDiscovery.discover({ cwd });
         for (const name of skipped) {
-            console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+            console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
         }
         for (const { name, packageName, exportName } of schemes) {
             const claim = SchemeRegistry.#externalSchemeClaim(packageName);
             if (this.#assertClaim(name, claim, true) === "same") continue;
-            // {§plugin-discovery} — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
+            // {§extension-discovery} — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
             // absent = the classic single default export. A declared export that isn't a constructor
             // fails the boot hard — a manifest naming a missing class is a misdeclaration, not a skip.
             const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
@@ -467,10 +467,10 @@ export default class SchemeRegistry {
         }
     }
 
-    // {§plugin-attribution} — static declarations are always-on; each admitted
+    // {§extension-attribution} — static declarations are always-on; each admitted
     // external handler may add or omit opaque tags for this exact attempt.
-    attributions(context: PluginAttributionContext): PluginAttribution {
-        const lists: PluginAttribution[] = [...this.#packageAttributions.values()];
+    attributions(context: ExtensionAttributionContext): ExtensionAttribution {
+        const lists: ExtensionAttribution[] = [...this.#packageAttributions.values()];
         for (const [packageName, sources] of this.#packageAttributionSources) {
             for (const source of sources) {
                 lists.push(Meta.runtimeAttribution(source, context, packageName));

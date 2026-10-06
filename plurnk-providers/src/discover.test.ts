@@ -8,7 +8,7 @@ import { discover } from "./discover.ts";
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 // Create a temp dir and register its removal on the test context, so it is
 // cleaned on a GREEN or RED run. A trailing rm after the assertions leaks the dir
@@ -133,7 +133,7 @@ test("discover: validates trusted attribution before provider admission", async 
     });
     await assert.rejects(
         discover({ cwd: root }),
-        /plugin '@acme\/provider-bad': plurnk\.attribution must be a non-empty string or string\[\]/,
+        /extension '@acme\/provider-bad': plurnk\.attribution must be a non-empty string or string\[\]/,
     );
 
     const reservedRoot = await buildModules(t, {
@@ -148,7 +148,7 @@ test("discover: an untrusted malformed attribution is withheld before validation
     });
     const result = await discover({
         cwd: root,
-        env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv,
+        env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv,
     });
     assert.equal(result.registry.size, 0);
     assert.equal(result.skipped.get("bad"), "@acme/provider-bad");
@@ -161,7 +161,7 @@ test("discover: missing node_modules yields an empty registry, not an error", as
     assert.equal(registry.size, 0);
 });
 
-// — trust gate ({§plugin-trust-boundary}) —
+// — trust gate ({§extension-trust-boundary}) —
 
 const trustFixture = (t: TestContext) => buildModules(t, {
     "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
@@ -171,7 +171,7 @@ const trustFixture = (t: TestContext) => buildModules(t, {
 test("trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
     const root = await trustFixture(t);
     for (const gate of ["", "0"]) {
-        const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: gate } as NodeJS.ProcessEnv });
+        const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } as NodeJS.ProcessEnv });
         assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
         assert.equal(skipped.size, 0);
     }
@@ -183,7 +183,7 @@ test("trust gate OFF ('' or '0'): every provider is trusted; unset defers to the
 
 test("trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
     const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv });
+    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv });
     assert.deepEqual([...registry.keys()], ["native"]);              // @plurnk/* survives
     assert.equal(registry.has("foo"), false);                        // third party not registered
     assert.equal(skipped.get("foo"), "@acme/acme-provider-foo");     // …recorded for a precise error
@@ -191,7 +191,7 @@ test("trust gate ON: @plurnk/* always trusted; third party declined → skipped,
 
 test("trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
     const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: "@acme/acme-provider-foo" } as NodeJS.ProcessEnv });
+    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } as NodeJS.ProcessEnv });
     assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
     assert.equal(skipped.size, 0);
 });

@@ -13,7 +13,7 @@ import PluginSources from "../server/PluginSources.ts";
 // Duplicate ownership fails boot naming both packages.
 //
 // Membership = the `@plurnk/*` scope OR a `plurnk` field in package.json (the same marker the
-// exec/scheme discovery keys on), gated by PLURNK_PLUGINS_TRUSTED_ONLY exactly like
+// exec/scheme discovery keys on), gated by PLURNK_EXTENSIONS_TRUSTED_ONLY exactly like
 // plurnk-execs discover(): unset/""/"0" trusts everything; any value trusts @plurnk/* plus a
 // comma-separated allowlist.
 export type EnvDefaultsFile = {
@@ -94,7 +94,7 @@ export default class EnvDefaults {
         return { files, configurationErrors, reports: sources.reports };
     }
 
-    // {§operator-config-env-defaults} A standard bundle's panel is native extension data, not a portable component.
+    // {§operator-config-env-defaults} A standard bundle's panel is extension data, not a portable component.
     static async nativeFile(root: string, owner: string): Promise<EnvDefaultsFile | null> {
         const location = join(root, "ai.plurnk", ".env.defaults");
         try {

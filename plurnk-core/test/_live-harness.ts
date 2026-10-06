@@ -49,7 +49,7 @@ export interface LiveWorkspace {
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
 const BENCHMARKS = benchmarksRoot();
 
-// A test-file process owns one plugin generation, matching production's long-lived daemon
+// A test-file process owns one extension generation, matching production's long-lived daemon
 // lifetime without coupling its independent workspace databases. Reconstructing a host-sized
 // handler graph for every story retained native high-water memory across generations.
 const mimetypes = new Mimetypes({ defaultMimetype: "text/markdown" });

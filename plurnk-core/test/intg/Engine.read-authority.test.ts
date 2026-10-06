@@ -61,7 +61,7 @@ const assertProjection = (read: AnchoredReadResult, editable: boolean) => {
 };
 
 for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as const) {
-    test(`{§line-anchor-write-authority}: plugin ${mode} resolution governs publication without hiding internal failure`, async (t) => {
+    test(`{§line-anchor-write-authority}: extension ${mode} resolution governs publication without hiding internal failure`, async (t) => {
         const { db, ids, schemes, read } = await runtime(t);
         const calls: unknown[] = [];
         const unavailable = Results.failure("scheme:authority", "authority-unavailable", 500, "Write authority could not be resolved.");

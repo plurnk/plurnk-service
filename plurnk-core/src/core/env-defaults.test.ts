@@ -9,9 +9,9 @@ import EnvDefaults from "./env-defaults.ts";
 import HostPaths from "./HostPaths.ts";
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
-// ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// ({§extension-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
 // state their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 const setting = (t: TestContext, key: string, value: string): void => {
     const prior = process.env[key];
@@ -38,11 +38,11 @@ test("collect: the host's file + @plurnk/* + plurnk-declaring third parties; bys
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_FAKE_X=1\n" });
-        await addPackage(nm, "acme-plugin", { plurnk: true, defaults: "ACME_PLUGIN_Y=2\n" });
+        await addPackage(nm, "acme-extension", { plurnk: true, defaults: "ACME_EXTENSION_Y=2\n" });
         await addPackage(nm, "left-pad", { defaults: "LEFT_PAD=oops\n" }); // ships a file but is NOT an ecosystem member
         await addPackage(nm, "@plurnk/plurnk-silent", {});                 // member, no file — fine
         const { files } = await EnvDefaults.collect(root, nm);
-        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-plugin"],
+        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-extension"],
             "host first, then members name-sorted; the bystander's file is never read");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -116,7 +116,7 @@ test("the catalog contains declarations and examples, never effective environmen
     const previous = process.env[key];
     try {
         const source = `# Required only when enabled.\n# ${key}=\nPLURNK_ENVD_REFERENCE_ENABLED=0\n`;
-        await addPackage(nm, "acme-plugin", { plurnk: true, defaults: source });
+        await addPackage(nm, "acme-extension", { plurnk: true, defaults: source });
         process.env[key] = "private-test-sentinel";
         const catalog = EnvDefaults.renderCatalog((await EnvDefaults.collect(root, nm)).files);
         assert.ok(catalog.includes(source), "retain optional declarations and their owner's explanations");
@@ -128,20 +128,20 @@ test("the catalog contains declarations and examples, never effective environmen
     }
 });
 
-test("PLURNK_PLUGINS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {
+test("PLURNK_EXTENSIONS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {
     const { root, nm } = await scaffold();
-    const prior = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
+    const prior = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_FAKE_X=1\n" });
-        await addPackage(nm, "acme-plugin", { plurnk: true, defaults: "ACME_PLUGIN_Y=2\n" });
-        await addPackage(nm, "evil-plugin", { plurnk: true, defaults: "EVIL_Z=3\n" });
-        process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "acme-plugin";
+        await addPackage(nm, "acme-extension", { plurnk: true, defaults: "ACME_EXTENSION_Y=2\n" });
+        await addPackage(nm, "evil-extension", { plurnk: true, defaults: "EVIL_Z=3\n" });
+        process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "acme-extension";
         const { files } = await EnvDefaults.collect(root, nm);
-        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-plugin"],
-            "@plurnk/* always trusted; the allowlist admits acme; evil-plugin's knobs never load");
+        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-extension"],
+            "@plurnk/* always trusted; the allowlist admits acme; evil-extension's knobs never load");
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        else process.env.PLURNK_PLUGINS_TRUSTED_ONLY = prior;
+        if (prior === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
+        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prior;
         await rm(root, { recursive: true, force: true });
     }
 });
@@ -220,9 +220,9 @@ test("{§operator-config-env-defaults} untrusted native defaults are not admitte
     await writeFile(join(root, "outside.env"), "PLUGIN_VALUE=escaped\n");
     await rm(join(plugin, "ai.plurnk/.env.defaults"));
     await symlink(join(root, "outside.env"), join(plugin, "ai.plurnk/.env.defaults"));
-    setting(t, "PLURNK_PLUGINS_TRUSTED_ONLY", "1");
+    setting(t, "PLURNK_EXTENSIONS_TRUSTED_ONLY", "1");
     assert.deepEqual((await EnvDefaults.collect(root, nm, { hostPaths })).configurationErrors, [], "untrusted defaults were not read");
-    process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+    process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
     const collected = await EnvDefaults.collect(root, nm, { hostPaths });
     assert.deepEqual(collected.files.map(({ owner }) => owner), ["@plurnk/plurnk-service"]);
     assert.equal(collected.configurationErrors.length, 1);

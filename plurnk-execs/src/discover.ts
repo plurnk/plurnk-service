@@ -2,7 +2,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
-import type { PluginAttribution, PluginAttributionDeclaration } from "@plurnk/plurnk-meta";
+import type { ExtensionAttribution, ExtensionAttributionDeclaration } from "@plurnk/plurnk-meta";
 import DocFile from "./DocFile.ts";
 import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
@@ -24,11 +24,11 @@ interface ExecManifest {
 // not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
 // explicitly to skip the scan.
 //
-// Trust precedes executable hooks ({§executor-trust}). A package is recognized
+// Trust precedes executable discovery code ({§executor-trust}). A package is recognized
 // only when its manifest declares `plurnk.kind === "exec"`; tags come from:
 //   - STATIC: `plurnk.runtimes: { name, glyph?, summary, invocation, details? }[]` —
 //     tags known at publish time.
-//   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted hook that
+//   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted runtimes function that
 //     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
 // Each decl registers its tag separately; one package can claim many tags
 // backed by the same default export. Summary, invocation, details, and attribution
@@ -41,13 +41,13 @@ export default class Discover {
         const dirs = options.packageDirs ?? await Discover.#defaultPackageDirs(options.cwd ?? process.cwd());
 
         const registry = new Map<string, ExecInfo>();
-        const packageAttributions = new Map<string, PluginAttribution>();
+        const packageAttributions = new Map<string, ExtensionAttribution>();
         const skipped = new Set<string>();
         const disabled = new Set<string>();
         for (const dir of dirs) {
             const manifest = await Discover.#readExecManifest(dir);
             if (manifest === null) continue; // not an exec package
-            // Trust is enforced before any dynamic runtime hook is imported
+            // Trust is enforced before any dynamic runtimes function is imported
             // ({§executor-trust}).
             if (!Meta.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
@@ -87,7 +87,7 @@ export default class Discover {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // The manifest of a declared executor package ({§plugin-manifest-read}); discover() silently
+    // The manifest of a declared executor package ({§extension-manifest-read}); discover() silently
     // skips everything else (not "skipped by trust", just not an exec package).
     static async #readExecManifest(dir: string): Promise<ExecManifest | null> {
         const manifest = await Meta.readManifest(dir, "exec");
@@ -98,7 +98,7 @@ export default class Discover {
     static async #readExecInfos(
         dir: string,
         { packageName, plurnk }: ExecManifest,
-        attribution: PluginAttributionDeclaration | undefined,
+        attribution: ExtensionAttributionDeclaration | undefined,
     ): Promise<ExecInfo[]> {
         const infos: ExecInfo[] = [];
         for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
@@ -126,8 +126,8 @@ export default class Discover {
     // without preserving a second validation policy.
     static #attributionProjection(
         raw: unknown,
-        tags: PluginAttribution,
-    ): PluginAttributionDeclaration | undefined {
+        tags: ExtensionAttribution,
+    ): ExtensionAttributionDeclaration | undefined {
         if (raw === undefined || raw === null) return undefined;
         return typeof raw === "string" ? raw : [...tags];
     }
@@ -141,11 +141,11 @@ export default class Discover {
         return [];
     }
 
-    // Import an admitted package's hook through its export map. Hook loading,
+    // Import an admitted package's runtimes function through its export map. Its loading,
     // shape, execution, and result failures are fail-hard
     // ({§executor-dynamic-runtimes}).
     static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
-        if (!rel.startsWith("./")) throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
+        if (!rel.startsWith("./")) throw new Error(`exec runtimes function invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
         // Self-reference resolution: the subpath resolves through the package's OWN export
         // map anchored at its root — conditions apply (plurnk-dev → src in a workspace
         // checkout; dist when published), and a package needn't be installed to resolve.
@@ -154,26 +154,26 @@ export default class Discover {
             const selfRequire = createRequire(path.join(dir, "package.json"));
             href = pathToFileURL(selfRequire.resolve(`${packageName}${rel.slice(1)}`)).href;
         } catch (cause) {
-            throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
+            throw new Error(`exec runtimes function unloadable: ${packageName} -> ${rel}`, { cause });
         }
         let mod: Record<string, unknown>;
         try {
             mod = await import(href);
         } catch (cause) {
-            throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
+            throw new Error(`exec runtimes function unloadable: ${packageName} -> ${rel}`, { cause });
         }
-        const hook = mod.runtimes ?? mod.default;
-        if (typeof hook !== "function") {
-            throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must export 'runtimes' (or default) as a function`);
+        const runtimes = mod.runtimes ?? mod.default;
+        if (typeof runtimes !== "function") {
+            throw new Error(`exec runtimes function invalid: ${packageName} -> ${rel} must export 'runtimes' (or default) as a function`);
         }
         let decls: unknown;
         try {
-            decls = await (hook as () => unknown)();
+            decls = await (runtimes as () => unknown)();
         } catch (cause) {
-            throw new Error(`exec runtimes hook threw: ${packageName} -> ${rel}`, { cause });
+            throw new Error(`exec runtimes function threw: ${packageName} -> ${rel}`, { cause });
         }
         if (!Array.isArray(decls)) {
-            throw new Error(`exec runtimes hook returned a non-array: ${packageName} -> ${rel}`);
+            throw new Error(`exec runtimes function returned a non-array: ${packageName} -> ${rel}`);
         }
         return decls as RuntimeDecl[];
     }

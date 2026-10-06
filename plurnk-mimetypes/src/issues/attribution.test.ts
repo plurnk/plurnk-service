@@ -8,7 +8,7 @@ import { discover } from "../discover.ts";
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
-process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 async function makePackage(
     root: string,
@@ -121,7 +121,7 @@ describe("discover attribution", () => {
         const result = await discover({
             packageDirs: [dir],
             includeTreeSitter: false,
-            env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" },
+            env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
         });
         assert.deepEqual(result.skipped, ["@acme/acme-mime-untrusted"]);
         assert.equal(result.packageAttributions.size, 0);

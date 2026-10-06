@@ -2,7 +2,7 @@ import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { validateManifest, type ManifestResult } from "./AgentPluginManifest.ts";
 
-// {§agent-plugins-containment} Shared by portable components and native extension admission.
+// {§agent-plugins-containment} Shared by portable components and extension admission.
 export default class AgentPluginFiles {
     static inside(root: string, candidate: string): boolean {
         const path = relative(root, candidate);

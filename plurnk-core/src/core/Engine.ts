@@ -382,7 +382,7 @@ export default class Engine {
         }).filter(({ tag }) => RuntimePolicy.isEnabled(tag));
     }
 
-    // {§plugin-namespace-arbitration} Both registries prepare before either publishes.
+    // {§extension-namespace-arbitration} Both registries prepare before either publishes.
     registerRuntimes(registrations: readonly ModuleRuntimeRegistration[]): void {
         if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
         const normalized = Engine.#enabledRuntimes(registrations);

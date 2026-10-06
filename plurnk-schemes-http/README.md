@@ -50,7 +50,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
 - WebFetcher checks automatic byte targets and redirects; direct HTTP and
   WebSocket retain their explicit-target authority.
 - Generic GETs negotiate origin Markdown first. When the origin returns HTML,
-  a selected materializer plugin ({§http-materializer-plugins}) produces
+  a selected materializer extension ({§http-materializer-extensions}) produces
   `readable`; otherwise the installed HTML reader is the local route. Recoverable
   materializer failures use that same reader as a `203` recovery floor. Hard
   provider failures do not silently change producers.
@@ -85,7 +85,7 @@ plurnk start
 ```
 
 The shipped `.env.defaults` is the canonical operator configuration registry.
-To select a page-materializer plugin for generic public HTML materialization,
+To select a page-materializer extension for generic public HTML materialization,
 install it and set `PLURNK_SCHEMES_HTTP_MATERIALIZER=<id>` in `.env` (the
 `@plurnk/plurnk-tavily-plugin` showcase plugin supplies `tavily-extract`).
 Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local

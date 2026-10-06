@@ -188,14 +188,14 @@ A projection object is present even when its content is `""`; only `null`
 denotes absence. A materialization exception retains its original `cause`; it
 never enters the absence channel.
 
-#### §http-materializer-plugins Materializer plugins
+#### §http-materializer-extensions Materializer extensions
 
 `PLURNK_SCHEMES_HTTP_MATERIALIZER` selects one discovered `http-materializer`
-plugin by id; unset means the installed HTML projection is the only readable
+extension by id; unset means the installed HTML projection is the only readable
 producer. A materializer package declares
 `plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` and
 exports one `HttpMaterializer` per entry under the executor family's
-discovery, trust, and one-flat-id-namespace rules ({§plugin-discovery}). The
+discovery, trust, and one-flat-id-namespace rules ({§extension-discovery}). The
 selected materializer is consulted only for a credential-free generic request
 whose target has been admitted as public. Authored request metadata—including
 an authored `Accept` field—makes the request ineligible. The package-generated
@@ -204,7 +204,7 @@ fields are transport mechanics, not authored metadata. No authored request heade
 origin credentials cross the materializer boundary.
 
 An npm-installed Agent Plugin puts the same declaration under
-`plugin.json#extensions.ai.plurnk` ({§plugin-manifest-read}); file entries live in
+`plugin.json#extensions.ai.plurnk` ({§extension-manifest-read}); file entries live in
 `ai.plurnk/`. Discovery and implementations are cached process-wide and loaded
 lazily. A daemon instance neither registers nor removes materializers.
 
@@ -324,7 +324,7 @@ handler does not sniff or guess unknown bytes.
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`                             |
 | SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                                              |
-| Materializer plugins | Discovered `http-materializer` packages selected by `PLURNK_SCHEMES_HTTP_MATERIALIZER` {§http-materializer-plugins} |
+| Materializer extensions | Discovered `http-materializer` packages selected by `PLURNK_SCHEMES_HTTP_MATERIALIZER` {§http-materializer-extensions} |
 
 ### §http-config Operator configuration
 
