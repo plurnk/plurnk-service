@@ -680,7 +680,11 @@ by one ASCII space. Target and scope form one resource selection; COPY/MOVE
 repeat the complete selection/metadata group per operand. ANTLR accepts
 adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
-has at most one scope; its metadata blocks retain their authored order.
+has at most one scope; its metadata blocks retain their authored order. A second scope
+is refused, and the recovery reads the pair: a line number followed by its anchor
+(`<91> <@abcde>`, a copied row prefix) recovers to the anchor alone, two other single
+positions to one scope with both ends (`<@abcde> <-1>` to `<@abcde,-1>`), and anything
+else to one operation per selection.
 
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
 optional target and duration under {§send-wait-scope}. Their literal bodies begin
@@ -1916,8 +1920,11 @@ diagnostics are:
   scope opener, report the offending scope (at most 64 code points, ending at
   `>` or the heading's line end) and its operation's constraint: FIND result
   positions, text coordinates, or no scope. Do not append advice for
-  other operations or infer why the producer supplied the value. Spacing and
-  boundary-loss diagnostics retain their own contracts.
+  other operations or infer why the producer supplied the value. A text-coordinate
+  scope that pairs an anchor with the same five characters unmarked (`<@abcde,fghij>`)
+  states the anchor rule instead, with the scope marked: `` every line anchor carries
+  its `@`: `<@abcde,@fghij>` ``. Spacing and boundary-loss diagnostics retain their own
+  contracts.
 - §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose
   body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
   the aside the model put on the line below the heading. The builder takes

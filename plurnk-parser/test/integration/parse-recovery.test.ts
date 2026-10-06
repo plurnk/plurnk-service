@@ -91,7 +91,7 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         ["```READ (http://exa mple.com/x)\n```", "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`."],
         ["```READ (a.py) [{\"pattern\": 3}]\n```", "Write the matcher as a string, `[{\"pattern\": \"/needle/i\"}]`, or bare on the opening fence line after the path."],
         ["```sh (a) (b)\n```", "Write one `(program)` path on the `sh` heading, and the rest below it as the input."],
-        ["```EDIT (a.py) <1> <2>\nx\n```", "Write one scope, such as `<2>`."],
+        ["```EDIT (a.py) <1> <2>\nx\n```", "Write one scope with both ends, such as `<1,2>`."],
         ["```READ (a.py) <line number>\n```", "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body."],
         ["```COPY (a.py)\n```", "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body."],
         ["```WAIT (worker://unfinished\n```", "`WAIT (path)? <seconds>?` on the opening fence line, any body on the lines below, then the closing fence."],

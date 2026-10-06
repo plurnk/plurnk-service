@@ -110,7 +110,9 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
                         : lexer.isTextCoordinateOp()
                             ? "use numeric coordinates or `@hash` line anchors"
                             : "this operation takes no scope";
-            return `invalid ${op} scope ${JSON.stringify(PlurnkErrorStrategy.#scopeExcerpt(lexer))}; ${constraint}`;
+            const excerpt = PlurnkErrorStrategy.#scopeExcerpt(lexer);
+            const marked = lexer.isTextCoordinateOp() ? PlurnkErrorStrategy.#markedAnchors(excerpt) : null;
+            return `invalid ${op} scope ${JSON.stringify(excerpt)}; ${marked === null ? constraint : `every line anchor carries its \`@\`: \`${marked}\``}`;
         }
         if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
             || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
@@ -146,6 +148,14 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             trailing += char;
         }
         return trailing.trim().length === 0 ? null : trailing.trim();
+    }
+
+    // A hash copied without its `@` beside one that carries it (`<@WFYC2,tXN17>`): the scope as it
+    // reads with every anchor marked, or null when nothing in it is an unmarked anchor (#1005).
+    static #markedAnchors(excerpt: string): string | null {
+        if (!/@[0-9A-Za-z]{5}/u.test(excerpt)) return null;
+        const marked = excerpt.replace(/(?<=[<,] ?)(?=[0-9A-Za-z]{5}[,>])(?=[0-9]{0,4}[A-Za-z])/gu, "@");
+        return marked === excerpt ? null : marked;
     }
 
     static #scopeExcerpt(lexer: plurnkLexer): string {

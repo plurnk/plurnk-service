@@ -221,6 +221,9 @@ test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borr
         const error = firstError(section(op, " (a.md) <line number>"));
         assert.equal(error.message, `invalid ${op} scope "<line number>"; use numeric coordinates or \`@hash\` line anchors`);
     }
+    // A hash copied without its `@` beside one that carries it names the scope with every anchor marked (#1005).
+    assert.equal(firstError(section("EDIT", " (sympy/utilities/iterables.py) <@WFYC2,tXN17>", "x")).message,
+        "invalid EDIT scope \"<@WFYC2,tXN17>\"; every line anchor carries its `@`: `<@WFYC2,@tXN17>`");
     assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
     // {§scope-on-scopeless} — an operation that takes no scope drops it and runs, with one advisory naming its slots.

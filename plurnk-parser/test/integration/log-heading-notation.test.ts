@@ -94,5 +94,12 @@ test("{§bare-anchor-scope} an EDIT's bare `@hash` or `@start,@end` is its scope
     const read = statements("```READ (tests/test_mock.py) @patch\n```")[0];
     assert.equal(read?.op === "READ" ? read.matcher?.raw : null, "@patch", "on READ it stays the literal search");
     assert.deepEqual(refusal("```EDIT (requests/sessions.py) <91> @HecMB\nx\n```"),
-        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. Write one scope, such as `<@HecMB>`."]);
+        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. Write one scope, such as `<@HecMB>`: the anchor names its line."]);
+});
+
+test("{§bare-anchor-scope} two scopes on one resource: two ends are one range, two ranges are two operations (#1005)", () => {
+    assert.deepEqual(refusal("```READ (doc/usage.rst) <@wC8Pt> <-1>\n```"),
+        ["A resource selection takes one scope, and `<@wC8Pt>` and `<-1>` both stand here. Write one scope with both ends, such as `<@wC8Pt,-1>`."]);
+    assert.deepEqual(refusal("```READ (sklearn/model_selection/_split.py) <105,106> <1066,1300>\n```"),
+        ["A resource selection takes one scope, and `<105,106>` and `<1066,1300>` both stand here. Write one scope; select each of `<105,106>` and `<1066,1300>` with its own operation."]);
 });

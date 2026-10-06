@@ -705,9 +705,18 @@ export default class AstBuilder {
         const found = AstBuilder.#findAll(ctx, LineMarkerContext);
         if (found.length > 1) {
             const written = found.map((marker) => `\`${marker.getText()}\``);
+            // A line number then its anchor is a copied row prefix (`91<@abcde>`): the anchor names the
+            // line. Two other single positions are one range's ends (`<@abcde> <-1>` is `<@abcde,-1>`);
+            // anything else is several selections, each its own operation (#1005).
+            const ends = found.map((marker) => marker.getText().replace(/^<|>$/gu, "")).filter((inner) => !inner.includes(","));
+            const rowPrefix = ends.length === 2 && /^\d+$/u.test(ends[0]!) && /^@[0-9A-Za-z]{5}$/u.test(ends[1]!);
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 `A resource selection takes one scope, and ${written.join(" and ")} both stand here.`, "error",
-                `Write one scope, such as ${written.at(-1)}.`);
+                found.length !== 2 || ends.length !== 2
+                    ? `Write one scope; select each of ${written.join(" and ")} with its own operation.`
+                    : rowPrefix
+                        ? `Write one scope, such as \`<${ends[1]!}>\`: the anchor names its line.`
+                        : `Write one scope with both ends, such as \`<${ends.join(",")}>\`.`);
         }
         return found[0] ?? null;
     }
