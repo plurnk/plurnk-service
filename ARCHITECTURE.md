@@ -93,6 +93,25 @@ depend on their leaf consumers; the service manifest is the sole owner of its
 default leaf set, while compatible third-party leaves extend it through the
 same installation and discovery path ({§default-plugin-ownership}).
 
+### Package principles
+
+Robert C. Martin's six component principles decide which package a type belongs in and which way
+packages depend. A package's instability is its plurnk dependencies over its plurnk dependencies
+plus dependents: 0 for a package everything depends on, 1 for one nothing depends on.
+
+| Principle | Rule |
+| --- | --- |
+| Reuse/Release Equivalence | Code reused together is released together. |
+| Common Closure | Code that changes for the same reason lives in one package. |
+| Common Reuse | No consumer depends on code it does not use. |
+| Acyclic Dependencies | The package graph has no cycles. |
+| Stable Dependencies | A package depends only on packages at least as stable as itself. |
+| Stable Abstractions | The more stable a package, the more abstract it is. |
+
+The root lint enforces Acyclic and Stable Dependencies over every workspace's dependencies and peer
+dependencies, naming the cycle or the edge; the other four are design review rules. A plugin
+family's API therefore sits beneath both its host and its plugins, never inside the host.
+
 ## Documentation authority
 
 Four documents, four jobs, and one home for every sentence.

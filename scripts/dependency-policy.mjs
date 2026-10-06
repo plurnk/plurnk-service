@@ -39,6 +39,61 @@ export const defaultGrammarViolations = (manifest) => [
         .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar leaf and must not ship by default ({§mimetype-optional-grammars})`),
 ];
 
+// ARCHITECTURE.md § Package principles — over plurnk dependencies and peer dependencies, the package
+// graph has no cycles and depends only toward stability. Instability is a package's plurnk
+// dependencies over its dependencies plus dependents, compared as exact fractions.
+const GRAPH_SECTIONS = ["dependencies", "peerDependencies", "optionalDependencies"];
+export const packageGraphViolations = (entries) => {
+    const names = new Set(entries.map(({ manifest }) => manifest.name));
+    const edges = new Map(entries.map(({ file, manifest }) => [manifest.name, {
+        file,
+        targets: GRAPH_SECTIONS.flatMap((section) => Object.keys(manifest[section] ?? {})
+            .filter((target) => names.has(target))
+            .map((target) => ({ target, section }))),
+    }]));
+    const fanIn = new Map([...names].map((name) => [name, 0]));
+    for (const { targets } of edges.values()) {
+        for (const target of new Set(targets.map(({ target }) => target))) fanIn.set(target, fanIn.get(target) + 1);
+    }
+    const fanOut = (name) => new Set(edges.get(name).targets.map(({ target }) => target)).size;
+    const violations = [];
+    // Tarjan's strongly connected components: a component of more than one package is a cycle.
+    const order = new Map();
+    const low = new Map();
+    const stack = [];
+    const visit = (name) => {
+        order.set(name, order.size);
+        low.set(name, order.get(name));
+        stack.push(name);
+        for (const { target } of edges.get(name).targets) {
+            if (!order.has(target)) {
+                visit(target);
+                low.set(name, Math.min(low.get(name), low.get(target)));
+            } else if (stack.includes(target)) {
+                low.set(name, Math.min(low.get(name), order.get(target)));
+            }
+        }
+        if (low.get(name) !== order.get(name)) return;
+        const component = stack.splice(stack.indexOf(name));
+        if (component.length > 1 || edges.get(name).targets.some(({ target }) => target === name)) {
+            violations.push(`package cycle among ${component.sort().join(", ")}, against the Acyclic Dependencies principle (ARCHITECTURE.md § Package principles)`);
+        }
+    };
+    for (const name of [...names].sort()) if (!order.has(name)) visit(name);
+    for (const [source, { file, targets }] of edges) {
+        const out = fanOut(source);
+        const all = out + fanIn.get(source);
+        for (const { target, section } of targets) {
+            const targetOut = fanOut(target);
+            const targetAll = targetOut + fanIn.get(target);
+            if (targetOut * all > out * targetAll) {
+                violations.push(`${file}: ${section}.${target} is less stable than this package (instability ${targetOut}/${targetAll} against ${out}/${all}), against the Stable Dependencies principle (ARCHITECTURE.md § Package principles)`);
+            }
+        }
+    }
+    return violations;
+};
+
 if (import.meta.main) {
     const root = JSON.parse(await fs.readFile("package.json", "utf8"));
     const manifests = ["package.json", ...root.workspaces.map((dir) => path.join(dir, "package.json"))];
@@ -55,8 +110,10 @@ if (import.meta.main) {
     }))).filter((file) => file !== null);
     violations.push(...workspaceNpmConfigViolations(workspaceNpmConfigs));
 
+    const workspaceManifests = [];
     for (const file of manifests) {
         const manifest = JSON.parse(await fs.readFile(file, "utf8"));
+        if (file !== "package.json") workspaceManifests.push({ file, manifest });
         if (file === "plurnk-core/package.json") violations.push(...defaultGrammarViolations(manifest));
         for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
             if (typeof command === "string" && /\bnpm outdated\b/.test(command)) {
@@ -81,6 +138,8 @@ if (import.meta.main) {
             }
         }
     }
+
+    violations.push(...packageGraphViolations(workspaceManifests));
 
     if (violations.length > 0) {
         console.error("Dependency policy violations:");
