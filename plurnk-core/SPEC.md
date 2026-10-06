@@ -4078,8 +4078,9 @@ flowchart LR
 ```
 
 Every registered module's `setup` runs in registration order before any
-module's `start`. Core then readies process-wide schemes, reconciles durable
-lifecycle, and starts modules in registration order. The production
+module's `start` ({§module-phases}; failures follow {§module-failure}). Core
+then readies process-wide schemes, reconciles durable lifecycle, and starts
+modules in registration order. The production
 client-interface module may already own its socket under
 {§startup-listener-admission}; its `start` activates request handling without
 rebinding. Persisted workspaces with

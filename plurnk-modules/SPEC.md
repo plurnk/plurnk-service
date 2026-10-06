@@ -28,6 +28,26 @@ exactly one module to claim the root `/`. At `start` a module mounts exactly its
 listener answers `503 service-starting` until every module has started, so readiness never
 depends on registration order.
 
+§module-phases **Every module's `setup` completes before any module's `start`.** `setup`
+registers what the host may demand during recovery: Functionality adapters, schemes and module
+actions. The host then readies schemes, publishes capabilities and recovers durable lifecycle,
+and only then does any `start` bring up a face. Stopping runs every `stop` before any `close`.
+These phases are the only order a module may rely on: registration order is not part of the
+contract, and none is inferred from discovery.
+
+§module-self-activation **A module configures itself.** A discovered module's export is an object
+or a factory taking no arguments ({§module-discovery}), so it reads its own knobs from the
+environment its package documents. An unconfigured module is inert: it claims no mounts and
+registers nothing. The host decides nothing on a discovered module's behalf.
+
+§module-failure **A `setup` or `start` failure fails boot, and stopping releases exactly what was
+acquired.** The host tracks a module that has `stop` or `close` before its `setup`, and a distinct
+lifetime object when `start` returns one. A setup failure leaves later modules neither set up nor
+started; a start failure leaves later modules unstarted. Stopping the daemon then stops and closes
+every tracked module, the failing one included, in reverse registration order
+({§module-shutdown-order}). A phase failure does not skip later phases and joins one shutdown
+aggregate.
+
 The host passes one object implementing every slice. Seams are typed for clarity, not enforced
 at runtime: a module's declared slices are the coupling the compiler checks, and anything else
 the host object carries is not contract.
