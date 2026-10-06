@@ -158,8 +158,8 @@ The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps 
 owners. Capability-specific behavior remains with the owning plug point.
 
 §service-worker-composition The service launcher and the live/demo workspace
-helper share one registration of default worker-facing modules, MCP and outbound
-A2A, and both discover Schedule and command hooks ({§module-discovery}). The
+helper share one registration of the outbound A2A module, and both discover MCP,
+Schedule and command hooks ({§module-discovery}). The
 management families and readable reference documents are
 present even with no enabled definitions. Workspace capability policy controls every actor's
 surface; registering a family does not enable its definitions. The real-model

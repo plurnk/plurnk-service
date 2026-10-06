@@ -75,7 +75,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
             },
         }),
         stop: () => mcp.stop(),
-    }, "test-module");
+    }, "@plurnk/plurnk-mcp");
     t.after(async () => { release.resolve(); await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "catalog-race" });

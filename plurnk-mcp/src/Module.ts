@@ -11,7 +11,7 @@ import type { PluginContext } from "./PluginConfiguration.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
-import type { FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import {
     Problems,
     type FunctionalityCandidate,
@@ -301,7 +301,7 @@ type SetupSeam = Pick<ModuleSetupSeam,
     "workspaceConfigurationDirectories" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration> & WorkspacePluginsSeam;
 
-export default class Module {
+export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
     #plugins!: SetupSeam["readWorkspacePlugins"];

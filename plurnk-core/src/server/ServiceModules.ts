@@ -1,5 +1,5 @@
 import { OutboundModule as A2aOutboundModule, validateConfiguration as validateA2a } from "@plurnk/plurnk-a2a";
-import { Module as McpModule, configuredDefinitions, validateConfiguration as validateMcp } from "@plurnk/plurnk-mcp";
+import { configuredDefinitions, validateConfiguration as validateMcp } from "@plurnk/plurnk-mcp";
 import { validateConfiguration as validateSchedule } from "@plurnk/plurnk-schedule";
 import type Daemon from "./Daemon.ts";
 
@@ -13,7 +13,6 @@ export default class ServiceModules {
     }
 
     static registerWorkspaceCapabilities(daemon: Pick<Daemon, "registerModule">): void {
-        daemon.registerModule(McpModule.init(), "@plurnk/plurnk-mcp");
         daemon.registerModule(A2aOutboundModule.init(), "@plurnk/plurnk-a2a");
     }
 }

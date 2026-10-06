@@ -353,6 +353,12 @@ attachment, never a stored credential.
 
 ### §mcp-module The MCP family beneath the coordinator
 
+The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
+({§module-discovery}). It is setup-only: `setup` registers the family adapter and there is no
+start seam. Its factory only reads the environment, so configuration errors surface where they
+always have: in the family's diagnostics at runtime and in the offline check
+({§operator-config-offline-validation}). It claims no HTTP mounts.
+
 §mcp-launch-environment **A server inherits the operator's environment.** A stdio server
 starts with the operator's environment without plurnk's own secrets ({§exec-env-scoped}), as every MCP
 client launches one: stdio servers read their credentials from the environment. The model's command
