@@ -108,6 +108,12 @@ type LoopGenerationPolicy = {
     effort: Effort;
 };
 
+// {§module-discovery} — a registered module and its owner, the package it came from.
+interface RegisteredModule {
+    readonly module: DaemonModule<HostSetupSeam, ApplicationPort>;
+    readonly owner: string;
+}
+
 export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
         FileCreationPolicy.serviceScope();
@@ -145,7 +151,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
-    #modules: Array<DaemonModule<HostSetupSeam, ApplicationPort>> = [];
+    #modules: RegisteredModule[] = [];
+    // {§module-http-mounts} — each claimed prefix's owner, and the claims mounted at start.
+    readonly #mountClaims = new Map<string, string>();
+    readonly #mounted = new Set<string>();
     #moduleLifetimes: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #residency: WorkspaceResidency;
@@ -1434,7 +1443,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // daemon never opens a second transport, and a daemon without a listener says so.
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         if (this.#http === null) throw new Error(`registerHttpRoute: this daemon has no HTTP listener to mount '${prefix}' on`);
+        // {§module-http-mounts} — a module mounts exactly what it claimed.
+        if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpRoute: no module declared '${prefix}' among its mounts`);
         this.#http.registerHttpRoute(prefix, handler);
+        this.#mounted.add(prefix);
     }
 
     httpAddress(): { readonly host: string; readonly port: number } {
@@ -1590,9 +1602,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    registerModule(module: DaemonModule<HostSetupSeam, ApplicationPort>): void {
+    // {§module-discovery} — `owner` is the module's package name; diagnostics name it.
+    registerModule(module: DaemonModule<HostSetupSeam, ApplicationPort>, owner: string): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
-        this.#modules.push(module);
+        this.#modules.push({ module, owner });
     }
 
     async start(): Promise<void> {
@@ -1659,11 +1672,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         for (const packageName of discoveredModules.skipped) {
             console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
-        for (const module of discoveredModules.modules) {
-            this.#modules.push(module);
+        for (const { module, owner } of discoveredModules.modules) {
+            this.#modules.push({ module, owner });
         }
+        this.#claimMounts();
         const setupSeam: HostSetupSeam = this;
-        for (const module of this.#modules) {
+        for (const { module } of this.#modules) {
             if (module.stop !== undefined || module.close !== undefined) this.#moduleLifetimes.push(module);
             await module.setup?.(setupSeam);
         }
@@ -1675,12 +1689,41 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§module-lifecycle} — the daemon opened its one transport before admission ({§http-host});
         // modules mount their routes on it here, only after capability publication and durable
         // lifecycle recovery are complete. None opens a listener of its own.
-        for (const module of this.#modules) {
+        for (const { module } of this.#modules) {
             const started = await module.start?.(this);
             if (started !== undefined && !this.#moduleLifetimes.includes(started)) {
                 this.#moduleLifetimes.push(started);
             }
         }
+        this.#admitMounts();
+    }
+
+    // {§module-http-mounts} — every prefix is claimed before any module sets up: one owner per
+    // prefix, and a daemon with a listener has exactly one root owner.
+    #claimMounts(): void {
+        for (const { module, owner } of this.#modules) {
+            for (const prefix of module.mounts ?? []) {
+                if (!HttpListener.isPrefix(prefix)) {
+                    throw new Error(`module '${owner}' declares HTTP mount '${prefix}', which is not an absolute pathname prefix`);
+                }
+                const holder = this.#mountClaims.get(prefix);
+                if (holder !== undefined) throw new Error(`HTTP mount '${prefix}' is claimed by both '${holder}' and '${owner}'`);
+                this.#mountClaims.set(prefix, owner);
+            }
+        }
+        if (this.#http !== null && !this.#mountClaims.has("/")) {
+            throw new Error("no module claims the HTTP root '/': the service's client interface must own it");
+        }
+    }
+
+    // {§module-http-mounts} — the listener is admitted once every module has started and every
+    // claim is mounted, so readiness never depends on registration order.
+    #admitMounts(): void {
+        if (this.#http === null) return;
+        for (const [prefix, owner] of this.#mountClaims) {
+            if (!this.#mounted.has(prefix)) throw new Error(`module '${owner}' claimed HTTP mount '${prefix}' but did not mount it at start`);
+        }
+        this.#http.admit();
     }
 
     async #recoverLifecycle(): Promise<void> {

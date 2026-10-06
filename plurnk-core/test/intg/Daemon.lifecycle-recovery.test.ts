@@ -63,7 +63,7 @@ test("boot restores a drain for accepted queued work", async () => {
                 deactivate: async () => undefined,
             });
         },
-    });
+    }, "test-module");
     try {
         const workspaceId = await insertWorkspace(db, `recovery-queue-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");

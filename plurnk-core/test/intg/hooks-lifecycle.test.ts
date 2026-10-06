@@ -42,7 +42,7 @@ const captureHooks = async (t: TestContext, daemon: Daemon, selection = "Stop") 
         PLURNK_HOOKS_ARGS: JSON.stringify([script, output]),
         PLURNK_HOOKS_EVENTS: selection,
         PLURNK_HOOKS_TIMEOUT_MS: "5000",
-    }, (_message, cause) => { failures.push(cause); }));
+    }, (_message, cause) => { failures.push(cause); }), "test-module");
     return {
         failures,
         events: async (): Promise<HookEvent[]> => (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line)),

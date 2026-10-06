@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { Module as A2aModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -35,18 +35,22 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
         projectRoot: null,
     });
     let endpoint = "";
-    const expose = () => daemon.registerModule({
-        start: async (port) => {
-            const adapter = await A2aModule.init({
-                workspace: { name: workspace.workspaceName, projectRoot: null },
-                card: a2aCard(),
-                ...A2A_EXPOSURE,
-                token,
-            }).start(port);
-            endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
-            return adapter;
-        },
-    });
+    const expose = () => {
+        daemon.registerModule(rootOwner(), "test-root");
+        daemon.registerModule({
+            mounts: A2A_MOUNTS,
+            start: async (port) => {
+                const adapter = await A2aModule.init({
+                    workspace: { name: workspace.workspaceName, projectRoot: null },
+                    card: a2aCard(),
+                    ...A2A_EXPOSURE,
+                    token,
+                }).start(port);
+                endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
+                return adapter;
+            },
+        }, "test-module");
+    };
     expose();
     await daemon.start();
 
@@ -462,12 +466,14 @@ test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes stay
     try {
         let endpoint = "";
         daemon.registerModule({
+            mounts: A2A_MOUNTS,
             start: async (port) => {
                 const adapter = await A2aModule.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
                 endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
                 return adapter;
             },
-        });
+        }, "test-module");
+        daemon.registerModule(rootOwner(), "test-root");
         await daemon.start();
         assert.equal((await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0" } })).status, 200);
         await daemon.stop();

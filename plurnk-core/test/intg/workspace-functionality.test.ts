@@ -28,7 +28,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "shared-functionality" });

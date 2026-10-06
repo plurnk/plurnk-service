@@ -30,7 +30,7 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_WHERE: "1" }) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
     const proposals: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
         if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
@@ -68,7 +68,7 @@ test("{§mcp-launch-directory} an inaccessible state directory leaves the server
     await writeFile(join(hostPaths.stateDir, "workspaces"), "occupied");
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "blocked-mcp-state", projectRoot: project });

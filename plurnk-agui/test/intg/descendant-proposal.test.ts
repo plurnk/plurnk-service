@@ -98,7 +98,7 @@ test("a child proposal traverses its controlling conversation without losing eit
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
 
     try {

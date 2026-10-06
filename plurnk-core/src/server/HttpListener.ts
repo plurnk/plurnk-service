@@ -1,8 +1,8 @@
 // {§http-host} — the daemon's one HTTP listener. Core binds it before it admits durable state
 // ({§startup-listener-admission}); exterior adapters mount routes on it at start() and never open
-// a socket of their own (#641). Until a root ("/") is mounted nothing has admitted the client
-// interface, so every request is answered 503; after that each request goes to the longest
-// mounted prefix, and the root receives whatever nothing more specific claimed.
+// a socket of their own (#641). Until the daemon admits it, after every module has started
+// ({§module-http-mounts}), every request is answered 503; after that each request goes to the
+// longest mounted prefix, and the root receives whatever nothing more specific claimed.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Problems, type HttpHost, type HttpRouteHandler } from "@plurnk/plurnk-contracts";
 
@@ -15,6 +15,7 @@ export default class HttpListener implements HttpHost {
     readonly #server: Server;
     readonly #host: string;
     #mounts: readonly Mount[] = [];
+    #admitted = false;
     #closing: Promise<void> | null = null;
 
     private constructor(host: string) {
@@ -50,15 +51,23 @@ export default class HttpListener implements HttpHost {
 
     // A prefix is an absolute pathname. "/" is the root and receives what nothing longer claims;
     // any other prefix claims itself and the subtree beneath it, never a longer sibling name.
-    registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
+    static isPrefix(prefix: string): boolean {
         const absolute = prefix.startsWith("/") && !prefix.includes("?") && !prefix.includes("#");
-        if (!absolute || (prefix.length > 1 && prefix.endsWith("/"))) {
-            throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
-        }
+        return absolute && !(prefix.length > 1 && prefix.endsWith("/"));
+    }
+
+    registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
+        if (!HttpListener.isPrefix(prefix)) throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
         if (this.#mounts.some((mount) => mount.prefix === prefix)) {
             throw new Error(`http listener: '${prefix}' is already mounted`);
         }
         this.#mounts = [...this.#mounts, { prefix, handler }].toSorted((a, b) => b.prefix.length - a.prefix.length);
+    }
+
+    // {§module-http-mounts} — the daemon admits the listener once every module has started, so
+    // readiness never depends on the order modules mounted in.
+    admit(): void {
+        this.#admitted = true;
     }
 
     async close(): Promise<void> {
@@ -77,10 +86,10 @@ export default class HttpListener implements HttpHost {
 
     async #dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const pathname = new URL(req.url ?? "/", "http://listener").pathname;
-        const handler = this.#route(pathname);
+        const handler = this.#admitted ? this.#route(pathname) : null;
         if (handler === null) {
-            // No root is mounted: the service has not admitted its client interface. A request that
-            // arrives in that window is told to come back, not that the address is wrong.
+            // The daemon has not admitted its client interface. A request that arrives in that
+            // window is told to come back, not that the address is wrong.
             const problem = Problems.create(
                 "http",
                 "service-starting",

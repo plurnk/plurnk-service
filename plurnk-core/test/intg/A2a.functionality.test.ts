@@ -41,7 +41,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
         PLURNK_A2A_ENABLED: "1",
         PLURNK_A2A_scribe: JSON.stringify({ name: "scribe", url: "http://127.0.0.1:9" }),
         PLURNK_A2A_scribe_ENABLED: "0",
-    }));
+    }), "@plurnk/plurnk-a2a");
     await daemon.start();
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
         daemon.invokeModuleAction(`workspace.a2a.${verb}`, params, { scope: "workspace", workspaceId }) as Promise<T>;

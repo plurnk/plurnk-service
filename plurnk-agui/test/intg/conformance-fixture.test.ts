@@ -39,7 +39,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
             started.resolve(module);
             return module;
         },
-    });
+    }, "test-module");
     try {
         await daemon.start();
         const { host, port } = (await started.promise).address();

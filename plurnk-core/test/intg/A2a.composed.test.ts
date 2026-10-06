@@ -11,7 +11,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -85,11 +85,13 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     });
     let listener: A2aModule | null = null;
     agent.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             listener = await exposure.start(port);
             return listener;
         },
-    });
+    }, "test-module");
+    agent.registerModule(rootOwner(), "test-root");
 
     let unsubscribe: (() => void) | null = null;
     try {
@@ -99,7 +101,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         caller.registerModule({
             setup: (seam) => seam.registerRuntimes([a2aFace(async (authority) =>
                 authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null)]),
-        });
+        }, "test-module");
         await caller.start();
         const worker = await caller.createConversationWorker({
             workspaceId: callerWorkspace.workspaceId,
@@ -222,11 +224,13 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
     });
     let listener: A2aModule | null = null;
     agent.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             listener = await exposure.start(port);
             return listener;
         },
-    });
+    }, "test-module");
+    agent.registerModule(rootOwner(), "test-root");
 
     let caller: Daemon | null = null;
     let unsubscribe: (() => void) | null = null;
@@ -242,7 +246,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
             PLURNK_A2A_remote: JSON.stringify({ name: "remote", url: agentUrl }),
             PLURNK_A2A_ENABLED: "1",
-        }));
+        }), "@plurnk/plurnk-a2a");
         await caller.start();
         const callerWorkspace = await caller.createWorkspace({
             name: `a2a-caller-${crypto.randomUUID()}`,

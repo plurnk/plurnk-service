@@ -57,7 +57,8 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
 export const discoverDaemonModules = async (
     options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }> } = {},
 ): Promise<{
-    readonly modules: ReadonlyArray<DaemonModule<HostSetupSeam, ApplicationPort>>;
+    // Each module with its owner, the package it came from ({§module-discovery}).
+    readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
     readonly configurationErrors: readonly ConfigurationError[];
@@ -70,7 +71,7 @@ export const discoverDaemonModules = async (
         ...sources.plugins.map(({ root }) => ({ dir: root })),
         ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
     ];
-    const modules: DaemonModule<HostSetupSeam, ApplicationPort>[] = [];
+    const modules: Array<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }> = [];
     const configurationErrors: ConfigurationError[] = [...sources.configurationErrors];
     const skipped: string[] = [];
     for (const candidate of dirs) {
@@ -100,7 +101,7 @@ export const discoverDaemonModules = async (
                 throw new Error(`module package '${manifest.packageName}' exports no default DaemonModule at '${manifest.module}'.`);
             }
             if (typeof exported !== "function") {
-                modules.push(assertDaemonModule(exported, manifest.packageName, "export"));
+                modules.push({ module: assertDaemonModule(exported, manifest.packageName, "export"), owner: manifest.packageName });
                 continue;
             }
             if (exported.length !== 0) {
@@ -109,7 +110,7 @@ export const discoverDaemonModules = async (
                 );
             }
             const created = await (exported as () => unknown | Promise<unknown>)();
-            modules.push(assertDaemonModule(created, manifest.packageName, "factory"));
+            modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
             if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
                 configurationErrors.push(new ConfigurationError(manifest.manifestPath,

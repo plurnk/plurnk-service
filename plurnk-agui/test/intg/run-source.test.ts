@@ -45,7 +45,7 @@ for (const final of ["Four, precisely.", ""]) {
             const module = await registration.start(seam);
             started.resolve(module);
             return module;
-        } });
+        } }, "test-module");
         try {
             await daemon.start();
             const { port } = (await started.promise).address();
@@ -102,7 +102,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         const module = await registration.start(seam);
         started.resolve(module);
         return module;
-    } });
+    } }, "test-module");
     try {
         await daemon.start();
         const { port } = (await started.promise).address();
@@ -200,7 +200,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
         const module = await registration.start(seam);
         started.resolve(module);
         return module;
-    } });
+    } }, "test-module");
     try {
         await daemon.start();
         const { port } = (await started.promise).address();
@@ -268,7 +268,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
 
     try {

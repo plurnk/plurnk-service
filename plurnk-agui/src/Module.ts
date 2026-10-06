@@ -193,6 +193,12 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Appl
         return { host: this.#opts.host, port: addr.port };
     }
 
+    // {§module-http-mounts} — hosted by the daemon, the module claims the root and `/agui`; a module
+    // bound to a private socket mounts nothing on the daemon's listener.
+    get mounts(): readonly string[] {
+        return this.#http === null ? ["/", "/agui"] : [];
+    }
+
     async start(seam: ApplicationPort): Promise<Module> {
         if (this.#stopped) throw new Error("plurnk-agui: stopped module cannot be activated");
         if (this.#activated) throw new Error("plurnk-agui: module already activated");

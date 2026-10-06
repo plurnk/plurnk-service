@@ -120,6 +120,8 @@ export default class Module {
 
     static init(options: A2aModuleOptions): A2aModuleRegistration {
         return {
+            // {§module-http-mounts} — the well-known card and the endpoint, claimed before setup.
+            mounts: [`/${AGENT_CARD_PATH}`, options.endpointPath],
             start: async (application) => {
                 const module = new Module(application, options);
                 module.#mount(application);

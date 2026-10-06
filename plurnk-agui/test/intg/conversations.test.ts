@@ -39,7 +39,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
     const port = (module as unknown as Module).address().port;
 

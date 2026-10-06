@@ -21,7 +21,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
             PLURNK_A2A_other: JSON.stringify(definitions.a2a),
             PLURNK_A2A_ENABLED: "1",
             PLURNK_A2A_other_ENABLED: "0",
-        }));
+        }), "@plurnk/plurnk-a2a");
         const schedule = ScheduleModule.init({
             env: {
                 ...process.env,
@@ -32,7 +32,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
             },
             timers: { set: () => assert.fail("disabled schedules must not arm"), clear: () => {} },
         });
-        daemon.registerModule(schedule);
+        daemon.registerModule(schedule, "test-module");
         await daemon.start();
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });

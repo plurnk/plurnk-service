@@ -24,7 +24,7 @@ test("{§functionality-state} schedule startup rejects malformed persisted enabl
     const timers: SchedulerTimers = { set: () => assert.fail("malformed state must not arm a timer"), clear: () => {} };
     const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => INITIAL, timers });
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule(module);
+    daemon.registerModule(module, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await assert.rejects(daemon.start(), {
         name: "Error", message: "Functionality state for schedule alias 'beat' is malformed.",
@@ -46,7 +46,7 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
         });
         const daemon = new Daemon({ db, provider: null });
         instances.push(daemon);
-        daemon.registerModule(module);
+        daemon.registerModule(module, "test-module");
         await daemon.start();
         return { daemon, module };
     };
@@ -95,7 +95,7 @@ test("{§schedule-delivery}: an occurrence runs its own loop; no WAIT holds a lo
     };
     const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now, timers: timerApi });
     const daemon = new Daemon({ db, provider });
-    daemon.registerModule(module);
+    daemon.registerModule(module, "test-module");
     await daemon.start();
     try {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-occurrence", projectRoot: null });

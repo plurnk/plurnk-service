@@ -27,7 +27,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
     const addr = (module as Module | null)?.address();
     assert.ok(addr !== undefined);

@@ -263,7 +263,7 @@ test("{§module-action-registration} Daemon: module actions register once during
                 /module action 'example\.inspect' is already registered/,
             );
         },
-    });
+    }, "test-module");
     try {
         await daemon.start();
         // {§functionality-scope} Core families register beside the module's own action.
@@ -327,7 +327,7 @@ test("{§module-action-registration} passive scoped actions validate identities 
             inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA,
             handler: async () => { calls++; return { inspected: true }; },
         });
-    } });
+    } }, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const workspaceId = await insertWorkspace(db, "passive-actions");
@@ -397,7 +397,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
     const daemon = new Daemon({ db, provider: null });
     assert.throws(() => daemon.registerWorkspaceCapabilityProvider("incomplete fixture",
         { activate: async () => undefined } as never), /requires activate and deactivate functions/);
-    daemon.registerModule(capabilityModule);
+    daemon.registerModule(capabilityModule, "test-module");
     try {
         await daemon.start();
         await daemon.attachWorkspace({ workspaceId, workerId: firstWorkerId });
@@ -432,7 +432,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
     }
 
     const restored = new Daemon({ db, provider: null });
-    restored.registerModule(capabilityModule);
+    restored.registerModule(capabilityModule, "test-module");
     try {
         activated.length = 0;
         await restored.start();
@@ -487,7 +487,7 @@ test("Daemon: concurrent worker demands share one Functionality activation", asy
                 },
             });
         },
-    });
+    }, "test-module");
     try {
         await daemon.start();
         const first = daemon.invokeModuleAction(
@@ -577,7 +577,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
                 },
             });
         },
-    });
+    }, "test-module");
 
     try {
         await daemon.start();
@@ -654,7 +654,7 @@ test("failed worker Functionality deactivation remains resident for the retry ow
                 handler: async () => ({ ready: true }),
             });
         },
-    });
+    }, "test-module");
 
     try {
         await daemon.start();
@@ -696,7 +696,7 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
                 handler: async () => ({ ready: true }),
             });
         },
-    });
+    }, "test-module");
     try {
         await daemon.start();
         assert.deepEqual(
@@ -1551,7 +1551,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
                 const env = await seam.createWorkspace({ name: "from-module-init" });
                 createdInInit = env.workspaceId;
             },
-        });
+        }, "test-module");
         await daemon.start();
 
         assert.ok(handed !== null, "the module init ran at boot with the seam handle");
@@ -1608,7 +1608,7 @@ test("{§module-shutdown-order} module producers stop before draining and observ
         close: async () => {
             events.push("module-close");
         },
-    });
+    }, "test-module");
     try {
         await daemon.start();
         assert.deepEqual(events, ["setup", "capability-ready", "start"]);
@@ -1634,12 +1634,12 @@ test("{§module-lifecycle} stop-only modules and self-returned lifetimes are tra
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
     const calls: string[] = [];
-    daemon.registerModule({ stop() { calls.push("stop-only"); } });
+    daemon.registerModule({ stop() { calls.push("stop-only"); } }, "test-module");
     daemon.registerModule({
         start() { return this; },
         stop() { calls.push("stop-self"); },
         close() { calls.push("close-self"); },
-    });
+    }, "test-module");
     await daemon.start();
     await daemon.stop();
     await daemon.stop();
@@ -1660,8 +1660,8 @@ test("{§module-shutdown-order} a stalled producer does not prevent other produc
     daemon.registerModule({
         stop() { calls.push("producer-stopped"); },
         close() { calls.push("observer-closed"); },
-    });
-    daemon.registerModule({ stop: () => new Promise(() => {}) });
+    }, "test-module");
+    daemon.registerModule({ stop: () => new Promise(() => {}) }, "test-module");
     await daemon.start();
     await assert.rejects(daemon.stop(), (cause: unknown) => {
         assert.ok(cause instanceof AggregateError);
@@ -1689,7 +1689,7 @@ test("{§module-shutdown-order} service teardown joins the expired daemon drain 
     daemon.registerModule({
         stop() { events.push("producer stop"); return pending.promise; },
         close() { events.push("observer close"); },
-    });
+    }, "test-module");
     await daemon.start();
     const teardown = new ServiceTeardown(
         (deadline) => daemon.stop(deadline),
@@ -1776,7 +1776,7 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
     daemon.registerModule({
         async stop() { throw new Error("module stop failed"); },
         async close() { throw new Error("module close failed"); },
-    });
+    }, "test-module");
     daemon.mimetypes.dispose = async () => { throw new Error("mimetype dispose failed"); };
     daemon.schemes.register("broken-close", {
         manifest: {
@@ -1826,7 +1826,7 @@ test("{§crash-only-stop}: every shutdown owner shares the absolute stop deadlin
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
         close: () => new Promise(() => {}),
-    });
+    }, "test-module");
     try {
         await daemon.start();
         const guarded = Promise.race([
@@ -1867,7 +1867,7 @@ test("a module that acquires resources during setup is closed when later setup f
         close: async () => {
             closed = true;
         },
-    });
+    }, "test-module");
     try {
         await assert.rejects(() => daemon.start(), /setup failed/);
         await daemon.stop();
@@ -1918,7 +1918,7 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
         },
     };
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule(capabilityModule);
+    daemon.registerModule(capabilityModule, "test-module");
     try {
         await daemon.start();
         await daemon.attachWorkspace({ workspaceId, workerId: clientWorkerId });

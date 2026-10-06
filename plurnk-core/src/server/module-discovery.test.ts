@@ -44,10 +44,11 @@ test("{§module-discovery}: trusted object and factory exports load in package-n
         });
         assert.equal(modules.length, 2, "both declaring packages load");
         assert.deepEqual(
-            modules.map((module) => (module as { tag?: string }).tag),
+            modules.map(({ module }) => (module as { tag?: string }).tag),
             ["factory", "object"],
             "module order is stable by package name rather than filesystem enumeration",
         );
+        assert.deepEqual(modules.map(({ owner }) => owner), ["@acme/factory-module", "@acme/object-module"], "each module is owned by its package");
         assert.deepEqual(skipped, []);
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -169,7 +170,7 @@ test("{§module-discovery}: user plugins shadow npm by standard name; project na
     const project = join(root, "project");
     await plugin(join(hostPaths.projectPluginsDir(project), "project"), "project-only", "project");
     const found = await discoverDaemonModules({ cwd: project, hostPaths, packageDirs: [{ dir: npm, name: "published" }] });
-    assert.deepEqual(found.modules.map((module) => (module as { tag?: string }).tag), ["global"]);
+    assert.deepEqual(found.modules.map(({ module }) => (module as { tag?: string }).tag), ["global"]);
     assert.deepEqual(found.reports.map(({ outcome }) => outcome), ["shadowed"]);
 });
 

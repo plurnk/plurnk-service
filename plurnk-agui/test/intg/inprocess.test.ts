@@ -37,7 +37,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
     assert.ok(module !== null, "the plug-point activated the module at boot");
     const addr = (module as Module).address();

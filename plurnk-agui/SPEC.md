@@ -10,12 +10,14 @@ does not recompute them.
 - §agui-daemon-client **The module is an in-process plugin of the daemon** — the
   production host pre-binds its AG-UI+ listener, then daemon activation
   (`registerModule` → the application port) makes the client interface ready.
-  AG-UI mounts the root of the daemon's one listener ({§http-host}) and owns no
+  AG-UI claims and mounts the root of the daemon's one listener ({§http-host},
+  {§module-http-mounts}) and owns no
   socket of its own under the daemon. No WebSocket, no separate process.
 - §agui-listener-admission **Bound is not ready.** Under the daemon the socket is
   core's ({§startup-listener-admission}): bound before durable-state admission,
-  answering a retryable 503 until this module mounts the root at `Module.start`,
-  which installs the application port and registers `/` and `/agui`
+  answering a retryable 503 until daemon activation admits it after every module
+  has started ({§module-http-mounts}). This module claims `/` and `/agui` and
+  registers them at `Module.start`, which installs the application port
   ({§http-host}). Standalone, `Module.bind` owns a private TCP address with the
   same admission shape — a retryable 503 until `Module.start`, a bind error that
   rejects with its originating socket failure, and no unhandled server error,

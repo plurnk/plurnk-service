@@ -125,7 +125,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         const daemon = new Daemon({ db, provider: null });
         daemon.registerModule({ setup: (seam: HostSetupSeam) => {
             seam.registerFunctionalityAdapter({ ...fixtureAdapter(log), docsDir, example: { alias: "one", definition: { kind: "ok" } } });
-        } });
+        } }, "test-module");
         await daemon.start();
         try {
             const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
@@ -144,7 +144,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         const wrong = new Daemon({ db, provider: null });
         wrong.registerModule({ setup: (seam: HostSetupSeam) => {
             seam.registerFunctionalityAdapter({ ...fixtureAdapter([]), example: { alias: "bogus", definition: { kind: "not-a-kind" } } });
-        } });
+        } }, "test-module");
         await assert.rejects(wrong.start(), /Functionality family 'fx' teaches an add example that violates its own definition schema/u,
             "a taught example that lies about the schema fails boot, never the model");
         await wrong.stop().catch(() => {});
@@ -156,7 +156,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
 
 const boot = async (db: Db, log: string[]): Promise<Daemon> => {
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule({ setup: (seam: HostSetupSeam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } });
+    daemon.registerModule({ setup: (seam: HostSetupSeam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } }, "test-module");
     await daemon.start();
     return daemon;
 };
@@ -181,7 +181,7 @@ test("{§module-workspace-quiescence} a model turn and concurrent catalog refres
                 await handle.refresh(identity, { gate: "none", ifChanged: true });
             },
         });
-    } });
+    } }, "test-module");
     t.after(async () => { resume.resolve(); await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "refresh-during-admission" });
@@ -229,7 +229,7 @@ for (const boundary of ["available", "prepare"] as const) {
                 if (broken && boundary === "prepare") throw error;
                 return adapter.prepare(input);
             },
-        }); } });
+        }); } }, "test-module");
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         await daemon.invokeModuleAction("workspace.fx.add", { alias: "local", definition: { kind: "doc" } }, workspaceContext(workspaceId));
@@ -276,7 +276,7 @@ test("{§configuration-repair-path} invalid model mutations preserve the previou
             if (defect !== null) throw defect;
             return adapter.prepare(input);
         },
-    }); } });
+    }); } }, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
@@ -312,7 +312,7 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
                 return adapter.prepare(preparation);
             },
         });
-    } });
+    } }, "test-module");
     await daemon.start();
     let demand: Promise<unknown> | undefined;
     t.after(async () => { resume.resolve(); await demand; await daemon.stop(); await db.close(); });
@@ -354,7 +354,7 @@ test("{§functionality-inspection} a changed inherited definition never borrows 
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({ setup: (seam) => {
         handle = seam.registerFunctionalityAdapter({ ...adapter, available: async () => [{ alias: "svc", definition, enabled: true }] });
-    } });
+    } }, "test-module");
     await daemon.start();
     t.after(async () => { await daemon.stop(); await db.close(); });
     const workspaceId = await insertWorkspace(db, `inspection-replacement-${crypto.randomUUID()}`);
@@ -395,7 +395,7 @@ test("{§functionality-adapter} interpretation context participates in runtime i
                 return adapter.prepare(input);
             },
         });
-    } });
+    } }, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const workspaceId = await insertWorkspace(db, `interpretation-context-${crypto.randomUUID()}`);
@@ -429,7 +429,7 @@ test("{§configuration-provenance} inspection reports the winning source without
     const adapter = { ...fixtureAdapter(log), available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true, provenance }] };
     const start = async () => {
         const daemon = new Daemon({ db, provider: null });
-        daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(adapter); } });
+        daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(adapter); } }, "test-module");
         await daemon.start();
         return daemon;
     };
@@ -475,7 +475,7 @@ for (const defect of ["outcome", "namespace"] as const) {
                     ? { ...prepared, outcomes: new Map([...prepared.outcomes].filter(([alias]) => alias !== "candidate")) }
                     : { ...prepared, runtimes: (prepared.runtimes ?? []).map((runtime) => ({ ...runtime, namespaceOwner: "wrong owner" })) };
             },
-        }); } });
+        }); } }, "test-module");
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         const action = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
@@ -525,7 +525,7 @@ test("{§configuration-definition-resolution} a workspace definition replaces th
             prepared = input.enabled.get("svc")?.definition;
             return adapter.prepare(input);
         },
-    }); } });
+    }); } }, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const workspaceId = await insertWorkspace(db, "whole-definitions");
@@ -563,7 +563,7 @@ for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false],
         let baseline = inheritedEnabled === undefined ? [] : [{ alias: "svc", definition: { kind: "ok" }, enabled: inheritedEnabled }];
         const start = async () => {
             const instance = new Daemon({ db, provider: null });
-            instance.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter({ ...adapter, available: async () => baseline }); } });
+            instance.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter({ ...adapter, available: async () => baseline }); } }, "test-module");
             await instance.start();
             return instance;
         };
@@ -597,7 +597,7 @@ test("{§configuration-definition-resolution} failed inherited preparation prese
         const instance = new Daemon({ db, provider: null });
         instance.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter({
             ...adapter, available: async () => [{ alias: "svc", definition: baseline, enabled: true }],
-        }); } });
+        }); } }, "test-module");
         await instance.start();
         return instance;
     };
@@ -805,7 +805,7 @@ for (const hold of ["", "fx:host"]) {
         const db = await openMigrated();
         const log: string[] = [];
         const daemon = new Daemon({ db, provider });
-        daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } });
+        daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } }, "test-module");
         const ws = await connect({ daemon });
         try {
             await daemon.start();
@@ -834,7 +834,7 @@ test("{§functionality-model-mutation} authorization-required reaches the model 
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter([])); } });
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter([])); } }, "test-module");
     const ws = await connect({ daemon });
     try {
         await daemon.start();

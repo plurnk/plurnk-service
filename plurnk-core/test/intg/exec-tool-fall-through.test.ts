@@ -22,7 +22,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
     try {
         await daemon.start();
         const ws = await connect({ daemon });

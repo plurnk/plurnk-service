@@ -115,6 +115,9 @@ export interface StartedModule {
 // {§module-contract} `setup` establishes every capability the host may demand during recovery;
 // `start` opens exterior ingress only after durable recovery is complete ({§module-lifecycle}).
 export interface DaemonModule<SetupSeam = ModuleSetupSeam, StartSeam = ApplicationPort> extends StartedModule {
+    // {§module-http-mounts} The HTTP route prefixes this module mounts at `start`, claimed before any
+    // module sets up.
+    readonly mounts?: readonly string[];
     setup?(seam: SetupSeam): void | Promise<void>;
     start?(seam: StartSeam): void | StartedModule | Promise<void | StartedModule>;
 }

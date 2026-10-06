@@ -30,7 +30,7 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
     const daemon = new Daemon({ db, provider });
     const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | null = null;
-    daemon.registerModule({ start: async (seam) => { agui = await aguiRegistration.start(seam); return agui; } });
+    daemon.registerModule({ start: async (seam) => { agui = await aguiRegistration.start(seam); return agui; } }, "test-module");
     try {
         await daemon.start();
         assert.ok(agui !== null);

@@ -1,5 +1,6 @@
 import {
     A2A_PROTOCOL_VERSION,
+    AGENT_CARD_PATH,
     type AgentCard,
     type StreamResponse,
 } from "@a2a-js/sdk";
@@ -14,6 +15,21 @@ import HttpListener from "../../src/server/HttpListener.ts";
 
 // The exposure a test mounts, stated whole: the module holds no default of its own.
 export const A2A_EXPOSURE = Object.freeze({ endpointPath: "/a2a", proposals: "reject", token: "" } as const);
+
+// {§module-http-mounts} — what a hosted exposure under test claims: the well-known card and its endpoint.
+export const A2A_MOUNTS: readonly string[] = Object.freeze([`/${AGENT_CARD_PATH}`, A2A_EXPOSURE.endpointPath]);
+
+// {§module-http-mounts} — a daemon with a listener has exactly one root owner; a test that hosts an
+// exposure without the client interface stands one in.
+export const rootOwner = (): { readonly mounts: readonly string[]; start(port: HttpHost): void } => ({
+    mounts: ["/"],
+    start: (port) => {
+        port.registerHttpRoute("/", (_req, res) => {
+            res.writeHead(404);
+            res.end();
+        });
+    },
+});
 
 // {§http-host} — the one listener a hosted-A2A test binds before its daemon exists, as the service
 // does ({§startup-listener-admission}); the test closes it after the daemon stops.

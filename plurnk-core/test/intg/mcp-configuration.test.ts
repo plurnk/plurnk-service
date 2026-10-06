@@ -36,7 +36,7 @@ test("{§mcp-file-configuration} a global mcp.json supplies callable servers wit
     const workspaceId = await insertWorkspace(db, `mcp-file-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client", "client");
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const list = await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
@@ -62,7 +62,7 @@ test("{§mcp-file-configuration} workspace and environment overrides restore the
     env.PLURNK_MCP_ENABLED = "0";
     const db = await openMigrated();
     let daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "file-cascade", projectRoot: project });
@@ -88,7 +88,7 @@ test("{§mcp-file-configuration} workspace and environment overrides restore the
     assert.deepEqual(restored.definition, { name: "fixture", ...stdioEntry("echo-server.mjs", { SOURCE: "1" }) });
     await daemon.stop();
     daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     await daemon.start();
     assert.equal((await list())[0].state, "disabled", "restart preserves inherited enabledness without a local mask");
     await rm(join(directories[1], "mcp.json"));
@@ -107,7 +107,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````KILL\nConfiguration checked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     const ended: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") ended.push((params as { loopId: number }).loopId); });
@@ -162,7 +162,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
         makeMockResponse("````KILL\nConfiguration repaired.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project });
@@ -195,7 +195,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const client = await insertWorker(db, workspaceId, null, "client", "client");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````KILL\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: mcpEnv }));
+    daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const directory = join(hostPaths.plurnkPluginsDir, "added");
     await mkdir(directory, { recursive: true });
     const manifest = JSON.stringify({ name: "added", description: "Independent plugin installation." });
@@ -248,7 +248,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````KILL\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: mcpEnv }));
+    daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const events: Array<{ method: string; params: unknown }> = [];
     const unsubscribe = daemon.subscribeToEvents((_w, method, params) => { events.push({ method, params }); });
     t.after(async () => { unsubscribe(); await daemon.stop(); await db.close(); });

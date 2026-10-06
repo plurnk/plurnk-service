@@ -79,7 +79,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: responses.map(makeMockResponse) });
     const createDaemon = () => {
         const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-        instance.registerModule(McpModule.init({ env: environment }));
+        instance.registerModule(McpModule.init({ env: environment }), "@plurnk/plurnk-mcp");
         return instance;
     };
     let daemon = createDaemon();

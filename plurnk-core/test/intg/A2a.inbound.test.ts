@@ -13,7 +13,7 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -69,14 +69,15 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
-    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }));
+    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(),
         ...A2A_EXPOSURE,
     });
     let exposure: A2aModule | undefined;
-    daemon.registerModule({ start: async (port) => { exposure = await registration.start(port); return exposure; } });
+    daemon.registerModule({ mounts: A2A_MOUNTS, start: async (port) => { exposure = await registration.start(port); return exposure; } }, "test-module");
+    daemon.registerModule(rootOwner(), "test-root");
     let calls = 0;
     let protocolAddress = "";
     let unrelatedAddress = "";
@@ -169,11 +170,13 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             a2a = await registration.start(port);
             return a2a;
         },
-    });
+    }, "test-module");
+    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -366,11 +369,13 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
     });
     let listener: A2aModule | null = null;
     daemon.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             listener = await registration.start(port);
             return listener;
         },
-    });
+    }, "test-module");
+    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -447,11 +452,13 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         ...A2A_EXPOSURE,
     });
     daemon.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             firstListener = await firstExposure.start(port);
             return firstListener;
         },
-    });
+    }, "test-module");
+    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -482,11 +489,13 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             ...A2A_EXPOSURE,
         });
         daemon.registerModule({
+            mounts: A2A_MOUNTS,
             start: async (port) => {
                 secondListener = await secondExposure.start(port);
                 return secondListener;
             },
-        });
+        }, "test-module");
+        daemon.registerModule(rootOwner(), "test-root");
         await daemon.start();
         assert.ok(secondListener !== null);
         const secondClient = await connectHttpJsonAgent(serviceUrl(daemon));
@@ -542,11 +551,13 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({
+        mounts: A2A_MOUNTS,
         start: async (port) => {
             a2a = await registration.start(port);
             return a2a;
         },
-    });
+    }, "test-module");
+    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();

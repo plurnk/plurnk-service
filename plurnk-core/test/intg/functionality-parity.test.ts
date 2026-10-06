@@ -203,7 +203,7 @@ const mcpFamily = async (): Promise<Family> => {
         collidingAlias: "sh",
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider, hostPaths });
-            daemon.registerModule(McpModule.init({ env: { ...mcpEnvironment({ fixture: stdioEntry("echo-server.mjs") }), PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }));
+            daemon.registerModule(McpModule.init({ env: { ...mcpEnvironment({ fixture: stdioEntry("echo-server.mjs") }), PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }), "@plurnk/plurnk-mcp");
             return { daemon };
         },
         close: async () => {
@@ -236,7 +236,7 @@ const agentsFamily = async (): Promise<Family> => {
                 PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
                 PLURNK_A2A_researcher: JSON.stringify({ name: "researcher", url: agentA.baseUrl }),
                 PLURNK_A2A_ENABLED: "1",
-            }));
+            }), "@plurnk/plurnk-a2a");
             return { daemon };
         },
         close: async () => { await agentA.close(); await agentB.close(); },

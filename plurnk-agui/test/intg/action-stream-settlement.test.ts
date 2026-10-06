@@ -41,7 +41,7 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
             module = await registration.start(seam);
             return module;
         },
-    });
+    }, "test-module");
     await daemon.start({ host: "127.0.0.1", port: 0 });
     try {
         const port = (module as unknown as Module).address().port;

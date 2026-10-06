@@ -14,7 +14,7 @@ const get = async (port: number, pathname: string): Promise<{ status: number; bo
     return { status: response.status, body: await response.text() };
 };
 
-test("{§http-host} nothing mounted at the root answers 503 service-starting, never 404", async () => {
+test("{§module-http-mounts} until the daemon admits the listener every request answers 503 service-starting, never 404", async () => {
     const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
     try {
         const { port } = listener.httpAddress();
@@ -28,10 +28,15 @@ test("{§http-host} nothing mounted at the root answers 503 service-starting, ne
             "The PLURNK service owns this listener but has not admitted its client interface yet.",
             { stage: "startup", retryable: true },
         ));
-        // A more specific mount does not change that: only a root admits the client interface.
+        // Mounting does not admit, whatever the order: a root mounted first does not swallow a
+        // prefix mounted after it, because nothing is served until admission.
+        listener.registerHttpRoute("/", reply("root"));
+        assert.equal((await get(port, "/a2a/tasks/1")).status, 503);
         listener.registerHttpRoute("/a2a", reply("a2a"));
+        assert.equal((await get(port, "/")).status, 503);
+        listener.admit();
         assert.equal((await get(port, "/a2a/tasks/1")).body, "a2a");
-        assert.equal((await get(port, "/elsewhere")).status, 503);
+        assert.equal((await get(port, "/elsewhere")).body, "root");
     } finally { await listener.close(); }
 });
 
@@ -43,6 +48,7 @@ test("{§http-host} the longest mounted prefix wins, a prefix claims only its ow
         listener.registerHttpRoute("/agui", reply("agui"));
         listener.registerHttpRoute("/.well-known/agent-card.json", reply("card"));
         listener.registerHttpRoute("/a2a", reply("a2a"));
+        listener.admit();
         assert.equal((await get(port, "/")).body, "root");
         assert.equal((await get(port, "/agui")).body, "agui");
         assert.equal((await get(port, "/agui/run?x=1")).body, "agui");

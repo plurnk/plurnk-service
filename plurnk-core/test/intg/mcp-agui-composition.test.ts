@@ -105,14 +105,14 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
         PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-    } }));
+    } }), "@plurnk/plurnk-mcp");
     const started = Promise.withResolvers<AguiModule>();
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     daemon.registerModule({ start: async (seam) => {
         const module = await registration.start(seam);
         started.resolve(module);
         return module;
-    } });
+    } }, "test-module");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { port } = (await started.promise).address();
@@ -205,7 +205,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             PLURNK_MCP_fixture_TOOLS: '["echo","fail"]',
         },
-    }));
+    }), "@plurnk/plurnk-mcp");
     const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | null = null;
     daemon.registerModule({
@@ -213,7 +213,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             agui = await aguiRegistration.start(seam);
             return agui;
         },
-    });
+    }, "test-module");
     const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-composition-"));
 
     try {
@@ -522,7 +522,7 @@ test(
                 PLURNK_MCP_kubernetes_TOOLS: '["configuration_view"]',
                 PLURNK_MCP_goji_TOOLS: '["goji_explain_term"]',
             },
-        }));
+        }), "@plurnk/plurnk-mcp");
         const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
         let agui: AguiModule | null = null;
         daemon.registerModule({
@@ -530,7 +530,7 @@ test(
                 agui = await aguiRegistration.start(seam);
                 return agui;
             },
-        });
+        }, "test-module");
 
         try {
             await daemon.start();

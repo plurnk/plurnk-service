@@ -252,11 +252,11 @@ export default class Service {
             const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             ServiceModules.registerWorkspaceCapabilities(daemon);
-            if (hooksModule !== null) daemon.registerModule(hooksModule);
-            if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
-            // {§rpc}: AG-UI mounts the root of the daemon's listener at activation; the
+            if (hooksModule !== null) daemon.registerModule(hooksModule, "@plurnk/plurnk-hooks");
+            if (a2a !== null) daemon.registerModule(A2aModule.init(a2a), "@plurnk/plurnk-a2a");
+            // {§rpc}: AG-UI claims the root of the daemon's listener ({§module-http-mounts}); the
             // socket never closes or rebinds between admission and readiness.
-            daemon.registerModule(aguiModule);
+            daemon.registerModule(aguiModule, "@plurnk/plurnk-agui");
             await daemon.start();
             const aguiAddr = listener.httpAddress();
             for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);

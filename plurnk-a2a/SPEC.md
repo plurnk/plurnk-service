@@ -56,7 +56,8 @@ architecture.
 The inbound HTTP+JSON exposure is an exterior adapter over
 `ApplicationPort`, mounted on the daemon's one listener ({§http-host}): the
 public Agent Card at the standard well-known path and the interface at
-`PLURNK_A2A_ENDPOINT_PATH`, both on the service address, and it opens no
+`PLURNK_A2A_ENDPOINT_PATH`, both on the service address and both claimed before
+setup ({§module-http-mounts}), and it opens no
 socket of its own. The official SDK owns A2A framing and request handling;
 Plurnk Workers, Loops, logs, and terminal results remain the only execution
 state. The SDK `TaskStore` implementation is a projection of that durable

@@ -202,9 +202,9 @@ flowchart LR
 ({§http-host}) before creating, opening, replacing, rotating, migrating, or
 otherwise mutating anything in the durable data directory. A process that loses
 the listener race fails with the originating address error and byte-identical
-durable storage. Core owns the socket continuously; it answers 503 until the
-client-interface module mounts the root at daemon activation, so early
-ownership introduces neither traffic nor a close/rebind race.
+durable storage. Core owns the socket continuously; it answers 503 until daemon
+activation admits it after every module has started ({§module-http-mounts}), so
+early ownership introduces neither traffic nor a close/rebind race.
 
 §http-host **The daemon opens exactly one transport.** Core binds the HTTP
 listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
@@ -212,9 +212,10 @@ listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
 ({§application-port}). A prefix is an absolute pathname. Each request goes to the
 longest mounted prefix; a prefix claims itself and the subtree beneath it, never
 a longer sibling name; `/` is the root and receives whatever nothing more
-specific claimed. Until a root is mounted the listener answers `503
+specific claimed. Until daemon activation admits it the listener answers `503
 service-starting` to every request: the service has not admitted its client
-interface. Adapters mount at `start()`, after durable lifecycle recovery, and
+interface. Adapters claim their prefixes before setup and mount them at
+`start()`, after durable lifecycle recovery ({§module-http-mounts}), and
 none opens a socket of its own under the daemon — a module hosted *without* a
 daemon may bind a private one, which is outside this contract. The standards
 address by URL, never by port (#641): AG-UI mounts `/` and `/agui`, A2A the
@@ -4108,7 +4109,9 @@ even if setup fails. A returned object identical to its module is tracked once.
 | Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
-The export is one DaemonModule ({§module-contract}) object or no-argument factory. Standard bundles follow
+The export is one DaemonModule ({§module-contract}) object or no-argument factory. The host
+records each module's owner, the package it came from, and its diagnostics name that owner; the
+service's explicit composition names its packages the same way. Standard bundles follow
 {§agent-plugins-hosting} source order, then other installed module packages load in package-name
 order. All trusted modules register before setup. The service's explicit AG-UI, hooks and MCP
 composition is never duplicated. Untrusted modules are reported and not imported. Invalid

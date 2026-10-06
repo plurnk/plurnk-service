@@ -54,7 +54,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }), "@plurnk/plurnk-mcp");
     await daemon.start();
     try {
         const ws = await connect({ daemon });

@@ -52,7 +52,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-    } }));
+    } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-observation" });

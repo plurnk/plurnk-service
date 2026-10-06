@@ -51,7 +51,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         setup: (seam: Parameters<Module["setup"]>[0]) => { module.setup(seam); },
         start: async (seam: ApplicationPort) => { port = seam; await module.start(seam); },
         stop: () => module.stop(),
-    });
+    }, "test-module");
     await daemon.start();
     try {
         const application = port as unknown as ApplicationPort;

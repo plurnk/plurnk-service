@@ -39,13 +39,13 @@ const setup = async (
         PLURNK_MCP_CONNECT_TIMEOUT: "5000",
         PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...env,
-    } }));
+    } }), "@plurnk/plurnk-mcp");
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | undefined;
     daemon.registerModule({ start: async (seam) => {
         agui = await registration.start(seam);
         return agui;
-    } });
+    } }, "test-module");
     t.after(async () => {
         await daemon.stop();
         await db.close();

@@ -18,6 +18,15 @@ type names only what the module uses.
 | `start` | A slice of {§application-port} | Opens exterior ingress only after durable recovery; may return a distinct lifetime object. |
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
 | `close` | Nothing | Releases observers and remaining resources after producers settle. |
+| `mounts` | Declared, not called | The HTTP route prefixes the module mounts at `start` ({§module-http-mounts}). |
+
+§module-http-mounts **A module declares the HTTP prefixes it serves.** `mounts` lists absolute
+pathname prefixes ({§http-host}). The host claims every module's mounts before any module sets
+up: one prefix claimed twice fails boot naming both owners, and a host with a listener requires
+exactly one module to claim the root `/`. At `start` a module mounts exactly its claims through
+`registerHttpRoute`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
+listener answers `503 service-starting` until every module has started, so readiness never
+depends on registration order.
 
 The host passes one object implementing every slice. Seams are typed for clarity, not enforced
 at runtime: a module's declared slices are the coupling the compiler checks, and anything else

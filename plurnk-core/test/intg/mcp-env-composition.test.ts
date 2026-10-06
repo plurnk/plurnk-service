@@ -53,7 +53,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
     const db = await openMigrated();
     const boot = () => {
         const instance = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
-        instance.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
+        instance.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
         return instance;
     };
     let daemon = boot();
@@ -160,7 +160,7 @@ test("{§mcp-launch-environment} {§mcp-server-settings} a bearer setting resolv
     } });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, ENV_AUTH: "operator-token" } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, ENV_AUTH: "operator-token" } }), "@plurnk/plurnk-mcp");
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, `http-env-${crypto.randomUUID()}`);

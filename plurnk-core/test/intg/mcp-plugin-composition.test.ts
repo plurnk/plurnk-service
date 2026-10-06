@@ -33,7 +33,7 @@ test("{§mcp-plugin-configuration} workspace management preserves plugin interpr
     env.PLUGIN_ROOT = "native-root";
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const a = await daemon.createWorkspace({ name: "plugin-a", projectRoot: project });
@@ -88,7 +88,7 @@ test("{§mcp-plugin-configuration} unsupported entries reach the model as diagno
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````KILL\nChecked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env }));
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     const ended: number[] = [];
     t.after(daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") ended.push((params as { loopId: number }).loopId); }));

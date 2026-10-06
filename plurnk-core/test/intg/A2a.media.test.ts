@@ -76,7 +76,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         PLURNK_A2A_ENABLED: "1",
         PLURNK_A2A_CONNECT_TIMEOUT: "5000",
         PLURNK_A2A_REQUEST_TIMEOUT: "5000",
-    }));
+    }), "@plurnk/plurnk-a2a");
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "a2a-media", projectRoot: null });
