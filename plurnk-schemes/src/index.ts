@@ -120,6 +120,7 @@ export type {
     ResolvedEditStatement as EditStatement,
 } from "./edit-statement.ts";
 export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
+export type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "./module-slice.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
     PluginAttributionContext,

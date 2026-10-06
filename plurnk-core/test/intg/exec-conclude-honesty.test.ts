@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { concludeStmt, execStmt, dispositionStmt } from "./_dsl.ts";

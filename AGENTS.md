@@ -85,6 +85,9 @@ Where things are, for an agent that has to act before it has read everything:
   no other package parses the language.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
+- `plurnk-modules` owns the daemon module contract: the lifecycle a module
+  implements and the base setup seam. Each family owns the slice for what
+  modules contribute to it.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
   `plurnk-execs*` own their respective plugin contracts and implementations.

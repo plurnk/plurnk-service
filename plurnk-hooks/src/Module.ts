@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { hookConfig, type HookConfig } from "./config.ts";
 import EventProjection from "./EventProjection.ts";
 
@@ -13,7 +14,10 @@ export interface ModuleOptions {
     readonly report?: (message: string, cause: unknown) => void;
 }
 
-export default class Module {
+// {§module-seam-slices} — the start slice this module uses.
+type StartSeam = Pick<ApplicationPort, "subscribeToEvents">;
+
+export default class Module implements DaemonModule<ModuleSetupSeam, StartSeam> {
     readonly #config: HookConfig | null;
     readonly #environment: NodeJS.ProcessEnv;
     readonly #report: (message: string, cause: unknown) => void;
@@ -37,7 +41,7 @@ export default class Module {
         this.#report = report;
     }
 
-    start(seam: Pick<ApplicationPort, "subscribeToEvents">): void {
+    start(seam: StartSeam): void {
         if (this.#started || this.#closing !== null) throw new Error("hooks module cannot be started again");
         this.#started = true;
         if (this.#config === null) return;

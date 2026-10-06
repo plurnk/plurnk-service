@@ -3,3 +3,4 @@ export { validateMcpConfiguration, type McpConfigurationResult, type McpServerEn
 export { default as PluginDirectory, type AgentPlugin, type PluginLoad } from "./PluginDirectory.ts";
 export { default as PluginRoots, type DiscoveredPlugin, type PluginDiscovery, type PluginRoot } from "./PluginRoots.ts";
 export type { Finding, PluginOutcome, PluginReport } from "./PluginReport.ts";
+export type { InstalledPlugin, WorkspacePluginSet, WorkspacePluginsSeam } from "./module-slice.ts";

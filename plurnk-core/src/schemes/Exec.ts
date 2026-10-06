@@ -9,7 +9,8 @@ import {
     type WebMaterializedResult,
     type WebMaterializer,
 } from "@plurnk/plurnk-schemes";
-import { isWorkerBound, type Executor } from "../core/ExecutorRegistry.ts";
+import { isWorkerBound } from "../core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";

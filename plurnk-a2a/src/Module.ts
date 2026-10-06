@@ -10,6 +10,7 @@ import {
     restHandler,
 } from "@a2a-js/sdk/server/express";
 import type { ApplicationPort, HttpHost } from "@plurnk/plurnk-contracts";
+import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import type { HostedProposals } from "./config.ts";
 import PlurnkAgentExecutor from "./PlurnkAgentExecutor.ts";
@@ -28,7 +29,7 @@ export interface A2aModuleOptions {
     readonly endpointUrl?: string;
 }
 
-export interface A2aModuleRegistration {
+export interface A2aModuleRegistration extends DaemonModule<ModuleSetupSeam, ApplicationPort> {
     start(port: ApplicationPort): Promise<Module>;
 }
 

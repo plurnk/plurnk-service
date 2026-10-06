@@ -12,12 +12,9 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { FunctionalityFamilyHandle, FunctionalityListResult, FunctionalityOutcome, FunctionalityProvenance, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import type {
-    FunctionalityAdapter,
-    ModuleSetupSeam,
-    RuntimeRegistration,
-} from "../../src/server/DaemonModule.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/ModuleHost.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
@@ -65,7 +62,7 @@ const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
 // A family whose definitions are {kind: ok | fail | doc | auth}. Service contributes
 // `svc`, enabled by default. `fail` refuses preparation; `doc` also publishes a
 // family document.
-const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
+const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
     family: "fx",
     namespaceOwner: OWNER,
     summary: "Manage fixture capabilities.",
@@ -126,7 +123,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         await writeFile(join(docsDir, "docs", "fx.md"), "# fx\n\n## Choosing a fixture\n\nAuthored fixture teaching.\n");
         const log: string[] = [];
         const daemon = new Daemon({ db, provider: null });
-        daemon.registerModule({ setup: (seam: ModuleSetupSeam) => {
+        daemon.registerModule({ setup: (seam: HostSetupSeam) => {
             seam.registerFunctionalityAdapter({ ...fixtureAdapter(log), docsDir, example: { alias: "one", definition: { kind: "ok" } } });
         } });
         await daemon.start();
@@ -145,7 +142,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         }
 
         const wrong = new Daemon({ db, provider: null });
-        wrong.registerModule({ setup: (seam: ModuleSetupSeam) => {
+        wrong.registerModule({ setup: (seam: HostSetupSeam) => {
             seam.registerFunctionalityAdapter({ ...fixtureAdapter([]), example: { alias: "bogus", definition: { kind: "not-a-kind" } } });
         } });
         await assert.rejects(wrong.start(), /Functionality family 'fx' teaches an add example that violates its own definition schema/u,
@@ -159,7 +156,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
 
 const boot = async (db: Db, log: string[]): Promise<Daemon> => {
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule({ setup: (seam: ModuleSetupSeam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } });
+    daemon.registerModule({ setup: (seam: HostSetupSeam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } });
     await daemon.start();
     return daemon;
 };
@@ -303,7 +300,7 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
     const adapter = fixtureAdapter(log);
     let hold = false;
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule({ setup: (seam: ModuleSetupSeam) => {
+    daemon.registerModule({ setup: (seam: HostSetupSeam) => {
         seam.registerFunctionalityAdapter({
             ...adapter,
             prepare: async (preparation) => {

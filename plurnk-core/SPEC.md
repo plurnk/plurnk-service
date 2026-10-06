@@ -4043,8 +4043,9 @@ a fresh-user configuration.
 
 ## §rpc Module seam
 
-Core implements the contracts-owned {§application-port} and owns the typed
-module setup seam. It owns no external listener, public
+Core implements the contracts-owned {§application-port} and hosts the module
+contract published in `@plurnk/plurnk-modules` ({§module-contract}). It owns no
+external listener, public
 action-name catalog, or generic string-dispatched method registry. A
 client-interface module such as `plurnk-agui` owns its public protocol, action
 names, request validation, discovery result, and event projection.
@@ -4107,7 +4108,7 @@ even if setup fails. A returned object identical to its module is tracked once.
 | Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
-The export is one DaemonModule object or no-argument factory. Standard bundles follow
+The export is one DaemonModule ({§module-contract}) object or no-argument factory. Standard bundles follow
 {§agent-plugins-hosting} source order, then other installed module packages load in package-name
 order. All trusted modules register before setup. The service's explicit AG-UI, hooks and MCP
 composition is never duplicated. Untrusted modules are reported and not imported. Invalid
@@ -4163,18 +4164,21 @@ flowchart LR
     observers --> database[Maintain and release database]
 ```
 
+§module-host-capabilities **The coordinator's host interface is core's own.**
+The daemon passes one object implementing every published slice
+({§module-seam-slices}); these functions are on it too, for core's
+Functionality coordinator and core's own witnesses, and are not part of the
+published module contract.
+
 | Setup function | Contract |
 |---|---|
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
-| `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
-| §module-action-registration `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. `residency` is explicitly `required` or `none`: only the former acquires workspace capabilities and reconciles worker documents. Worldless actions require `none`. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
-| `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§workspace-env}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without worker overrides. |
-| §module-workspace-directory `workspaceStateDirectory(workspaceId, namespaceOwner)` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home. Core owns path resolution and a stable random workspace storage key in its own `workspace_module_state` row. The key survives workspace renames and daemon restarts; independently created workspaces, including in other databases, receive different keys. The module owns its contents and child-directory lifetimes. |
-| §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the shared coordinator ({§functionality-coordinator}). |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
 
+Core keys each {§module-workspace-directory} by a stable random workspace
+storage key in its own `workspace_module_state` row.
 Module directory allocation is lazy, atomic in SQLite, and independent of the
 project root, daemon CWD, and workspace/worker environment overrides. New
 directories use mode `0700`; existing permissions are not rewritten. Module
@@ -4355,32 +4359,6 @@ Preparation reports neither definitions nor credentials, does not alter the
 publication contract, and creates no log entries or model Notices. Published
 failures retain their exact Problems in `list`. Concurrent consumers share the
 workspace activity; a client disconnect does not clear another consumer's work.
-
-§functionality-adapter **An adapter owns protocol truth.** It declares its
-family, namespace owner, definition schema, contributed defaults, discovery,
-admission, preparation, and teardown, and its alias grammar when that is not
-the shared lowercase-hyphen one: the coordinator enforces whichever grammar the
-family declares, at admission, in the service projection, and on persisted
-state, so an environment variable's name is an alias exactly as a skill name
-is. Admission distinguishes explicit client
-actions from model operations where the family contract requires it
-({§members-model-scope}). Preparation receives each complete definition with optional
-adapter-owned interpretation context. Context is source semantics, not policy or provenance;
-it participates in runtime identity and hot-load comparisons, is never projected as configuration
-or persisted into a workspace override, and cannot survive replacement by a local definition.
-Removing that override restores the current inherited definition and context together.
-Descriptive provenance alone does not change runtime identity. Preparation returns runtimes, documents, per-alias
-outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
-failure aborts; cooling tears down. Protocol continuations remain ordinary
-module actions. Optional `forget` releases an installed or provisioned
-definition before removal; failure rejects removal. The
-seam's shapes — the identity a verb acts under, its options, definition
-sources, outcomes, preparation, the prepared result and the family handle —
-are declared once in `plurnk-contracts` and imported by core and every
-module; core adds only its own face of the seam, the runtime registration a
-resident family prepares and the scheme facet it may expose.
-An adapter may expose current partial-source `configurationNotices`; these join the ordinary
-workspace diagnostics without preventing independently valid definitions from preparing.
 
 §functionality-hotload **Out-of-band state is admitted before the next turn.** An adapter whose
 `available` reads state that changes outside the daemon, such as skill roots ({§skills-hotload}) or

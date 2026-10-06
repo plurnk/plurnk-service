@@ -77,6 +77,17 @@ Each finding is one report: the plugin directory, the path within it (`plugin.js
 `invalid`, `skipped`, `ignored` or `shadowed`) and one sentence. Plurnk's own rules report the section
 `client`.
 
+## Module slice
+
+§plugin-set-module-slice **A daemon module reads a workspace's installed plugins through
+`WorkspacePluginsSeam`.** `readWorkspacePlugins(workspaceId)` returns a `WorkspacePluginSet`: the
+plugins in root precedence order, each an `InstalledPlugin` with the `PLUGIN_DATA` directory its
+subprocesses receive, the reports ({§agent-plugins-reports}), a signature that changes exactly when
+a plugin, its manifest, its MCP configuration or its skills change, and each root the host reads,
+null where it reads none. A root scope is opaque to this package, as it is to discovery; the host
+names its scopes ({§agent-plugins-hosting}). These types complete the module contract's slices
+({§module-seam-slices}).
+
 ## §agent-plugins-conformance Conformance corpus
 
 Each `test/conformance/<case>/` holds one plugin root under test and an `expected.json` naming the section, the

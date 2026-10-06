@@ -6,9 +6,10 @@ import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } f
 import { viableWindow } from "./_provider.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
-import type { ModuleSetupSeam, RuntimeRegistration } from "../../src/server/DaemonModule.ts";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Dsl from "./dsl.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import { OperationFailureError } from "../../src/core/results.ts";
 import {
     Validator,
@@ -356,8 +357,8 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
     });
     const executions: number[] = [];
     const activated: number[] = [];
-    let setupSeam: ModuleSetupSeam | null = null;
-    const activeSetupSeam = (): ModuleSetupSeam => {
+    let setupSeam: HostSetupSeam | null = null;
+    const activeSetupSeam = (): HostSetupSeam => {
         if (setupSeam === null) throw new Error("Functionality setup seam was not handed to the module");
         return setupSeam;
     };
@@ -373,7 +374,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
         };
     };
     const capabilityModule = {
-        setup: (seam: ModuleSetupSeam): void => {
+        setup: (seam: HostSetupSeam): void => {
             setupSeam = seam;
             seam.registerWorkspaceCapabilityProvider(owner, {
                 activate: async ({ workspaceId: id }) => {
@@ -1892,7 +1893,7 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
     const executions: number[] = [];
     const activated: number[] = [];
     const capabilityModule = {
-        setup: (seam: ModuleSetupSeam): void => {
+        setup: (seam: HostSetupSeam): void => {
             seam.registerWorkspaceCapabilityProvider(owner, {
                 activate: async ({ workspaceId: activeWorkspaceId }) => {
                     activated.push(activeWorkspaceId);

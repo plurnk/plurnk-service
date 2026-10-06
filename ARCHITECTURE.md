@@ -42,6 +42,7 @@ Eight principles govern which exterior standards PLURNK conforms to:
 flowchart LR
     contracts["plurnk-contracts<br/>language + shared wire"] --> core
     meta["plurnk-meta<br/>discovery + teaching"] --> core
+    modules["plurnk-modules<br/>module contract"] --> core
     skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
     providers["Provider family"] --> core
     capabilities["Scheme / executor / mimetype families"] --> core
@@ -75,6 +76,7 @@ package; this root document does not restate their teaching.
 | Executable capability framework                           | `@plurnk/plurnk-execs` and installed executor packages       | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |
 | Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
+| Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
@@ -82,7 +84,7 @@ package; this root document does not restate their teaching.
 | Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
-The typed module seam is released with the service package, and core exposes no runtime version or
+The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes no runtime version or
 update-advertising action: protocol compatibility and any version negotiation belong to the
 client-interface module that publishes that protocol.
 

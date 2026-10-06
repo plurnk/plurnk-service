@@ -7,8 +7,9 @@ import assert from "node:assert/strict";
 import { A2a, type A2aClientResolver } from "@plurnk/plurnk-a2a";
 import type { HttpHost } from "@plurnk/plurnk-contracts";
 import type Engine from "../../src/core/Engine.ts";
-import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
-import type { RuntimeRegistration } from "../../src/server/DaemonModule.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import HttpListener from "../../src/server/HttpListener.ts";
 
 // The exposure a test mounts, stated whole: the module holds no default of its own.

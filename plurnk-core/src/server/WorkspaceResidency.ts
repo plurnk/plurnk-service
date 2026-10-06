@@ -13,12 +13,12 @@ import type {
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate,
 } from "@plurnk/plurnk-contracts";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type {
-    RuntimeRegistration,
     WorkspaceCapabilityPublication,
     WorkspaceCapabilityProvider,
     WorkspaceCapabilityReplacement,
-} from "./DaemonModule.ts";
+} from "./ModuleHost.ts";
 
 const residencyFailure = (
     code: string, status: number, detail: string,

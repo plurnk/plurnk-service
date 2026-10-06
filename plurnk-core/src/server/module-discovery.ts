@@ -3,7 +3,8 @@ import { pathToFileURL } from "node:url";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import type { DaemonModule } from "./DaemonModule.ts";
+import type { DaemonModule } from "@plurnk/plurnk-modules";
+import type { HostSetupSeam } from "./ModuleHost.ts";
 import HostPaths from "../core/HostPaths.ts";
 import PluginSources from "./PluginSources.ts";
 import EnvDefaults from "../core/env-defaults.ts";
@@ -27,7 +28,7 @@ const assertDaemonModule = (
     value: unknown,
     packageName: string,
     source: "export" | "factory",
-): DaemonModule<ApplicationPort> => {
+): DaemonModule<HostSetupSeam, ApplicationPort> => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
         const detail = source === "factory"
             ? "factory returned a non-object DaemonModule"
@@ -42,7 +43,7 @@ const assertDaemonModule = (
             );
         }
     }
-    return value as DaemonModule<ApplicationPort>;
+    return value as DaemonModule<HostSetupSeam, ApplicationPort>;
 };
 
 const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
@@ -56,7 +57,7 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
 export const discoverDaemonModules = async (
     options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }> } = {},
 ): Promise<{
-    readonly modules: ReadonlyArray<DaemonModule<ApplicationPort>>;
+    readonly modules: ReadonlyArray<DaemonModule<HostSetupSeam, ApplicationPort>>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
     readonly configurationErrors: readonly ConfigurationError[];
@@ -69,7 +70,7 @@ export const discoverDaemonModules = async (
         ...sources.plugins.map(({ root }) => ({ dir: root })),
         ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
     ];
-    const modules: DaemonModule<ApplicationPort>[] = [];
+    const modules: DaemonModule<HostSetupSeam, ApplicationPort>[] = [];
     const configurationErrors: ConfigurationError[] = [...sources.configurationErrors];
     const skipped: string[] = [];
     for (const candidate of dirs) {

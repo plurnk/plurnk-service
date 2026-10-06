@@ -17,10 +17,11 @@ import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { Executor, RuntimeNamespaceOwner } from "./ExecutorRegistry.ts";
+import type { RuntimeNamespaceOwner } from "./ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
-import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import Meta, {
     TEACHING_CORPUS,
     type PluginAttribution,

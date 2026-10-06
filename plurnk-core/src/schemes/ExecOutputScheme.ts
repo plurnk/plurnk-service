@@ -6,7 +6,7 @@ import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import { EntryCoordinates } from "@plurnk/plurnk-schemes";
 import type {

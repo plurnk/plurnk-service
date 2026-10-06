@@ -1,21 +1,21 @@
 {
-    "name": "@plurnk/plurnk-hooks",
+    "name": "@plurnk/plurnk-modules",
     "version": "1.29.0",
-    "description": "Deliver selected Plurnk lifecycle events to exact local commands.",
+    "description": "The Plurnk daemon module contract: the lifecycle a module implements and the base seam it receives.",
     "keywords": [
         "plurnk",
-        "hooks",
-        "notifications",
-        "automation"
+        "modules",
+        "plugins",
+        "contract"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-hooks#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-modules#readme",
     "bugs": {
         "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/plurnk/plurnk-service.git",
-        "directory": "plurnk-hooks"
+        "directory": "plurnk-modules"
     },
     "engines": {
         "node": ">=26"
@@ -24,11 +24,7 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.29.0",
-        "@plurnk/plurnk-meta": "1.29.0"
-    },
-    "peerDependencies": {
-        "@plurnk/plurnk-modules": "^1.29.0"
+        "@plurnk/plurnk-contracts": "1.29.0"
     },
     "publishConfig": {
         "access": "public"
@@ -44,12 +40,11 @@
     "files": [
         "dist/**/*",
         "README.md",
-        "SPEC.md",
-        ".env.defaults"
+        "SPEC.md"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --test \"src/**/*.test.ts\"",
+        "test:unit": "node --conditions=plurnk-dev --test \"src/**/*.test.ts\"",
         "test": "npm run test:lint && npm run test:unit",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

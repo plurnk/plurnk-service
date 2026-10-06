@@ -155,6 +155,7 @@
         "@plurnk/plurnk-mimetypes-text-markdown": "1.29.0",
         "@plurnk/plurnk-mimetypes-text-plain": "1.29.0",
         "@plurnk/plurnk-models": "1.29.0",
+        "@plurnk/plurnk-modules": "1.29.0",
         "@plurnk/plurnk-providers": "1.29.0",
         "@plurnk/plurnk-schemes": "1.29.0",
         "@plurnk/plurnk-schemes-http": "1.29.0",

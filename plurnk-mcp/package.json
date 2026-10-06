@@ -68,6 +68,7 @@
     },
     "peerDependencies": {
         "@plurnk/plurnk-execs": "^1.29.0",
+        "@plurnk/plurnk-modules": "^1.29.0",
         "@plurnk/plurnk-schemes": "^1.29.0"
     }
 }

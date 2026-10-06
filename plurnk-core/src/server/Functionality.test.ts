@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { WorkspaceCapabilityGate } from "@plurnk/plurnk-contracts";
 import Functionality from "./Functionality.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
-import type { WorkspaceCapabilityProvider } from "./DaemonModule.ts";
+import type { WorkspaceCapabilityProvider } from "./ModuleHost.ts";
 
 test("{§module-workspace-quiescence} a queued catalog refresh cannot block the current turn's admission refresh", { timeout: 5000 }, async () => {
     const gate = new WorkspaceGate(async () => false);

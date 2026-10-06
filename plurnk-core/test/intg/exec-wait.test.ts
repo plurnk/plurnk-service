@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";

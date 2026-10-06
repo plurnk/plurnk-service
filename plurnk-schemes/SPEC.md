@@ -659,6 +659,16 @@ prepared statements directly: those are unstable implementation details, not
 additional plugin capabilities. Use `SchemeCtx` or propose a new semantic
 capability when the public surface cannot express a coherent extension.
 
+## Module slice
+
+§scheme-module-slice **A daemon module contributes to this family through two types this package
+owns.** They complete the module contract's slices ({§module-seam-slices}).
+
+| Type | Contract |
+| --- | --- |
+| `SchemeRegistrationSeam` | `registerScheme(name, handler)` adds one process-wide addressable `SchemeHandler`; scheme readiness and model-facing capability publication remain the host's. |
+| `RuntimeSchemeFacet` | A scheme face over a module's own resources. It claims only its own path subtree and there is the scheme's whole live half; unclaimed coordinates keep the standard executor-output behavior. A runtime carries one on its registration ({§executor-module-slice}), and a Functionality family's manager may expose one ({§functionality-adapter}). |
+
 ## §scheme-discovery §6 Discovery & registration (third-party)
 
 A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:

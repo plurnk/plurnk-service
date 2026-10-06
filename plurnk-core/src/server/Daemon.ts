@@ -36,7 +36,7 @@ import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import { expandTargetGroup } from "../core/operation-target-groups.ts";
 import SkillsFunctionality from "./SkillsFunctionality.ts";
-import WorkspacePlugins, { type WorkspacePluginSet } from "./WorkspacePlugins.ts";
+import WorkspacePlugins from "./WorkspacePlugins.ts";
 import { agentRootScopes, configurationDirectories } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
@@ -44,7 +44,6 @@ import Skill from "../schemes/Skill.ts";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
 import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
-import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import HostPaths from "../core/HostPaths.ts";
 import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
@@ -66,7 +65,11 @@ import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
-import type { DaemonModule, FunctionalityAdapter, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
+import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, StartedModule } from "@plurnk/plurnk-modules";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
+import type { AgentRootScope } from "./AgentRoots.ts";
+import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -105,7 +108,7 @@ type LoopGenerationPolicy = {
     effort: Effort;
 };
 
-export default class Daemon implements ApplicationPort {
+export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
@@ -142,7 +145,7 @@ export default class Daemon implements ApplicationPort {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
-    #modules: Array<DaemonModule<ApplicationPort>> = [];
+    #modules: Array<DaemonModule<HostSetupSeam, ApplicationPort>> = [];
     #moduleLifetimes: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #residency: WorkspaceResidency;
@@ -1534,7 +1537,7 @@ export default class Daemon implements ApplicationPort {
     }
 
     // {§module-functionality-adapter}
-    registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle {
+    registerFunctionalityAdapter(adapter: HostFunctionalityAdapter): FunctionalityFamilyHandle {
         return this.#functionality.register(adapter);
     }
 
@@ -1553,7 +1556,7 @@ export default class Daemon implements ApplicationPort {
     }
 
     // {§agent-plugins-hosting}
-    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet> {
+    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<AgentRootScope>> {
         return this.#plugins.read(workspaceId);
     }
 
@@ -1587,7 +1590,7 @@ export default class Daemon implements ApplicationPort {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    registerModule(module: DaemonModule<ApplicationPort>): void {
+    registerModule(module: DaemonModule<HostSetupSeam, ApplicationPort>): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
         this.#modules.push(module);
     }
@@ -1659,7 +1662,7 @@ export default class Daemon implements ApplicationPort {
         for (const module of discoveredModules.modules) {
             this.#modules.push(module);
         }
-        const setupSeam: ModuleSetupSeam = this;
+        const setupSeam: HostSetupSeam = this;
         for (const module of this.#modules) {
             if (module.stop !== undefined || module.close !== undefined) this.#moduleLifetimes.push(module);
             await module.setup?.(setupSeam);

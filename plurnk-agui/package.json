@@ -56,6 +56,9 @@
         "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
     },
     "author": "@wikitopian",
+    "peerDependencies": {
+        "@plurnk/plurnk-modules": "^1.29.0"
+    },
     "publishConfig": {
         "access": "public"
     },

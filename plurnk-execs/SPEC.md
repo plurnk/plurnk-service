@@ -654,6 +654,15 @@ The consumer:
 5. validates the terminal result and closes every declared channel and subscription coherently; and
 6. projects stream observations and later reads without calling back into the executor.
 
+## Module slice
+
+§executor-module-slice **A host binds to `Executor`, the contract `BaseExecutor` implements, not to the
+class.** A daemon module contributes runtimes as `RuntimeRegistration`s: a namespace owner, the
+runtime declaration ({§executor-runtime-declaration}), the executor, its availability, and an
+optional scheme facet ({§scheme-module-slice}). The host arbitrates the namespace
+({§plugin-namespace-arbitration}) and publishes each registration; these types complete the
+module contract's slices ({§module-seam-slices}).
+
 ## Forbidden in executor leaves
 
 - Direct database, subscription, packet, or wake access.

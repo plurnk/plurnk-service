@@ -4,6 +4,8 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 // enabled rules at start from the coordinator's persisted state ({§schedule-residency}), and
 // disarms during producer stop ({§module-shutdown-order}).
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import { readDefinition } from "./definition.ts";
 import ScheduleFunctionality, {
     type EnvironmentSeam,
@@ -12,9 +14,8 @@ import ScheduleFunctionality, {
 import { parseRule } from "./rules.ts";
 import type { ScheduledRule } from "./Scheduler.ts";
 
-interface SetupSeam extends EnvironmentSeam {
-    registerFunctionalityAdapter(adapter: ScheduleFunctionality): FunctionalityFamilyHandle;
-}
+// {§module-seam-slices} — the slices this module uses.
+type SetupSeam = EnvironmentSeam & FunctionalitySeam<never, RuntimeSchemeFacet>;
 
 type StartSeam = Pick<ApplicationPort, "listWorkspaces" | "listWorkers" | "runLoop">;
 
@@ -22,7 +23,7 @@ export interface ModuleOptions extends ScheduleFunctionalityOptions {
     readonly env?: NodeJS.ProcessEnv;
 }
 
-export default class Module {
+export default class Module implements DaemonModule<SetupSeam, StartSeam> {
     readonly #functionality: ScheduleFunctionality;
     readonly #report: (message: string, cause: unknown) => void;
     #handle: FunctionalityFamilyHandle | null = null;

@@ -26,9 +26,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type {
-    FunctionalityAdapter,
-} from "./DaemonModule.ts";
+import type { FunctionalityAdapter } from "@plurnk/plurnk-modules";
 import SkillSource from "./SkillSource.ts";
 import { agentRootScopes, type AgentRootScope } from "./AgentRoots.ts";
 import { SkillsActionError, actionError, messageOf } from "./skills-problems.ts";

@@ -57,6 +57,7 @@ The Plurnk skill exposes the same guides and catalog to the model on demand.
 | HTTP resources | [HTTP scheme](plurnk-schemes-http/README.md) |
 | Scheduled messages | [Schedule](plurnk-schedule/README.md) |
 | Local event handlers | [Lifecycle hooks](plurnk-hooks/README.md) |
+| Writing a daemon module | [Module contract](plurnk-modules/README.md) |
 | Package map and extension boundaries | [Architecture](ARCHITECTURE.md#package-ownership) |
 
 Each package's `SPEC.md` owns its public contract. The root is an npm workspace

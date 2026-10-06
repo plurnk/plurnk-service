@@ -54,7 +54,7 @@ export type WorkspaceTurnStarting = (args: {
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
-import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import LoopDriver from "./LoopDriver.ts";
 
 type ModuleRuntimeRegistration = RuntimeRegistryRegistration & {

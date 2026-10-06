@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import Results from "../../src/core/results.ts";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";

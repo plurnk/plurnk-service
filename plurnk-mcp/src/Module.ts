@@ -8,19 +8,10 @@ import { readDefinition } from "./definition.ts";
 import { isDeepStrictEqual } from "node:util";
 import { SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
 import type { PluginContext } from "./PluginConfiguration.ts";
-import type { PluginSources } from "./config.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type {
-    RuntimeAvailability,
-    RuntimeDecl,
-} from "@plurnk/plurnk-execs";
-import type {
-    FindStatement,
-    RepresentationPreparationRequest,
-    RepresentationPreparationResult,
-    SchemeCtx,
-    SchemeResult,
-} from "@plurnk/plurnk-schemes";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
+import type { FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import {
     Problems,
     type FunctionalityCandidate,
@@ -31,7 +22,6 @@ import {
     type FunctionalityPreparation,
     type FunctionalityPreparedDefinition,
     type FunctionalityPrepared,
-    type FunctionalityServiceDefinition,
     type McpServerDefinition,
     type McpOAuthCompletionResult,
     type McpOAuthBeginResult,
@@ -76,67 +66,6 @@ const actionInput = (
     properties,
     ...(required.length === 0 ? {} : { required: [...required] }),
 });
-
-// Structural copies of the core seam types: this package never imports core.
-interface RuntimeSchemeFacet {
-    claims(pathname: string): boolean;
-    prepareRepresentation?(
-        request: RepresentationPreparationRequest,
-        ctx: SchemeCtx,
-    ): Promise<RepresentationPreparationResult>;
-    find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-}
-
-interface RuntimeRegistration {
-    readonly namespaceOwner: string;
-    readonly decl: RuntimeDecl;
-    readonly executor: McpExecutor;
-    readonly availability: RuntimeAvailability;
-    readonly scheme?: RuntimeSchemeFacet;
-}
-
-type ModuleActionContext =
-    | { readonly scope: "worldless" }
-    | { readonly scope: "workspace"; readonly workspaceId: number }
-    | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
-
-interface FunctionalityAdapter {
-    readonly family: string;
-    readonly namespaceOwner: string;
-    readonly summary: string;
-    readonly definitionSchema: JsonSchema;
-    readonly docsDir?: string;
-    readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly details: string };
-    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
-    configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
-    prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;
-    teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
-    refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void>;
-}
-
-interface ModuleSetupSeam {
-    readWorkspacePlugins(workspaceId: number): Promise<PluginSources>;
-    workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]>;
-    readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§mcp-launch-environment} The operator's environment without plurnk's own secrets.
-    operatorEnvironment(): NodeJS.ProcessEnv;
-    workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
-    registerModuleAction(registration: {
-        readonly name: string;
-        readonly scope: "worldless" | "workspace" | "worker";
-        readonly residency: "required" | "none";
-        readonly inputSchema: JsonSchema;
-        readonly outputSchema: JsonSchema;
-        readonly handler: (
-            params: Readonly<Record<string, unknown>>,
-            context: ModuleActionContext,
-        ) => unknown | Promise<unknown>;
-    }): void;
-    registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle;
-}
 
 interface McpBinding extends FunctionalityPreparedDefinition {
     readonly definition: McpServerDefinition;
@@ -367,14 +296,19 @@ const catalogDetail = (executor: McpExecutor): object => {
     };
 };
 
+// {§module-seam-slices} — the slices this module uses.
+type SetupSeam = Pick<ModuleSetupSeam,
+    "workspaceConfigurationDirectories" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
+    & FunctionalitySeam<RuntimeRegistration> & WorkspacePluginsSeam;
+
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
-    #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
-    #plugins!: ModuleSetupSeam["readWorkspacePlugins"];
+    #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
+    #plugins!: SetupSeam["readWorkspacePlugins"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
-    #operatorEnvironment!: ModuleSetupSeam["operatorEnvironment"];
-    #stateDirectory!: ModuleSetupSeam["workspaceStateDirectory"];
-    #configurationDirectories!: ModuleSetupSeam["workspaceConfigurationDirectories"];
+    #operatorEnvironment!: SetupSeam["operatorEnvironment"];
+    #stateDirectory!: SetupSeam["workspaceStateDirectory"];
+    #configurationDirectories!: SetupSeam["workspaceConfigurationDirectories"];
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -397,7 +331,7 @@ export default class Module {
         this.#env = environ;
     }
 
-    async setup(seam: ModuleSetupSeam): Promise<void> {
+    async setup(seam: SetupSeam): Promise<void> {
         this.#plugins = (workspaceId) => seam.readWorkspacePlugins(workspaceId);
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = () => seam.operatorEnvironment();

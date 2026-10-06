@@ -62,6 +62,8 @@ export type {
     SpawnArgs,
 } from "./types.ts";
 
+export type { Executor, RuntimeRegistration } from "./module-slice.ts";
+
 // Transient observation contract, re-exported for executor authors.
 export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";
 export type {

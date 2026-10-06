@@ -25,11 +25,13 @@ import BuiltinActions from "./BuiltinActions.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 import RunHandler from "./RunHandler.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
+import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
+import type { DaemonModule } from "@plurnk/plurnk-modules";
 
 export type { ModuleOptions } from "./config.ts";
 
-export interface ModuleRegistration {
-    setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void>;
+export interface ModuleRegistration extends DaemonModule<SchemeRegistrationSeam, ApplicationPort> {
+    setup(seam: SchemeRegistrationSeam): Promise<void>;
     start(seam: ApplicationPort): Promise<Module>;
 }
 
@@ -51,7 +53,7 @@ interface RegisteredAction extends AguiActionContract {
     readonly execute: ActionExecutor;
 }
 
-export default class Module {
+export default class Module implements DaemonModule<SchemeRegistrationSeam, ApplicationPort> {
     #seam!: ApplicationPort;
     #opts: ResolvedModuleOptions;
     #portal!: Portal;
@@ -149,11 +151,11 @@ export default class Module {
         };
     }
 
-    static async setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void> {
+    static async setup(seam: SchemeRegistrationSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
     }
 
-    async setup(seam: { registerScheme(name: string, handler: object): Promise<void> }): Promise<void> {
+    async setup(seam: SchemeRegistrationSeam): Promise<void> {
         await Module.setup(seam);
     }
 

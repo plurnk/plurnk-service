@@ -24,14 +24,13 @@ import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleErr
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
 import { isoString, zoned } from "./temporal.ts";
 import ScheduleResources from "./ScheduleResources.ts";
+import type { ModuleSetupSeam } from "@plurnk/plurnk-modules";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
 
-export interface EnvironmentSeam {
-    readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-}
+// {§module-seam-slices} — the environment readers this family resolves rules under.
+export type EnvironmentSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment" | "readWorkerEnvironment">;
 
 interface Snapshot {
     readonly rules: ReadonlyMap<string, ScheduledRule>;

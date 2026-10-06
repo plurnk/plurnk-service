@@ -7,9 +7,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type {
-    FunctionalityAdapter,
-} from "./DaemonModule.ts";
+import type { FunctionalityAdapter } from "@plurnk/plurnk-modules";
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";

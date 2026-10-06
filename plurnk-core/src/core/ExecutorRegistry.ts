@@ -1,46 +1,18 @@
 import { discover, RuntimeInvocation } from "@plurnk/plurnk-execs";
 import type {
-    ChannelDecl,
-    ExecArgs,
-    ExecInput,
-    ExecPreparation,
-    ExecResult,
-    Effect,
     RuntimeAvailability,
     ExecutorMetadata,
     RuntimeInvocationDecl,
     RuntimeSummaryDecl,
     RuntimeToolRegistry,
+    Executor,
 } from "@plurnk/plurnk-execs";
 import Meta, {
     type PackageAttributions,
     type PluginAttribution,
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
-import type { SchemeManifest } from "./types.ts";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
-
-// The executor contract surface we consume (a BaseExecutor subclass). We bind
-// to the contract, not the framework's class identity. Under {§executor-scheme-output}, the executor is also
-// the scheme face for its output, so it exposes `manifest` (OutputScheme-derived,
-// name = the tag) + `defaultChannel`.
-export interface Executor {
-    readonly runtime: string;
-    readonly glyph: string;
-    get manifest(): SchemeManifest;
-    get defaultChannel(): string;
-    get channels(): Readonly<Record<string, ChannelDecl>>;
-    readonly publishedChannel?: string | null;
-    prepare?(input: ExecInput): Promise<ExecPreparation>;
-    run(args: ExecArgs): Promise<ExecResult>;
-    // The host aborts on resolve or timeout so probe work is reaped immediately
-    // ({§executor-probe}). Optional and ignore-safe.
-    probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
-    // One pure classification of the consumer-canonical logical target
-    // ({§executor-effect}); authored body text is never an admission input.
-    effect(target: string | null): Effect;
-    toolRegistry?(): RuntimeToolRegistry;
-}
 
 // {§functionality-model-projection} — a Core-owned runtime whose verbs act for the invoking Worker.
 // The framework's ExecArgs carries no Worker identity by design; Core, which owns execution

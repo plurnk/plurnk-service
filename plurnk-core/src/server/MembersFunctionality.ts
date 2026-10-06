@@ -25,9 +25,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type {
-    FunctionalityAdapter,
-} from "./DaemonModule.ts";
+import type { FunctionalityAdapter } from "@plurnk/plurnk-modules";
 
 const MEMBERS_FAMILY = "members";
 const MEMBERS_OWNER = "@plurnk/plurnk-core/members";

@@ -12,6 +12,7 @@
     "workspaces": [
         "plurnk-meta",
         "plurnk-contracts",
+        "plurnk-modules",
         "plurnk-parser",
         "plurnk-aliases",
         "plurnk-agent-skills",

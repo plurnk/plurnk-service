@@ -2,6 +2,7 @@ import { OutputScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
+import type { Executor } from "./module-slice.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
 // A `@plurnk/plurnk-execs-*` sibling subclasses this and implements `run()`.
@@ -13,7 +14,7 @@ import InvocationMetadata from "./InvocationMetadata.ts";
 // receives sinks via ExecArgs and nothing more — it stays stateless across
 // runs beyond its construction metadata ({§executor-role}).
 // {§executor-contract} — the author surface: what an executor declares and what run receives.
-export default abstract class BaseExecutor implements SchemeHandler {
+export default abstract class BaseExecutor implements SchemeHandler, Executor {
     readonly runtime: string;
     readonly glyph: string;
 

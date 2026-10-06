@@ -1,15 +1,10 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
-import type { DiscoveredPlugin } from "@plurnk/plurnk-agent-plugins";
+import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import { readDefinition } from "./definition.ts";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
-export interface PluginSources {
-    readonly plugins: readonly (DiscoveredPlugin & { readonly data: string })[];
-    readonly roots: Readonly<Record<string, string | null>>;
-}
 
 export type { McpAuthorization } from "@plurnk/plurnk-contracts";
 
@@ -88,7 +83,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export const configuredDefinitions = async (
     directories: readonly string[],
     environ: NodeJS.ProcessEnv = process.env,
-    plugins?: PluginSources & { report(notice: Notice): void },
+    plugins?: Pick<WorkspacePluginSet, "plugins" | "roots"> & { report(notice: Notice): void },
 ): Promise<Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }>> => {
     const { resources } = configuration(environ);
     const selected = new Map(serviceDefinitions(environ).map((entry) => [entry.alias, entry]));

@@ -79,8 +79,8 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
 export interface FunctionalityPrepared<Runtime = never> {
     // {§module-workspace-residency} — the resident facet. Only a family that holds processes
     // (MCP servers) prepares runtimes; every other family publishes its manager, documents and
-    // state alone, and leaves this absent. The runtime registration is core's; a family that
-    // prepares runtimes names its own view of it here.
+    // state alone, and leaves this absent. The runtime registration is the executor family's
+    // ({§executor-module-slice}); a family that prepares runtimes names it here.
     readonly runtimes?: readonly Runtime[];
     readonly documents: readonly FunctionalityDocument[];
     readonly outcomes: ReadonlyMap<string, FunctionalityOutcome>;

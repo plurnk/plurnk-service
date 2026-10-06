@@ -30,14 +30,14 @@ import type {
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate,
 } from "@plurnk/plurnk-contracts";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type {
-    FunctionalityAdapter,
-    ModuleActionRegistration,
-    RuntimeRegistration,
+    HostFunctionalityAdapter,
     WorkspaceCapabilityProvider,
     WorkspaceCapabilityReplacement,
     WorkspaceCapabilityPublication,
-} from "./DaemonModule.ts";
+} from "./ModuleHost.ts";
 import FunctionalityManager, {
     FUNCTIONALITY_VERBS,
     functionalityRuntimeDecl,
@@ -124,8 +124,8 @@ const FAMILY = /^[a-z][a-z0-9]*$/u;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
 // wherever an alias enters: admission, the service projection, and persisted state.
-const aliasPattern = (adapter: FunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
-const scopesOf = (adapter: FunctionalityAdapter): readonly ("workspace" | "worker")[] => adapter.scopes ?? ["workspace"];
+const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
+const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "worker")[] => adapter.scopes ?? ["workspace"];
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.xyz/v0/${name}.json` });
 const ALIAS_INPUT: JsonSchema = Object.freeze({
@@ -151,7 +151,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export default class Functionality {
     readonly #host: FunctionalityHost;
-    readonly #adapters = new Map<string, FunctionalityAdapter>();
+    readonly #adapters = new Map<string, HostFunctionalityAdapter>();
     readonly #owners = new Set<string>();
     readonly #schemas = new Map<string, Readonly<Record<FunctionalityVerb, JsonSchema>>>();
     readonly #families = new Map<string, WorkspaceFamily>();
@@ -165,7 +165,7 @@ export default class Functionality {
 
     // {§functionality-adapter} — registration publishes the family's client
     // actions and its workspace capability provider at once.
-    register(adapter: FunctionalityAdapter): FunctionalityFamilyHandle {
+    register(adapter: HostFunctionalityAdapter): FunctionalityFamilyHandle {
         const { family, namespaceOwner } = adapter;
         if (!FAMILY.test(family)) throw new Error(`Functionality family '${family}' must match ${FAMILY}.`);
         if (this.#adapters.has(family)) throw new Error(`Functionality family '${family}' is already registered.`);
@@ -329,7 +329,7 @@ export default class Functionality {
     // `docs/<tag>.md` rule runtimes use. A family that ships no file has a header-only document.
     #documentBodies = new Map<string, Promise<string>>();
 
-    #documentBody(adapter: FunctionalityAdapter): Promise<string> {
+    #documentBody(adapter: HostFunctionalityAdapter): Promise<string> {
         let body = this.#documentBodies.get(adapter.family);
         if (body === undefined) {
             body = adapter.docsDir === undefined
@@ -425,7 +425,7 @@ export default class Functionality {
 
     // A worker-scoped verb that names no Worker is a defect at the projection, never a client
     // failure: both projections name the Worker ({§functionality-model-projection}).
-    static #workerOf(adapter: FunctionalityAdapter, identity: FunctionalityIdentity): number {
+    static #workerOf(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity): number {
         if (identity.workerId === undefined) throw new Error(`${adapter.family} is worker-scoped; the invocation names no Worker.`);
         return identity.workerId;
     }
@@ -436,7 +436,7 @@ export default class Functionality {
         return identity.scope ?? "workspace";
     }
 
-    #adapter(family: string): FunctionalityAdapter {
+    #adapter(family: string): HostFunctionalityAdapter {
         const adapter = this.#adapters.get(family);
         if (adapter === undefined) throw failure(family, "family-unknown", 404, `No Functionality family '${family}' is registered.`, { retryable: false });
         return adapter;
@@ -460,7 +460,7 @@ export default class Functionality {
         finally { this.#admissions.delete(pending); }
     }
 
-    async #activate(adapter: FunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
+    async #activate(adapter: HostFunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
         const identity = { workspaceId: context.workspaceId };
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const state = await this.#loadState(adapter, identity.workspaceId);
@@ -468,7 +468,7 @@ export default class Functionality {
         });
     }
 
-    async #deactivate(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<void> {
+    async #deactivate(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<void> {
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const key = this.#key(identity.workspaceId, adapter.family);
             const family = this.#families.get(key);
@@ -479,15 +479,15 @@ export default class Functionality {
         });
     }
 
-    async #loadState(adapter: FunctionalityAdapter, workspaceId: number): Promise<FamilyState> {
+    async #loadState(adapter: HostFunctionalityAdapter, workspaceId: number): Promise<FamilyState> {
         return Functionality.#parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`, "workspace");
     }
 
-    async #loadWorkerState(adapter: FunctionalityAdapter, workerId: number): Promise<FamilyState> {
+    async #loadWorkerState(adapter: HostFunctionalityAdapter, workerId: number): Promise<FamilyState> {
         return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`, "worker");
     }
 
-    static #parseState(adapter: FunctionalityAdapter, raw: unknown | null, where: string, scope: "workspace" | "worker"): FamilyState {
+    static #parseState(adapter: HostFunctionalityAdapter, raw: unknown | null, where: string, scope: "workspace" | "worker"): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
             throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);
@@ -522,7 +522,7 @@ export default class Functionality {
         return Object.keys(state.definitions).length === 0 ? null : state;
     }
 
-    async #effective(adapter: FunctionalityAdapter, identity: FunctionalityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
+    async #effective(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
         const effective = new Map<string, EffectiveDefinition>();
         const local = Functionality.#localOrigin(identity);
         const inheritsWorkspace = identity.scope === "worker" && scopesOf(adapter).includes("workspace");
@@ -565,7 +565,7 @@ export default class Functionality {
         }
     }
 
-    async #list(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityListResult> {
+    async #list(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityListResult> {
         const family = this.#families.get(this.#key(identity.workspaceId, adapter.family));
         const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
         const effective = await this.#effective(adapter, identity, state);
@@ -585,7 +585,7 @@ export default class Functionality {
         });
     }
 
-    async #discover(adapter: FunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions): Promise<FunctionalityDiscoverResult> {
+    async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions): Promise<FunctionalityDiscoverResult> {
         const candidates = await adapter.discover(query, identity, options);
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
@@ -593,7 +593,7 @@ export default class Functionality {
     // The verb semantics, one implementation for every family ({§functionality-scope}): the next
     // state, the alias it concerns, and how the mutation reports. Only publication differs by scope.
     async #transition(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
@@ -648,7 +648,7 @@ export default class Functionality {
     }
 
     #mutationResult(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         { alias, status, removed }: { alias: string; status: 200 | 201; removed: boolean },
         effectiveAfter: ReadonlyMap<string, EffectiveDefinition>,
         outcomes: ReadonlyMap<string, FunctionalityOutcome>,
@@ -666,7 +666,7 @@ export default class Functionality {
     }
 
     async #mutate(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
@@ -696,7 +696,7 @@ export default class Functionality {
     // spawn reads the same row, and a Worker's row is written at its creation, so nothing in memory
     // could be more current than the table.
     async #invokeForWorker(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
@@ -731,7 +731,7 @@ export default class Functionality {
     // documents or snapshot ({§module-workspace-residency}) — because its definitions are read at the
     // spawn that uses them rather than leased and cooled; the coordinator enforces that here.
     async #prepareForWorker(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         identity: FunctionalityIdentity,
         effective: ReadonlyMap<string, EffectiveDefinition>,
         failureMode: "publish-unavailable" | "reject",
@@ -756,7 +756,7 @@ export default class Functionality {
     // The enabled definitions a workspace publication of `state` prepares. A worker-scoped family's
     // workspace publication carries only its manager: what is enabled is decided per Worker, at each
     // verb and each spawn ({§functionality-scope}).
-    async #publishable(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, FunctionalityPreparedDefinition>> {
+    async #publishable(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, FunctionalityPreparedDefinition>> {
         if (!scopesOf(adapter).includes("workspace")) return new Map();
         return Functionality.#enabled(await this.#effective(adapter, { ...identity, scope: "workspace" }, state));
     }
@@ -781,7 +781,7 @@ export default class Functionality {
         return enabled;
     }
 
-    static #checkOutcomes(adapter: FunctionalityAdapter, enabled: ReadonlyMap<string, object>, prepared: FunctionalityPrepared<RuntimeRegistration>): void {
+    static #checkOutcomes(adapter: HostFunctionalityAdapter, enabled: ReadonlyMap<string, object>, prepared: FunctionalityPrepared<RuntimeRegistration>): void {
         for (const alias of enabled.keys()) {
             if (!prepared.outcomes.has(alias)) throw new Error(`${adapter.family} preparation reported no outcome for enabled alias '${alias}'.`);
         }
@@ -796,7 +796,7 @@ export default class Functionality {
     }
 
     async #publish(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         identity: WorkspaceCapabilityIdentity,
         nextState: FamilyState,
         options: {
@@ -824,7 +824,7 @@ export default class Functionality {
     }
 
     async #publishPrepared(
-        adapter: FunctionalityAdapter,
+        adapter: HostFunctionalityAdapter,
         identity: WorkspaceCapabilityIdentity,
         nextState: FamilyState,
         options: {

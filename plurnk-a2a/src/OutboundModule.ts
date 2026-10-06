@@ -2,14 +2,14 @@
 // module: it registers the family adapter beneath the shared coordinator, and
 // the adapter carries the scheme face that serves `a2a://`. The hosted inbound
 // listener ({§a2a-inbound-exposure}) remains the separate, optional `Module`.
-import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import type { DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import A2aFunctionality from "./Functionality.ts";
 
-interface SetupSeam {
-    registerFunctionalityAdapter(adapter: A2aFunctionality): FunctionalityFamilyHandle;
-}
+// {§module-seam-slices} — the slice this module uses: its adapter carries the `a2a://` facet.
+type SetupSeam = FunctionalitySeam<never, RuntimeSchemeFacet>;
 
-export default class OutboundModule {
+export default class OutboundModule implements DaemonModule<SetupSeam> {
     readonly #functionality: A2aFunctionality;
 
     static init(env: NodeJS.ProcessEnv = process.env): OutboundModule {

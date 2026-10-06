@@ -11,7 +11,7 @@ import type { RepresentationPreparationRequest, SchemeCtx } from "@plurnk/plurnk
 import type { CapabilityPolicy, LoopPolicy } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { Executor } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Exec from "../../src/schemes/Exec.ts";
