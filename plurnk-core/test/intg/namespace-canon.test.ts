@@ -245,7 +245,7 @@ test("{§membership-read-refusal}: beyond the root a miss is the same sentence w
             assert.equal(result.status, 404);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
             assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", "path correction, creation and admission stay alternatives; none is presumed"); // {§problems-file}
+            assert.equal(result.problem?.recovery, `'../${name}' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
         }
         // The disk beyond the root stays dark: swap the names and the two answers are one answer.
         const normalize = (result: typeof there, name: string): string => JSON.stringify(result).replaceAll(name, "<name>");
