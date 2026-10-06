@@ -701,6 +701,28 @@ Generic AI SDK calls accept only settings represented by the SDK's portable
 surface. Compatible endpoints may carry additional sampling keys after reserved
 keys are removed.
 
+§provider-request-controls **A configured service tier or logprobs count reaches a
+native route only through the per-call option its SDK documents.** On a compatible
+route, `PLURNK_PROVIDERS_SERVICE_TIER` and `PLURNK_PROVIDERS_TOP_LOGPROBS` are the
+body fields `service_tier`, `logprobs` and `top_logprobs`. A native route sends them
+in its SDK's `providerOptions` namespace, serialized by that SDK. A control the SDK
+does not document is not sent, and one process warning,
+`PLURNK_REQUEST_CONTROL_UNSUPPORTED`, names it, so a configured choice never
+disappears in silence. The tier passes verbatim: the SDK owns its vocabulary, and a
+value it drops surfaces as its call warning ({§provider-sdk-warning}). A logprobs
+count of 0 asks for the chosen token only.
+
+| Native SDK | Namespace | Service tier | Logprobs |
+| --- | --- | --- | --- |
+| OpenAI | `openai` | sent | sent |
+| Groq | `groq` | sent | not sent |
+| Cerebras | `cerebras` | sent | not sent |
+| xAI | `xai` | sent | not sent |
+| Google | `google` | sent | not sent |
+| Anthropic | `anthropic` | sent | not sent |
+| Amazon Bedrock | `bedrock` | sent | not sent |
+| Mistral, Together, DeepInfra, OpenRouter | none | not sent | not sent |
+
 §openrouter-app-attribution **A route on the OpenRouter SDK identifies the calling
 application only as its provider declares.** `APP_URL`, an absolute HTTP(S) URL, and
 the optional `APP_NAME` are provider declarations (`PLURNK_PROVIDERS_PROVIDER_<NAME>_`,

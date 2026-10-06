@@ -45,6 +45,7 @@ const NOT_A_KNOB = new Map([
     ["PLURNK_PROBE_FAILED", "a provider diagnostic code"],
     ["PLURNK_POOL_WINDOW_DRIFT", "a provider diagnostic code"],
     ["PLURNK_PROMPT_COUNT_ESTIMATE", "a provider diagnostic code"],
+    ["PLURNK_REQUEST_CONTROL_UNSUPPORTED", "a provider diagnostic code"],
     ["PLURNK_VISIBLE_TOKEN_COUNT_UNAVAILABLE", "a provider diagnostic code"],
 ]);
 

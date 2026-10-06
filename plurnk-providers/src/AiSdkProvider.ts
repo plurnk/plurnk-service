@@ -118,8 +118,12 @@ export type AiSdkProviderConfig = {
     // readable reasoning. Applied only when the effective posture is not off.
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
     // Optional provider-configured service tier. Unlike caller sampling, this is
-    // a fixed deployment choice and therefore wins on every request.
+    // a fixed deployment choice and therefore wins on every request; a native route
+    // carries it only as {§provider-request-controls} allows.
     serviceTier?: string;
+    // {§provider-request-controls} — which global request controls a native route's SDK documents as
+    // provider options, and under which namespace. Absent on a native route means none.
+    requestControls?: NativeRequestControls;
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
@@ -176,9 +180,9 @@ export type AiSdkProviderConfig = {
     // serving turn requests nothing and carries nothing. `topLogprobs`: when a
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
     // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
-    // null = off). `rawBody`: when true, attach the verbatim wire body to
-    // response.rawBody (PLURNK_PROVIDERS_RAWBODY). Both universal — any backend,
-    // gated per-alias.
+    // null = off); a native route carries it only as {§provider-request-controls}
+    // allows. `rawBody`: when true, attach the verbatim wire body to
+    // response.rawBody (PLURNK_PROVIDERS_RAWBODY) on any backend. Both gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
     // {§provider-generation-envelope} The generation budgets, env-read via the
@@ -233,6 +237,38 @@ const providerWarningMessage = (warning: CallWarning): string => {
 };
 
 
+// {§provider-request-controls} — the global controls a native SDK documents as provider options.
+export interface NativeRequestControls {
+    readonly namespace: string;
+    readonly serviceTier: boolean;
+    readonly logprobs: boolean;
+}
+
+// {§provider-request-controls} — a native route forwards a configured control only through its
+// SDK's documented provider option; a control the SDK does not document is named once and not
+// sent, never dropped in silence (#988).
+const nativeControlOptions = (
+    source: string,
+    controls: NativeRequestControls | undefined,
+    serviceTier: string | undefined,
+    topLogprobs: number | null,
+): AiSdkProviderOptions | undefined => {
+    const options: Record<string, string | number | boolean> = {};
+    const unsupported = (knob: string): void => emitWarningOnce(
+        `${source}: ${knob} is not a provider option this route's SDK${controls === undefined ? "" : ` (${controls.namespace})`} documents, so it is not sent`,
+        "PLURNK_REQUEST_CONTROL_UNSUPPORTED",
+    );
+    if (serviceTier !== undefined) {
+        if (controls?.serviceTier === true) options.serviceTier = serviceTier;
+        else unsupported("PLURNK_PROVIDERS_SERVICE_TIER");
+    }
+    if (topLogprobs !== null) {
+        if (controls?.logprobs === true) options.logprobs = topLogprobs > 0 ? topLogprobs : true;
+        else unsupported("PLURNK_PROVIDERS_TOP_LOGPROBS");
+    }
+    return controls === undefined || Object.keys(options).length === 0 ? undefined : { [controls.namespace]: options };
+};
+
 export default class AiSdkProvider implements Provider {
     readonly #inferenceAdmission: InferenceAdmission | undefined;
     #model: string;
@@ -277,6 +313,7 @@ export default class AiSdkProvider implements Provider {
     #systemCacheProviderOptions: AiSdkProviderOptions | undefined;
     #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
     #serviceTier: string | undefined;
+    #controlOptions: AiSdkProviderOptions | undefined;
     #streaming: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
@@ -416,6 +453,12 @@ export default class AiSdkProvider implements Provider {
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
+        if (this.#languageModel === undefined && config.requestControls !== undefined) {
+            throw new Error(`${this.#source}: native request controls require an AI SDK model`);
+        }
+        this.#controlOptions = this.#languageModel === undefined
+            ? undefined
+            : nativeControlOptions(this.#source, config.requestControls, this.#serviceTier, this.#topLogprobs);
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresOutputBudget = config.requiresOutputBudget;
@@ -464,7 +507,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, controlOptions: this.#controlOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }

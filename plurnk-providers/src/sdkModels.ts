@@ -24,7 +24,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
-import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
+import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
 import type { ProviderCostNormalizer } from "./types.ts";
 import { providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import { cacheAffinityDeclarationFromEnv } from "./env.ts";
@@ -42,6 +42,8 @@ export type SdkModel = {
     readonly systemCacheProviderOptions?: AiSdkProviderOptions;
     readonly reasoningResponseProviderOptions?: AiSdkProviderOptions;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
+    // {§provider-request-controls} — the global controls this SDK documents as provider options.
+    readonly requestControls?: NativeRequestControls;
     readonly catalog: ProviderInfo | null;
 };
 
@@ -335,37 +337,44 @@ const modelFromSdk = (
         case "@ai-sdk/openai":
             return {
                 languageModel: createOpenAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).chat(model),
+                requestControls: { namespace: "openai", serviceTier: true, logprobs: true },
                 catalog,
             };
         case "@ai-sdk/groq":
             return {
                 languageModel: createGroq({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
+                requestControls: { namespace: "groq", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/cerebras":
             return {
                 languageModel: createCerebras({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
+                requestControls: { namespace: "cerebras", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/mistral":
             return {
                 languageModel: createMistral({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
+                requestControls: { namespace: "mistral", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/togetherai":
             return {
                 languageModel: createTogetherAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
+                requestControls: { namespace: "togetherai", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/xai":
             return {
                 languageModel: createXai({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
+                requestControls: { namespace: "xai", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/deepinfra":
             return {
                 languageModel: createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("openai") }).languageModel(model),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
+                requestControls: { namespace: "deepinfra", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/google":
@@ -374,12 +383,14 @@ const modelFromSdk = (
                 reasoningResponseProviderOptions: {
                     google: { thinkingConfig: { includeThoughts: true } },
                 },
+                requestControls: { namespace: "google", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/anthropic":
             return {
                 languageModel: createAnthropic({ apiKey: requireApiKey(provider, env, catalog), baseURL: url, fetch: withoutNativeToolsFetch("messages") }).languageModel(model),
                 additiveReasoningProvider: "anthropic",
+                requestControls: { namespace: "anthropic", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/amazon-bedrock":
@@ -395,6 +406,7 @@ const modelFromSdk = (
                 ...(model.includes("anthropic")
                     ? { additiveReasoningProvider: "bedrock" as const }
                     : {}),
+                requestControls: { namespace: "bedrock", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "@openrouter/ai-sdk-provider":
@@ -406,6 +418,7 @@ const modelFromSdk = (
                     ...openRouterAttribution(provider, env),
                 }).languageModel(model),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
+                requestControls: { namespace: "openrouter", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "@ai-sdk/openai-compatible":

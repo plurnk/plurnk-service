@@ -66,6 +66,7 @@ export default class AiSdkRequestBody {
     readonly #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     readonly #effort: EffortSetting;
     readonly #adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
+    readonly #controlOptions: AiSdkProviderOptions | undefined;
     readonly #repeatPenalty: number | null;
     readonly #dryMultiplier: number | undefined;
     readonly #dryBase: number | undefined;
@@ -81,7 +82,7 @@ export default class AiSdkRequestBody {
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, effort, adaptiveEffortProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, effort, adaptiveEffortProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, controlOptions, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         effort: EffortSetting;
@@ -96,9 +97,11 @@ export default class AiSdkRequestBody {
         grammarStyle: GrammarStyle;
         cacheAffinity: CacheAffinity | undefined;
         reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
+        controlOptions: AiSdkProviderOptions | undefined;
         supportsSlotPinning: boolean;
         slotCount: number | null;
     }) {
+        this.#controlOptions = controlOptions;
         this.#reasoningBudget = reasoningBudget;
         this.#additiveReasoningProvider = additiveReasoningProvider;
         this.#effort = effort;
@@ -236,7 +239,9 @@ export default class AiSdkRequestBody {
                     : undefined
             : undefined;
         const options: AiSdkProviderOptions = {};
-        for (const part of declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]) {
+        // {§provider-request-controls} — the deployment's controls ride every native request, beside
+        // whatever reasoning shape the route or its declared fields chose.
+        for (const part of [...(declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]), this.#controlOptions]) {
             for (const [provider, values] of Object.entries(part ?? {})) {
                 options[provider] = mergeJsonObjects(options[provider] ?? {}, values);
             }

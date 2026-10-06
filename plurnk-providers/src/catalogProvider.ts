@@ -39,7 +39,7 @@ import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
-import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
+import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
@@ -159,6 +159,7 @@ export const providerFromSdkModel = ({
     systemCacheProviderOptions,
     reasoningResponseProviderOptions,
     additiveReasoningProvider,
+    requestControls,
     sdkPackage,
     grammarStyle,
     endpoint,
@@ -180,6 +181,7 @@ export const providerFromSdkModel = ({
     systemCacheProviderOptions?: AiSdkProviderOptions;
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
     additiveReasoningProvider?: "anthropic" | "bedrock";
+    requestControls?: NativeRequestControls;
     sdkPackage?: string;
     endpoint?: string;
 }): Provider => {
@@ -292,6 +294,7 @@ export const providerFromSdkModel = ({
             ? {}
             : { reasoningResponseProviderOptions }),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
+        ...(requestControls === undefined ? {} : { requestControls }),
         estimateCost,
         source: providerSource(name),
         ...(grammarStyle === undefined ? {} : { grammarStyle }),
@@ -345,6 +348,7 @@ export const catalogProviderFromEnv = (
         systemCacheProviderOptions: sdk.systemCacheProviderOptions,
         reasoningResponseProviderOptions: sdk.reasoningResponseProviderOptions,
         additiveReasoningProvider: sdk.additiveReasoningProvider,
+        ...(sdk.requestControls === undefined ? {} : { requestControls: sdk.requestControls }),
         sdkPackage: sdk.catalog?.npm,
         contextWindow,
         info,
