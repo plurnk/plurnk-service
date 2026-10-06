@@ -112,9 +112,16 @@ export default class Slicer {
         );
     }
 
+    // A result scope written as text lines (`FIND (a.py) <84,180>`): the page bound, then the READ
+    // that selects those lines (#1005).
+    static #pageRecovery(written: string, total: number): string {
+        return `Choose positions within 1..${total}; READ with <${written}> selects text lines.`;
+    }
+
     static #regionFailure<T extends SchemeResult>(
         detail: string,
         marker: LineMarker,
+        recovery = "Choose a region within the available text.",
     ): T {
         return Slicer.#failure(
             "range-not-satisfiable",
@@ -125,7 +132,7 @@ export default class Slicer {
                 requestedCoordinates: marker.marks,
                 columnKind: "unicodeCodePoints",
                 stage: "projection",
-                recovery: "Choose a region within the available text.",
+                recovery,
                 retryable: false,
             },
         );
@@ -177,10 +184,22 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
-    ): TextReplacement | { error: string } {
+    ): TextReplacement | ScopeError {
         if (marker.marks.length !== 4 || !marker.marks.every(Number.isSafeInteger)) {
             return { error: "An exact text region requires four integer coordinates." };
         }
+        const resolved = Slicer.#exactRegion(content, marker, body);
+        // {§text-scope-semantics} — lines and columns count from 1; a zero is the 0-based habit, and
+        // when the region it means is valid the refusal names it (#1005).
+        if (!("error" in resolved) || !marker.marks.includes(0)) return resolved;
+        const [head, ...rest] = marker.marks;
+        const counted: LineMarker["marks"] = [head === 0 ? 1 : head, ...rest.map((mark) => mark === 0 ? 1 : mark)];
+        return "error" in Slicer.#exactRegion(content, { ...marker, marks: counted }, body)
+            ? resolved
+            : { error: resolved.error, recovery: `Lines and columns count from 1: <${counted.join(",")}>.` };
+    }
+
+    static #exactRegion(content: string, marker: LineMarker, body: string): TextReplacement | ScopeError {
         const lines = TextCoordinates.lines(content);
         // {§text-scope-semantics} — `-1` is the final addressable endpoint in every form: as a region line it
         // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends; as a column
@@ -211,6 +230,7 @@ export default class Slicer {
         if (end < start) {
             return {
                 error: `Exact region ${startLine},${startColumn},${endLine},${rawEndColumn} ends before it starts.`,
+                recovery: `Write the earlier position first: <${endLine},${rawEndColumn},${startLine},${startColumn}>.`,
             };
         }
         return { start, end, body, startLine, endLine: resolvedEndLine };
@@ -408,6 +428,14 @@ export default class Slicer {
         const n = first;
         let m = last;
         if (m === -1 || m > totalLines) m = totalLines;
+        // {§text-scope-semantics} — -1 is the only position counted from the end; `<-N,-1>` is the tail it
+        // means, named as lines (#1005).
+        if (n < -1 && last === -1) {
+            return {
+                error: `Range start ${first} is outside the available line range 1..${totalLines}.`,
+                recovery: `-1 is the only position counted from the end; the last ${Math.min(-n, totalLines)} lines are <${Math.max(1, totalLines + n + 1)},${totalLines}>.`,
+            };
+        }
         if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available line range 1..${totalLines}.` };
         if (m < 1) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
         if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
@@ -433,7 +461,7 @@ export default class Slicer {
         if (marker.marks.length === 4) {
             const selected = Slicer.#exactTextReplacement(content, marker, "");
             if ("error" in selected) {
-                return Slicer.#regionFailure(selected.error, requestedMarker);
+                return Slicer.#regionFailure(selected.error, requestedMarker, selected.recovery);
             }
             const region = TextCoordinates.regionFromOffsets(
                 content,
@@ -551,6 +579,7 @@ export default class Slicer {
             return Slicer.#rangeFailure(
                 `Result ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
                 extent,
+                Slicer.#pageRecovery(`${first}`, total),
             );
         }
         if (first === 0) {
@@ -573,6 +602,7 @@ export default class Slicer {
         if (n < 1 || n > total) return Slicer.#rangeFailure(
             `Result range start ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
             extent,
+            Slicer.#pageRecovery(`${first},${last}`, total),
         );
         if (m < 1) return Slicer.#rangeFailure(
             `Result range end ${last} is out of range; available positions are 1..${total}.`,
@@ -599,7 +629,7 @@ export default class Slicer {
         const selected = Slicer.textReplacement(content, marker, "");
         if ("error" in selected) {
             return marker.marks.length !== 1 && marker.marks.length !== 2
-                ? Slicer.#regionFailure(selected.error, marker)
+                ? Slicer.#regionFailure(selected.error, marker, selected.recovery)
                 : Slicer.#rangeFailure(
                     selected.error,
                     Slicer.#extent(marker, TextCoordinates.logicalLines(content).length, "line"),
@@ -634,7 +664,7 @@ export default class Slicer {
             const replacement = Slicer.textReplacement(content, edit.marker, edit.body);
             if ("error" in replacement) {
                 return edit.marker.marks.length !== 1 && edit.marker.marks.length !== 2
-                    ? Slicer.#regionFailure(replacement.error, edit.marker)
+                    ? Slicer.#regionFailure(replacement.error, edit.marker, replacement.recovery)
                     : Slicer.#rangeFailure(
                         replacement.error,
                         Slicer.#extent(edit.marker, TextCoordinates.logicalLines(content).length, "line"),

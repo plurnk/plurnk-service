@@ -689,7 +689,7 @@ and its `recovery` distinguishes replying from concluding the loop:
 
 | code | status | contract |
 |---|---:|---|
-| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line). Recovery: Choose a range within the available extent. |
+| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line). Recovery: Choose a range within the available extent, unless the scope it means is computable ({§text-scope-semantics}): a result page written as lines names its bound and the READ that selects them (`Choose positions within 1..3; READ with <84,180> selects text lines.`), a zero line or column the 1-based region when that region is valid (`Lines and columns count from 1: <199,1,199,1>.`), an inverted region the same region written forward (`Write the earlier position first: <188,1,189,1>.`), and `<-N,-1>` the tail it means (`-1 is the only position counted from the end; the last 5 lines are <88,92>.`). |
 | `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
 | `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
 | `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |

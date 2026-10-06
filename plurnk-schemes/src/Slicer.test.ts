@@ -632,3 +632,20 @@ test("{§range-starts-at-one} pages and byte windows refuse a zero start in thei
     assert.equal(window.problem?.recovery, "Write <1,16> to start at the first byte."); // {§pinned-wording-schemes}
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });
+
+// {§text-scope-semantics} — a refused scope names the working one when the slicer can compute it (#1005).
+test("a refused scope names the scope it means: result pages, zero coordinates, inverted regions, negative starts", () => {
+    const recovery = (result: { problem?: { recovery?: string } }) => result.problem?.recovery;
+    // A FIND scope written as text lines pages results instead.
+    assert.equal(recovery(Slicer.page(["a"], { marks: [84, 180] }, { unit: "matchLocation" })),
+        "Choose positions within 1..1; READ with <84,180> selects text lines.");
+    assert.equal(recovery(Slicer.page(["a", "b", "c"], { marks: [77] }, { unit: "matchLocation" })),
+        "Choose positions within 1..3; READ with <77> selects text lines.");
+    // Lines and columns count from 1: the 0-based habit names the region it means.
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 0, 3, 0] }, "x\n")), "Lines and columns count from 1: <3,1,3,1>.");
+    assert.equal(recovery(Slicer.lines(TEXT, { marks: [1, 2, 3, 0] })), "Lines and columns count from 1: <1,2,3,1>.");
+    // An inverted region is the same region written backwards.
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), "Write the earlier position first: <2,1,3,1>.");
+    // -1 is the only position counted from the end; `<-2,-1>` is the tail.
+    assert.equal(recovery(Slicer.lines(TEXT, { marks: [-2, -1] })), "-1 is the only position counted from the end; the last 2 lines are <3,4>.");
+});
