@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
@@ -14,7 +15,6 @@ import EnvDefaults from "../core/env-defaults.ts";
 
 const EXPLICIT_COMPOSITION = new Set([
     "@plurnk/plurnk-agui",
-    "@plurnk/plurnk-hooks",
     "@plurnk/plurnk-mcp",
 ]);
 
@@ -46,12 +46,27 @@ const assertDaemonModule = (
     return value as DaemonModule<HostSetupSeam, ApplicationPort>;
 };
 
+// {§module-discovery} — a package names its entry as an export subpath, resolved through its own
+// export map as {§executor-dynamic-runtimes} does, so conditions select source or build; a bundle
+// names a file beneath ai.plurnk/.
+const moduleEntry = async (manifest: NonNullable<Awaited<ReturnType<typeof Meta.readManifest>>>, packageName: string, entry: string): Promise<string> => {
+    if (basename(manifest.manifestPath) === "plugin.json") return Meta.moduleFile(manifest, entry);
+    if (!entry.startsWith("./")) {
+        throw new ConfigurationError(manifest.manifestPath, `${packageName}: plurnk.module '${entry}' must be an export subpath such as "./module".`);
+    }
+    try {
+        return createRequire(manifest.manifestPath).resolve(`${packageName}${entry.slice(1)}`);
+    } catch (cause) {
+        throw new ConfigurationError(manifest.manifestPath, `${packageName}: plurnk.module '${entry}' does not resolve through the package's exports.`, { cause });
+    }
+};
+
 const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
     const manifest = await Meta.readManifest(dir, "module");
     if (manifest === null || manifest.packageName === null) return null;
-    const moduleSubpath = manifest.plurnk.module;
-    if (typeof moduleSubpath !== "string" || moduleSubpath.length === 0) return null;
-    return { packageName: manifest.packageName, module: await Meta.moduleFile(manifest, moduleSubpath), manifestPath: manifest.manifestPath };
+    const entry = manifest.plurnk.module;
+    if (typeof entry !== "string" || entry.length === 0) return null;
+    return { packageName: manifest.packageName, module: await moduleEntry(manifest, manifest.packageName, entry), manifestPath: manifest.manifestPath };
 };
 
 export const discoverDaemonModules = async (
@@ -61,7 +76,9 @@ export const discoverDaemonModules = async (
     readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
-    readonly configurationErrors: readonly ConfigurationError[];
+    // A declaration's error is the plugin family's; a module's own configuration error is the
+    // module's, `module:<owner>`.
+    readonly configurationErrors: ReadonlyArray<{ readonly family: string; readonly cause: ConfigurationError }>;
 }> => {
     const sources = await PluginSources.read({
         nodeModules: join(options.cwd ?? process.cwd(), "node_modules"),
@@ -72,7 +89,8 @@ export const discoverDaemonModules = async (
         ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
     ];
     const modules: Array<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }> = [];
-    const configurationErrors: ConfigurationError[] = [...sources.configurationErrors];
+    const configurationErrors: Array<{ readonly family: string; readonly cause: ConfigurationError }> = sources.configurationErrors
+        .map((cause) => ({ family: "native-plugins", cause }));
     const skipped: string[] = [];
     for (const candidate of dirs) {
         let manifest: ModuleManifest | null;
@@ -80,7 +98,7 @@ export const discoverDaemonModules = async (
             manifest = await readManifest(candidate.dir);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            configurationErrors.push(cause);
+            configurationErrors.push({ family: "native-plugins", cause });
             continue;
         }
         if (manifest === null) continue;
@@ -112,13 +130,14 @@ export const discoverDaemonModules = async (
             const created = await (exported as () => unknown | Promise<unknown>)();
             modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
+            const family = `module:${manifest.packageName}`;
             if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
-                configurationErrors.push(new ConfigurationError(manifest.manifestPath,
-                    `${manifest.packageName}: ${(cause as Error).message}`, { cause }));
+                configurationErrors.push({ family, cause: new ConfigurationError(manifest.manifestPath,
+                    `${manifest.packageName}: ${(cause as Error).message}`, { cause }) });
                 continue;
             }
             if (!(cause instanceof ConfigurationError)) throw cause;
-            configurationErrors.push(cause);
+            configurationErrors.push({ family, cause });
         }
     }
     return { modules, skipped, reports: sources.reports, configurationErrors };

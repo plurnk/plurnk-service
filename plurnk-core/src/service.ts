@@ -24,8 +24,8 @@ import {
     Module as A2aModule,
     hostedAgentConfiguration,
 } from "@plurnk/plurnk-a2a";
-import { Module as HooksModule, hookConfig } from "@plurnk/plurnk-hooks";
 import ServiceModules from "./server/ServiceModules.ts";
+import { discoverDaemonModules } from "./server/module-discovery.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
 import { configurationDirectories } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
@@ -118,7 +118,12 @@ export default class Service {
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
-        hookConfig();
+        // {§module-self-activation} — a discovered module validates its own configuration as its factory
+        // constructs it; the offline check constructs every one and starts none.
+        const { configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#pluginsNodeModules()), hostPaths: Service.#hostPaths });
+        if (configurationErrors.length > 0) {
+            throw new Error(configurationErrors.map(({ cause }) => cause.message).join("\n"), { cause: configurationErrors[0]!.cause });
+        }
         validateObservabilityConfiguration();
     }
 
@@ -248,11 +253,9 @@ export default class Service {
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
             observability = await configuration.capture("observability", () => startObservability());
-            const hooksModule = await configuration.capture("hooks", () => HooksModule.init());
             const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             ServiceModules.registerWorkspaceCapabilities(daemon);
-            if (hooksModule !== null) daemon.registerModule(hooksModule, "@plurnk/plurnk-hooks");
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a), "@plurnk/plurnk-a2a");
             // {§rpc}: AG-UI claims the root of the daemon's listener ({§module-http-mounts}); the
             // socket never closes or rebinds between admission and readiness.

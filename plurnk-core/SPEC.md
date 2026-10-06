@@ -3872,6 +3872,7 @@ names the offending variable or file/entry and retains its cause.
 | A2A | Whole outbound definitions and controls, timeout/diagnostic bounds, configured inbound exposure |
 | Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
 | Hooks | Command/argument/event configuration and delivery bounds |
+| Discovered modules | Each module's own configuration, as its factory constructs it ({§module-self-activation}) |
 
 Disabled definitions and controls without a resource are validated, not skipped.
 Checking creates no database, starts no process or listener, arms no schedule,
@@ -4106,7 +4107,7 @@ even if setup fails. A returned object identical to its module is tracked once.
 
 | Source | Declaration | Lifetime |
 |---|---|---|
-| Platform capability package | `package.json#plurnk` with `kind: "module"` and `module` | Daemon-wide |
+| Platform capability package | `package.json#plurnk` with `kind: "module"` and `module`, an export subpath resolved through the package's own exports as in {§executor-dynamic-runtimes} | Daemon-wide; the form every first-party default module uses |
 | Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
@@ -4114,10 +4115,11 @@ The export is one DaemonModule ({§module-contract}) object or no-argument facto
 records each module's owner, the package it came from, and its diagnostics name that owner; the
 service's explicit composition names its packages the same way. Standard bundles follow
 {§agent-plugins-hosting} source order, then other installed module packages load in package-name
-order. All trusted modules register before setup. The service's explicit AG-UI, hooks and MCP
+order. All trusted modules register before setup. The service's explicit AG-UI and MCP
 composition is never duplicated. Untrusted modules are reported and not imported. Invalid
 declarations, unavailable module files and configuration errors during construction are diagnosed
-at the affected native extension; healthy siblings remain available. A factory validates startup
+at the affected native extension, a declaration's error under the `native-plugins` family and a
+module's own configuration error under `module:<owner>`; healthy siblings remain available. A factory validates startup
 configuration before `setup` acquires resources. Failures after registration begins follow
 {§module-lifecycle} cleanup, not a partial-registration fallback.
 An invalid module object, factory result or lifecycle member is an implementation contract failure,

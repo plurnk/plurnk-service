@@ -156,6 +156,17 @@ hooks, declare a module:
 }
 ```
 
+An npm package declares the same module in its own manifest, naming an export subpath so the
+package's export conditions select its entry:
+
+```json
+{
+  "name": "@example/plurnk-module",
+  "exports": { "./module": "./dist/module.js" },
+  "plurnk": { "kind": "module", "module": "./module" }
+}
+```
+
 Daemon modules load at startup from installed npm packages and selected user roots:
 `$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
 identifies a plugin across those sources. Project plugins never load native code into the daemon.

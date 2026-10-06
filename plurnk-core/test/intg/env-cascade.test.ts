@@ -410,7 +410,7 @@ for (const built of [false, true]) {
             .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown });
         const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
         for (const [family, key] of [
-            ["hooks", "PLURNK_HOOKS_ARGS"],
+            ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
             ["a2a-hosted", "PLURNK_A2A_ENDPOINT_PATH"],
             ["observability", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],

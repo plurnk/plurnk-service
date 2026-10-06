@@ -51,7 +51,7 @@ before(async () => {
     trace = join(root, "trace.txt");
     const pkg = join(nodeModules, "@acme", "witness-package");
     await mkdir(pkg, { recursive: true });
-    await writeFile(join(pkg, "package.json"), JSON.stringify({ name: PACKAGE, type: "module", plurnk: { kind: "module", module: "module.mjs" } }));
+    await writeFile(join(pkg, "package.json"), JSON.stringify({ name: PACKAGE, type: "module", exports: { "./module": "./module.mjs" }, plurnk: { kind: "module", module: "./module" } }));
     await writeFile(join(pkg, "module.mjs"), witness(PACKAGE, "ACME_PACKAGE_ROUTE", trace));
     hostPaths = new HostPaths({ home: root, env: {} });
     const bundle = join(hostPaths.globalPluginsDir, BUNDLE);

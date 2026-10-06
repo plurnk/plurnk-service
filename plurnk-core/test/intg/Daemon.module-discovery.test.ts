@@ -35,7 +35,8 @@ test("{§module-discovery}: a discovered third-party module composes through dae
         await writeFile(join(dir, "package.json"), JSON.stringify({
             name: "@acme/boot-fixture-module",
             type: "module",
-            plurnk: { kind: "module", module: "module.mjs" },
+            exports: { "./module": "./module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }));
         await writeFile(join(dir, "module.mjs"), `
 export default () => ({

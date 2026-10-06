@@ -1667,7 +1667,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // packages declaring `plurnk.kind: "module"` register beside the
         // service's explicit composition before any module setup runs.
         const discoveredModules = await discoverDaemonModules({ cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
-        for (const cause of discoveredModules.configurationErrors) this.#configuration.record("native-plugins", cause);
+        for (const { family, cause } of discoveredModules.configurationErrors) this.#configuration.record(family, cause);
         this.#configuration.pluginReports(discoveredModules.reports);
         for (const packageName of discoveredModules.skipped) {
             console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);

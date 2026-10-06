@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test, { type TestContext } from "node:test";
 import { configuredModule } from "../../../plurnk-hooks/test/environment.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
@@ -274,3 +274,51 @@ for (const decision of ["accept", "reject"] as const) {
         assert.equal(concluded, decision === "accept");
     });
 }
+
+test("{§hooks-module} the discovered hooks module delivers once the operator configures it", { timeout: 15_000 }, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-hooks-discovered-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const script = join(root, "capture.mjs");
+    const output = join(root, "events.jsonl");
+    await writeFile(script, [
+        'import { appendFile } from "node:fs/promises";',
+        'let body = "";',
+        'process.stdin.setEncoding("utf8");',
+        'for await (const chunk of process.stdin) body += chunk;',
+        'await appendFile(process.argv[2], body);',
+    ].join("\n"));
+    const settings: Record<string, string> = {
+        PLURNK_HOOKS_COMMAND: process.execPath,
+        PLURNK_HOOKS_ARGS: JSON.stringify([script, output]),
+        PLURNK_HOOKS_EVENTS: "Stop",
+        PLURNK_HOOKS_TIMEOUT_MS: "5000",
+    };
+    const prior = new Map(Object.keys(settings).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, settings);
+    t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: viableWindow(), responses: [] });
+    const entered = Promise.withResolvers<void>();
+    provider.generate = async ({ signal }) => {
+        assert.ok(signal);
+        entered.resolve();
+        return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+    };
+    // The installed package set, where the service finds @plurnk/plurnk-hooks by its declaration.
+    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve(import.meta.dirname, "../../..", "node_modules") });
+    t.after(async () => {
+        await daemon.stop();
+        await db.close();
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "hooks-discovered" });
+    const workerId = await daemon.ensureModelWorker(workspaceId);
+    await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for cancellation." });
+    await entered.promise;
+    await daemon.stop();
+    const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as HookEvent);
+    assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["Stop"], "exactly one module delivered: the discovered one");
+    assert.equal(events[0]!.session_id, String(workerId));
+});

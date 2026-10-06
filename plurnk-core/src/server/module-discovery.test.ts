@@ -19,7 +19,7 @@ process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
 const packageOf = async (root: string, name: string, manifest: Record<string, unknown>, moduleBody: string): Promise<{ dir: string; name: string }> => {
     const dir = join(root, "node_modules", name);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "package.json"), JSON.stringify({ name, type: "module", ...manifest }));
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name, type: "module", exports: { "./module": "./module.mjs" }, ...manifest }));
     await writeFile(join(dir, "module.mjs"), moduleBody);
     return { dir, name };
 };
@@ -29,10 +29,10 @@ test("{§module-discovery}: trusted object and factory exports load in package-n
     const priorTrust = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
     try {
         await packageOf(root, "@acme/object-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default { tag: 'object', setup: () => {} };");
         await packageOf(root, "@acme/factory-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default () => ({ tag: 'factory', setup: () => {} });");
         await packageOf(root, "@acme/not-a-module", {}, "export default {};");
         const { modules, skipped } = await discoverDaemonModules({
@@ -63,7 +63,7 @@ test("{§module-discovery}: the trust gate skips a non-allowlisted declaration",
     try {
         process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "1";
         await packageOf(root, "@acme/untrusted-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default { setup: () => {} };");
         const { modules, skipped } = await discoverDaemonModules({
             packageDirs: [{ dir: join(root, "node_modules", "@acme/untrusted-module"), name: "@acme/untrusted-module" }],
@@ -81,7 +81,7 @@ test("{§module-discovery}: the service's explicit composition is never duplicat
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         await packageOf(root, "@plurnk/plurnk-agui", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default { setup: () => {} };");
         const { modules } = await discoverDaemonModules({
             packageDirs: [{ dir: join(root, "node_modules", "@plurnk/plurnk-agui"), name: "@plurnk/plurnk-agui" }],
@@ -96,7 +96,7 @@ test("{§module-discovery}: a declaration without a module export fails loudly",
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         await packageOf(root, "@acme/broken-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export const other = 1;");
         await assert.rejects(
             discoverDaemonModules({
@@ -113,7 +113,7 @@ test("{§module-discovery}: primitive exports and primitive factory results fail
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         const direct = await packageOf(root, "@acme/primitive-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default 42;");
         await assert.rejects(
             discoverDaemonModules({ packageDirs: [direct] }),
@@ -121,7 +121,7 @@ test("{§module-discovery}: primitive exports and primitive factory results fail
         );
 
         const factory = await packageOf(root, "@acme/primitive-factory", {
-            plurnk: { kind: "module", module: "module.mjs" },
+            plurnk: { kind: "module", module: "./module" },
         }, "export default () => 'not a module';");
         await assert.rejects(
             discoverDaemonModules({ packageDirs: [factory] }),
@@ -137,7 +137,7 @@ test("{§module-discovery}: malformed lifecycle hooks fail at discovery", async 
     try {
         for (const member of ["setup", "start", "stop", "close"]) {
             const malformed = await packageOf(root, `@acme/malformed-${member}`, {
-                plurnk: { kind: "module", module: "module.mjs" },
+                plurnk: { kind: "module", module: "./module" },
             }, `export default { ${member}: true };`);
             await assert.rejects(
                 discoverDaemonModules({ packageDirs: [malformed] }),
@@ -182,9 +182,34 @@ test("{§module-discovery}: bad native configuration is diagnosed without exclud
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "bad-plugin",
         extensions: { "ai.plurnk": { kind: "module", module: "../outside.mjs" } },
     }));
-    const healthy = await packageOf(root, "healthy", { plurnk: { kind: "module", module: "module.mjs" } }, "export default { setup() {} };");
+    const healthy = await packageOf(root, "healthy", { plurnk: { kind: "module", module: "./module" } }, "export default { setup() {} };");
     const found = await discoverDaemonModules({ hostPaths: new HostPaths({ home: root, env: {} }), packageDirs: [broken, healthy] });
     assert.equal(found.modules.length, 1);
     assert.equal(found.configurationErrors.length, 1);
-    assert.match(found.configurationErrors[0].message, /native module must be beneath ai.plurnk/);
+    assert.equal(found.configurationErrors[0]!.family, "native-plugins", "a declaration error is the plugin family's");
+    assert.match(found.configurationErrors[0]!.cause.message, /native module must be beneath ai.plurnk/);
+});
+
+test("{§module-discovery}: a package names its entry as an export subpath, resolved through its own exports", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-module-entry-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const filePath = await packageOf(root, "@acme/file-path", { plurnk: { kind: "module", module: "module.mjs" } }, "export default {};");
+    const unexported = await packageOf(root, "@acme/unexported", { plurnk: { kind: "module", module: "./missing" } }, "export default {};");
+    const found = await discoverDaemonModules({ packageDirs: [filePath, unexported] });
+    assert.equal(found.modules.length, 0);
+    assert.deepEqual(found.configurationErrors.map(({ family }) => family), ["native-plugins", "native-plugins"], "a declaration error is the plugin family's");
+    assert.match(found.configurationErrors[0]!.cause.message, /@acme\/file-path: plurnk.module 'module.mjs' must be an export subpath such as "\.\/module"/u);
+    assert.match(found.configurationErrors[1]!.cause.message, /@acme\/unexported: plurnk.module '\.\/missing' does not resolve through the package's exports/u);
+});
+
+test("{§module-self-activation}: a module's own configuration error is attributed to that module", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-module-config-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const meta = await import.meta.resolve("@plurnk/plurnk-meta");
+    const misconfigured = await packageOf(root, "@acme/misconfigured", { plurnk: { kind: "module", module: "./module" } },
+        `import { ConfigurationError } from ${JSON.stringify(meta)};\nexport default () => { throw new ConfigurationError("ACME_SETTING", "ACME_SETTING must be a number."); };`);
+    const healthy = await packageOf(root, "@acme/healthy", { plurnk: { kind: "module", module: "./module" } }, "export default { setup() {} };");
+    const found = await discoverDaemonModules({ packageDirs: [misconfigured, healthy] });
+    assert.deepEqual(found.modules.map(({ owner }) => owner), ["@acme/healthy"], "a healthy sibling still loads");
+    assert.deepEqual(found.configurationErrors.map(({ family, cause }) => [family, cause.key]), [["module:@acme/misconfigured", "ACME_SETTING"]]);
 });

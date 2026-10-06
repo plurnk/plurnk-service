@@ -39,7 +39,16 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
         "./package.json": "./package.json"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
     },
     "files": [
         "dist/**/*",

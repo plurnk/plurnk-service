@@ -73,7 +73,7 @@ observe the same core events; modules can consume events beyond the command
 adapter's vocabulary. Producer modules implement `stop()` to refuse
 new work and settle existing work; observers unsubscribe in `close()`, after
 producer settlement. See the
-[module contract](../plurnk-core/SPEC.md#module-lifecycle-module-lifecycle-and-setup-seam).
+[module contract](../plurnk-modules/SPEC.md).
 
 The complete delivery contract lives in
 [`SPEC.md`](./SPEC.md). Portable defaults live in
