@@ -29,11 +29,15 @@ body?
 ## Workflow Management
 
 ```WAIT <60> <!-- wait up to 60 seconds -->
-Example explanation of delay.
+Example explanation to user of delay
+```
+
+```SEND <!-- parameterless send messages user -->
+Example progress update
 ```
 
 > [!IMPORTANT]
-> YOU SHOULD NOT respond before the KILL turn.
+> YOU SHOULD ONLY respond with SEND, WAIT, or the KILL turn.
 > YOU SHOULD NOT perform a KILL turn before you have fully resolved all child workers and streams.
 > YOU MAY perform the standalone KILL turn by emitting a single parameterless KILL containing the final deliverable response.
 
