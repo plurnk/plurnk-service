@@ -101,8 +101,10 @@ test("{§log-near-miss} a log miss beside real rows names them", async (t) => {
     const wrongLeaf = await dispatch("````READ (log:///1/1/1/sh)````");
     assert.equal(wrongLeaf.status, 404);
     assert.equal(wrongLeaf.problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.");
-    assert.equal((await dispatch("````FIND (log:///1/1/2/READ)````")).problem.recovery, "The entry at log:///1/1/2 is `log:///1/1/2/FIND`.");
+    assert.equal((await dispatch("````FIND (log:///1/1/2/READ)````")).problem.recovery, "Turn 1/1's READ rows are `log:///1/1/1/READ`, `log:///1/1/3/READ`; the entry at log:///1/1/2 is `log:///1/1/2/FIND`.", "the leaf asked for first, then what the guessed sequence holds");
     assert.equal((await dispatch("````KILL (log:///1/1/1/sh)````")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.", "the curation a 413 demands is told the same");
+    // The rtx5070 benchlet's shape (run393): a turn's row asked for at the sequence another row holds.
+    assert.equal((await dispatch("````KILL (log:///1/1/1/FIND)````")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`; the entry at log:///1/1/1 is `log:///1/1/1/READ`.");
     assert.equal((await dispatch("````READ (log:///1/1/9/FIND)````")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`.", "a sequence off names the turn's rows that carry the leaf");
     assert.equal((await dispatch("````READ (log:///1/4/1/READ)````")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
     assert.equal((await dispatch("````READ (log:///7/1/1/READ)````")).problem.recovery, undefined, "a loop with no rows has nothing to name");

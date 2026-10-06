@@ -153,9 +153,10 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
     ? null
     : LogEntryProjection.base(prefix);
 
-// {§log-near-miss} — a coordinate that names no row beside rows that exist names them: the row at
-// that coordinate under its own leaf, else the turn's rows carrying the leaf written, else the
-// turn's rows, else the loop's latest turn. Undefined when the loop holds nothing either (#1005).
+// {§log-near-miss} — a coordinate that names no row beside rows that exist names them: the turn's
+// rows carrying the leaf written first, since the leaf is what the model asked for and the sequence
+// its guess, then the row at that coordinate under its own leaf; else the turn's rows, else the
+// loop's latest turn. Undefined when the loop holds nothing either (#1005).
 const NEAR_MISS_LISTED = 6;
 const nearMissRecovery = async (
     coord: LogCoordinate,
@@ -174,14 +175,15 @@ const nearMissRecovery = async (
     const turn = `${coord.loopSeq}/${coord.turnSeq}`;
     const rows = await under(`${turn}/`);
     const here = rows.find((row) => LogEntryProjection.base(row.coordinate) === `${turn}/${coord.sequence}`);
-    if (here !== undefined) return `The entry at log:///${turn}/${coord.sequence} is \`log:///${here.coordinate}\`.`;
-    if (rows.length > 0) {
-        const leaf = coord.op?.toLocaleLowerCase("en-US");
-        const same = leaf === undefined ? [] : rows.filter((row) => row.coordinate.split("/")[3]?.toLocaleLowerCase("en-US") === leaf);
-        return same.length > 0
-            ? `Turn ${turn}'s ${coord.op} ${same.length === 1 ? "is" : "rows are"} ${listed(same)}.`
-            : `Turn ${turn} holds ${listed(rows)}.`;
+    const atCoordinate = here === undefined ? null : `the entry at log:///${turn}/${coord.sequence} is \`log:///${here.coordinate}\``;
+    const leaf = coord.op?.toLocaleLowerCase("en-US");
+    const same = leaf === undefined ? [] : rows.filter((row) => row.coordinate.split("/")[3]?.toLocaleLowerCase("en-US") === leaf);
+    if (same.length > 0) {
+        const named = `Turn ${turn}'s ${coord.op} ${same.length === 1 ? "is" : "rows are"} ${listed(same)}`;
+        return atCoordinate === null ? `${named}.` : `${named}; ${atCoordinate}.`;
     }
+    if (atCoordinate !== null) return `${atCoordinate.charAt(0).toUpperCase()}${atCoordinate.slice(1)}.`;
+    if (rows.length > 0) return `Turn ${turn} holds ${listed(rows)}.`;
     const loop = await under(`${coord.loopSeq}/`);
     if (loop.length === 0) return undefined;
     const latest = Math.max(...loop.map((row) => Number(row.coordinate.split("/")[1])));
