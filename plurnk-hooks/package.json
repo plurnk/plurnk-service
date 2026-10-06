@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-hooks",
-    "version": "1.28.0",
+    "version": "1.29.0",
     "description": "Deliver selected Plurnk lifecycle events to exact local commands.",
     "keywords": [
         "plurnk",
@@ -24,8 +24,8 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.28.0",
-        "@plurnk/plurnk-meta": "1.28.0"
+        "@plurnk/plurnk-contracts": "1.29.0",
+        "@plurnk/plurnk-meta": "1.29.0"
     },
     "publishConfig": {
         "access": "public"
