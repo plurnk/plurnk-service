@@ -18,6 +18,16 @@ Provides three channels per {§mimetype-channel-architecture}:
 
 `query()` overrides the `xpath` dialect to run against the real DOM (via the `xpath` package's XPath 1.0 engine over xmldom). `jsonpath` inherits the framework's default dispatch against `deepJson`. `regex` and `glob` inherit text-based scanning.
 
+Parse issues follow {§mimetype-parse-issues}:
+
+| Source | Projections | `parseIssues` |
+|---|---|---|
+| Well-formed document | as above | 0 |
+| Recoverable xmldom `error`, such as an entity declared only in the internal DTD subset | as above, over the recovered DOM | one per report |
+| Not a document, such as a templated file (xmldom `fatalError`) | no symbols, `deepJson` null; `xpath` and `jsonpath` refuse with `QueryParseFailureError` | 1 |
+
+The text of every case stays searchable; only a defect outside xmldom's own `ParseError` fails a derivation.
+
 ## license
 
 MIT.

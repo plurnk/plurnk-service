@@ -157,3 +157,50 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
         assert.deepEqual(out[0].matched, ["phoenix"]);
     });
 });
+
+// {§mimetype-parse-issues} — parser recovery is advisory: a recoverable report is counted and the
+// document still projects; content that is not a document projects nothing and never throws (#1004).
+describe("ApplicationXml — parse issues ({§mimetype-parse-issues})", () => {
+    // A DocBook page's shape: entities declared in the internal DTD subset, which xmldom does not expand.
+    const internalSubset = [
+        "<?xml version='1.0'?>",
+        "<!DOCTYPE page [",
+        "  <!ENTITY product \"isympy\">",
+        "]>",
+        "<page>",
+        "  <title>&product; reference</title>",
+        "  <section id=\"usage\">run it</section>",
+        "</page>",
+    ].join("\n");
+    // A Jinja template's shape: a tag inside a template comment leaves the file unbalanced.
+    const template = [
+        "<?xml version=\"1.0\"?>",
+        "<OpenSearchDescription>",
+        "  <ShortName>{{ project|e }}</ShortName>",
+        "  {# Put e.g. an <Image> element here. #}",
+        "</OpenSearchDescription>",
+    ].join("\n");
+
+    it("an undeclared-to-xmldom entity is one recovery site; the document still has its symbols", async () => {
+        const h = new ApplicationXml(metadata);
+        assert.equal(await h.parseIssues(internalSubset), 1);
+        assert.deepEqual((await h.extractRaw(internalSubset)).map(({ name, kind }) => `${kind}:${name}`), ["module:page", "field:title", "field:usage"]);
+        assert.notEqual(await h.deepJson(internalSubset), null);
+        assert.equal((await h.query(internalSubset, "xpath", "//section")).length, 1, "XPath runs over the recovered document");
+    });
+
+    it("content that is not a document has no symbols and no deep projection, one issue, and never throws", async () => {
+        const h = new ApplicationXml(metadata);
+        assert.equal(await h.parseIssues(template), 1);
+        assert.deepEqual(await h.extractRaw(template), []);
+        assert.equal(await h.deepJson(template), null);
+        await assert.rejects(h.query(template, "xpath", "//ShortName"), { name: "QueryParseFailureError" }, "a structural query still says the source does not parse");
+        assert.equal((await h.query(template, "regex", "Put e\\.g\\.")).length, 1, "text matching is unaffected");
+    });
+
+    it("a well-formed document reports no issues", async () => {
+        const h = new ApplicationXml(metadata);
+        assert.equal(await h.parseIssues("<doc><a id=\"x\"/></doc>"), 0);
+        assert.equal(await h.parseIssues(""), 0);
+    });
+});

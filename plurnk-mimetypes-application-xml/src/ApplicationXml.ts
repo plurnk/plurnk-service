@@ -7,7 +7,7 @@ import {
     serializeXpathNode,
 } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes";
-import type { Element, Node as XmlNode } from "@xmldom/xmldom";
+import { ParseError, type Element, type Node as XmlNode } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import XmlSource from "./XmlSource.ts";
 
@@ -15,7 +15,8 @@ export default class ApplicationXml extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const text = textOf(content);
         if (text.length === 0) return [];
-        const source = new XmlSource(text);
+        const source = XmlSource.parse(text);
+        if (source === null) return [];
         const root = source.document.documentElement;
         if (root === null) return [];
         const symbols: MimeSymbol[] = [];
@@ -36,15 +37,25 @@ export default class ApplicationXml extends BaseHandler {
     override deepJson(content: HandlerContent): unknown {
         const text = textOf(content);
         if (text.length === 0) return null;
-        const source = new XmlSource(text);
-        return projectDomToJson(source.document, (node) => source.region(node)).value;
+        const source = XmlSource.parse(text);
+        return source === null ? null : projectDomToJson(source.document, (node) => source.region(node)).value;
+    }
+
+    // {§mimetype-parse-issues} — xmldom's recoverable reports, or one for content that is not a document.
+    override parseIssues(content: HandlerContent): number {
+        const text = textOf(content);
+        if (text.length === 0) return 0;
+        return XmlSource.parse(text)?.issues ?? 1;
     }
 
     override async query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]> {
         if (dialect !== "xpath" && dialect !== "jsonpath") return super.query(content, dialect, pattern, flags);
         let source: XmlSource;
         try { source = new XmlSource(textOf(content)); }
-        catch (cause) { throw new QueryParseFailureError({ mimetype: this.mimetype, cause }); }
+        catch (cause) {
+            if (!(cause instanceof ParseError)) throw cause;
+            throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
+        }
         if (dialect === "jsonpath") {
             const { value, regions } = projectDomToJson(source.document, (node) => source.region(node));
             return queryJsonpathObject(value, pattern, (pointer) => regions.get(pointer));

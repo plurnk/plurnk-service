@@ -1,20 +1,26 @@
 import { parser } from "@lezer/xml";
-import { DOMParser, type Node } from "@xmldom/xmldom";
+import { DOMParser, ParseError, type Node } from "@xmldom/xmldom";
 import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 
 // {§mimetype-query} — XPath owns node identity; the concrete syntax tree owns
 // source extents. DOM serialization cannot recover lexical quotes or entities.
 export default class XmlSource {
     readonly document;
+    // {§mimetype-parse-issues} — xmldom keeps building past an `error` report (an entity declared
+    // only in the internal DTD subset, which it does not process); each one is a recovery site.
+    readonly issues: number;
     readonly #tree;
     readonly #coordinates: TextCoordinates;
     readonly #lineStarts: number[];
     readonly #length: number;
 
     constructor(content: string) {
-        this.document = new DOMParser({ onError: (level, message) => {
-            if (level !== "warning") throw new SyntaxError(message);
+        let issues = 0;
+        // A `fatalError` still throws xmldom's ParseError: no document exists ({@link XmlSource.parse}).
+        this.document = new DOMParser({ onError: (level) => {
+            if (level === "error") issues += 1;
         } }).parseFromString(content, "text/xml");
+        this.issues = issues;
         this.#tree = parser.parse(content);
         this.#coordinates = new TextCoordinates(content);
         this.#length = content.length;
@@ -47,6 +53,16 @@ export default class XmlSource {
                 else if (child.nodeType === 1) pending.push(child);
                 child = next;
             }
+        }
+    }
+
+    // {§mimetype-parse-issues} — content that is not a document (a template, a truncated file) has
+    // no source: null, never a throw. Anything but xmldom's ParseError is a defect and keeps its identity.
+    static parse(content: string): XmlSource | null {
+        try { return new XmlSource(content); }
+        catch (cause) {
+            if (cause instanceof ParseError) return null;
+            throw cause;
         }
     }
 
