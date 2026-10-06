@@ -1,5 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSkill, type SkillDocument, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import Meta, { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
@@ -46,19 +46,41 @@ export default class PlurnkSkill implements SkillTree {
         });
     }
 
-    // The service's own contract, then each installed ecosystem member's that ships one, read where
-    // its package installed it: the membership of the defaults catalog, observed when asked.
+    // The service's own contract, then each installed ecosystem member's that ships one with its
+    // published type declarations, read where its package installed them: the membership of the
+    // defaults catalog, observed when asked. The service's declarations are its internals, not a contract.
     async #contracts(): Promise<ReadonlyMap<string, string>> {
         const members = await EnvDefaults.members(await Meta.packageDirs(this.#nodeModules));
         const contracts = new Map<string, string>();
         for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter(({ name }) => name !== SERVICE)]) {
-            const file = join(dir, "SPEC.md");
-            try {
-                if ((await stat(file)).isFile()) contracts.set(`packages/${name}/SPEC.md`, file);
-            } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            if (!await PlurnkSkill.#isFile(join(dir, "SPEC.md"))) continue;
+            contracts.set(`packages/${name}/SPEC.md`, join(dir, "SPEC.md"));
+            if (name === SERVICE) continue;
+            for (const file of await PlurnkSkill.#declarations(join(dir, "dist"))) {
+                contracts.set(`packages/${name}/${relative(dir, file)}`, file);
             }
         }
         return contracts;
+    }
+
+    static async #isFile(file: string): Promise<boolean> {
+        try {
+            return (await stat(file)).isFile();
+        } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+            throw cause;
+        }
+    }
+
+    // Regular `.d.ts` files beneath `dist/`; a symbolic link is never followed out of the package.
+    static async #declarations(dist: string): Promise<string[]> {
+        try {
+            return (await readdir(dist, { recursive: true, withFileTypes: true }))
+                .filter((entry) => entry.isFile() && entry.name.endsWith(".d.ts"))
+                .map((entry) => join(entry.parentPath, entry.name));
+        } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
+            throw cause;
+        }
     }
 }

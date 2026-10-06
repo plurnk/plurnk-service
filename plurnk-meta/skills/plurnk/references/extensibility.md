@@ -6,6 +6,28 @@ client or receives its lifecycle events. Each surface below states what it
 reaches and where its code runs: nowhere, in an external process, or in the
 daemon.
 
+## Choosing a surface
+
+The surfaces run from least to most code and trust, and each is for what the ones
+before it cannot do:
+
+- **Configuration** when what the integration needs already exists: a setting in
+  the cascade, or a definition in `mcp.json` or a skill root.
+- **A skill** when the model needs knowledge, or a script it runs with its existing
+  runtimes (`sh`, `node`).
+- **An MCP server** when X has an API the model calls as tools. A server X already
+  publishes needs only its definition.
+- **A plugin** when skills and MCP servers install together, or travel to other agents.
+- **A client** when X drives Plurnk from outside: an application through AG-UI, an
+  agent through A2A.
+- **A hook** when X hears about Plurnk's lifecycle events and answers nothing.
+- **An extension** only when the model needs something new inside the daemon that
+  none of the above can add: a runtime, an address scheme, a media-type reader, a
+  model provider or a page materializer. The operator installs and trusts it, and
+  it loads when the daemon starts.
+- **A module** only when the daemon itself serves or manages something: a family
+  behind the six verbs, an endpoint on Plurnk's listener, or an observer of its events.
+
 ## Plurnk uses X
 
 | Surface | Shape | The model sees | Code in the daemon |
@@ -123,5 +145,7 @@ export default () => ({
 ## Contracts
 
 `skill://plurnk/packages/` holds the `SPEC.md` of every installed package that
-ships one, at `skill://plurnk/packages/<package name>/SPEC.md`. FIND searches
-them by tag or term; each contract's examples and tables are authoritative.
+ships one, at `skill://plurnk/packages/<package name>/SPEC.md`, and beside it the
+package's type declarations under `dist/`: `dist/index.d.ts` is the package root's,
+and a relative import names a sibling file. FIND searches them by tag or term; each
+contract's examples, tables and declarations are authoritative.

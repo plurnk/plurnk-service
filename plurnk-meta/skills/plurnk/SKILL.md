@@ -1,6 +1,6 @@
 ---
 name: plurnk
-description: Configure Plurnk, select and tune models, and look up its worker and tool contracts.
+description: Plurnk harness configurations, extensions, and definitions.
 ---
 
 # Plurnk
@@ -12,7 +12,7 @@ description: Configure Plurnk, select and tune models, and look up its worker an
 | Model routes, reasoning, output and context limits, cost | [Models](references/models.md) |
 | Every installed package's settings and defaults | [Complete .env.defaults](.env.defaults) |
 | Plugins, extensions, clients and hooks: what each reaches and how it loads | [Extending Plurnk](references/extensibility.md) |
-| Each installed package's contract | `packages/<package name>/SPEC.md` |
+| Each installed package's contract and type declarations | `packages/<package name>/SPEC.md`, `dist/*.d.ts` |
 | Worker hierarchy, messaging, and delegation | [Worker reference](worker:///_plurnk/plurnk/worker.md) |
 | Which project files you can see, and why a file is missing | [Membership](worker:///_plurnk/plurnk/members.md) |
 | Agent Skills, MCP servers, and A2A agents: what each is and how one is added | `worker:///_plurnk/plurnk/skills.md`, `mcp.md`, `a2a.md` |
