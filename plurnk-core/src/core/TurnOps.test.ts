@@ -6,7 +6,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 const SOURCE = "ops://analyst/1/2";
-const aside = `<!-- display cut; the statement arrived whole: READ (${SOURCE}) for the full body -->`;
+const aside = `<!-- preview; the whole statement ran: READ (${SOURCE}) for all of it -->`;
 
 import { contentWeight } from "./content-weight.ts";
 import { EMISSION_HEAD_WEIGHT } from "./EmissionHead.ts";
@@ -73,7 +73,7 @@ test("{§emission-row} a body over the head keeps whole lines up to about a hund
     const head = (kept as EditStatement).body!;
     const lines = head.split("\n");
     assert.ok(lines.length >= 2 && lines.length < 10, `the head is whole lines, got ${lines.length}`);
-    assert.ok(head.endsWith("…") && body.startsWith(head.slice(0, -1)), "the head is the body's own opening, its cut marked by an ellipsis");
+    assert.ok(body.startsWith(head) && !head.endsWith("…"), "the head is the body's own opening, with no harness mark inside the fence");
     assert.ok(contentWeight(`${head}\n`) <= EMISSION_HEAD_WEIGHT, "the head fits the hundred tokens");
     assert.ok(contentWeight(`${head}\n${body.split("\n")[lines.length]}\n`) > EMISSION_HEAD_WEIGHT, "one more line would not");
 });
@@ -81,8 +81,8 @@ test("{§emission-row} a body over the head keeps whole lines up to about a hund
 test("{§emission-row} a first line longer than the head is cut inside itself, and the aside still rides its own closer", () => {
     const statements = TurnOps.parseInternal(PlurnkParser.frame("SEND (worker://helper)", "a".repeat(400)));
     const rendered = TurnOps.renderEmission(statements, SOURCE);
-    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", `${"a".repeat(EMISSION_HEAD_WEIGHT * 2)}…`)} ${aside}`);
-    assert.match(rendered.split("\n").at(-1)!, /^``` <!-- display cut; the statement arrived whole: READ \(/u, "the aside sits on the closer's own line");
+    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", "a".repeat(EMISSION_HEAD_WEIGHT * 2))} ${aside}`);
+    assert.match(rendered.split("\n").at(-1)!, /^``` <!-- preview; the whole statement ran: READ \(/u, "the preview note sits on the closer's own line");
 });
 
 test("{§emission-row} a body within the head renders whole, with no aside", () => {
@@ -95,9 +95,8 @@ test("{§emission-row} a worker that copies the aside onto its own closer keeps 
     const parsed = PlurnkParser.parse(copied);
     const [statement] = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
     assert.equal(statement!.op, "EDIT");
-    assert.ok((statement as EditStatement).body!.endsWith("…"), "the cut is marked by an ellipsis");
-    assert.ok(longLines(10).startsWith((statement as EditStatement).body!.slice(0, -1)), "the head is kept as the body");
-    assert.ok(parsed.items.some((item) => item.kind === "text" && item.content.includes("arrived whole: READ (")), "the copied aside is outside text");
+    assert.ok(longLines(10).startsWith((statement as EditStatement).body!), "the head is kept as the body, unmarked");
+    assert.ok(parsed.items.some((item) => item.kind === "text" && item.content.includes("the whole statement ran: READ (")), "the copied preview note is outside text");
 });
 
 test("{§outside-text} a worker that ends its emission with comments keeps every operation; the comments are outside text", () => {

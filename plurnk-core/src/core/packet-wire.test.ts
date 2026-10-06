@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import PacketWire from "./packet-wire.ts";
 
-const aside = "<!-- display cut; the statement arrived whole: READ (ops://analyst/1/2) for the full body -->";
+const aside = "<!-- preview; the whole statement ran: READ (ops://analyst/1/2) for all of it -->";
 
 test("{§emission-row} the wire drops NOTE and WAIT blocks and keeps every other block, whole and in order", () => {
     const read = PlurnkParser.frame("READ (worker:///a.md) <1,-1> <!-- look -->", null);
@@ -18,7 +18,7 @@ test("{§emission-row} the wire drops NOTE and WAIT blocks and keeps every other
         PlurnkParser.frame("KILL", "The answer."),
     ].join("\n\n");
     assert.equal(PacketWire.deliveredEmission(frozen), [read, edit, cut, PlurnkParser.frame("KILL", "The answer.")].join("\n\n"),
-        "a NOTE line nested inside a longer fence is body text, and a truncation aside stays on its closer");
+        "a NOTE line nested inside a longer fence is body text, and a preview note stays on its closer");
 });
 
 test("{§emission-row} an emission of only NOTE and WAIT delivers nothing", () => {
