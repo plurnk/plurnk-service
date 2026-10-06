@@ -68,6 +68,10 @@ types live in that family's package, so this package never depends on a less sta
 
 A start seam is a `Pick` of {§application-port} naming the calls the module makes.
 
+§module-compatibility **A module states its compatibility as npm peer ranges.** It declares this
+package, and each family whose slice it uses, as peer dependencies; the host that implements the
+contract is the one package that depends on it directly. There is no manifest version field.
+
 ## Base setup functions
 
 | Function | Contract |

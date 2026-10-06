@@ -94,6 +94,29 @@ export const packageGraphViolations = (entries) => {
     return violations;
 };
 
+// {§module-compatibility} — a module states its compatibility with the contract as a peer range; the
+// host, which implements the contract, is the one package that depends on it.
+const MODULE_CONTRACT = "@plurnk/plurnk-modules";
+const MODULE_HOST = "@plurnk/plurnk-service";
+export const moduleContractViolations = (entries) => entries
+    .filter(({ manifest, importsContract }) => importsContract && manifest.name !== MODULE_HOST && manifest.name !== MODULE_CONTRACT)
+    .flatMap(({ file, manifest }) => [
+        ...(Object.hasOwn(manifest.peerDependencies ?? {}, MODULE_CONTRACT) ? [] : [`${file}: a module declares ${MODULE_CONTRACT} as a peer dependency ({§module-compatibility})`]),
+        ...(Object.hasOwn(manifest.dependencies ?? {}, MODULE_CONTRACT) ? [`${file}: dependencies.${MODULE_CONTRACT} must be a peer dependency ({§module-compatibility})`] : []),
+    ]);
+
+const importsModuleContract = async (dir) => {
+    const files = await fs.readdir(path.join(dir, "src"), { recursive: true }).catch((error) => {
+        if (error?.code === "ENOENT") return [];
+        throw error;
+    });
+    for (const file of files) {
+        if (!/\.(?:ts|mts|js|mjs)$/u.test(file)) continue;
+        if ((await fs.readFile(path.join(dir, "src", file), "utf8")).includes(`"${MODULE_CONTRACT}"`)) return true;
+    }
+    return false;
+};
+
 if (import.meta.main) {
     const root = JSON.parse(await fs.readFile("package.json", "utf8"));
     const manifests = ["package.json", ...root.workspaces.map((dir) => path.join(dir, "package.json"))];
@@ -140,6 +163,9 @@ if (import.meta.main) {
     }
 
     violations.push(...packageGraphViolations(workspaceManifests));
+    violations.push(...moduleContractViolations(await Promise.all(workspaceManifests.map(async (entry) => ({
+        ...entry, importsContract: await importsModuleContract(path.dirname(entry.file)),
+    })))));
 
     if (violations.length > 0) {
         console.error("Dependency policy violations:");

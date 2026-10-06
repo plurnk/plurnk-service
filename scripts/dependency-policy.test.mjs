@@ -4,7 +4,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { packageGraphViolations } from "./dependency-policy.mjs";
+import { moduleContractViolations, packageGraphViolations } from "./dependency-policy.mjs";
 
 const range = (names) => Object.fromEntries(names.map((name) => [`@plurnk/${name}`, "^1.0.0"]));
 const workspace = (name, dependencies = [], peerDependencies = []) => ({
@@ -62,4 +62,18 @@ test("the repository's own package graph keeps both principles", async () => {
         manifest: JSON.parse(await fs.readFile(path.join(root, dir, "package.json"), "utf8")),
     })));
     assert.deepEqual(packageGraphViolations(entries), []);
+});
+
+test("{§module-compatibility} a module peers on the contract; only the host depends on it", () => {
+    const entry = (name, sections, importsContract = true) => ({ file: `${name}/package.json`, manifest: { name: `@plurnk/${name}`, ...sections }, importsContract });
+    const contract = { "@plurnk/plurnk-modules": "^1.29.0" };
+    assert.deepEqual(moduleContractViolations([
+        entry("plurnk-service", { dependencies: contract }),
+        entry("plurnk-peer", { peerDependencies: contract }),
+        entry("plurnk-unrelated", {}, false),
+    ]), []);
+    assert.deepEqual(moduleContractViolations([entry("plurnk-direct", { dependencies: contract })]), [
+        "plurnk-direct/package.json: a module declares @plurnk/plurnk-modules as a peer dependency ({§module-compatibility})",
+        "plurnk-direct/package.json: dependencies.@plurnk/plurnk-modules must be a peer dependency ({§module-compatibility})",
+    ]);
 });
