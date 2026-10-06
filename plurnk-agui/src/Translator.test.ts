@@ -112,7 +112,7 @@ test("{§agui-row-channel} NOTE remains literal in live rows; no task inventory 
 });
 
 test("{§agui-projection} addressed replies project by conversation, including answers delivered by another worker", () => {
-    for (const origin of ["model", "client", "plugin", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
+    for (const origin of ["model", "client", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
         const native = "Verification.";
         const address = `agui://anonymous/threads/${thread}/messages/user-message`;
         const record = entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", origin,

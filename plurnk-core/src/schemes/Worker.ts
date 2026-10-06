@@ -34,7 +34,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         channels: { body: "text/markdown", readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        writableBy: ["model", "client", "_plurnk", "plugin"],
+        writableBy: ["model", "client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,

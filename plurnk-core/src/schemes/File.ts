@@ -110,7 +110,7 @@ export default class File extends CoreSchemeAdapterBase {
         channels: { body: "text/markdown", readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        writableBy: ["model", "client", "plugin", "_plurnk"],
+        writableBy: ["model", "client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,

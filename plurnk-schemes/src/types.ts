@@ -8,7 +8,7 @@
 // supplies them per dispatch; this repo ships only the manifest types every
 // sibling needs to declare itself.
 
-export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
+export type WriterTier = "model" | "client" | "_plurnk";
 
 // URI-authority disposition for an addressed scheme. Namespace is the stable
 // default for ordinary entry trees: an authored authority folds into the

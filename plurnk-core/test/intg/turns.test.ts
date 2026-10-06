@@ -162,7 +162,7 @@ test("turns: packet CHECK enforces the request/admitted-response root algebra", 
 test("Turn: every non-model producer uses the same operation-turn lifecycle", async () => {
     const { db, loopId } = await setup();
     try {
-        for (const [index, producer] of (["client", "plugin", "_plurnk"] as const).entries()) {
+        for (const [index, producer] of (["client", "_plurnk"] as const).entries()) {
             const turn = await Turn.open(db, { loopId, producer, kind: "operation" });
             const open = await db.test_get_turn.get<{
                 producer: string; kind: string; status: number; completed_at: string | null; packet: string | null;
@@ -232,7 +232,7 @@ test("Turn: producer is immutable and model calls require inference", async () =
         await assert.rejects(
             () => db.test_turns_update_identity.run({
                 id: operation.id,
-                producer: "plugin",
+                producer: "_plurnk",
                 kind: "operation",
             }),
             /turn producer and kind are immutable/,

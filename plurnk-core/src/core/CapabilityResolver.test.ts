@@ -170,7 +170,7 @@ reference
 content
 \`\`\`\``), 1, "_plurnk").length, 1, path);
     }
-    for (const writer of ["model", "client", "plugin"] as const) {
+    for (const writer of ["model", "client"] as const) {
         assert.equal(resolver.descriptors(statement(`\`\`\`\`EDIT (${own})
 content
 \`\`\`\``), 1, writer).length, 1, writer);

@@ -237,7 +237,7 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
         assert.equal((await dispatch(editStmt(generated, "reference"))).status, 201);
         assert.equal((await dispatch(editStmt(generated, "updated reference", { marks: [1, -1] }))).status, 200);
         assert.equal((await dispatch(readStmt(generated))).status, 200);
-        for (const origin of ["model", "client", "plugin"] as const) {
+        for (const origin of ["model", "client"] as const) {
             assert.equal((await dispatch(editStmt(generated, "overwrite", { marks: [1, -1] }), origin)).status, 403, origin);
         }
         for (const operation of [editStmt(external, "outside"), copyStmt(generated, external), moveStmt(generated, external)]) {

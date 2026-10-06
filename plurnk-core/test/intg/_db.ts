@@ -139,7 +139,7 @@ export const insertOperationTurn = async (
     db: Db,
     loopId: number,
     sequence: number,
-    producer: "client" | "plugin" | "_plurnk",
+    producer: "client" | "_plurnk",
     status: number = 200,
 ): Promise<number> => {
     const row = await db.test_insert_operation_turn.get<{ id: number }>({
@@ -157,7 +157,7 @@ export const seedEnvelope = async (
     label: string,
     // `policy` states the seeded loop's disposition: a fixture that dispatches an operation which
     // proposes ({§http-outbound-proposes}) has no client to answer, so it says what it would say.
-    options: { producer?: "model" | "client" | "plugin" | "_plurnk"; policy?: LoopPolicy } = {},
+    options: { producer?: "model" | "client" | "_plurnk"; policy?: LoopPolicy } = {},
 ): Promise<{
     workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {

@@ -47,7 +47,7 @@ const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
         get manifest() {
             return {
                 name: tag, channels: { results: "application/json" }, defaultChannel: "results", category: "data",
-                writableBy: ["plugin"], volatile: true, modelVisible: true,
+                writableBy: [], volatile: true, modelVisible: true,
             } as never;
         },
         get defaultChannel() { return "results"; },

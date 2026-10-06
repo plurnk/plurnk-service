@@ -1590,7 +1590,7 @@ test("{§body-projection}: a program READ renders whole; deliberate curation and
     ].join("\n\n");
     const lines = source.split("\n");
     const numbered = lines.map((line, index) => `${String(index + 1).padStart(String(lines.length).length)}:${line}`);
-    for (const origin of ["_plurnk", "model", "client", "plugin"]) {
+    for (const origin of ["_plurnk", "model", "client"]) {
         const entry = {
             coordinate: "1/1/1", origin, op: "READ", status: 200,
             target: { scheme: "ops", hostname: "alice", pathname: "/1/1" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
@@ -1793,7 +1793,7 @@ test("{§body-projection}: every body producer renders whole", () => {
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
         { op: "sh", origin: "model", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: { op: "sh", body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
-        { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
+        { op: "extension", origin: "_plurnk", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];
 
     entries.forEach((entry, index) => {

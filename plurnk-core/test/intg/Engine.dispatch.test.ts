@@ -835,7 +835,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
         const turnIds: number[] = [];
-        for (const [i, origin] of (["model", "client", "_plurnk", "plugin"] as const).entries()) {
+        for (const [i, origin] of (["model", "client", "_plurnk"] as const).entries()) {
             const turnId = origin === "model"
                 ? env.turnId
                 : await insertOperationTurn(db, env.loopId, i + 1, origin);
@@ -851,7 +851,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
             const rows = await db.test_log_entries_by_turn.all<{ origin: string }>({ turn_id: turnId });
             origins.push(rows[0]?.origin);
         }
-        assert.deepEqual(origins, ["model", "client", "_plurnk", "plugin"]);
+        assert.deepEqual(origins, ["model", "client", "_plurnk"]);
     } finally { await db.close(); }
 });
 
@@ -861,15 +861,15 @@ test("Engine.dispatch: origin field captured in log", async () => {
 test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
-        const turnId = await insertOperationTurn(db, env.loopId, 2, "plugin");
+        const turnId = await insertOperationTurn(db, env.loopId, 2, "client");
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("reasoning", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
-            sequence: 1, origin: "plugin",
+            sequence: 1, origin: "client",
         });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
-        assert.equal(result.problem?.writer, "plugin");
+        assert.equal(result.problem?.writer, "client");
         assert.equal(result.problem?.scheme, "reasoning");
         assert.deepEqual(result.problem?.allowedWriters, []);
         // 403 still writes a log row
@@ -957,7 +957,7 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
                 channels: {},
                 defaultChannel: "",
                 category: "data" as const,
-                writableBy: ["plugin" as const],
+                writableBy: [],
                 volatile: false,
                 modelVisible: true,
             };

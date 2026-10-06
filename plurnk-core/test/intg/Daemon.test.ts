@@ -58,7 +58,7 @@ const fakeRegistration = (tag: string) => ({
                 channels: { results: "application/json" },
                 defaultChannel: "results",
                 category: "data",
-                writableBy: ["plugin"],
+                writableBy: [],
                 volatile: true,
                 modelVisible: true,
             } as never;
@@ -1513,7 +1513,7 @@ test("the client-interface seam — a dispatched execution's stdout streams as s
                 },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
-                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: [], volatile: true, modelVisible: true } as never; },
                     get defaultChannel() { return "stdout"; },
                     get channels() { return { stdout: { mimetype: "text/plain" } }; },
                     effect: () => "read",

@@ -27,7 +27,7 @@ export default class OutputScheme {
             channels: decl.channels,
             defaultChannel: decl.defaultChannel,
             category: "data",
-            writableBy: ["plugin"],
+            writableBy: [],
             volatile: true,
             modelVisible: true,
             folderScopes: true,

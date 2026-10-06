@@ -87,7 +87,7 @@ test("{§file-create-producer-neutral}: every runtime producer completes the sam
             mimetypes: DEFAULT_MIMETYPES,
             weigh: ctx.weigh,
         });
-        for (const [index, origin] of (["model", "client", "plugin", "_plurnk"] as const).entries()) {
+        for (const [index, origin] of (["model", "client", "_plurnk"] as const).entries()) {
             const turnId = origin === "model"
                 ? await insertTurn(db, loopId, index + 1)
                 : await insertOperationTurn(db, loopId, index + 1, origin);
@@ -111,7 +111,6 @@ test("{§file-create-producer-neutral}: every runtime producer completes the sam
             { effect: "include", glob: "_plurnk.md", source: "create" },
             { effect: "include", glob: "client.md", source: "create" },
             { effect: "include", glob: "model.md", source: "create" },
-            { effect: "include", glob: "plugin.md", source: "create" },
         ]);
     });
 });

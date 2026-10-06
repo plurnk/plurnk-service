@@ -11,7 +11,7 @@
         "loopId": { "type": "integer", "minimum": 1 },
         "turnId": { "type": "integer", "minimum": 1 },
         "sequence": { "type": "integer", "minimum": 1 },
-        "origin": { "enum": ["model", "client", "_plurnk", "plugin"] },
+        "origin": { "enum": ["model", "client", "_plurnk"] },
         "projectRoot": { "type": ["string", "null"] },
         "statement": { "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json" },
         "phase": { "enum": ["started", "settled"] },

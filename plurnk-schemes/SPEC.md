@@ -39,7 +39,7 @@ class Notes {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (owns no entries). |
-| `writableBy` | Subset of `["model", "client", "_plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
+| `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes, such as a runtime's output, which its execution writes through its own stream. The retired `plugin` tier fails validation and names `[]`. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |

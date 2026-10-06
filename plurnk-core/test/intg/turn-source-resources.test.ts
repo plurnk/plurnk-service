@@ -88,7 +88,7 @@ test("{§turn-source-resources}: source facts reject rewriting and disappear onl
         const workspaceId = await insertWorkspace(db, "source-integrity");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
-        for (const producer of ["model", "client", "plugin", "_plurnk"] as const) {
+        for (const producer of ["model", "client", "_plurnk"] as const) {
             const turn = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
             await Turn.recordSource(db, turn.id, "ops", program(producer));
             await assert.rejects(Turn.recordSource(db, turn.id, "ops", "replacement"), /UNIQUE constraint failed/);
@@ -97,7 +97,7 @@ test("{§turn-source-resources}: source facts reject rewriting and disappear onl
             await Turn.complete(db, turn.id, 200);
             await assert.rejects(Turn.recordSource(db, turn.id, "reasoning", "late evidence"), /requires an open turn/);
         }
-        assert.equal((await db.test_turn_sources.all({ worker_id: workerId })).length, 4);
+        assert.equal((await db.test_turn_sources.all({ worker_id: workerId })).length, 3);
         await db.test_delete_worker.run({ id: workerId });
         assert.deepEqual(await db.test_turn_sources.all({ worker_id: workerId }), [], "the owning history's deletion cascades without an orphan or special cleanup");
     } finally { await db.close(); }
@@ -115,7 +115,7 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
         const sources = { ops: program("Do not execute this when reading."), reasoning: "Original reasoning.\nSecond line." };
         for (const kind of ["ops", "reasoning"] as const) await Turn.recordSource(db, sourceTurn.id, kind, sources[kind]);
         await Turn.complete(db, sourceTurn.id, 200);
-        for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
+        for (const origin of ["model", "client", "_plurnk"] as const) {
             const turn = await Turn.open(db, { loopId, producer: origin, kind: origin === "model" ? "inference" : "operation" });
             let sequence = 1;
             const dispatch = (source: string) => engine.dispatch({ ...context, turnId: turn.id, sequence: sequence++, origin, statement: statement(source) });

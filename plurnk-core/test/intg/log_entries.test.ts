@@ -110,7 +110,7 @@ test("log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
-        for (const origin of ["model", "client", "_plurnk", "plugin"] as const) {
+        for (const origin of ["model", "client", "_plurnk"] as const) {
             const turnId = origin === "model"
                 ? ctx.turnId
                 : (await Turn.open(db, { loopId: ctx.loopId, producer: origin, kind: "operation" })).id;

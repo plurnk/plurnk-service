@@ -62,7 +62,7 @@ const wire = async (opts?: {
         executor: {
             runtime: tag,
             glyph: "?",
-            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: [], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return { results: { mimetype: "text/plain" } }; },
             effect: () => "pure" as const,

@@ -85,7 +85,7 @@ test("{§exec-input}: SEND reaches an invocation-local extension receiver withou
         assert.equal(result.status, 200);
         assert.equal(result.accepted, true);
         assert.deepEqual(executor.received, [{ body: "raw {JSON} and newline\n", metadata: ['{"custom": "exact"}'] }]);
-        assert.deepEqual(f.schemes.manifestFor("dialogue", f.workspaceId)?.writableBy, ["plugin"]);
+        assert.deepEqual(f.schemes.manifestFor("dialogue", f.workspaceId)?.writableBy, []);
         assert.equal((await f.dispatch(`\`\`\`\`EDIT (${await executionAddress(f.db, f.turnId, 1)})\nnot input\n\`\`\`\``)).status, 403);
         assert.equal((await f.dispatch(`\`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\`\`\`\``)).status, 400);
         assert.equal((await f.dispatch("````FIND (dialogue:///*) [{\"custom\": \"exact\"}]````")).status, 400);

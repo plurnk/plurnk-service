@@ -11,7 +11,7 @@ export default class MessageScheme implements SchemeHandler {
     constructor(name: string) {
         this.manifest = {
             name, authority: "resource", category: "data", channels: { body: "text/markdown" },
-            defaultChannel: "body", writableBy: ["model", "client", "plugin", "_plurnk"],
+            defaultChannel: "body", writableBy: ["model", "client", "_plurnk"],
             volatile: false, modelVisible: true, folderScopes: true, textEditScopes: false,
         };
     }

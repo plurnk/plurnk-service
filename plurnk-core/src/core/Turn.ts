@@ -21,7 +21,7 @@ export interface InferenceEvidence {
 
 // {§turn-record} — one lifecycle owner for every producer. A packet and its
 // provider metadata are optional inference evidence, never the definition of a
-// turn. Client, plugin, model, and `_plurnk` work all open and complete here.
+// turn. Client, model and `_plurnk` work all open and complete here.
 export default class Turn {
     static async open(
         db: Db,

@@ -8,7 +8,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 
-for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
+for (const origin of ["model", "client", "_plurnk"] as const) {
     test(`{§worker-write-scoping}: ${origin} composes operations across explicit Worker namespaces`, async () => {
         await using db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `addresses-${crypto.randomUUID()}`);

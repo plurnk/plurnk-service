@@ -35,8 +35,13 @@ test("Manifest.of validates dispatch-critical fields", () => {
         /writableBy/,
     );
     assert.doesNotThrow(
-        () => Manifest.of({ manifest: { ...manifest("immutable"), writableBy: [] } }, "immutable"),
-        "an empty writer set is a valid immutable scheme",
+        () => Manifest.of({ manifest: { ...manifest("unwritten"), writableBy: [] } }, "unwritten"),
+        "an empty writer set declares a scheme no operation writes",
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("retired"), writableBy: ["plugin"] } }, "retired"), // lexicon-allow: the retired tier's witness
+        /retired writer tier 'plugin': \[\] declares a scheme no operation writes, and in-process code writes as '_plurnk'/,
+        "the retired writer tier fails hard and names its successors",
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("channels"), defaultChannel: "missing" } }, "channels"),

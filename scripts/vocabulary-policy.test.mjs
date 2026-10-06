@@ -29,6 +29,7 @@ test("every retired form is refused by name with its successor", () => {
         "the executor family's discovery and a trusted family claim",
         "the tool family and its family document",
         "Every code this family mints",
+        "writableBy: [\"plugin\"] and T2: producer=plugin kind=operation",
         "assert.equal(notice?.family, \"module:@acme/x\"); a notice with family: \"extensions\"",
     ]) {
         const violations = refused(line);
@@ -38,7 +39,7 @@ test("every retired form is refused by name with its successor", () => {
     assert.equal(new Set(RETIRED.map(({ label }) => label)).size >= 9, true, "the retired forms are grouped by meaning");
 });
 
-test("the standard's words, core's families, the reserved writer tier and ordinary English pass", () => {
+test("the standard's words, core's families and ordinary English pass", () => {
     for (const line of [
         "an Agent Plugin bundle carries plugin.json and its skills",
         "a plugin's mcp.json joins the MCP family",
@@ -48,7 +49,6 @@ test("the standard's words, core's families, the reserved writer tier and ordina
         "an executor leaf is a log coordinate's last segment",
         "the schedule family's six verbs, where the family contract requires it",
         "a closed model family, the JSON-family check, and operation families",
-        "T2: producer=plugin kind=operation",
     ]) {
         assert.deepEqual(refused(line), [], line);
     }

@@ -30,7 +30,7 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel
                 channels: { [channel]: "application/json" },
                 defaultChannel: channel,
                 category: "data",
-                writableBy: ["plugin"],
+                writableBy: [],
                 volatile: true,
                 modelVisible: true,
             } as never;

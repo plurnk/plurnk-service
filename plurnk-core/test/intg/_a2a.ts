@@ -47,7 +47,7 @@ const MANAGER = {
     get manifest() {
         return {
             name: "a2a", authority: "namespace", channels: { results: "application/json" }, defaultChannel: "results",
-            category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true, folderScopes: true, traits: ["web"],
+            category: "data", writableBy: [], volatile: true, modelVisible: true, folderScopes: true, traits: ["web"],
         } as never;
     },
     get defaultChannel() { return "results"; },

@@ -254,7 +254,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         const workspaceId = await insertWorkspace(db, "packet-algebra");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "packet states");
-        for (const producer of ["client", "plugin"] as const) {
+        for (const producer of ["client", "_plurnk"] as const) {
             const operation = await Turn.open(db, { loopId, producer, kind: "operation" });
             await Turn.complete(db, operation.id, 200);
         }
@@ -286,7 +286,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         assert.match(markdown, /Cost:\s+n\/a/);
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
-        assert.match(markdown, /T2: producer=plugin kind=operation status=200/);
+        assert.match(markdown, /T2: producer=_plurnk kind=operation status=200/);
         assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });

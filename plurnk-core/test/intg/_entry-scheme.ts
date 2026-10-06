@@ -6,7 +6,7 @@ export default class EntryScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "fixture", authority: "namespace", category: "data",
         channels: { body: "text/plain" }, defaultChannel: "body",
-        writableBy: ["model", "client", "plugin", "_plurnk"],
+        writableBy: ["model", "client", "_plurnk"],
         folderScopes: true, volatile: false, modelVisible: true,
     };
 

@@ -194,7 +194,7 @@ test("{§worker-scheme-spawn}: concurrent WORK and FORK cannot claim the same li
     assert.equal(child?.id, calls[0].workerId);
 });
 
-for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
+for (const origin of ["model", "client", "_plurnk"] as const) {
     test(`{§machine-processes-worker-origin}: a ${origin} turn delegates within its actor's lineage`, async () => {
         await using db = await openMigrated();
         const { calls, injectWorker } = recordingInjectWorker();

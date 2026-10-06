@@ -180,7 +180,7 @@ workerId: number
 loopId: number
 turnId: number
 sequence: number
-origin: ("model" | "client" | "_plurnk" | "plugin")
+origin: ("model" | "client" | "_plurnk")
 projectRoot: (string | null)
 statement: PlurnkStatement
 phase: ("started" | "settled")

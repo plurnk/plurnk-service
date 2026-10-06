@@ -309,7 +309,7 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
     }
 });
 
-for (const origin of ["plugin", "_plurnk"] as const) test(`{§context-fit}: ${origin} output crosses maintenance and loop boundaries whole, result and all`, async () => {
+for (const origin of ["client", "_plurnk"] as const) test(`{§context-fit}: ${origin} output crosses maintenance and loop boundaries whole, result and all`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-origin-${origin}-${crypto.randomUUID()}`);

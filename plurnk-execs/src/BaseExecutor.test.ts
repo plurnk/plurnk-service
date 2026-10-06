@@ -93,7 +93,7 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     assert.equal(m.defaultChannel, "results");
     // the read-only-output default an executor-scheme inherits
     assert.equal(m.category, "data");
-    assert.deepEqual(m.writableBy, ["plugin"]);
+    assert.deepEqual(m.writableBy, []);
     assert.equal(m.volatile, true);
     assert.equal(Object.hasOwn(m, "foldedByDefault"), false, "executor manifests do not advertise obsolete entry-folding policy");
 });

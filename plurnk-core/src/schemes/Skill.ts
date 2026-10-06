@@ -29,7 +29,7 @@ export default class Skill extends CoreSchemeAdapterBase implements SchemeHandle
         channels: {},
         defaultChannel: "body",
         category: "data",
-        writableBy: ["_plurnk", "plugin"],
+        writableBy: ["_plurnk"],
         volatile: false,
         folderScopes: true,
         modelVisible: true,

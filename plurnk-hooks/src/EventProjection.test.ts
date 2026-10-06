@@ -10,12 +10,12 @@ const started: ApplicationOperationEvent = {
 };
 
 test("{§hooks-event-projection} operation phase/status select hooks without treating system observations as tools", () => {
-    for (const origin of ["model", "client", "_plurnk", "plugin"] as const) {
+    for (const origin of ["model", "client", "_plurnk"] as const) {
         for (const status of [200, 202, 400, 499]) {
             const result = { status, detail: "Exact fixture result" };
             const params = { ...started, origin, phase: "settled" as const, result };
             const event = EventProjection.project(42, "operation/event", params);
-            if (origin === "_plurnk" || origin === "plugin") {
+            if (origin === "_plurnk") {
                 assert.equal(event, null);
                 continue;
             }

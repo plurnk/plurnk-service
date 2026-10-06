@@ -55,7 +55,7 @@ flowchart LR
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
 | **worker**        | Core                  | Durable actor and history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
-| **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, plugin, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
+| **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
 | **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
 | **op**            | Producer/core         | One DSL operation a producer submits, parsed into a `PlurnkStatement`. Admission follows {§turn-ops-admission-path}. |
 | **statement**     | Model/core            | A parsed op: the `PlurnkStatement` AST from `@plurnk/plurnk-contracts`. |
@@ -91,9 +91,9 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 
 | Term | Meaning |
 |---|---|
-| **writer** | The identity authoring a write. One of `model \| client \| _plurnk \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
+| **writer** | The identity authoring a write. One of `model \| client \| _plurnk`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
 | **origin** | Synonym for writer in log_entries (`log_entries.origin`). Synonym for writer. |
-| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
+| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk}`; empty means no operation writes the scheme. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
 
 ### Execution terms
 
@@ -462,7 +462,7 @@ existing workspace worker in its own right.
 
 §machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its conversation binding. Inspection does not inject another log into a model's packet.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a plugin-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a client-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
 
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
@@ -1095,11 +1095,11 @@ boundary.
 
 A turn is the durable container for one producer's ordered operations. Packet
 and provider fields are optional evidence belonging only to model inference;
-their absence never makes a client, plugin, or `_plurnk` turn exceptional.
+their absence never makes a client or `_plurnk` turn exceptional.
 
 | Field | Contract |
 |---|---|
-| `producer` | Required actor class: `model`, `client`, `plugin`, or `_plurnk`. |
+| `producer` | Required actor class: `model`, `client`, or `_plurnk`. |
 | `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
 | `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the program outcome and timestamp; a completed 102 is distinct from an open 102. A successful administrative program completes at 200 without concluding its host model loop. |
 | Operations | Ordered by `(turn_id, sequence)` on one exact worker/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
@@ -1108,9 +1108,8 @@ their absence never makes a client, plugin, or `_plurnk` turn exceptional.
 
 One lifecycle owner opens, optionally records inference evidence, and completes
 every turn. Initialization, maintenance, client dispatch, and model
-inference use that same path. `plugin` is the producer identity for
-plugin-authored operation turns; exposing that path must not introduce a
-parallel record or lifecycle. Producer and kind never change. Process-restart
+inference use that same path; a new producer joins it without a parallel
+record or lifecycle. Producer and kind never change. Process-restart
 recovery completes any turn whose producer vanished.
 
 §turn-exception-outcome An exceptional inference exit completes every still-open
@@ -1124,7 +1123,7 @@ The turn owner propagates the original exception unchanged.
 | An `AggregateError` combining cancellation with other failures | 500; cancellation does not conceal another failure. |
 
 §turn-ops-admission-path **Source acquisition varies; admitted-turn execution does not.**
-A provider response, deterministic `_plurnk` program, or future client/plugin
+A provider response, deterministic `_plurnk` program, or future client
 program crosses one admission boundary into the same executor. That executor
 parses once, dispatches the admitted statements in order, records their ordinary
 outcomes, and completes the turn from its lifecycle ruling. Exact source is retained before dispatch.
@@ -1530,7 +1529,7 @@ Folders and globs select members in those same filesystem coordinates. Parent-di
 
 ### File scheme: creation and misses
 
-§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination scope on an absent channel resolves against its empty pre-mutation value under {§empty-mutation-scope}; a valid scope creates the channel with the selected source as its complete value. A coordinate outside that empty value is 416. Binary scopes remain numeric byte positions or ranges under {§binary-parity}.
+§fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, or `_plurnk`. A COPY or MOVE destination scope on an absent channel resolves against its empty pre-mutation value under {§empty-mutation-scope}; a valid scope creates the channel with the selected source as its complete value. A coordinate outside that empty value is 416. Binary scopes remain numeric byte positions or ranges under {§binary-parity}.
 
 | Case | Required admission | Accepted result |
 |------|--------------------|-----------------|
@@ -2970,7 +2969,7 @@ of which Worker launched it ({§execution-output-identity}).
 | Backpressure | `PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS` bounds each accepted delivery, including its queue residence. Expiry returns `504 input-timeout`; cancellation returns `499 input-cancelled`. Once delivery has begun, retire and abort input on either; delivery may be partial and is never replayed. The execution itself is not implicitly killed. |
 | Settlement or teardown | Retire and abort input immediately when the execution settles or is cancelled. Existing stream completion and worker wake mechanics remain the only completion path. |
 
-Stored runtime entries retain plugin-only writers. Input and termination are
+No operation writes a stored runtime entry: its scheme's `writableBy` is empty, and the execution writes its own streams. Input and termination are
 control capabilities, not exceptions granting write access to stdout/resources.
 
 ### §exec Executions
