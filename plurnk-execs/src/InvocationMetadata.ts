@@ -13,9 +13,9 @@ type Parsed = { options: Options } | { failure: SchemeResult };
 // the keys this framework knows are `cwd`, `args`, and `stdin`.
 export default class InvocationMetadata {
     static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
-        const fail = (code: string, detail: string): Parsed => ({
+        const fail = (code: string, detail: string, recovery?: string): Parsed => ({
             failure: Results.failure("executor:metadata", code, 400, detail, {}, {
-                runtime: input.runtime, retryable: false,
+                runtime: input.runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false,
             }),
         });
         const read = MetadataOptions.parse(input.metadata, "executor:metadata", { runtime: input.runtime });
@@ -23,7 +23,7 @@ export default class InvocationMetadata {
         const options: Options = { args: [] };
         for (const [field, value] of Object.entries(read.options)) {
             if (field !== "cwd" && !(accepted.args && field === "args") && !(accepted.stdin && field === "stdin")) {
-                return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`);
+                return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`, InvocationMetadata.#fields(accepted));
             }
             if (field === "stdin") {
                 if (value !== "open") return fail("invalid-stdin", 'Execution stdin accepts only "open".');
@@ -41,6 +41,15 @@ export default class InvocationMetadata {
             options.args = value;
         }
         return { options };
+    }
+
+    // {§executor-metadata} — an unsupported field's refusal names every field the run takes, the
+    // executor's own and the service's ({§service-metadata-keys}): a time bound is `lifetime`, and
+    // the program is the body, never a field (#1005).
+    static #fields(accepted: Accepted): string {
+        const names = ["cwd", ...(accepted.args === true ? ["args"] : []), ...(accepted.stdin === true ? ["stdin"] : []), ...MetadataOptions.SERVICE_KEYS]
+            .map((name) => `\`${name}\``);
+        return `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}; a time bound is \`[{"lifetime": "30m"}]\`, and the program goes in the body beneath the fence.`;
     }
 
     static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {
