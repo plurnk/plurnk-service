@@ -10,7 +10,10 @@ test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chap
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     assert.equal(tree.document.name, "plurnk");
     assert.ok(tree.document.description);
-    assert.deepEqual(await tree.list(), [".env.defaults", "SKILL.md", "references/configuration.md", "references/copy-move.md", "references/models.md"]);
+    const listed = await tree.list();
+    assert.deepEqual(listed.filter((path) => !path.startsWith("packages/")),
+        [".env.defaults", "SKILL.md", "references/configuration.md", "references/copy-move.md", "references/extensibility.md", "references/models.md"]);
+    assert.deepEqual(listed, listed.toSorted(), "the tree lists in one order");
     const configuration = tree.resource("references/configuration.md");
     assert.equal(await configuration.nativePath?.(), Paths.configuration);
     const size = await configuration.size();
@@ -20,6 +23,22 @@ test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chap
     assert.equal("nativePath" in tree.resource(".env.defaults"), false);
     assert.equal(await tree.resource("../.env").size(), null);
     assert.equal(await tree.resource("/SKILL.md").size(), null);
+});
+
+test("{§plurnk-skill} each installed ecosystem package's contract is a chapter where its package installed it", async () => {
+    const tree = await PlurnkSkill.load(resolve("../node_modules"));
+    const contracts = (await tree.list()).filter((path) => path.startsWith("packages/"));
+    for (const name of ["@plurnk/plurnk-service", "@plurnk/plurnk-modules", "@plurnk/plurnk-execs", "@plurnk/plurnk-schemes", "@plurnk/plurnk-meta"]) {
+        assert.ok(contracts.includes(`packages/${name}/SPEC.md`), `${name} publishes its contract`);
+    }
+    assert.equal(contracts.includes("packages/@plurnk/plurnk-execs-jq/SPEC.md"), false, "a package without a SPEC.md lists none");
+    assert.ok(contracts.every((path) => path.endsWith("/SPEC.md")), "only contracts live under packages/");
+    assert.equal(await tree.resource("packages/@plurnk/plurnk-service/SPEC.md").nativePath?.(), resolve(Paths.packageRoot, "SPEC.md"));
+    const modules = tree.resource("packages/@plurnk/plurnk-modules/SPEC.md");
+    const size = await modules.size();
+    assert.notEqual(size, null);
+    assert.match(new TextDecoder().decode(await modules.read(1, size!)), /\u00A7module-contract/u, "the module contract declares its tags");
+    assert.equal(await tree.resource("packages/@plurnk/plurnk-absent/SPEC.md").size(), null, "an unlisted contract is not found");
 });
 
 test("{§plurnk-skill} only reading generated defaults collects the installed catalog", async (t) => {

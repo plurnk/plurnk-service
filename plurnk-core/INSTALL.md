@@ -143,10 +143,11 @@ workspace-owned; removing one exposes its current inherited source again.
 
 ## Extensions
 
-Standard [Agent Plugins](https://agent-plugins.org/specification) keep their portable
-skills and MCP servers and may add one native capability under `extensions.ai.plurnk`.
-That declaration uses the family's existing loader and lifetime. For daemon lifecycle
-hooks, declare a module:
+An extension is native Plurnk code of one kind, declared once: under `plurnk` in an npm
+package's `package.json`, or under `extensions.ai.plurnk` in a standard
+[Agent Plugin](https://agent-plugins.org/specification)'s `plugin.json`, beside the plugin's
+portable skills and MCP servers. Its kind's framework loads it with that kind's lifetime. A
+module joins the daemon lifecycle:
 
 ```json
 {
@@ -167,15 +168,17 @@ package's export conditions select its entry:
 }
 ```
 
-Daemon modules load at startup from installed npm packages and selected user roots:
+Modules load at startup from installed npm packages and selected user roots:
 `$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
 identifies a plugin across those sources. Project plugins never load native code into the daemon.
-`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs native
-imports, using the npm package name when present or the plugin name otherwise.
+`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs
+extension imports, using the npm package name when present or the plugin name otherwise.
 Other extension kinds (executors, schemes, providers, mimetypes and HTTP materializers)
 require npm installation and retain their own loading behavior.
 
-The module exports a lifecycle object or a no-argument factory. `setup` registers capabilities;
-`stop` drains producers; `close` releases registrations and observers. See {§module-lifecycle}.
-Native files and the optional configuration panel live under `ai.plurnk/`; its `.env.defaults`
-joins the ordinary floor. npm owns dependencies and delivery, not a second native declaration.
+A module exports a lifecycle object or a no-argument factory: `setup` registers what it
+contributes, `start` opens its ingress, `stop` drains its producers, and `close` releases its
+registrations and observers. Extension files and the optional configuration panel live under
+`ai.plurnk/`; its `.env.defaults` joins the ordinary floor. npm owns dependencies and delivery,
+not a second extension declaration. [Extending Plurnk](skill://plurnk/references/extensibility.md)
+covers every integration surface and links each kind's contract.

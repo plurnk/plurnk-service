@@ -19,6 +19,7 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
         policy: "POLICY.md",
         recap: "recap.md",
         skill: "skills/plurnk/SKILL.md",
+        skillChapters: { extensibility: "skills/plurnk/references/extensibility.md" },
         docs: {
             worker: { source: "docs/worker.md", scheme: "worker" },
             delegation: { source: "docs/delegation.md", scheme: "worker" },
@@ -27,6 +28,7 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
     });
     assert.equal(Object.isFrozen(TEACHING_CORPUS), true);
     assert.equal(Object.isFrozen(TEACHING_CORPUS.docs), true);
+    assert.equal(Object.isFrozen(TEACHING_CORPUS.skillChapters), true);
     assert.ok(Object.values(TEACHING_CORPUS.docs).every(Object.isFrozen));
 });
 
@@ -281,7 +283,7 @@ test("{§extension-manifest-read} invalid or duplicate extension declarations ne
     }));
     await assert.rejects(Meta.readManifest(root, "module"), {
         name: "ConfigurationError",
-        message: `${join(root, "plugin.json")}: native capabilities must not also be declared in package.json#plurnk.`,
+        message: `${join(root, "plugin.json")}: an extension must not also be declared in package.json#plurnk.`,
     });
     await writeFile(join(root, "plugin.json"), "{");
     await assert.rejects(Meta.readManifest(root, "module"), {

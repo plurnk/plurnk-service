@@ -19,6 +19,7 @@ sources into a consuming package would create a second teaching owner.
 | `docs/delegation.md`            | Required   | Worker delegation, lifecycle, and messaging | Pull-doc materialization with the worker scheme |
 | `docs/pattern.md`               | Required   | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
 | `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
+| `skills/plurnk/references/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§plurnk-skill} |
 
 Every teaching source, and every package's `docs/*.md`, is written to
 `TEACHING.md`, the style rule for model-facing prose: mechanism over advice,

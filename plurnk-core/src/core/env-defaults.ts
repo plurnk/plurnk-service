@@ -46,18 +46,27 @@ export default class EnvDefaults {
         return { owner, text, parsed };
     }
 
-    // Enumerate installed package dirs via the shared membership primitives
-    // (@plurnk/plurnk-meta); keep ecosystem members that ship a .env.defaults.
-    static async #memberFiles(dirs: readonly PackageCandidate[]): Promise<EnvDefaultsFile[]> {
-        const files: EnvDefaultsFile[] = [];
-        for (const { dir, name } of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
-            if (!Meta.isTrusted(name)) continue;
-            if (!name.startsWith("@plurnk/")) {
+    // The installed ecosystem members, name-sorted: trusted packages in the `@plurnk/*` scope or
+    // declaring `plurnk` in package.json. The defaults floor and the plurnk skill's contracts
+    // index share this one membership ({§plurnk-skill}).
+    static async members(dirs: readonly PackageCandidate[]): Promise<PackageCandidate[]> {
+        const members: PackageCandidate[] = [];
+        for (const candidate of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
+            if (!Meta.isTrusted(candidate.name)) continue;
+            if (!candidate.name.startsWith("@plurnk/")) {
                 let pkg: { plurnk?: unknown };
-                try { pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as { plurnk?: unknown }; }
+                try { pkg = JSON.parse(await readFile(join(candidate.dir, "package.json"), "utf8")) as { plurnk?: unknown }; }
                 catch { continue; }
                 if (pkg.plurnk === undefined) continue; // not an ecosystem member
             }
+            members.push(candidate);
+        }
+        return members;
+    }
+
+    static async #memberFiles(dirs: readonly PackageCandidate[]): Promise<EnvDefaultsFile[]> {
+        const files: EnvDefaultsFile[] = [];
+        for (const { dir, name } of await EnvDefaults.members(dirs)) {
             const file = await EnvDefaults.#readDefaults(dir, name);
             if (file !== null) files.push(file);
         }

@@ -18,7 +18,7 @@ flowchart LR
     SKILLS["Agent Skills Specification"] --- PLURNK
     PLUGINS["Agent Plugins Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
-    EXTENSION["Plurnk extension<br/>(exec · scheme · mimetype · provider · module)<br/>plurnk-owned interface"] --- PLURNK
+    EXTENSION["Plurnk extension<br/>(exec · scheme · mimetype · provider · http-materializer · module)<br/>plurnk-owned interface"] --- PLURNK
 
     PLURNK --- A2A["A2A Specification"]
 ```
@@ -113,6 +113,48 @@ plus dependents: 0 for a package everything depends on, 1 for one nothing depend
 The root lint enforces Acyclic and Stable Dependencies over every workspace's dependencies and peer
 dependencies, naming the cycle or the edge; the other four are design review rules. An extension
 kind's API therefore sits beneath both its host and its extensions, never inside the host.
+
+## Extensibility
+
+Plurnk is extended at its faces, never its organs (principle 5). Each face has one seam and, where
+one exists, one open standard; the organs below are not extension points, and every integration
+composes with them. The plurnk skill's chapter, `skill://plurnk/references/extensibility.md`
+([source](./plurnk-meta/skills/plurnk/references/extensibility.md)), is the agent-facing account and
+links each kind's contract.
+
+```mermaid
+flowchart TD
+    Q{{"Which way does it point?"}}
+    Q -->|"X watches plurnk"| H["hook: the operator's command, one event on stdin"]
+    Q -->|"X drives plurnk"| F["client of a face: AG-UI for applications, A2A for agents"]
+    Q -->|"plurnk uses X"| U{{"data or code?"}}
+    U -->|data| D["definition: skill, MCP server, A2A agent, member rule, env entry, schedule rule"]
+    U -->|code| E["extension: exec, scheme, mimetype, provider, http-materializer, module"]
+```
+
+| Surface | What it is | Code in the daemon |
+| --- | --- | --- |
+| Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill roots | none |
+| Definition | a skill, MCP server, A2A agent, member rule, env entry or schedule rule, managed by its family's six verbs | none; an MCP server or A2A agent runs elsewhere |
+| Plugin | an Agent Plugin carrying skills and MCP servers, from npm or a plugin root | none, unless it declares an extension |
+| Hook | the operator's command on lifecycle events (`plurnk-hooks`) | none |
+| Client | an application or agent driving an existing face | none |
+| Extension | trusted native code of one kind: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer` | in-process |
+| Module | the kind that joins the daemon lifecycle as a family, a face or an observer | in-process, in the lifecycle |
+
+The rows run from least to most invasive, and each row down costs trust and maintenance. Delivery is
+orthogonal to kind: an MCP server is the same definition whether it arrives from the operator's
+`mcp.json`, a plugin's `mcp.json` or the model's `add`, and the cascade decides which wins. A project
+root never contributes code.
+
+| Organ | Why it is not a seam |
+| --- | --- |
+| The operation grammar | One shape per concern; a second grammar taxes every model |
+| The log and the packet | The product: the model curates its own context |
+| Proposals | The one consent path for every mutation |
+| The cascade | The only home for a choice |
+| The worker graph | WORK, FORK, WAIT and SEND are the delegation story |
+| The Functionality coordinator | One management grammar for every family |
 
 ## Extension vocabulary
 

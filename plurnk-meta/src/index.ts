@@ -85,14 +85,15 @@ export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
     skill: "skills/plurnk/SKILL.md",
+    skillChapters: Object.freeze({ extensibility: "skills/plurnk/references/extensibility.md" } as const),
     docs: REFERENCE_TEACHING,
-
 } as const);
 
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.recap
     | typeof TEACHING_CORPUS.skill
+    | (typeof TEACHING_CORPUS.skillChapters)[keyof typeof TEACHING_CORPUS.skillChapters]
     | (typeof TEACHING_CORPUS.docs)[keyof typeof TEACHING_CORPUS.docs]["source"];
 
 
@@ -132,7 +133,7 @@ export default class Meta {
                 throw new ConfigurationError(pluginPath, `${pluginPath}: ${plugin.rejected.message}.`);
             }
             if (isObject(packageRecord?.plurnk) && packageRecord.plurnk.kind !== undefined) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: native capabilities must not also be declared in package.json#plurnk.`);
+                throw new ConfigurationError(pluginPath, `${pluginPath}: an extension must not also be declared in package.json#plurnk.`);
             }
             const native = plugin.manifest.extensions?.["ai.plurnk"];
             if (native === undefined) return null;

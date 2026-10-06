@@ -17,6 +17,7 @@ test("every retired form is refused by name with its successor", () => {
         "imports plugin code",
         "the Plurnk Plugin interface",
         "a native extension",
+        "a native capability under extensions.ai.plurnk",
         "a capability package and a capability framework",
         "every grammar leaf and the default leaf set",
         "malformed lifecycle hooks and the runtimes hook",

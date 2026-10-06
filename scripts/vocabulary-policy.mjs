@@ -29,6 +29,7 @@ export const RETIRED = [
     { label: "plugin for native code", re: /\bplugin[- ](?:code|imports?|contracts?|kinds?|famil(?:y|ies)|seams?)\b(?!=)/iu, successor: "\"extension\"" },
     { label: "Plurnk Plugin", re: /\bPlurnk Plugins?\b/u, successor: "\"Plurnk extension\"" },
     { label: "redundant qualifier", re: /\bnative extensions?\b/iu, successor: "\"extension\"" },
+    { label: "capability for code", re: /\bnative capabilit(?:y|ies)\b/iu, successor: "\"extension\"; a capability is what the admission policy admits" },
     { label: "capability package", re: /\bcapability[- ](?:packages?|frameworks?|famil(?:y|ies)|librar(?:y|ies))\b/iu, successor: "\"extension package\", \"framework\" or \"kind\"" },
     { label: "grammar extension", re: /\bgrammar[- ]extensions?\b/iu, successor: "\"grammar package\": a grammar declares no kind" },
     // "leaves" is often the verb ("a default leaves inspection available"), so an object after it is not a package;
