@@ -1884,6 +1884,7 @@ diagnostics are:
   | `READ → sh:///x#stdout <1,50>` | the target, `READ (sh:///x#stdout) <1,50>`; COPY/MOVE take one arrow per operand | `` `→ sh:///x#stdout` is how the log shows an address; it was read as the target. Write the target in parentheses: `READ (sh:///x#stdout) <1,50>`. `` |
   | `READ (a.py) <1,50> · 900`, `· 320 tokens`, a bare `·` | nothing: the token charge is dropped, on the heading or after a matcher | `` `· 900` is the token charge the log shows on a heading; it is not part of an operation and was ignored. `` |
   | `FIND (x) /re/ · locate the sign handling` | the aside | `` `· locate the sign handling` was read as the aside; a note on an operation is written `<!-- locate the sign handling -->`. `` |
+  | `FIND (x) <84,180> · no <!-- read the helpers -->` | the comment is the aside; the dot note before it is stray text, dropped | `` `· no` was ignored; the aside is `<!-- read the helpers -->`. `` |
 
   The arrow's path runs to the next space, `<` or `[`; a `·` never begins a heading matcher. In
   distinct recorded benchmark emissions the arrow form opened 40 headings and the charge ended 52,

@@ -325,6 +325,7 @@ export default class PlurnkParser {
                 ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
                 : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
                     : note.kind === "aside" ? AstBuilder.dotAsideAdvisory(note.text.replace(/^\u00B7[ \t]*/u, "").trim())
+                    : note.kind === "stray" ? AstBuilder.strayDotAdvisory(note.text.trim(), statement.aside)
                     : note.kind === "scope" ? PlurnkParser.#scopelessAdvisory(statement, note.text)
                         : `\`${note.text}\` was read as the scope \`<${note.text}>\`; a scope is written in angle brackets.`;
             // COPY and MOVE show both operands in one corrected line: say it once.

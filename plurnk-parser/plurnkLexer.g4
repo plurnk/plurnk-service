@@ -132,6 +132,15 @@ public takeHeadingNotations(): Array<{ line: number; column: number; kind: strin
     this.headingNotations = [];
     return taken;
 }
+// {§log-heading-notation} - a comment later on the line, before its end or a fence: the comment is the aside,
+// and a middle-dot note before it is stray text.
+private asideCommentLater(): boolean {
+    let cursor = 1;
+    for (let c = this.inputStream.LA(cursor); c > 0 && c !== 0x0A && c !== 0x0D && c !== 0x60; c = this.inputStream.LA(++cursor)) {
+        if (c === 0x3C && this.inputStream.LA(cursor + 1) === 0x21 && this.inputStream.LA(cursor + 2) === 0x2D && this.inputStream.LA(cursor + 3) === 0x2D) return true;
+    }
+    return false;
+}
 // The offset past horizontal whitespace, digits and a following "tokens" word after the middle dot at LA(1).
 private afterCharge(): { offset: number; digits: boolean } {
     let cursor = this.skipHorizontal(2);
@@ -671,8 +680,11 @@ SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.opener
 SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.slotReady = true; this.metadataReady = true; this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
 // {§log-heading-notation} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
 SLOTS_CHARGE : { this.slotReady && this.chargeAhead() }? '\u00B7' [ \t]* ([0-9]+ ([ \t]+ 'tokens')?)? { this.noteNotation("charge"); } -> skip ;
+// {§log-heading-notation} - ` · words` before a comment on the same line is stray text, skipped and named: the
+// comment is the aside (#1005).
+SLOTS_DOT_BEFORE_ASIDE : { this.slotReady && !this.chargeAhead() && this.asideCommentLater() }? '\u00B7' ( ~[\r\n`<] | '<' ~[!\r\n`] )* { this.noteNotation("stray"); } -> skip ;
 // {§log-heading-notation} - ` · words` after the slots is a note on the operation: the aside.
-SLOTS_DOT_ASIDE : { this.slotReady && !this.chargeAhead() }? '\u00B7' [ \t]* ~[ \t\r\n`] ~[\r\n`]* { this.noteNotation("aside"); } -> type(ASIDE) ;
+SLOTS_DOT_ASIDE : { this.slotReady && !this.chargeAhead() && !this.asideCommentLater() }? '\u00B7' [ \t]* ~[ \t\r\n`] ~[\r\n`]* { this.noteNotation("aside"); } -> type(ASIDE) ;
 // {§bare-anchor-scope} - an EDIT's `@abcde` (or `@abcde,@fghij`) alone where the scope goes is that scope.
 SLOTS_BARE_ANCHOR : { this.slotReady && this.openOp === "EDIT" && this.bareAnchorAhead() }? LINE_ANCHOR (',' ' '? LINE_ANCHOR)? { this.noteNotation("anchor"); this.text = "<" + this.text + ">"; } -> type(L_MARKER) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;

@@ -189,6 +189,11 @@ export default class AstBuilder {
             : `\`${written.trim()}\` is the token charge the log shows on a heading; it is not part of an operation and was ignored.`;
     }
 
+    // {§log-heading-notation} — a middle-dot note before a comment: the comment is the aside, the note is named (#1005).
+    static strayDotAdvisory(written: string, aside: string | null): string {
+        return `\`${written}\` was ignored; the aside is \`<!-- ${aside ?? ""} -->\`.`;
+    }
+
     static dotAsideAdvisory(aside: string): string {
         return `\`\u00B7 ${aside}\` was read as the aside; a note on an operation is written \`<!-- ${aside} -->\`.`;
     }

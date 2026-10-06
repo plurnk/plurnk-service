@@ -66,6 +66,16 @@ test("{§log-heading-notation} ` · words` after the slots or a closed regex is 
     assert.equal(statements("```READ (a.py) · first lines\n```")[0]?.aside, "first lines");
 });
 
+test("{§log-heading-notation} a middle-dot note before a comment is stray text: the comment is the aside (recorded deepseek FIND, #1005)", () => {
+    const input = "```FIND (src/_pytest/assertion/util.py) <84,180> \u00B7 no <!-- read the seq/diff helpers -->\n```";
+    const [find] = statements(input);
+    assert.equal(find?.aside, "read the seq/diff helpers", "the comment wins; nothing nests");
+    assert.deepEqual(find?.op === "FIND" ? find.lineMarker : null, { marks: [84, 180] });
+    assert.equal(heading(input), "FIND (src/_pytest/assertion/util.py) <84,180> <!-- read the seq/diff helpers -->");
+    assert.deepEqual(warnings(input), ["`\u00B7 no` was ignored; the aside is `<!-- read the seq/diff helpers -->`."]);
+    assert.equal(statements("```READ (a.py) \u00B7 first lines\n```")[0]?.aside, "first lines", "a dot note with no comment is still the aside");
+});
+
 test("{§bare-target} a target written without parentheses is refused with the line that runs (recorded headings)", () => {
     assert.deepEqual(errors("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"), [
         "`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes.",
