@@ -12,7 +12,7 @@ process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 // Every temporary directory this suite creates is tracked and removed after the run.
 // mkdtemp otherwise leaks a dir per call permanently, and this suite is the
-// family's heaviest generator. One after() rms them all — a green OR red run
+// heaviest generator. One after() rms them all — a green OR red run
 // leaves nothing behind.
 const tmpDirs: string[] = [];
 const mkTmp = async (prefix: string): Promise<string> => {
@@ -175,7 +175,7 @@ test("discover: validates trusted attribution before admission, but never valida
     });
 });
 
-test("discover: an array kind claims no exec family", async () => {
+test("discover: an array kind declares no exec extension", async () => {
     const dualDir = await makePkg({
         name: "@plurnk/plurnk-execs-dynamic-fixture",
         plurnk: { kind: ["exec", "scheme"], runtimes: [{ name: "dual", glyph: "🔌" }] },
@@ -467,7 +467,7 @@ test('trust gate OFF ("0"): every installed package loads, nothing skipped', asy
 });
 
 // Runtime policy ({§executor-policy}): the boot layer, applied at registration across
-// EVERY plugin's tags — a disabled tag is absent, not "Available-off".
+// EVERY extension's tags — a disabled tag is absent, not "Available-off".
 const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> => {
     const prev = Object.fromEntries(Object.keys(kv).map((k) => [k, process.env[k]]));
     for (const [k, v] of Object.entries(kv)) {

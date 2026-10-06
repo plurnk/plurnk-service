@@ -36,7 +36,7 @@ export const defaultGrammarViolations = (manifest) => [
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar extension and must not ship by default ({§mimetype-optional-grammars})`),
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-optional-grammars})`),
 ];
 
 // ARCHITECTURE.md § Package principles — over plurnk dependencies and peer dependencies, the package

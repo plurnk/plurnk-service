@@ -43,4 +43,4 @@ PLURNK_SCHEDULE_heartbeat={"rule":"FREQ=HOURLY","target":"worker://plurnkbot","p
   worker; no WAIT holds a loop for it.
 
 `SPEC.md` is the specification; `docs/schedule.md` is the model-facing
-teaching beneath the generated family document.
+teaching beneath the generated runtime document.

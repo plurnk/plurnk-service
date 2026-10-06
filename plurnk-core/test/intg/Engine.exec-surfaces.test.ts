@@ -48,7 +48,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.logPath).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
                 "full-text search and path-glob selection return the same canonical leaf");
             assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
-                "KILL selects that exact executor family and retires the receipt from context");
+                "KILL selects that exact runtime's receipts and retires them from context");
         } finally { ws.close(); }
     });
 });

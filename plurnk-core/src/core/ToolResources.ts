@@ -229,7 +229,7 @@ export default class ToolResources {
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
-        // {§scheme-catalog-aside} — the family's summary is its complete menu: every tool inside
+        // {§scheme-catalog-aside} — the runtime's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
             source.runtime,
@@ -237,7 +237,7 @@ export default class ToolResources {
             tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );
-        const familyInvocations = tools.map((tool) => PlurnkParser.frame(
+        const toolInvocations = tools.map((tool) => PlurnkParser.frame(
             invocationHeader(
                 source.runtime, tool.invocation, tool.target, tool.summary,
                 tool.invocation.inputSchema === undefined ? undefined : schemaPath(tool.target),
@@ -261,17 +261,17 @@ export default class ToolResources {
         const detailsBlock = [source.details.trimEnd(), ...sections]
             .filter((part) => part.length > 0)
             .join("\n\n");
-        const family = renderDocument(
+        const runtimeDocument = renderDocument(
             source.runtime,
             summary,
             [
                 "## Tools", "",
                 ...catalog.map(({ pathname }) => `Complete tool definitions: ${inlineCode(`worker://${pathname}`)}.\n`),
-                familyInvocations.join("\n\n"),
+                toolInvocations.join("\n\n"),
             ],
             detailsBlock,
         );
-        return [{ pathname, content: family }, ...tools.flatMap((tool) =>
+        return [{ pathname, content: runtimeDocument }, ...tools.flatMap((tool) =>
             tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
                 schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "",
             )]), ...catalog];

@@ -10,7 +10,7 @@ occurrence, and optionally the proposal policy of a loop the delivery starts
 ({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
 coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `enable`,
 `disable`, `remove`. The adapter publishes no documents of its own; the
-family document's authored body is `docs/schedule.md`
+runtime document's authored body is `docs/schedule.md`
 ({§functionality-model-projection}).
 
 ## §schedule-module Daemon module
@@ -111,7 +111,7 @@ definitions and state compose through {§configuration-definition-resolution}.
 Offline validation uses the same rule normalization as construction, without arming
 or persisting a rule ({§operator-config-offline-validation}).
 
-§problems-schedule **Schedule Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-schedule **Schedule Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

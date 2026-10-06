@@ -44,8 +44,8 @@ flowchart LR
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
     skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
-    providers["Provider family"] --> core
-    capabilities["Scheme / executor / mimetype families"] --> core
+    providers["Provider framework"] --> core
+    frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
     a2a["A2A exterior adapter<br/>client + agent"] --> core
     schedule["Schedule family<br/>recurring worker messages"] --> core
@@ -88,7 +88,7 @@ The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes 
 update-advertising action: protocol compatibility and any version negotiation belong to the
 client-interface module that publishes that protocol.
 
-Family packages define extension contracts. Installed adapters implement those
+Framework packages define extension contracts. Installed extensions implement those
 contracts. Core composes them but does not absorb their domain logic. Shared
 facts have one schema and one specification owner. Frameworks do not depend on
 the extensions of their kind; the service manifest is the sole owner of its
@@ -127,14 +127,16 @@ by name with its successor (#1009). A quotation that must name a retired form ca
 | extension | Native Plurnk code the daemon loads, of one kind, declared once in `package.json#plurnk` or a plugin's `extensions.ai.plurnk` | A file extension, always said in full; a protocol's extension, always protocol-qualified |
 | kind | Which seam an extension fills: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer`, `module` | A family, which manages definitions |
 | framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the host loads | A capability, which is what policy admits |
+| grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
 | module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
-| family | Core's six-verb manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind |
+| family | Core's six-verb manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
 | face | A module role that serves a protocol: AG-UI, inbound A2A, ACP | |
 | hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |
 | organ | A subsystem that is not an extension point | |
 | capability | The admission policy's word, and what it admits | A package or framework |
-| runtime, tool | The fence the model invokes; one invocation inside it | |
+| runtime, tool | The fence the model invokes, taught by its runtime document; one invocation inside it | A family |
+| leaf | A path's or a tree's last segment | A package |
 
 ## Documentation authority
 

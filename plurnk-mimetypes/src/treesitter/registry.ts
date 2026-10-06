@@ -220,7 +220,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         revision: "1",
         importMapping: () => import("./julia.ts"),
     },
-    // F# is optional (#541): its grammar extension is 12 MB of wasm, twice any other, for a niche
+    // F# is optional (#541): its grammar package is 12 MB of wasm, twice any other, for a niche
     // audience. `npm i @plurnk/plurnk-mimetypes-grammar-fsharp @plurnk/plurnk-mimetypes-grammar-fsharp-signature`
     // beside the service lights both up; until then `.fs`/`.fsx`/`.fsi` degrade to plain text.
     {

@@ -16,34 +16,34 @@ npm install @plurnk/plurnk-mimetypes
 ```
 
 Node ≥ 26, ESM. The framework is intentionally lean: it supplies detection,
-discovery, projection, and authoring APIs without installing its leaf
-consumers. Direct users install the format handlers and artifacts they want;
+discovery, projection, and authoring APIs without installing the packages
+that build on it. Direct users install the format handlers and artifacts they want;
 the default `@plurnk/plurnk-service` installation declares its standard set.
 
 The default service installs every supported Tree-sitter grammar except the
-optional ones. Direct framework consumers can install only the independent WASM
-leaves they need; discovery already carries their detection metadata.
+optional ones. Direct framework consumers can install only the independent grammar
+packages they need; discovery already carries their detection metadata.
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
 ```
 
-F# is optional: its leaf is twelve megabytes of wasm, twice any other. An
-operator who wants it installs both leaves beside the service, and ordinary
+F# is optional: its grammar package is twelve megabytes of wasm, twice any other. An
+operator who wants it installs both packages beside the service, and ordinary
 package resolution admits them with no manifest change; until then `.fs`,
 `.fsx`, and `.fsi` degrade to plain-text coordinates like any language whose
-leaf is absent.
+grammar package is absent.
 
 ```sh
 npm install @plurnk/plurnk-mimetypes-grammar-fsharp @plurnk/plurnk-mimetypes-grammar-fsharp-signature
 ```
 
-Third-party handler packages are independent in the same way: installing a leaf
+Third-party handler packages are independent in the same way: installing one
 is sufficient for discovery to register its declarations, subject to the shared
 trust gate.
 
-Detection recognizes registry languages independently of grammar-extension
-installation. Adding or removing a leaf changes structural availability without
+Detection recognizes registry languages independently of grammar package
+installation. Adding or removing a grammar package changes structural availability without
 changing detection code. A detected mimetype whose grammar isn't installed
 **degrades**: `ok` stays true, metadata is real, requested channels come back
 empty, and the missing package is on `ProcessResult.grammarMissing`. Pass
@@ -184,7 +184,7 @@ before importing handler code.
 
 ## Public surface
 
-| Family              | Root exports                                                                                                               |
+| Area                | Root exports                                                                                                               |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
 | Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, projection identity, artifact seams, lifecycle.   |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |

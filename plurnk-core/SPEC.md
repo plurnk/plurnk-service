@@ -279,7 +279,7 @@ filter a row.
 
 §actor-boundary-attached-functionality **Attachment selects a conversation,
 not an environment owner.** Client management commands mutate workspace
-Functionality ({§module-workspace-capabilities}); executable families, runtime
+Functionality ({§module-workspace-capabilities}); runtimes, runtime
 schemes, and tools resolve by `workspaceId`. Operations journal in the
 submitting actor's `workerId` ({§connection-lifecycle}), which must belong to
 the workspace. Runtime and policy resolution require no second worker identity.
@@ -373,7 +373,7 @@ Catalogs select documents independently of their authored bodies; ordinary READ
 supplies examples and complete instructions on demand. A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
-tool-family rows also carry the concise `{§scheme-catalog-aside}` that drives
+runtime rows also carry the concise `{§scheme-catalog-aside}` that drives
 on-demand capability discovery. Ordinary surveys use FIND without a scope
 ({§markerless-first-page}), whose range metadata reports the returned set against the
 complete result total; only the small capability-reference surfaces
@@ -2744,7 +2744,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   derivation's `{§mimetype-summary}`. Prose is clipped to at most `PLURNK_SERVICE_CATALOG_SUMMARY_CHARS` Unicode
   code points including a visible terminal ellipsis, so a row stays one line
   of orientation; an invocation-form witness — a summary that is one fenced
-  operation, the shape every tool family's summary takes
+  operation, the shape a runtime's tool summary takes
   ({§tools-resource-materialization}) — is shown whole, every tool named,
   because the discovery row exists so the model can invoke without a READ and
   a menu that is cut is no menu. Absent metadata is omitted.
@@ -3725,7 +3725,7 @@ freshness remains the owning family's concern.
 | Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format leaves.                                |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
-|           |                                    | `image`, `application-pdf` (header-only, {§mimetype-pdf-facts}), and every `grammar-{slug}` extension in the framework's tree-sitter registry ({§mimetype-grammar-extensions}), all under `@plurnk/plurnk-mimetypes-*`. |
+|           |                                    | `image`, `application-pdf` (header-only, {§mimetype-pdf-facts}), and every `grammar-{slug}` package in the framework's tree-sitter registry ({§mimetype-grammar-packages}), all under `@plurnk/plurnk-mimetypes-*`. |
 | Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` leaves under the `@plurnk/plurnk-execs-*` prefix.                                               |
 
 The independently published `tokenizers` artifact is an opt-in leaf. Installing
@@ -3746,8 +3746,8 @@ dispatcher contract.
 
 The executor registry discovers installed runtimes, probes availability, and
 routes ```` ```<runtime> ````; core contributes orchestration and the output-scheme
-adapter, not runtime implementations. Optional and third-party leaves extend
-each family by installation and discovery; they never require a framework or
+adapter, not runtime implementations. Optional and third-party extensions extend
+each kind by installation and discovery; they never require a framework or
 service manifest edit.
 
 ---
@@ -5503,9 +5503,9 @@ content-offset position: reasoning coordinates do not address the content source
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
 runtime enabled for the current worker with an admitted invocation materializes one
-family document at `worker:///_plurnk/plurnk/<runtime>.md`. A general runtime's
+runtime document at `worker:///_plurnk/plurnk/<runtime>.md`. A general runtime's
 document contains its {§executor-tool-document}; a runtime with an exact
-{§executor-tool-registry} materializes a compact catalog at the same address. The family document summarizes
+{§executor-tool-registry} materializes a compact catalog at the same address. The runtime document summarizes
 the server or runtime, lists every enabled target as a directly copyable
 executable fence named for the runtime, with its input preview ({§operation-aside} carries the
 target one-liner; no invocation dispatch would reject is ever advertised).
@@ -5516,13 +5516,13 @@ preserve the full tool description and raw input schema under
 Turn0 rows. A schema-backed general runtime uses `<runtime>/input.md`.
 Non-schema targets retain supplemental details in family sections.
 Tool-result/output schemas remain ordinary evidence, not teaching. Unknown-target
-recovery names the published family document through the same path owner as
+recovery names the published runtime document through the same path owner as
 materialization, including a runtime's declared `resourcesPath`.
 
 ```mermaid
 flowchart LR
-    Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
-    Families --> Read["READ selected family<br/>only when needed"]
+    Survey["Turn 0 FIND<br/>tools/*.md"] --> Runtimes["runtime paths + summaries"]
+    Runtimes --> Read["READ selected runtime<br/>only when needed"]
     Read --> Exec["execution with an aside"]
     Read --> Schema["READ linked input schema<br/>when the preview is insufficient"]
     Schema --> Exec
@@ -5531,19 +5531,19 @@ flowchart LR
 §tools-resource-materialization The runtime registry, workspace capability policy,
 tool resources, and dispatch use one effective workspace snapshot. A
 disabled, unavailable, detached, replaced, or removed runtime has no
-tool resource; an exact registry's empty set publishes no executable family and
+tool resource; an exact registry's empty set publishes no runtime and
 admits no invocation. Reconciliation deletes stale documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
 `resourcesPath` — its generated-doc root relative to the workspace's generated
 subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
-`_plurnk/plurnk` namespace; present (attached MCP families: `/tools`),
-the family document materializes at `_plurnk` + that root in the
-shared scratch. Turn 0 surveys the families (`FIND
+`_plurnk/plurnk` namespace; present (attached MCP servers: `/tools`),
+the runtime document materializes at `_plurnk` + that root in the
+shared scratch. Turn 0 surveys the runtimes (`FIND
 (worker:///_plurnk/tools/*.md)`, one row per
 server carrying its summary) and, for each server named in
-`PLURNK_MCP_EXPANDED`, adds one FIND over its family document matching the
+`PLURNK_MCP_EXPANDED`, adds one FIND over its runtime document matching the
 complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)`
 with a multiline regex over matching fences), so turn 0 names every tool with its aside and
 signature — one row per tool, paged like every survey. Capability attenuation
@@ -6186,7 +6186,7 @@ caller's own run directory.
 
 Every Problem code core mints is named here under its family ({§problem-error-carrier} carries it); the root lint (`scripts/problem-codes.mjs`) refuses a code no owning SPEC names.
 
-§problems-dispatch **Dispatch Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-dispatch **Dispatch Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -6224,7 +6224,7 @@ address's authority is an executor available to the workspace — an MCP server'
 otherwise it lists the schemes the workspace registers. READ, FIND, KILL and resource selection share
 the sentence.
 
-§problems-content **Content and transfer Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-content **Content and transfer Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -6241,7 +6241,7 @@ the sentence.
 | `proposal-apply-missing` | 500 | The source scheme accepted its MOVE proposal without applying the source mutation. |
 | `line-anchor-collision` | 409 | READ coordinates collided with current content at *target*. |
 
-§problems-file **File scheme Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-file **File scheme Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -6260,7 +6260,7 @@ the sentence.
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
 | `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root. |
 
-§problems-exec **Execution Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-exec **Execution Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -6269,7 +6269,7 @@ the sentence.
 | `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-near-miss}): The execution at /*id* is `*runtime*:///*id*`. |
 | `input-closed` | 410 | Execution input is closed. |
 
-§problems-entries **Entry scheme Problems (log, worker, entries).** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-entries **Entry scheme Problems (log, worker, entries).** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -6282,7 +6282,7 @@ the sentence.
 | `message-empty` | 400 | SEND has no message text or attachments. |
 | `scope-unsupported` | 400 | A worker SEND takes no scope. |
 
-§problems-functionality **Server and Functionality Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-functionality **Server and Functionality Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

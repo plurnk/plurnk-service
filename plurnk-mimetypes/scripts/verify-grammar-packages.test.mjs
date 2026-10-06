@@ -3,10 +3,10 @@ import { mkdtempDisposable, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { assertGrammarLeafContract } from "./verify-grammar-packages.mjs";
+import { assertGrammarPackageContract } from "./verify-grammar-packages.mjs";
 
-const makeLeaf = async (overrides = {}) => {
-    const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-extension-contract-"));
+const makePackage = async (overrides = {}) => {
+    const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-package-contract-"));
     const directory = temporary.path;
     await mkdir(path.join(directory, "scripts"));
     const manifest = {
@@ -66,40 +66,40 @@ const makeLeaf = async (overrides = {}) => {
 };
 
 test("accepts one exact, locked, strictly authorized local CLI", async () => {
-    await using leaf = await makeLeaf();
-    await assert.doesNotReject(assertGrammarLeafContract(leaf.directory));
+    await using pkg = await makePackage();
+    await assert.doesNotReject(assertGrammarPackageContract(pkg.directory));
 });
 
 test("rejects a floating CLI version", async () => {
-    await using leaf = await makeLeaf({
+    await using pkg = await makePackage({
         manifest: {
             devDependencies: { "tree-sitter-cli": "^0.26.0" },
             allowScripts: { "tree-sitter-cli": true },
         },
     });
-    await assert.rejects(assertGrammarLeafContract(leaf.directory), /must be an exact version/);
+    await assert.rejects(assertGrammarPackageContract(pkg.directory), /must be an exact version/);
 });
 
 test("rejects an ad hoc or uncontained dependency install", async () => {
-    await using leaf = await makeLeaf({
+    await using pkg = await makePackage({
         script: 'await run("npm", ["install", "--no-save", "tree-sitter-cli@^0.26.0"], { cwd: work });',
     });
-    await assert.rejects(assertGrammarLeafContract(leaf.directory), /retains an ad hoc CLI install/);
+    await assert.rejects(assertGrammarPackageContract(pkg.directory), /retains an ad hoc CLI install/);
 
-    await using upstreamLeaf = await makeLeaf({
+    await using upstreamPackage = await makePackage({
         script: 'await run("npm", ["install"], { cwd: path.join(work, "src") });',
     });
-    await assert.rejects(assertGrammarLeafContract(upstreamLeaf.directory), /uncontained upstream dependency install/);
+    await assert.rejects(assertGrammarPackageContract(upstreamPackage.directory), /uncontained upstream dependency install/);
 });
 
 test("rejects a non-exact or persistent upstream checkout", async () => {
-    await using shortPinLeaf = await makeLeaf({ pin: "0123456\n" });
-    await assert.rejects(assertGrammarLeafContract(shortPinLeaf.directory), /full git commit SHA/);
+    await using shortPinPackage = await makePackage({ pin: "0123456\n" });
+    await assert.rejects(assertGrammarPackageContract(shortPinPackage.directory), /full git commit SHA/);
 
-    await using uncheckedPinLeaf = await makeLeaf({ pinValidation: "" });
-    await assert.rejects(assertGrammarLeafContract(uncheckedPinLeaf.directory), /must validate the full source pin/);
+    await using uncheckedPinPackage = await makePackage({ pinValidation: "" });
+    await assert.rejects(assertGrammarPackageContract(uncheckedPinPackage.directory), /must validate the full source pin/);
 
-    await using persistentLeaf = await makeLeaf({
+    await using persistentPackage = await makePackage({
         acquisition: [
             'const source = (await readFile(path.join(repoRoot, ".grammar-source"), "utf-8")).trim();',
             'const work = await mkdtemp(path.join(tmpdir(), "grammar-fixture-"));',
@@ -107,20 +107,20 @@ test("rejects a non-exact or persistent upstream checkout", async () => {
             'await run("git", ["checkout", pin], { cwd: path.join(work, "src") });',
         ].join("\n"),
     });
-    await assert.rejects(assertGrammarLeafContract(persistentLeaf.directory), /disposable temporary checkout/);
+    await assert.rejects(assertGrammarPackageContract(persistentPackage.directory), /disposable temporary checkout/);
 });
 
 test("rejects an invalid or unpublished source locator", async () => {
-    await using invalidSourceLeaf = await makeLeaf({ source: "git@example.test:fixture.git\n" });
-    await assert.rejects(assertGrammarLeafContract(invalidSourceLeaf.directory), /HTTPS git URL/);
+    await using invalidSourcePackage = await makePackage({ source: "git@example.test:fixture.git\n" });
+    await assert.rejects(assertGrammarPackageContract(invalidSourcePackage.directory), /HTTPS git URL/);
 
-    await using unpublishedSourceLeaf = await makeLeaf({
+    await using unpublishedSourcePackage = await makePackage({
         manifest: { files: [".grammar-pin"] },
     });
-    await assert.rejects(assertGrammarLeafContract(unpublishedSourceLeaf.directory), /publish .grammar-source/);
+    await assert.rejects(assertGrammarPackageContract(unpublishedSourcePackage.directory), /publish .grammar-source/);
 });
 
 test("rejects an abrupt exit that bypasses disposal", async () => {
-    await using leaf = await makeLeaf({ script: "process.exit(1);" });
-    await assert.rejects(assertGrammarLeafContract(leaf.directory), /bypasses temporary checkout disposal/);
+    await using pkg = await makePackage({ script: "process.exit(1);" });
+    await assert.rejects(assertGrammarPackageContract(pkg.directory), /bypasses temporary checkout disposal/);
 });

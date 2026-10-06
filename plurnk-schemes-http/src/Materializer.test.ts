@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import MaterializerRegistry from "./Materializer.ts";
 
-test("{§http-materializer-extensions} a standard bundle uses lazy family discovery without a daemon module", async (t) => {
+test("{§http-materializer-extensions} a standard bundle uses lazy materializer discovery without a daemon module", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "materializer-extension-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const plugin = join(root, "plugin");

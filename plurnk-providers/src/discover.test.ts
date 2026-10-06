@@ -79,7 +79,7 @@ test("{§provider-grammar-transport} discover: an invalid grammarStyle fails lou
     await assert.rejects(discover({ cwd: root }), /grammarStyle must be "none" or "llamacpp"/);
 });
 
-test("discover: an array kind claims no provider family", async (t) => {
+test("discover: an array kind declares no provider extension", async (t) => {
     const root = await buildModules(t, {
         "@acme/dual": {
             name: "@acme/dual",

@@ -165,9 +165,9 @@ export interface NotifyCaps {
 }
 
 // ── projection ───────────────────────────────────────────────────────────
-// Ask the consumer's configured mimetype family for the model-facing text
+// Ask the consumer's configured mimetype framework for the model-facing text
 // projection of acquired content. Acquiring schemes produce source representations; they do
-// not select or instantiate the reader family. Keeping that reader capability
+// not select or instantiate the readers. Keeping that reader capability
 // on the consumer makes direct READ and executor-prefetch use the same
 // configured projection instead of shipping raw HTML down one path. A returned
 // object is a present projection even when content is empty; null alone means

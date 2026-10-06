@@ -20,6 +20,14 @@ test("every retired form is refused by name with its successor", () => {
         "a capability package and a capability framework",
         "every grammar leaf and the default leaf set",
         "malformed lifecycle hooks and the runtimes hook",
+        "set PLURNK_MIMETYPES_FAMILY_ROOT=..",
+        "see {\u00A7grammar-family-lifecycle}",
+        "calls assertGrammarLeafContract",
+        "an optional grammar extension",
+        "Subprocess leaves inherit this contract",
+        "the executor family's discovery and a trusted family claim",
+        "the tool family and its family document",
+        "Every code this family mints",
     ]) {
         const violations = refused(line);
         assert.ok(violations.length > 0, `refused: ${line}`);
@@ -28,7 +36,7 @@ test("every retired form is refused by name with its successor", () => {
     assert.equal(new Set(RETIRED.map(({ label }) => label)).size >= 9, true, "the retired forms are grouped by meaning");
 });
 
-test("the standard's words, the reserved writer tier and ordinary English pass", () => {
+test("the standard's words, core's families, the reserved writer tier and ordinary English pass", () => {
     for (const line of [
         "an Agent Plugin bundle carries plugin.json and its skills",
         "a plugin's mcp.json joins the MCP family",
@@ -36,6 +44,8 @@ test("the standard's words, the reserved writer tier and ordinary English pass",
         "an invalid default leaves client inspection available",
         "a misconfigured executor leaves its sibling usable",
         "an executor leaf is a log coordinate's last segment",
+        "the schedule family's six verbs, where the family contract requires it",
+        "a closed model family, the JSON-family check, and operation families",
         "T2: producer=plugin kind=operation",
     ]) {
         assert.deepEqual(refused(line), [], line);

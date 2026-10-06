@@ -201,7 +201,7 @@ export default class Mimetypes {
 
     // {§extension-attribution} Static package tags remain always-on. Runtime
     // collection consults only handler objects already loaded by ordinary
-    // mimetype work, preserving the family's lazy-loading contract.
+    // mimetype work, preserving the framework's lazy-loading contract.
     async attributions(context: ExtensionAttributionContext): Promise<ExtensionAttribution> {
         await this.ready();
         const lists: ExtensionAttribution[] = [...this.#discovered.packageAttributions.values()];

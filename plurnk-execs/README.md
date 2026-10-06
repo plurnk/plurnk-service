@@ -12,7 +12,7 @@ npm install @plurnk/plurnk-execs
 ```
 
 Install executor extensions beside the framework to assemble a standalone host.
-Any compatible third-party leaf remains discoverable without changing the
+Any compatible third-party extension remains discoverable without changing the
 framework or service.
 
 ## Documentation
@@ -82,12 +82,12 @@ acceptance is not a same-turn result. See {§executor-effect}.
 
 The execution's `(target)` slot is runtime-specific:
 
-| Runtime family | Typical mapping                                                   |
+| Runtime shape  | Typical mapping                                                   |
 | -------------- | ----------------------------------------------------------------- |
 | Data           | Target is input; body is the program (`jq`, SQLite, WebAssembly). |
 | Executable     | Target is the program; body is its stdin (shell, Python 3).       |
 
-The consumer supplies both `cwd` and a resolved `target`; the leaf maps them
+The consumer supplies both `cwd` and a resolved `target`; the executor maps them
 to its tool rather than reconstructing filesystem or scheme policy.
 
 ### Own invocation metadata

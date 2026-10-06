@@ -328,8 +328,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 exactTarget === null ? "target-required" : "target-not-registered",
                 exactTarget === null ? 400 : 404,
                 exactTarget === null
-                    ? `Executable tool family '${runtime}' requires one registered tool target.`
-                    : `Executable tool family '${runtime}' has no registered target '${exactTarget}'.`,
+                    ? `Runtime '${runtime}' requires one registered tool target.`
+                    : `Runtime '${runtime}' has no registered target '${exactTarget}'.`,
                 {},
                 {
                     runtime,

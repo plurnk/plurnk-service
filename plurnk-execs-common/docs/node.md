@@ -13,7 +13,7 @@ console.log(JSON.stringify({ platform: os.platform(), cpus: os.cpus().length }))
 `worker://` and `skill://` targets. Relative imports resolve from the script;
 ordinary relative filesystem paths resolve from the working directory.
 Environment, working directory, channels, output on completion, exit status and lifetime
-are the executor family's, as `sh.md` states. Stdout is text, so structured
+are every subprocess executor's, as `sh.md` states. Stdout is text, so structured
 output is serialized (`console.log(JSON.stringify(value))`); a thrown error
 exits nonzero (status 500) with its stack on stderr.
 

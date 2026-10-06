@@ -183,7 +183,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
                 }] };
             },
     };
-    const familytool: RegistryEntry = {
+    const registrytool: RegistryEntry = {
         executor,
         namespaceOwner: { kind: "module", name: "crm fixture" },
         glyph: "?",
@@ -194,7 +194,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         detail: undefined,
     };
     assert.ok(sh.available, "the shell fixture is available");
-    const executors = new ExecutorRegistry(new Map<string, RegistryEntry>([["sh", sh], ["crm", familytool]]));
+    const executors = new ExecutorRegistry(new Map<string, RegistryEntry>([["sh", sh], ["crm", registrytool]]));
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

@@ -189,7 +189,7 @@ flowchart TD
     N --> O["third-party sorted, then @plurnk sorted"]
     E --> M["read package.json"]
     O --> M
-    M --> K{"exact mimetype-family claim?"}
+    M --> K{"exact mimetype-kind claim?"}
     K -->|no| Z["ignore package"]
     K -->|yes| P{"valid package name?"}
     P -->|no| F["throw MimetypeExtensionError"]
@@ -209,15 +209,15 @@ entry fills only unclaimed extension/filename keys.
 
 `Discovery.packageAttributions` contains one canonical fact for each package
 represented by at least one final package-sourced handler. A package whose
-handlers are all replaced by the family's later-claim collision rule contributes
+handlers are all replaced by the framework's later-claim collision rule contributes
 no discovery attribution; tree-sitter framework entries never contribute one.
 An instantiated package handler may additionally implement the synchronous
 attempt-time hook in {§extension-attribution}; attribution collection never forces
 an otherwise-lazy handler to load.
 
 §mimetype-extension-failure A missing manifest or package outside the mimetype
-family is ignored, and a withheld package is reported without importing its
-code. A trusted family claim with a malformed declaration fails discovery. A
+kind is ignored, and a withheld package is reported without importing its
+code. A trusted kind claim with a malformed declaration fails discovery. A
 registered handler's import, construction, or structural validation failure
 throws `MimetypeExtensionError` with package and mimetype identity and preserves
 its original cause when one exists.
@@ -443,7 +443,7 @@ class.
 | Detection returns null              | `{ mimetype: null, ok: false, totalLines: 0 }`; no channel fields.                                                                        |
 | Content path cannot be read         | `{ mimetype, ok: false, totalLines: 0 }`; no channel fields.                                                                              |
 | Registered handler cannot be loaded | `MimetypeExtensionError` propagates; no `ProcessResult`.                                                                                     |
-| Tree-sitter grammar extension is absent | Non-strict preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
+| Tree-sitter grammar package is absent | Non-strict preserves the mimetype and extent, returns empty requested structural channels, and sets `grammarMissing`; strict mode throws. |
 | `validate()` throws                 | The orchestrator throws `MimetypeInputError` with the original cause; no `ProcessResult`.                                                 |
 | Channel returns empty value         | The requested channel is successfully present with its declared empty representation.                                                     |
 | Channel throws                      | A typed source rejection propagates unchanged; an internal defect retains its exact cause under {§mimetype-derivation-evidence}. Adapters never infer source invalidity from an arbitrary exception. |
@@ -506,7 +506,7 @@ portability contract:
 
 | Priority | Backend                        | Selection rule                                                                                     | Published runtime                                     |
 |----------|--------------------------------|----------------------------------------------------------------------------------------------------|-------------------------------------------------------|
-| 1        | Framework tree-sitter registry | A faithful upstream grammar can build as clean WASM and use the shared mapping/runtime.            | Framework mapping plus one reproducible grammar extension. |
+| 1        | Framework tree-sitter registry | A faithful upstream grammar can build as clean WASM and use the shared mapping/runtime.            | Framework mapping plus one reproducible grammar package. |
 | 2        | Dedicated portable parser      | Registry tree-sitter cannot meet the contract, but another parser or independently built WASM can. | Separate handler package with prebuilt artifacts.     |
 | 3        | `antlr4ng` + grammars-v4       | No higher-priority backend is viable and a maintained ANTLR grammar satisfies extraction quality.  | Separate handler package; pure JavaScript runtime.    |
 | 4        | Focused hand-written extractor | No maintained grammar is viable and the syntax is simple enough for a small, reviewable scanner.   | Separate zero-dependency handler package.             |
@@ -556,7 +556,7 @@ the adapter never guesses that an arbitrary exception is source invalidity.
 For tree-sitter-backed handlers:
 
 1. The `web-tree-sitter` runtime ships with the framework as a direct dependency; no handler-side install needed.
-2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit ({§grammar-extension-reproducibility}).
+2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit ({§grammar-package-reproducibility}).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). Preserve that public method contract; construct parser-derived regions with `treeSitterSpan(...)` and `materializeTreeSitterSymbols(...)` ({§mimetype-parser-coordinates}). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
@@ -745,7 +745,7 @@ The runtime-neutral `Notice` shape and transient/nonterminal meaning are owned
 by `@plurnk/plurnk-contracts` ({§notice}). `process()` emits one warning per
 successful non-strict degradation:
 
-| Result signal       | Notice kind           | Required family data                         |
+| Result signal       | Notice kind           | Required data                                |
 |---------------------|-----------------------|----------------------------------------------|
 | `grammarMissing`    | `grammar_degraded`    | Mimetype and missing grammar package.        |
 
@@ -847,7 +847,7 @@ Channels are built **per request** ({§mimetype-channel-selection}): a requested
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
-## §mimetype-grammar-extensions 13. Per-grammar package architecture
+## §mimetype-grammar-packages 13. Per-grammar package architecture
 
 ### 13.1 Runtime boundary
 
@@ -858,16 +858,16 @@ Each Tree-sitter grammar lives in a PLURNK package that ships only its pre-built
 @plurnk/plurnk-mimetypes-grammar-{slug}           (per-grammar, one each)
 ```
 
-`TreeSitterLanguageHandler.loadParser()` resolves only `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm`. An absent leaf throws `GrammarNotInstalledError` with its package name.
+`TreeSitterLanguageHandler.loadParser()` resolves only `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm`. An absent grammar package throws `GrammarNotInstalledError` with its package name.
 
-Grammar extensions declare `web-tree-sitter` as a peer. That range includes every
+Grammar packages declare `web-tree-sitter` as a peer. That range includes every
 runtime minor against which the immutable WASM is verified; a successful local load
 does not excuse an invalid consumer dependency graph. Upstream grammar packages are
-build inputs to those leaves, never dependencies of the framework.
+build inputs to those grammar packages, never dependencies of the framework.
 
-### 13.2 Grammar extension contract
+### 13.2 Grammar package contract
 
-A leaf contains `{slug}.wasm` at its package root. The framework owns mappings and registry metadata; the leaf owns its upstream pin and reproducible build.
+A grammar package contains `{slug}.wasm` at its root. The framework owns mappings and registry metadata; the grammar package owns its upstream pin and reproducible build.
 
 ### 13.3 Registry entry shape
 
@@ -887,41 +887,41 @@ interface TreeSitterLanguageEntry {
 The framework is lean: it owns detection, discovery, projection contracts, and
 the built-in tree-sitter registry, but no runtime dependency on a format
 handler, grammar, or tokenizer artifact. The consumer's
-manifest assembles leaves. `@plurnk/plurnk-service` owns its default set in
+manifest assembles its packages. `@plurnk/plurnk-service` owns its default set in
 {§bundled-set}; a direct framework consumer may choose another set.
 
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, or tokenizer artifact is implied.                        |
-| Default composed service                   | The service manifest installs every registered grammar extension and its standard format handlers.                                                                        |
-| Framework plus selected grammar extensions | Only those language WASM packages add structural parsing; for example the Python and Rust extensions.                                                         |
+| Default composed service                   | The service manifest installs every registered grammar package and its standard format handlers.                                                                        |
+| Framework plus selected grammar packages   | Only those language WASM packages add structural parsing; for example the Python and Rust grammar packages.                                                         |
 | Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§extension-trust-boundary}.                |
-| Detected language with absent grammar extension | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
+| Detected language with absent grammar package | `process()` returns honest metadata, empty requested structural channels, and `grammarMissing`; `{ strict: true }` throws `GrammarNotInstalledError`. |
 
-`detect()` is install-state-blind for tree-sitter grammar extensions: it returns the
-registered source mimetype whether or not that leaf is installed. Missing
+`detect()` is install-state-blind for tree-sitter grammar packages: it returns the
+registered source mimetype whether or not that package is installed. Missing
 grammar degradation does not substitute a different mimetype or body.
 
-§mimetype-optional-grammars **An optional grammar is an extension, not a default.**
+§mimetype-optional-grammars **An optional grammar is an operator-installed package, not a default.**
 A registry entry marked `optional: true` keeps its mapping, detection, and
-projection revision in the framework, but its leaf is not part of the composed
+projection revision in the framework, but its package is not part of the composed
 service's default set: the service manifest must not depend on it, and an
-operator who wants the language installs the leaf beside the service
+operator who wants the language installs the package beside the service
 (`npm i @plurnk/plurnk-mimetypes-grammar-<slug>`), after which ordinary package
 resolution admits it with no manifest change. Until then the language degrades
-exactly as any detected language with an absent leaf does — honest metadata,
-empty structural channels, `grammarMissing` naming the leaf, plain-text
+exactly as any detected language with an absent grammar package does — honest metadata,
+empty structural channels, `grammarMissing` naming the package, plain-text
 coordinates for READ and EDIT. F# (`fsharp`, `fsharp-signature`) is optional:
-its leaf is twelve megabytes of wasm, twice any other, for a niche audience
+its grammar package is twelve megabytes of wasm, twice any other, for a niche audience
 (#541).
 
-### §grammar-extension-reproducibility 13.5 Reproducibility
+### §grammar-package-reproducibility 13.5 Reproducibility
 
-A grammar extension owns one source identity and one build tool. `.grammar-source`
+A grammar package owns one source identity and one build tool. `.grammar-source`
 is the sole upstream locator, `.grammar-pin` is its full commit object ID, and
 both are published as artifact provenance. The executable `tree-sitter-cli`
-version is exact in locked dev dependencies; `npm ci` in the leaf checkout is
-its only installation path. The leaf's project policy authorizes that exact
+version is exact in locked dev dependencies; `npm ci` in the package checkout is
+its only installation path. The package's project policy authorizes that exact
 package and version and enables strict allow-script enforcement, so an
 unreviewed installer fails before artifact work begins. Build and verification
 invoke only the checkout-local CLI—never an ancestor project, global install,
@@ -945,7 +945,7 @@ package's native lifecycle or introducing its development toolchain.
 
 ```mermaid
 flowchart LR
-    L[leaf lock + exact CLI policy] -->|npm ci| C[checkout-local CLI]
+    L[package lock + exact CLI policy] -->|npm ci| C[checkout-local CLI]
     S[.grammar-source] --> Q[depth-one fetch]
     P[full commit ID in .grammar-pin] --> Q
     Q --> U[detached commit in disposable repository]
@@ -958,32 +958,32 @@ flowchart LR
     E --> D
 ```
 
-`build:wasm` may replace the leaf's committed artifact; `verify:wasm` rebuilds
+`build:wasm` may replace the package's committed artifact; `verify:wasm` rebuilds
 only in temporary storage and positively compares both hashes. Fetch,
 dependency, generation, build, and mismatch failures remain visible with the
 failing command's output.
 
-### §grammar-family-lifecycle 13.6 Family maintenance
+### §grammar-package-lifecycle 13.6 Grammar maintenance
 
-The framework's exact grammar-extension development dependencies are the family
-inventory. A family check resolves every declared grammar extension in the explicit family
+The framework's exact grammar-package development dependencies are the grammar
+inventory. A grammar check resolves every declared grammar package in the explicit grammars
 root and fails when a checkout is absent, a source probe fails, or a probe
 returns no recognized current/behind verdict. Check mode performs only each
-leaf's owned `update:pin --check` operation and never changes a checkout.
+package's owned `update:pin --check` operation and never changes a checkout.
 
 A coordinated update requires one existing repository-local issue number for
-every leaf it will change. Before mutation, each checkout must be clean on
+every grammar package it will change. Before mutation, each checkout must be clean on
 `main`, equal canonical Gitea `origin/main`, and carry a configured author with an
 available signer. The procedure creates a
 Conventional topic branch, updates the owned pin, rebuilds and verifies the
 artifact, increments the patch version and lockfile together, creates one
-signed Conventional commit ending in the leaf's issue number, and pushes only
+signed Conventional commit ending in the package's issue number, and pushes only
 that topic branch to canonical Gitea. Any failed command terminates the
-procedure with its cause; no later lifecycle step for that leaf runs.
+procedure with its cause; no later lifecycle step for that package runs.
 
-Topic-branch review and an ordinary merge into each leaf's `main` are separate
+Topic-branch review and an ordinary merge into each package's `main` are separate
 accepted-state operations. GitHub mirroring and npm publication are subsequent
-explicit release stages and never occur through family maintenance.
+explicit release stages and never occur through grammar maintenance.
 
 ## §mimetype-query-conformance 14. Query-evidence conformance
 

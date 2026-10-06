@@ -22,7 +22,7 @@ import type { GrammarStyle } from "./AiSdkProvider.ts";
 // Cataloged and operator-declared providers resolve before this scan.
 //
 // {§extension-trust-boundary} Host extension trust gate (PLURNK_EXTENSIONS_TRUSTED_ONLY)
-// — enforced uniformly across the four scope-agnostic families. An untrusted
+// — enforced uniformly across the four scope-agnostic kinds. An untrusted
 // package is discovered-but-declined (recorded in `skipped`, never registered,
 // never thrown), so the consumer can name it in a precise error.
 

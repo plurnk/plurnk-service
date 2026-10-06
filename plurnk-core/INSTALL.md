@@ -172,7 +172,7 @@ Daemon modules load at startup from installed npm packages and selected user roo
 identifies a plugin across those sources. Project plugins never load native code into the daemon.
 `PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs native
 imports, using the npm package name when present or the plugin name otherwise.
-Other native families (executors, schemes, providers, mimetypes and HTTP materializers)
+Other extension kinds (executors, schemes, providers, mimetypes and HTTP materializers)
 require npm installation and retain their own loading behavior.
 
 The module exports a lifecycle object or a no-argument factory. `setup` registers capabilities;

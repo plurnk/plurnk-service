@@ -674,7 +674,7 @@ event and `plurnk.terminated.result.problem` are lossless; `RUN_ERROR.code` and
 Consumers preserve the exact Problem from the lossless surface and never
 reconstruct one from `RUN_ERROR`.
 
-§problems-agui **AG-UI Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-agui **AG-UI Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

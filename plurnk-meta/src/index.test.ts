@@ -108,9 +108,9 @@ test("runtimeAttribution: an extension authors no, one, or many attempt-time tag
         },
     };
 
-    assert.deepEqual(Meta.runtimeAttribution({}, attributionContext, "@acme/plugin"), []);
+    assert.deepEqual(Meta.runtimeAttribution({}, attributionContext, "@acme/extension"), []);
     assert.deepEqual(
-        Meta.runtimeAttribution(source, attributionContext, "@acme/plugin"),
+        Meta.runtimeAttribution(source, attributionContext, "@acme/extension"),
         ["folksonomy:search", "creator:ada"],
     );
     assert.equal(received, attributionContext, "the exact host-owned attempt context reaches the hook");
@@ -121,17 +121,17 @@ test("runtimeAttribution: the reserved lane and structural failures remain packa
         () => Meta.runtimeAttribution(
             { attributions: () => "@plurnk/claimed" },
             attributionContext,
-            "@acme/plugin",
+            "@acme/extension",
         ),
         /'@plurnk\/' is reserved.*'@plurnk\/claimed'/,
     );
     assert.throws(
-        () => Meta.runtimeAttribution({ attributions: ["not callable"] }, attributionContext, "@acme/plugin"),
-        /extension '@acme\/plugin': attributions must be a function/,
+        () => Meta.runtimeAttribution({ attributions: ["not callable"] }, attributionContext, "@acme/extension"),
+        /extension '@acme\/extension': attributions must be a function/,
     );
     const cause = new Error("extension decision failed");
     assert.throws(
-        () => Meta.runtimeAttribution({ attributions: () => { throw cause; } }, attributionContext, "@acme/plugin"),
+        () => Meta.runtimeAttribution({ attributions: () => { throw cause; } }, attributionContext, "@acme/extension"),
         (error: Error) => error.cause === cause,
     );
 });
@@ -201,7 +201,7 @@ test("packageDirs: merges npm's nested peer graph with ancestor packages, neares
 });
 
 // {§extension-manifest-read}
-test("readManifest: the family claim of one package.json, or null for anything that is not one", async () => {
+test("readManifest: the kind claim of one package.json, or null for anything that is not one", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-manifest-"));
     try {
         const pkg = async (name: string, content: string): Promise<string> => {
@@ -215,16 +215,16 @@ test("readManifest: the family claim of one package.json, or null for anything t
             packageName: "@acme/exec",
             plurnk: { kind: "exec", runtimes: [] },
         });
-        assert.equal(await Meta.readManifest(exec, "scheme"), null, "another family");
+        assert.equal(await Meta.readManifest(exec, "scheme"), null, "another kind");
         const unnamed = await pkg("unnamed", JSON.stringify({ plurnk: { kind: "scheme" } }));
         assert.deepEqual(await Meta.readManifest(unnamed, "scheme"), {
             manifestPath: join(unnamed, "package.json"), packageName: null, plurnk: { kind: "scheme" },
-        }, "an unnamed package is the family's decision");
+        }, "an unnamed package is the framework's decision");
         assert.equal(await Meta.readManifest(join(root, "absent"), "exec"), null, "no package.json");
         assert.equal(await Meta.readManifest(await pkg("broken", "{"), "exec"), null, "malformed JSON");
         assert.equal(await Meta.readManifest(await pkg("scalar", "42"), "exec"), null, "not an object");
         assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "plain" })), "exec"), null, "no plurnk object");
-        assert.equal(await Meta.readManifest(await pkg("array", JSON.stringify({ plurnk: { kind: ["exec"] } })), "exec"), null, "a kind array claims no family");
+        assert.equal(await Meta.readManifest(await pkg("array", JSON.stringify({ plurnk: { kind: ["exec"] } })), "exec"), null, "a kind array claims no kind");
         const controller = new AbortController();
         controller.abort();
         await assert.rejects(Meta.readManifest(exec, "exec", { signal: controller.signal }), { name: "AbortError" }, "an abort surfaces");
@@ -318,7 +318,7 @@ test("{§agent-plugins-containment} native entry paths and manifests cannot esca
     await assert.rejects(Meta.readManifest(plugin, "module"), /plugin.json does not resolve to a regular file/);
 });
 
-test("{§extension-manifest-read} standard bundles preserve each native family's declaration", async (t) => {
+test("{§extension-manifest-read} standard bundles preserve each kind's declaration", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-declarations-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const declarations = [

@@ -143,7 +143,7 @@ returns the selected channel's requested text/hex projection.
 | Malformed UTF-8               | Preserve the Encoding Standard's replacement-character behavior                                  |
 
 This decoder boundary remains text normalization, not a media-format processor.
-A configured binary type bypasses it and enters the mimetype family's bounded
+A configured binary type bypasses it and enters the mimetype framework's bounded
 source acquisition {§mimetype-binary-input}; original bytes remain in `body`.
 
 §http-binary-source Finite binary responses retain bounded original bytes in `body`,
@@ -194,7 +194,7 @@ never enters the absence channel.
 extension by id; unset means the installed HTML projection is the only readable
 producer. A materializer package declares
 `plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` and
-exports one `HttpMaterializer` per entry under the executor family's
+exports one `HttpMaterializer` per entry under the exec framework's
 discovery, trust, and one-flat-id-namespace rules ({§extension-discovery}). The
 selected materializer is consulted only for a credential-free generic request
 whose target has been admitted as public. Authored request metadata—including
@@ -598,7 +598,7 @@ transport-close failures under {§handler-lifecycle}.
 | Handshake metadata | `[metadata]` is unsupported; the default global-WebSocket identity is used                              |
 | Runtime            | Node ≥26                                                                                                |
 
-§problems-http **Web materialization Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-http **Web materialization Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

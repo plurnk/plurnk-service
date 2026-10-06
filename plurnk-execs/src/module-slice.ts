@@ -1,4 +1,4 @@
-// {§executor-module-slice} — what a daemon module contributes to the executor family: runtimes, each
+// {§executor-module-slice} — what a daemon module contributes to the exec kind: runtimes, each
 // an executor with its declaration, availability and optional scheme facet. The base module
 // contract is `@plurnk/plurnk-modules` ({§module-seam-slices}).
 import type { RuntimeSchemeFacet, SchemeManifest } from "@plurnk/plurnk-schemes";

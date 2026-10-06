@@ -183,7 +183,7 @@ describe("query-evidence conformance gate", () => {
 });
 
 describe("deprecated query-line conformance adapter", () => {
-    it("runs a legacy leaf-style call through complete region validation", async () => {
+    it("runs a legacy query-line call through complete region validation", async () => {
         const h = new BaseHandler(md);
         await assertQueryLineConformance(h, [{
             source: "alpha\nbeta",

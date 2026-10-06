@@ -2,7 +2,7 @@ node_modules/
 *.tgz
 *.log
 
-# Local working memory — family-wide convention is to keep this out of git.
+# Local working memory — every mimetypes repository keeps this out of git.
 # Scoped to repo root so templates/handler/AGENTS.md (the scaffolded handlers'
 # template) isn't accidentally ignored.
 

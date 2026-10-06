@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Family acceptance for {§grammar-extension-reproducibility}.
+// Grammar package acceptance for {§grammar-package-reproducibility}.
 import { spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -26,7 +26,7 @@ const invariant = (condition, message) => {
     if (!condition) throw new Error(message);
 };
 
-export const assertGrammarLeafContract = async (directory) => {
+export const assertGrammarPackageContract = async (directory) => {
     const manifest = await readJson(path.join(directory, "package.json"));
     const lock = await readJson(path.join(directory, "package-lock.json"));
     const npmrc = await readFile(path.join(directory, ".npmrc"), "utf8");
@@ -120,7 +120,7 @@ const main = async () => {
     });
     const here = path.dirname(fileURLToPath(import.meta.url));
     const frameworkRoot = path.resolve(here, "..");
-    const familyRoot = path.resolve(
+    const grammarsRoot = path.resolve(
         process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT ?? path.join(frameworkRoot, "..", ".."),
     );
     const framework = await readJson(path.join(frameworkRoot, "package.json"));
@@ -130,31 +130,31 @@ const main = async () => {
         .filter((slug) => only === undefined || slug === only)
         .sort();
     invariant(expected.length > 0, only === undefined
-        ? "framework declares no grammar extension devDependencies"
+        ? "framework declares no grammar package devDependencies"
         : `unknown grammar slug: ${only}`);
-    const present = new Set((await readdir(familyRoot, { withFileTypes: true }))
+    const present = new Set((await readdir(grammarsRoot, { withFileTypes: true }))
         .filter((entry) => entry.isDirectory() && entry.name.startsWith(DIRECTORY_PREFIX))
         .map((entry) => entry.name.slice(DIRECTORY_PREFIX.length)));
     const missing = expected.filter((slug) => !present.has(slug));
-    invariant(missing.length === 0, `missing grammar extension checkouts: ${missing.join(", ")}`);
+    invariant(missing.length === 0, `missing grammar package checkouts: ${missing.join(", ")}`);
 
-    const leaves = expected.map((slug) => ({
+    const grammars = expected.map((slug) => ({
         slug,
-        directory: path.join(familyRoot, `${DIRECTORY_PREFIX}${slug}`),
+        directory: path.join(grammarsRoot, `${DIRECTORY_PREFIX}${slug}`),
     }));
-    for (const { slug, directory } of leaves) {
-        await assertGrammarLeafContract(directory);
+    for (const { slug, directory } of grammars) {
+        await assertGrammarPackageContract(directory);
         console.log(`contract OK: ${slug}`);
     }
     if (contractOnly) return;
 
-    for (const { slug, directory } of leaves) {
+    for (const { slug, directory } of grammars) {
         console.log(`\n[${slug}] npm ci`);
         await run("npm", ["ci"], directory);
         console.log(`[${slug}] npm run verify:wasm`);
         await run("npm", ["run", "verify:wasm"], directory);
     }
-    console.log(`\n${leaves.length} grammar artifacts verified`);
+    console.log(`\n${grammars.length} grammar artifacts verified`);
 };
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

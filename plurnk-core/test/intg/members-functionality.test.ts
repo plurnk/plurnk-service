@@ -156,10 +156,10 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             await invoke("enable", { alias: "docs" });
             assert.deepEqual(await states(), ["docs:service:active"]);
             await daemon.settleFunctionality(workspaceId);
-            // {§functionality-document-body} — the family document teaches tracked-or-picked and the scope
+            // {§functionality-document-body} — the runtime document teaches tracked-or-picked and the scope
             // lattice beneath its generated header, from plurnk-core/docs/members.md.
             const membersDoc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/members.md");
-            assert.ok(membersDoc, "the members family document is a reference entry");
+            assert.ok(membersDoc, "the members runtime document is a reference entry");
             assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
             assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
             assert.match(membersDoc.content, /git add build\/report\.json/u, "the body teaches staging as the recovery under scope none");

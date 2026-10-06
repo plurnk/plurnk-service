@@ -2,7 +2,7 @@
 // lifecycle above the family adapters (Agent Skills, MCP, outbound A2A). It owns
 // durable workspace state, lifecycle ordering, serialization, atomic
 // publication, and both projections: workspace-scoped client actions and a
-// generated executor family whose host verbs propose. An explicit
+// generated runtime whose host verbs propose. An explicit
 // client mutation and an accepted model proposal converge on `invoke`.
 import { Validator } from "@plurnk/plurnk-contracts";
 import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };

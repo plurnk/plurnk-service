@@ -50,7 +50,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     assert.equal(parsed.title, "gitea: issue/read");
     assert.deepEqual(parsed.properties, schema.properties);
     assert.deepEqual(parsed.required, schema.required);
-    assert.doesNotMatch(detail!.content, /^## Summary$/m, "schema docs do not impersonate family summaries");
+    assert.doesNotMatch(detail!.content, /^## Summary$/m, "schema docs do not impersonate runtime summaries");
     assert.deepEqual(schema, before, "projection never mutates a server's schema");
     assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.json");
 });

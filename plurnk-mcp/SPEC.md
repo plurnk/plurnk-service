@@ -333,11 +333,11 @@ labels; no capabilities are inferred.** Blank values fall through:
 
 Derived prose is whitespace-normalized, limited to its first sentence, and
 clipped within 80 characters plus an ellipsis, preferring a word boundary. Full server instructions remain authored
-Markdown in the family document's runtime `details`, available on demand;
+Markdown in the runtime document's `details`, available on demand;
 turn0 surveys only the compact summary/invocations. Full tool descriptions
 remain in the linked input-contract documents. With tools, the runtime declares
 `{ from: "tools", description }`: purpose annotates rather than replaces the
-complete effective menu in the family Summary and survey row
+complete effective menu in the runtime Summary and survey row
 ({§scheme-catalog-aside}). Without a stated purpose the menu stands alone. The tool
 doc's Summary section IS the invocation form
 ```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
@@ -370,10 +370,10 @@ stale-configuration state. HTTP servers have no local process environment.
 
 §mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
 coordinator publishes `workspace.mcp.list | discover | add | enable | disable | remove` and the model's
-`mcp` executable fence family with the common semantics, durable state, and publication; this module
+`mcp` runtime with the common semantics, durable state, and publication; this module
 registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add` and `remove` change workspace state ({§mcp-definitions}), and
 `discover` searches the MCP Registry ({§mcp-registry-discovery}). `prepare` connects the enabled set, reusing
-unchanged live attachments, and returns one executor family and resource facet per connected server,
+unchanged live attachments, and returns one runtime and resource facet per connected server,
 one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity,
 capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or
 `authorization-required` with its URL), and a two-phase snapshot: `commit` closes connections the new
@@ -758,8 +758,8 @@ it as a skill. The design review is tracked in #654.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server | One registered executor family, `worker:///_plurnk/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One annotated call in the compact family document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
+| Server | One registered runtime, `worker:///_plurnk/tools/<server>.md`, and matching resource scheme |
+| Enabled tool | One annotated call in the compact runtime document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
 | Complete tool definitions | `worker:///_plurnk/tools/<server>.json`, containing `{"tools":[...]}` from the same effective snapshot |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
@@ -779,7 +779,7 @@ exact target in {§executor-tool-registry}. Its standard
 {§executor-tool-document} carries a compact summary, requiredness derived from
 the input schema, and the original schema itself. The common renderer owns
 {§executor-input-schema-preview}, not an MCP-specific schema interpreter.
-The compact family document contains annotated, copyable tool invocations with
+The compact runtime document contains annotated, copyable tool invocations with
 shallow required-field previews and alias-scoped schema links. Each linked child
 preserves the complete remote description and raw input schema, without
 reconstructing property tables or expanding nested constraints into the preview.
@@ -823,7 +823,7 @@ dated-spec filter and do not alter the core pass rate. The JWT arm remains
 excluded under {§oauth-client-credentials}. Atlas and third-party
 stdio/Streamable HTTP servers are composition evidence only.
 
-§problems-mcp **MCP Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-mcp **MCP Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

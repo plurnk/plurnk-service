@@ -208,7 +208,7 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
     assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
-    // custom list does NOT scope providers-family knobs (closed-list isolation both ways)
+    // custom list does NOT scope the providers' knobs (closed-list isolation both ways)
     const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_EFFORT: "off", PLURNK_PROVIDERS_EFFORT_turboderp: "high" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
     assert.equal(mixed.PLURNK_PROVIDERS_EFFORT, "off");
 });

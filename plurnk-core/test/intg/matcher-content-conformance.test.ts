@@ -146,13 +146,13 @@ test("{§find-glob-filter-on-content}: FIND admits extglob groups and literal at
 });
 
 // --- FIND with structural dialects (jsonpath/xpath) over native content -------
-// The dialects route through the plugin's deep-json / deep-xml channels; these
+// The dialects route through the mimetype handlers' deep-json / deep-xml channels; these
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
 
 test("{§find-source-agnostic}: FIND JSONPath selects JSON entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.json` delimiter → application/json mimetype → plugin's deep-json channel.
+        // `.json` delimiter → application/json mimetype → the handler's deep-json channel.
         await seed(db, workspaceId, workerId, [
             ["alice.json", '{"admin":true}'],
             ["bob.json", '{"guest":true}'],
@@ -166,7 +166,7 @@ test("{§find-source-agnostic}: FIND JSONPath selects JSON entries by content st
 test("{§find-source-agnostic}: FIND XPath selects XML entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.xml` delimiter → application/xml mimetype → plugin's deep-xml channel.
+        // `.xml` delimiter → application/xml mimetype → the handler's deep-xml channel.
         await seed(db, workspaceId, workerId, [
             ["a.xml", "<root><user>admin</user></root>"],
             ["b.xml", "<root><group>x</group></root>"],

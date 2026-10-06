@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Two deterministic dependency-health checks across the @plurnk/plurnk-mimetypes
-// family — run before a publish window so nothing ships stale or vulnerable.
+// packages — run before a publish window so nothing ships stale or vulnerable.
 // Both failure modes are baked in here on purpose: neither relies on anyone
 // remembering to also run `npm audit`.
 //
@@ -17,7 +17,7 @@
 //      Lockfile-lag WITHIN a still-valid range is the per-repo `npm outdated`
 //      prepublishOnly gate's job (needs an install); this no-install sweep only
 //      sees package.json. Union/compound ranges (`||`, `>=`, `*`) are skipped.
-//   3. AUDIT — `npm audit` per family package that carries third-party deps.
+//   3. AUDIT — `npm audit` per mimetypes package that carries third-party deps.
 //      Catches a transitive advisory rooted in a handler at the source (e.g. the
 //      text-gherkin → @cucumber/gherkin → @cucumber/messages → uuid chain) that
 //      a version-pin scan structurally cannot see. The COMBINED-tree audit is
@@ -27,7 +27,7 @@
 //   npm run deps:check -- --only pins
 //   npm run deps:check -- --only audit
 //
-// Config (.env.example): PLURNK_MIMETYPES_FAMILY_ROOT (dir holding the side-by-side repos,
+// Config (.env.example): PLURNK_MIMETYPES_PACKAGES_ROOT (dir holding the side-by-side repos,
 // default = this checkout's parent), PLURNK_MIMETYPES_AUDIT_LEVEL (default "moderate").
 // Exits non-zero if any issue is found — usable as a gate.
 import { readdirSync, readFileSync, existsSync, statSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -37,6 +37,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+if (process.env.PLURNK_MIMETYPES_FAMILY_ROOT !== undefined) throw new Error("PLURNK_MIMETYPES_FAMILY_ROOT is retired: set PLURNK_MIMETYPES_PACKAGES_ROOT."); // lexicon-allow: the retired setting's shed
 
 
 const args = process.argv.slice(2);
@@ -52,14 +53,14 @@ if (!SEVERITIES.includes(auditLevel)) throw new Error(`Invalid PLURNK_MIMETYPES_
 const levelIdx = SEVERITIES.indexOf(auditLevel);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_MIMETYPES_FAMILY_ROOT
-    ? path.resolve(process.env.PLURNK_MIMETYPES_FAMILY_ROOT)
+const root = process.env.PLURNK_MIMETYPES_PACKAGES_ROOT
+    ? path.resolve(process.env.PLURNK_MIMETYPES_PACKAGES_ROOT)
     : path.resolve(here, "..", "..");
 
 const FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 
 // Discover every @plurnk/plurnk-mimetypes-* package (the framework, -all,
-// grammars and handlers) under the family root.
+// grammars and handlers) under the packages root.
 const pkgs = [];
 for (const name of readdirSync(root)) {
     const dir = path.join(root, name);
@@ -93,7 +94,7 @@ function rangeCeiling(range) {
 // latest (string) >= ceiling (triplet array) → range can't reach latest → stale.
 const reachesPast = (latest, ceil) => { const L = triplet(latest); for (let i = 0; i < 3; i += 1) { if ((L[i] || 0) !== ceil[i]) return (L[i] || 0) > ceil[i]; } return true; };
 
-// Does version v satisfy a range built from the family's vocabulary — exact,
+// Does version v satisfy a range built from the packages' range vocabulary — exact,
 // ^x.y.z, ~x.y.z, ">=a.b.c [<d.e.f]", and `||` unions of those? The peer
 // check needs real satisfaction, not just ceilings.) Unknown syntax → null
 // (skip, never guess).
@@ -180,7 +181,7 @@ if (runPins) {
     // above ignores ranges by design (range floors are minimums); this catches
     // the other half — a *range* gone stale, needing a conscious bump (the gap
     // that let web-tree-sitter drift). Lockfile-lag WITHIN a range is the
-    // per-repo `npm outdated` gate's job, not this no-install family sweep.
+    // per-repo `npm outdated` gate's job, not this no-install sweep.
     console.log("EXTERNAL — third-party caret/tilde ranges trailing npm-latest\n");
     const extStale = [];
     for (const { slug, pj } of pkgs) {
@@ -199,10 +200,10 @@ if (runPins) {
     issues += extStale.length;
     console.log("");
 
-    // PEERS — every plugin's peer range on the core must admit the core TIP,
+    // PEERS — every extension's peer range on the core must admit the core TIP,
     // where tip = max(npm latest, the local core version). Core 0.17.0
     // published while every extension peer topped out at ^0.16.0 — nothing in the
-    // family failed until a CONSUMER hit ERESOLVE. Checking against the local
+    // mimetypes packages failed until a CONSUMER hit ERESOLVE. Checking against the local
     // version makes a core minor bump turn this section red before the publish,
     // not after: the ripple becomes a gate-enforced part of cutting a minor.
     console.log("PEERS — extension peer ranges vs the core tip\n");
@@ -226,7 +227,7 @@ if (runPins) {
 }
 
 if (runAudit) {
-    console.log(`AUDIT — npm audit per family package (level: ${auditLevel})\n`);
+    console.log(`AUDIT — npm audit per mimetypes package (level: ${auditLevel})\n`);
     let auditable = 0;
     let flagged = 0;
     // The shipping surface only: a published package strips its lockfile, so a

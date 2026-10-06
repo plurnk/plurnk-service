@@ -83,7 +83,7 @@ test("discover: trusted malformed or reserved attribution fails before scheme ad
     await assert.rejects(SchemeDiscovery.discover({ cwd: reserved }), /'@plurnk\/' is reserved/);
 });
 
-test("discover: trust withholding precedes attribution and family-field validation", async () => {
+test("discover: trust withholding precedes attribution and declaration-field validation", async () => {
     const cwd = await makeTree([
         ["@acme/broken", {
             name: "@acme/broken",
@@ -134,10 +134,10 @@ test("discover: a package's schemes each carry one package attribution fact", as
     assert.deepEqual([...packageAttributions], [["p", ["Grace"]]]);
 });
 
-test("discover: an array kind claims no scheme family", async () => {
+test("discover: an array kind declares no scheme extension", async () => {
     const cwd = await makeTree([
-        ["multi-family", {
-            name: "multi-family",
+        ["multi-kind", {
+            name: "multi-kind",
             plurnk: { kind: ["exec", "scheme"], schemes: [{ name: "records", export: "RecordsScheme" }] },
         }],
         ["exec-only", { name: "exec-only", plurnk: { kind: ["exec"], runtimes: [{ name: "node" }] } }],

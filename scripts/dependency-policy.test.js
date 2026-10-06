@@ -23,12 +23,12 @@ describe("default grammar composition ({§default-extension-ownership})", () => 
         assert.deepEqual(defaultGrammarViolations({ dependencies }), []);
     });
 
-    it("refuses an optional grammar extension in the default composition ({§mimetype-optional-grammars})", () => {
+    it("refuses an optional grammar package in the default composition ({§mimetype-optional-grammars})", () => {
         assert.ok(optionalLeaves.length > 0, "the registry declares at least one optional grammar");
         assert.deepEqual(defaultGrammarViolations({
             dependencies: { ...dependencies, ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
         }), optionalLeaves.map((name) =>
-            `plurnk-core/package.json: dependencies.${name} is an optional grammar extension and must not ship by default ({§mimetype-optional-grammars})`));
+            `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-optional-grammars})`));
     });
 
     it("leaves an optional grammar to the operator: absent is not a violation", () => {

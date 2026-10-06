@@ -102,7 +102,7 @@ export interface ExecPreparation extends SchemeResult {
 
 // Terminal result of a `run()`. The universal operation-result contract applies
 // at this extension boundary: every failure carries RFC 9457 Problem Details.
-// `exitCode` is present only for the subprocess family; `page` only when a tool result
+// `exitCode` is present only for subprocess executors; `page` only when a tool result
 // is a full page ({§executor-page-receipt}).
 export interface ExecResult extends ChannelProducerResult {
     exitCode?: number;
@@ -185,7 +185,7 @@ export interface RuntimeToolRegistry {
     readonly tools: readonly RuntimeRegisteredTool[];
 }
 
-// A fixed capability description stays authored. A finite tool family may
+// A fixed capability description stays authored. A runtime with a finite tool registry may
 // instead derive its one-line orientation from the exact effective registry,
 // so policy filtering cannot leave denied tool names in model teaching.
 export type RuntimeSummaryDecl = string | { readonly from: "tools"; readonly description?: string };
@@ -219,11 +219,11 @@ export interface RuntimeDecl {
     invocation: RuntimeInvocation;
     details?: string;
     // {§tools-resource-materialization} — the generated-doc root. Absent: the
-    // internal skills namespace. Present (MCP families): the tools namespace
+    // internal skills namespace. Present (MCP servers): the tools namespace
     // whose survey exposes every child tool.
     resourcesPath?: string;
     // Expand this runtime's complete tool tree into the turn-0 tools survey;
-    // absent, turn 0 lists the family document alone.
+    // absent, turn 0 lists the runtime document alone.
     expandTools?: boolean;
 }
 
@@ -260,7 +260,7 @@ export interface DiscoverOptions {
     packageDirs?: string[];
 }
 
-// --- Subprocess-family spawn recipe ({§executor-subprocess}) ---------------
+// --- Subprocess spawn recipe ({§executor-subprocess}) ----------------------
 
 export interface SpawnArgs {
     /** Command to invoke (e.g. "node", "python3", or — when useShell — the raw command). */

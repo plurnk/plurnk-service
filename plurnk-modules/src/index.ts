@@ -42,14 +42,14 @@ export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
 // {§functionality-adapter} — one family of managed Functionality beneath the host's coordinator.
 // `Runtime` is what a resident family prepares and `SchemeFacet` the face its manager may expose;
-// both default to none, and the families that own them name them ({§module-seam-slices}).
+// both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
 export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     readonly scheme?: SchemeFacet;
     // {§capability-admission} — general policy facts of the family's runtime and the resources its
     // scheme face serves (`web` for a family that reaches the network): what a capability policy selects on.
     readonly traits?: readonly string[];
     // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
-    // worker-scoped family) and the runtime family tag.
+    // worker-scoped family) and the name of the family's runtime.
     readonly family: string;
     // {§functionality-scope} Supported owners; the first is the model default.
     // Absent means workspace. A worker layer inherits workspace defaults by reference.
@@ -67,7 +67,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
     // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
-    // authored teaching beneath the family document's generated header.
+    // authored teaching beneath the runtime document's generated header.
     readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     // Current partial-source diagnostics; independent valid definitions remain available.

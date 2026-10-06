@@ -1621,7 +1621,7 @@ discriminated values:
 
 `CapabilityDisplay` is a closed object whose optional `glyph` is a non-empty,
 opaque string. Frameworks own and validate their intrinsic
-declarations; Core owns composition of the installed families; interface
+declarations; Core owns composition of the installed extensions; interface
 modules expose this exact shape; clients own rendering, font support, theme,
 and identity fallback when `glyph` is absent. Empty framework sentinels are
 normalized to absence at composition. Display metadata is client state, never

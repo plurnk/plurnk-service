@@ -106,6 +106,6 @@ reported cause rather than assuming every failure is an OAuth challenge.
 `disable` withdraws a server's tools while keeping its definition. `remove`
 undoes the workspace definition and restores any inherited definition and
 enabled state; use `disable` to suppress an inherited server. Neither action
-deletes configuration files or saved results. The family document projects
+deletes configuration files or saved results. The runtime document projects
 the enabled-tool snapshot: after
 `enable`, FIND the reference again before relying on a tool's signature.

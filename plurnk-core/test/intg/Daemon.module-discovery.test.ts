@@ -121,7 +121,7 @@ export default () => ({
     }));
     const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
     const collected = await EnvDefaults.collect(Paths.packageRoot, nodeModules, { hostPaths: paths });
-    assert.deepEqual(collected.configurationErrors, [], "the floor collector validates panels; the native family validates its entry point");
+    assert.deepEqual(collected.configurationErrors, [], "the floor collector validates panels; the module host validates its entry point");
     EnvDefaults.apply(EnvDefaults.merge(collected.files));
     const db = await openMigrated();
     const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });

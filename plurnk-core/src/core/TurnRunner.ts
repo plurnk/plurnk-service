@@ -890,8 +890,8 @@ export default class TurnRunner {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                // {§tools-resource-materialization} — enabled tool families
-                // (MCP servers) survey at family level; each row's summary is
+                // {§tools-resource-materialization} — enabled MCP runtimes
+                // survey one row per server; each row's summary is
                 // the server one-liner or its flagship invocation form, so the
                 // discovery row itself orients. Servers named in
                 // PLURNK_MCP_EXPANDED add a second survey of their complete
@@ -953,9 +953,9 @@ export default class TurnRunner {
             this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined);
     }
 
-    // {§tools-resource-materialization} — expanded families project complete
+    // {§tools-resource-materialization} — expanded runtimes project complete
     // invocation blocks, paged through ordinary FIND result ranges: one pattern FIND
-    // per family, naming the admitted tools when the policy narrows them.
+    // per runtime, naming the admitted tools when the policy narrows them.
     #toolExpansions(workspaceId: number, policies: CapabilityPolicy[]): FindStatement[] {
         const registry = this.#executors();
         const expansions: FindStatement[] = [];

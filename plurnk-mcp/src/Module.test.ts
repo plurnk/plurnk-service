@@ -325,7 +325,7 @@ test("{§configuration-repair-path} a noncanonical declaration does not prevent 
     await assert.rejects(h.adapter().available(h.identity(1)), /PLURNK_MCP_GITEA is not a declared control/u);
 });
 
-test("{§mcp-setup} preparation publishes one executor family and resource facet per enabled server, with catalog detail", async () => {
+test("{§mcp-setup} preparation publishes one runtime and resource facet per enabled server, with catalog detail", async () => {
     const h = harness();
     await h.setup();
     try {

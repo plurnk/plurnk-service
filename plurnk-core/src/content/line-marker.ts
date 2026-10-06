@@ -1,5 +1,5 @@
 // `<L>` text-region slicing and editing - single source of truth is
-// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the plugin's
+// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the framework's
 // functions; call sites stay `LineMarkerOps.sliceLines(...)`. Types re-exported.
 //
 // `<L>` semantics (plurnk.md §`<L>`): <N> line, <N,M> line range,

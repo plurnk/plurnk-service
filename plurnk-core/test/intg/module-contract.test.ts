@@ -45,7 +45,7 @@ before(async () => {
     root = await mkdtemp(join(tmpdir(), "plurnk-module-contract-"));
     nodeModules = join(root, "node_modules");
     await mkdir(nodeModules, { recursive: true });
-    // The real node_modules, symlinked, keeps the first-party families discoverable beside the witness.
+    // The real node_modules, symlinked, keeps the first-party modules discoverable beside the witness.
     const real = resolve(import.meta.dirname, "../../..", "node_modules");
     for (const entry of await readdir(real)) await symlink(join(real, entry), join(nodeModules, entry), "dir");
     trace = join(root, "trace.txt");

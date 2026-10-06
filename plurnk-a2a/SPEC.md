@@ -337,7 +337,7 @@ controls native attachment delivery through {§packet-attachment-parts}; listing
 a resource does not inject its bytes into model context. Log curation does not
 delete the retained source.
 
-§problems-a2a **A2A Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-a2a **A2A Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

@@ -434,7 +434,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
 // same parser — e.g. service loop policy or prompt projection — without
 // reimplementing the suffix/collision rules. Default stays the
-// providers-family list; provider call sites pass nothing.
+// providers' knob list; provider call sites pass nothing.
 // {§operator-cost-override} (#461) — Models.dev is the rate starting point; the
 // operator overlays exact per-1M-token USD rates when a provider reprices ahead
 // of the catalog. Format: comma-separated key=value over the catalog vocabulary

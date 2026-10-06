@@ -1,5 +1,5 @@
 // The host's side of the module seam. Modules code against `@plurnk/plurnk-modules` and the slices
-// their families own ({§module-seam-slices}); the daemon implements every slice and passes itself.
+// the frameworks own ({§module-seam-slices}); the daemon implements every slice and passes itself.
 // The capability-provider functions are the Functionality coordinator's host interface: core's own,
 // not part of the published contract.
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";

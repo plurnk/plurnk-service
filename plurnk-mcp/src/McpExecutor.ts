@@ -115,8 +115,8 @@ export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandToo
     glyph: "🔌",
     summary,
     ...(instructions === undefined || instructions.trim() === "" ? {} : { details: instructions }),
-    // {§tools-resource-materialization} — MCP families live in the tools
-    // namespace; the turn-0 survey lists the family document, and expandTools
+    // {§tools-resource-materialization} — MCP runtimes live in the tools
+    // namespace; the turn-0 survey lists the runtime document, and expandTools
     // (PLURNK_MCP_EXPANDED) adds the complete tool tree.
     resourcesPath: "/tools",
     ...(expandTools ? { expandTools: true } : {}),

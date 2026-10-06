@@ -32,7 +32,7 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
         target: { role: "tool", required: true, kind: "literal" },
         example: { target: "fixture_tool", body: "{}" },
     },
-    familytool: {
+    registrytool: {
         body: { role: "JSON arguments", required: false },
         target: { role: "registered tool", required: true, kind: "literal" },
         example: { target: "tool_name" },
@@ -111,7 +111,7 @@ const wire = async (resourcesPath?: string) => {
                     return { status: 200, cwd: input.cwd };
                 },
             } : {}),
-            ...(runtime === "familytool"
+            ...(runtime === "registrytool"
                 ? {
                     toolRegistry() {
                         return {
@@ -201,39 +201,39 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     const ctx = await wire();
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
-        const familyDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/familytool.md");
-        assert.match(familyDoc?.content ?? "", /```familytool \(enabled_tool\)/, "the family document carries every registered target");
+        const runtimeDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/registrytool.md");
+        assert.match(runtimeDoc?.content ?? "", /```registrytool \(enabled_tool\)/, "the runtime document carries every registered target");
         assert.equal(
-            reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/familytool/")),
+            reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/registrytool/")),
             false,
             "per-target child documents do not exist (#336)",
         );
-        const missing = await ctx.dispatch(statement("familytool", null, "{}"));
+        const missing = await ctx.dispatch(statement("registrytool", null, "{}"));
         assert.equal(missing.status, 400);
         assert.match(missing.problem?.type ?? "", /target-required$/);
 
-        const disabled = await ctx.dispatch(statement("familytool", "disabled_tool", "{}"));
+        const disabled = await ctx.dispatch(statement("registrytool", "disabled_tool", "{}"));
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
         assert.equal(disabled.problem?.availableTargetCount, 1);
-        assert.equal(disabled.problem?.recovery, "Select a target from worker:///_plurnk/plurnk/familytool.md.");
+        assert.equal(disabled.problem?.recovery, "Select a target from worker:///_plurnk/plurnk/registrytool.md.");
         assert.ok(reference.some(({ pathname }) => disabled.problem?.recovery === `Select a target from worker://${pathname}.`),
-            "recovery names a published family document, not an assumed schema directory");
+            "recovery names a published runtime document, not an assumed schema directory");
         assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
-        const missingBody = await ctx.dispatch(statement("familytool", "enabled_tool", ""));
+        const missingBody = await ctx.dispatch(statement("registrytool", "enabled_tool", ""));
         assert.equal(missingBody.status, 400);
         assert.match(missingBody.problem?.type ?? "", /body-required$/);
-        assert.equal(ctx.effects.has("familytool"), false);
+        assert.equal(ctx.effects.has("registrytool"), false);
 
-        const accepted = await ctx.dispatch(statement("familytool", "enabled_tool", '{"value":"ok"}'));
+        const accepted = await ctx.dispatch(statement("registrytool", "enabled_tool", '{"value":"ok"}'));
         assert.equal(accepted.status, 200);
-        assert.deepEqual(ctx.runs.get("familytool"), [{
+        assert.deepEqual(ctx.runs.get("registrytool"), [{
             body: '{"value":"ok"}',
             cwd: process.cwd(),
             target: "enabled_tool",
         }]);
-        assert.deepEqual(ctx.effects.get("familytool"), ["enabled_tool"]);
+        assert.deepEqual(ctx.effects.get("registrytool"), ["enabled_tool"]);
     } finally {
         await ctx.close();
     }
@@ -243,10 +243,10 @@ test("{§tools-resource-discovery} target recovery follows a runtime's declared 
     for (const resourcesPath of ["/tools", "/modules/custom"]) {
         const ctx = await wire(resourcesPath);
         try {
-            const result = await ctx.dispatch(statement("familytool", "missing", "{}"));
+            const result = await ctx.dispatch(statement("registrytool", "missing", "{}"));
             assert.equal(result.status, 404);
             const documents = await ctx.engine.referenceEntries(ctx.workspaceId);
-            const path = `/_plurnk${resourcesPath}/familytool.md`;
+            const path = `/_plurnk${resourcesPath}/registrytool.md`;
             assert.equal(result.problem?.recovery, `Select a target from worker://${path}.`);
             const document = documents.find(({ pathname }) => pathname === path);
             assert.ok(document, "the recovery document is actually published");

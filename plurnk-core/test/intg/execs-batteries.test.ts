@@ -199,7 +199,7 @@ test("an unregistered executable tag fails without shell reinterpretation", asyn
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
         assert.equal(result.problem?.requestedRuntime, "echo");
         assert.deepEqual(result.problem?.executors, registry.availableRuntimes(), "the refusal lists the registered executors");
-        assert.equal(result.problem?.toolRuntimes, undefined, "an arbitrary unknown word names no tool family");
+        assert.equal(result.problem?.toolRuntimes, undefined, "an arbitrary unknown word names no tool runtime");
         const shell = await engine.dispatch({
             statement: execStmt("shell", null, "printf hello"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",

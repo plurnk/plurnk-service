@@ -16,13 +16,13 @@ for (const dir of root.workspaces) {
 }
 
 // The framework packages every other workspace composes. Their intg tiers cannot see
-// a dependent break, and package.json points the other way (core lists the leaves it
+// a dependent break, and package.json points the other way (core lists the extensions it
 // bundles), so a change under them runs the full tier (#642: the env family's six
 // actions broke plurnk-agui's discovery witness and no scoped push ran it).
 export const FULL_INTG_ON = new Set(["plurnk-core", "plurnk-contracts", "plurnk-parser"]);
 
 // Map a changed-file list to the set of workspace dirs to run intg for. A file
-// under a leaf workspace scopes to it; a file outside every workspace (root config,
+// under any other workspace scopes to it; a file outside every workspace (root config,
 // scripts/, .githooks/) or under a framework package can affect anything → null =
 // run FULL intg.
 export const scopeIntg = (files, dirs) => {

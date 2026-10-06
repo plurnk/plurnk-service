@@ -153,7 +153,7 @@ export default class Meta {
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
     }
 
-    // {§extension-manifest-read} Family loaders resolve their own file declarations through this boundary.
+    // {§extension-manifest-read} Framework loaders resolve their own file declarations through this boundary.
     static async moduleFile(manifest: ExtensionManifest, relative: string): Promise<string> {
         const dir = path.dirname(manifest.manifestPath);
         if (path.basename(manifest.manifestPath) !== "plugin.json") return path.resolve(dir, relative);

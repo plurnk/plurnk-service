@@ -6,11 +6,11 @@ import type {
     ExtensionAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
 
-// Scope-agnostic discovery of installed scheme-handler packages — the schemes
-// family's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
+// Scope-agnostic discovery of installed scheme-handler packages — the scheme
+// framework's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
 // / plurnk-providers' ProviderRegistry scan. Lives HERE (the contract package),
 // co-located with its tests, so the discovery story is self-contained per
-// family rather than hand-rolled in the consumer.
+// framework rather than hand-rolled in the consumer.
 //
 // A package is a scheme handler when its package.json declares
 // `plurnk.kind === "scheme"` and a non-empty `plurnk.name` (the URI prefix it
@@ -73,7 +73,7 @@ export default class SchemeDiscovery {
             if (manifest === null) continue;
             // Host extension-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never
-            // crashed on. Validation of family fields and attribution follows
+            // crashed on. Validation of declaration fields and attribution follows
             // this package-level gate ({§extension-trust-boundary}).
             if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
             const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
@@ -118,7 +118,7 @@ export default class SchemeDiscovery {
     }
 
     // The inert manifest for a package declaring plurnk.kind:"scheme" ({§extension-manifest-read});
-    // null for anything else, including an unnamed package. Family field validation happens
+    // null for anything else, including an unnamed package. Declaration field validation happens
     // only after the package trust gate. An abort surfaces (locality of error).
     static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {
         const manifest = await Meta.readManifest(dir, "scheme", { signal });

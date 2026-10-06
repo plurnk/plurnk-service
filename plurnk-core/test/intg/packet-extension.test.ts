@@ -22,7 +22,7 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const schemes = new SchemeRegistry();
-        // A third-party plugin: prepend its own section, drop the kernel's budget.
+        // A third-party extension: prepend its own section, drop the kernel's budget.
         schemes.register("demo", {
             manifest: {
                 name: "demo",
@@ -45,14 +45,14 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 
-        // ADD: the plugin's section is in the packet, carrying its content.
+        // ADD: the extension's section is in the packet, carrying its content.
         assert.equal(packetSection(packet, "demo"), "hello from the extension");
         const demo = (packet.sections as StoredPacketSection[]).find((section) => section.name === "demo");
         assert.ok(demo !== undefined);
         assert.equal(demo.weight, contentWeight(PacketWire.renderSection(demo)), "core assigns the durable render-weight");
         // REMOVE: the kernel's budget section is gone.
         assert.equal(packetSection(packet, "budget"), "");
-        // REORDER: the plugin's section leads the user slot.
+        // REORDER: the extension's section leads the user slot.
         const userOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "user").map((s) => s.name);
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");

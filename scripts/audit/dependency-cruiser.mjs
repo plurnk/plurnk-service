@@ -1,8 +1,8 @@
 // Import-direction audit (#891). On demand only: `npm run audit:direction`; never a gate.
 // Package classes by directory: core `plurnk-core`, frameworks `plurnk-<kind>`,
-// their leaves `plurnk-<family>-<leaf>` ({§core-extension-composition}); the parser is imported only
+// their extensions `plurnk-<kind>-<name>` ({§core-extension-composition}); the parser is imported only
 // where AGENTS.md declares (the service, plurnk-agui, plurnk-execs).
-const FAMILIES = "schemes|execs|mimetypes|providers";
+const FRAMEWORKS = "schemes|execs|mimetypes|providers";
 
 export default {
     forbidden: [
@@ -10,14 +10,14 @@ export default {
             name: "no-leaf-to-core",
             comment: "a leaf never reaches the service; it is discovered by it",
             severity: "error",
-            from: { path: `^plurnk-(${FAMILIES})-[^/]+/` },
+            from: { path: `^plurnk-(${FRAMEWORKS})-[^/]+/` },
             to: { path: "^plurnk-core/" },
         },
         {
             name: "no-framework-to-own-leaf",
             comment: "a framework owns its contract and discovery, never a runtime edge to an extension of its kind",
             severity: "error",
-            from: { path: `^plurnk-(${FAMILIES})/` },
+            from: { path: `^plurnk-(${FRAMEWORKS})/` },
             to: { path: "^plurnk-$1-[^/]+/" },
         },
         {

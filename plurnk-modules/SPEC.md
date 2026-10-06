@@ -2,7 +2,7 @@
 
 `@plurnk/plurnk-modules` is the API a daemon module codes against: the lifecycle it implements
 and the base setup seam it receives. It depends on `@plurnk/plurnk-contracts` alone and holds
-only abstractions, so it is the most stable layer of the module family (ARCHITECTURE.md §
+only abstractions, so it is the most stable package of the module kind (ARCHITECTURE.md §
 Package principles). The service hosts modules: it discovers them ({§module-discovery}),
 drives their lifecycle ({§module-lifecycle}, {§module-shutdown-order}) and implements every
 seam slice.
@@ -108,6 +108,6 @@ seam's shapes — the identity a verb acts under, its options, definition
 sources, outcomes, preparation, the prepared result and the family handle —
 are declared once in `plurnk-contracts`. `FunctionalityAdapter` is generic over
 the runtime a resident family prepares and the scheme facet its manager may
-expose; both default to none, and their families own them ({§module-seam-slices}).
+expose; both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
 An adapter may expose current partial-source `configurationNotices`; these join the ordinary
 workspace diagnostics without preventing independently valid definitions from preparing.

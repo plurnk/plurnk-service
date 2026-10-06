@@ -23,7 +23,7 @@ export function installedGrammars(cwd) {
         try {
             for (const { mimetype, slug, extensions, optional } of TREE_SITTER_REGISTRY) {
                 if (optional === true) {
-                    // {§mimetype-optional-grammars}: an optional grammar extension is absent from the default
+                    // {§mimetype-optional-grammars}: an optional grammar package is absent from the default
                     // composition and its language degrades honestly rather than failing.
                     const result = await mimetypes.process({
                         content: "\\n",

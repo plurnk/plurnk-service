@@ -3,8 +3,8 @@
 The body is the AWK program, passed as the one positional argument with an
 empty stdin: with no input file it only runs `BEGIN` blocks. Input files are
 named in `[{"args": [...]}]`; a script target runs that file and receives the
-body as stdin. Working directory, environment, channels and exit status are the
-executor family's (`sh.md`); `exit 1` in the program closes with status 500.
+body as stdin. Working directory, environment, channels and exit status are
+every subprocess executor's (`sh.md`); `exit 1` in the program closes with status 500.
 
 ```awk [{"args": ["data.csv"]}] <!-- the body is the program -->
 BEGIN { FS = "," }

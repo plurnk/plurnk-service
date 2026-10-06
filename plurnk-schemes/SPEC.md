@@ -403,7 +403,7 @@ metadata shape under {§send-resource-attachments}; other recipients retain
 their own metadata vocabulary.
 
 Acquisition schemes delegate model-facing projection to the consumer's one
-configured mimetype family. They neither instantiate readers nor discard source
+configured mimetype framework. They neither instantiate readers nor discard source
 bytes merely because no readable projection exists.
 
 | Surface                           | Contract                                                                                              |
@@ -423,7 +423,7 @@ Parser-recovery inspection is deliberately non-gating: successful clean
 inspection returns `0`; tooling failure or structural degradation surfaces a
 Notice where available and returns `undefined`.
 `ProjectionInputLimitError` is the projection boundary's exported name for the
-configured mimetype family's typed bounded-input failure.
+configured mimetype framework's typed bounded-input failure.
 
 ### §slicer-window Positional windows without content - `Slicer.window`
 
@@ -584,7 +584,7 @@ its implementation.
   receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. Wake delivery belongs to stream settlement, not notification.
-- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
+- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the readers. `null` means no readable projection.
 - §scheme-interactions `interactions` — `request(ClientInteractionRequest, signal?)`
   awaits the contracts-owned interaction and returns its
   `ClientInteractionResolution` ({§client-interaction-wire}). Core binds the
@@ -661,7 +661,7 @@ capability when the public surface cannot express a coherent extension.
 
 ## Module slice
 
-§scheme-module-slice **A daemon module contributes to this family through two types this package
+§scheme-module-slice **A daemon module contributes to the scheme kind through two types this package
 owns.** They complete the module contract's slices ({§module-seam-slices}).
 
 | Type | Contract |
@@ -695,7 +695,7 @@ refused 405 `message-immutable`; its detail names the address as an immutable re
 and its `recovery` distinguishes replying from concluding the loop:
 `` Reply with `SEND (message://tester/bde40185)` and a body, or conclude the loop with parameterless KILL. ``
 
-§problems-schemes **Slicer and matcher Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-schemes **Slicer and matcher Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|

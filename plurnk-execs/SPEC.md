@@ -27,7 +27,7 @@ flowchart LR
 
 `SubprocessExecutor` is the concrete base for command runtimes. It owns child
 process spawning, stdout/stderr streaming, environment handoff, exit status,
-and process-group cancellation. A subprocess leaf normally overrides only its
+and process-group cancellation. A subprocess executor normally overrides only its
 spawn recipe and availability binary.
 
 ## §executor-contract Author surface
@@ -133,7 +133,7 @@ authored READ retains its own source-scheme metadata contract.
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
 | Framework default | `BaseExecutor.prepare` accepts `[{"cwd": "<directory>"}]`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), the time bound, and the body: `` Its fields are `cwd`, `args`, `stdin`, `env` and `lifetime`; a time bound is `[{"lifetime": "30m"}]`, and the program goes in the body beneath the fence. `` (#1005). Tools can override preparation to own different metadata. |
 | Subprocess options | `SubprocessExecutor` additionally accepts `[{"stdin": "open"}]` ({§executor-stdin}) and `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
-| Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. The subprocess family uses the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
+| Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. Subprocess executors use the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
 
 Metadata does not turn inline programs or script stdin into JSON envelopes.
@@ -172,7 +172,7 @@ batch input and EOF behavior is unchanged. The same input adapter serves `jq`.
 
 A successful receipt reports `bytesAccepted` and `inputClosed`, with those facts
 in the ordinary model-visible `detail`. It acknowledges the writable pipe, not
-application processing. Subprocess leaves inherit this
+application processing. Subprocess executors inherit this
 contract; logical executors need not offer a receiver. In particular, SQLite,
 client-interaction tools, and MCP transports do not gain stdin through this API.
 
@@ -255,7 +255,7 @@ turn. Core owns that composed behavior in {§exec-host-proposes},
 ### §executor-probe Availability is per runtime tag
 
 `probe(signal?)` reports whether this runtime tag can work in the current
-environment. The default is `{ available: true }`; leaves override it for
+environment. The default is `{ available: true }`; executors override it for
 external binaries or required configuration. `detail` must be terse and
 actionable because the consumer may return it with a 501 failure.
 
@@ -353,10 +353,10 @@ the same contract.
 ### §executor-installation Installed capability lifecycle
 
 Configuration cannot enable a package that is absent from the consumer-visible
-module graph. An executor leaf must be installed under the `node_modules` found
+module graph. An exec extension must be installed under the `node_modules` found
 from the running service before discovery can inspect its declaration. The
 service assembles every installed member's package-owned `.env.defaults` under
-operator configuration {§operator-config-env-defaults}; a leaf may therefore
+operator configuration {§operator-config-env-defaults}; an extension may therefore
 ship default-disabled without transferring ownership of its key to the host.
 
 | Package state | Effective policy and probe             | Runtime result                                                      |
@@ -377,7 +377,7 @@ at boot; changing package membership or configuration requires a restart.
 | ------------- | -------------------------------------------------------------------------------------------------- |
 | `name`        | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`       | Optional presentation glyph.                                                                       |
-| `summary`     | Required one-line description, or `{ from: "tools", description?: string }` for an exact family inventory with an optional one-line purpose. |
+| `summary`     | Required one-line description, or `{ from: "tools", description?: string }` for an exact tool inventory with an optional one-line purpose. |
 | `invocation`  | Required body and target contract, validated and normalized below.                                 |
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
 | `attribution` | Published per-tag projection of the validated package declaration ({§extension-attribution}).         |
@@ -387,7 +387,7 @@ The framework validates and carries the summary source, invocation, and suppleme
 details as separate facts. A `{ from: "tools" }` summary is valid only for a
 runtime implementing {§executor-tool-registry}; the consumer resolves it from
 the exact effective tool set, after capability attenuation, so a denied tool
-cannot survive in the family orientation line. The inventory renders as
+cannot survive in the runtime's orientation line. The inventory renders as
 one compact executable fence naming `runtime (target|...)`, with the optional
 purpose as a trailing aside and body line breaks represented by literal `\n`;
 an authored string remains a description, without expanding its tool inventory.
@@ -442,7 +442,7 @@ validation path. The enclosing runtime declaration is closed to `name`,
 `glyph`, `summary`, `invocation`, and `details`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
 
-§executor-tool-registry A runtime representing a finite family of exact tools
+§executor-tool-registry A runtime representing a finite set of exact tools
 may implement `toolRegistry()` and return one immutable snapshot:
 
 ```ts
@@ -481,7 +481,7 @@ format and correspondence to the invocation. Core preserves it without interpret
 or augmenting its fields. Filtering, refresh, and withdrawal operate on the same
 registered tool, never a separately maintained catalog.
 The common renderer exposes `{"tools":[...definitions]}` in declaration order as
-an on-demand sibling `.json` catalog linked from the family Markdown document.
+an on-demand sibling `.json` catalog linked from the runtime document.
 Definitions remain inspection data, not an additional source of execution authority.
 Registries without definitions and empty registries publish no catalog.
 
@@ -492,7 +492,7 @@ invocation witness in plain text, with the authored description as an
 operation aside on its invocation line and a literal `\n` before a
 one-line body. The bundled subprocess interpreters declare concrete inline-program
 examples; their catalog summaries include the program body without a script target.
-An exact registry instead renders one compact family document whose Summary is
+An exact registry instead renders one compact runtime document whose Summary is
 authored or derived from its effective tools. Its H2 `Tools` contains one
 executable fence per tool, naming the runtime and exact target, with its aside
 and input preview. A schema-backed invocation
@@ -525,7 +525,7 @@ Runtime-name admission is one identity contract:
 | Constraint  | Contract                                                                                                      |
 | ----------- | ------------------------------------------------------------------------------------------------------------- |
 | Syntax      | `[a-z][a-z0-9+.-]*`: canonical lowercase RFC-scheme syntax that is also an admitted execution identifier.           |
-| Identity    | The exact name is the fence name, registry key, tool-family identity, and output URI-scheme name.           |
+| Identity    | The exact name is the fence name, registry key, and output URI-scheme name.                                 |
 | Reservation | `only` is unavailable because `PLURNK_EXECS_ONLY` owns that case-insensitive configuration key.               |
 
 Installed static declarations, trusted dynamic declarations, and
@@ -581,11 +581,11 @@ the framework does not define a second Active/Available state machine.
 ## §executor-default-inventory Current installed set
 
 The default `@plurnk/plurnk-service` composition installs the following
-`@plurnk/plurnk-execs-<leaf>` packages. The lean framework owns no leaf
-dependency edges. A probe and consumer policy still determine which declared
+`@plurnk/plurnk-execs-<name>` packages. The lean framework owns no dependency
+edge to an extension. A probe and consumer policy still determine which declared
 tags are offered in a particular workspace ({§bundled-set}).
 
-| Leaf     | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
+| Package  | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
 | `common` | `sh`, `node`, `python3`, `perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
 | `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
@@ -620,16 +620,16 @@ interface SpawnArgs {
 | `sh`                       | Shell command line.                                                  |
 | `node`                     | `node -e <body>`.                                                    |
 | `python3`                  | `python3 -c <body>`.                                                 |
-| Other default-base runtime | `<runtime> -c <body>`; specialized leaves override this fallback.    |
+| Other default-base runtime | `<runtime> -c <body>`; specialized executors override this fallback. |
 
-With a target, the target is the program and the body is its stdin. Each leaf
+With a target, the target is the program and the body is its stdin. Each executor
 uses its interpreter's file form (`awk -f <target>`, for example). The working
 directory is the consumer's `cwd` — the project root, or the directory a
 `[{"cwd": "<directory>"}]` block on the heading names ({§exec-executor-slot}); a
 directory is never a target. Data runtimes define their own declared target
 kind and role.
 
-Subprocess leaves inherit stdout/stderr streaming, scoped-environment handoff,
+Subprocess executors inherit stdout/stderr streaming, scoped-environment handoff,
 availability probing, operation results, exit code, and process-group
 cancellation. `CommandSyntaxError` during spawn translation becomes a durable
 400 `invalid-command`; other translation exceptions remain extension contract
@@ -671,4 +671,4 @@ module contract's slices ({§module-seam-slices}).
 - Output through `console.*` instead of declared channels.
 - Writes or state transitions for undeclared channels.
 - Ignoring `args.signal` at a cancellable boundary.
-- A process or network mechanism unrelated to the leaf's declared runtime domain.
+- A process or network mechanism unrelated to the executor's declared runtime domain.

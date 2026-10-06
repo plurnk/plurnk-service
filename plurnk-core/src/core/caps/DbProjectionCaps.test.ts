@@ -63,7 +63,7 @@ test("{§scheme-projection} binary retains the bounded source beside an optional
     });
 });
 
-test("projection identity delegates to the configured mimetype family", async () => {
+test("projection identity delegates to the configured mimetype framework", async () => {
     assert.equal(
         await new DbProjectionCaps(context("")).identity("application/pdf"),
         "application/pdf-identity",

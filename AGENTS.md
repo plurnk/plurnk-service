@@ -47,7 +47,7 @@ Where things are, for an agent that has to act before it has read everything:
   `../plurnk`). It runs the pushed commit in a throwaway
   worktree beside this checkout (`plurnk-service.wt-gate-<pid>`, removed when the
   drill ends), so the working tree may stay dirty and be edited while it runs; intg
-  scopes to the changed leaf workspaces and runs in full for a root-level, `plurnk-core`,
+  scopes to the changed workspaces and runs in full for a root-level, `plurnk-core`,
   or `plurnk-contracts` change. On green, fast-forward local `main`, delete
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
@@ -86,8 +86,8 @@ Where things are, for an agent that has to act before it has read everything:
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-modules` owns the daemon module contract: the lifecycle a module
-  implements and the base setup seam. Each family owns the slice for what
-  modules contribute to it.
+  implements and the base setup seam. Each framework owns the slice for what
+  modules contribute to its kind.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
   `plurnk-execs*` own their respective extension contracts and implementations.

@@ -139,7 +139,7 @@ test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype
     assert.equal(r.status, 203);
     assert.equal(r.body, "{broken json");  // raw bytes handed back so the model can regex/visual-parse
     assert.equal(r.mimetype, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
-    assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // plugin's templated reason
+    assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // the handler's templated reason
 });
 
 test("malformed matcher expression → 400 (model-facing, not a 500)", async () => {

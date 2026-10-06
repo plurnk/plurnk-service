@@ -178,7 +178,7 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("treats an array kind as no mimetype-family declaration", async () => {
+    it("treats an array kind as no mimetype-kind declaration", async () => {
         const dir = await makePackage(tmpRoot, "pkg-array-kind", {
             name: "array-kind",
             plurnk: {
@@ -647,7 +647,7 @@ describe("discover — extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY ({§e
         }
     });
 
-    it("withholds an untrusted family claim before validating its handler declaration", async () => {
+    it("withholds an untrusted kind claim before validating its handler declaration", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-malformed-"));
         try {
             const dir = await makePackage(root, "broken-handler", {

@@ -153,8 +153,8 @@ function isPackageName(value: unknown): value is string {
         && PACKAGE_NAME.test(value);
 }
 
-// Establish a family claim without interpreting executable declaration fields.
-// Non-packages and packages outside this family remain out of domain.
+// Establish a kind claim without interpreting executable declaration fields.
+// Non-packages and packages outside this kind remain out of domain.
 async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | null> {
     const manifest = await Meta.readManifest(dir, "mimetype");
     if (manifest === null) return null;
@@ -169,7 +169,7 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
     return { manifestPath, packageName, plurnk };
 }
 
-// Produce one HandlerInfo per valid entry from one trusted family claim.
+// Produce one HandlerInfo per valid entry from one trusted kind claim.
 function readHandlerInfos(
     manifest: MimetypeManifest,
     attribution: ExtensionAttributionDeclaration | undefined,

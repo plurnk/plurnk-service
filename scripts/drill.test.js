@@ -6,11 +6,11 @@ import { docsOnly, formatPhaseSummary, partitionByScript, scopeIntg } from "./dr
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
 
 describe("drill scopeIntg — changed-workspace intg scoping", () => {
-    it("scopes to the single leaf workspace whose files changed", () => {
+    it("scopes to the single workspace whose files changed", () => {
         assert.deepEqual([...scopeIntg(["plurnk-execs-jq/src/x.ts"], DIRS)], ["plurnk-execs-jq"]);
     });
 
-    it("scopes to every changed leaf workspace", () => {
+    it("scopes to every changed workspace", () => {
         const s = scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
         assert.deepEqual([...s].sort(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
     });
@@ -27,7 +27,7 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
         assert.equal(scopeIntg(["AGENTS.md"], DIRS), null);
     });
 
-    it("a root change alongside a leaf change → full (conservative)", () => {
+    it("a root change alongside a workspace change → full (conservative)", () => {
         assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "package.json"], DIRS), null);
     });
 

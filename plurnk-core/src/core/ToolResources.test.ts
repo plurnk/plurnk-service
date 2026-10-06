@@ -83,26 +83,26 @@ test("{§tools-resource-discovery} retains authored non-schema invocations and s
         ["/_plurnk/plurnk/gitea.md"],
         "authored witnesses without input schemas need no schema document",
     );
-    const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Summary\n\nUse enabled tools from the gitea MCP server\.$/m);
-    assert.match(family, /^## Tools\n\n```gitea[\s\S]*\n```$/m);
+    const runtimeDoc = resources[0]?.content ?? "";
+    assert.match(runtimeDoc, /^## Summary\n\nUse enabled tools from the gitea MCP server\.$/m);
+    assert.match(runtimeDoc, /^## Tools\n\n```gitea[\s\S]*\n```$/m);
     assert.match(
-        family,
+        runtimeDoc,
         /^```gitea \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}\n```$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
-        family,
+        runtimeDoc,
         /^```gitea \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}\n```$/m,
     );
-    assert.doesNotMatch(family, /Schema: worker:/, "no schema is fabricated for authored signatures");
-    assert.doesNotMatch(family, /```FIND/);
-    assert.doesNotMatch(family, /tool_name/, "the family document cannot advertise a rejected generic target");
-    // A tool's details are a SECTION of the family document, its headings demoted.
-    assert.match(family, /^## `issue\/read`$/m);
-    assert.match(family, /^### Inputs$/m, "nested detail headings demote beneath the target section");
-    assert.match(family, /^\| `owner` \| yes \| `string` \| Repository owner\. \|$/m);
-    assert.doesNotMatch(family, /^## `index`$/m, "a detail-less tool earns no section");
+    assert.doesNotMatch(runtimeDoc, /Schema: worker:/, "no schema is fabricated for authored signatures");
+    assert.doesNotMatch(runtimeDoc, /```FIND/);
+    assert.doesNotMatch(runtimeDoc, /tool_name/, "the runtime document cannot advertise a rejected generic target");
+    // A tool's details are a SECTION of the runtime document, its headings demoted.
+    assert.match(runtimeDoc, /^## `issue\/read`$/m);
+    assert.match(runtimeDoc, /^### Inputs$/m, "nested detail headings demote beneath the target section");
+    assert.match(runtimeDoc, /^\| `owner` \| yes \| `string` \| Repository owner\. \|$/m);
+    assert.doesNotMatch(runtimeDoc, /^## `index`$/m, "a detail-less tool earns no section");
 });
 
 test("{§capability-admission} derives an inventory summary from the effective exact tools", () => {
@@ -128,13 +128,13 @@ test("{§capability-admission} derives an inventory summary from the effective e
         },
     });
 
-    const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Summary\n\n```fixture \(echo\)\\n\{"message": string\}\\n```$/m);
-    assert.doesNotMatch(family, /fail/);
+    const runtimeDoc = resources[0]?.content ?? "";
+    assert.match(runtimeDoc, /^## Summary\n\n```fixture \(echo\)\\n\{"message": string\}\\n```$/m);
+    assert.doesNotMatch(runtimeDoc, /fail/);
 });
 
-// {§scheme-catalog-aside} — a family's summary is its complete menu, however many tools it has.
-test("a large family's inventory summary names every tool", () => {
+// {§scheme-catalog-aside} — a runtime's summary is its complete menu, however many tools it has.
+test("a large runtime's inventory summary names every tool", () => {
     const tool = (name: string) => ({
         target: name,
         summary: `${name} does a thing.`,
@@ -156,8 +156,8 @@ test("a large family's inventory summary names every tool", () => {
         details: "",
         registry: { tools: targets.map(tool) },
     });
-    const family = resources[0]?.content ?? "";
-    const summary = /^## Summary\n\n(.*)$/m.exec(family)?.[1] ?? "";
+    const runtimeDoc = resources[0]?.content ?? "";
+    const summary = /^## Summary\n\n(.*)$/m.exec(runtimeDoc)?.[1] ?? "";
     assert.ok([...summary].length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
     assert.match(summary, new RegExp(`^\`\`\`gitea \\(${targets.join("\\|")}\\)`), "every tool is named, in declaration order");
     assert.doesNotMatch(summary, /…/);
@@ -173,7 +173,7 @@ test("a large family's inventory summary names every tool", () => {
         details: "",
         registry: { tools: ["brave_web_search", "brave_news_search"].map(tool) },
     });
-    assert.match(small[0]?.content ?? "", /^## Summary\n\n```brave \(brave_web_search\|brave_news_search\) <!-- Brave Search MCP Server -->/m, "a family that fits lists every tool");
+    assert.match(small[0]?.content ?? "", /^## Summary\n\n```brave \(brave_web_search\|brave_news_search\) <!-- Brave Search MCP Server -->/m, "a runtime that fits lists every tool");
 });
 
 test("{§tools-resource-discovery} keeps a concrete invocation's multiline body on one summary line", () => {
@@ -228,7 +228,7 @@ test("{§tools-resource-discovery} percent-encodes exact targets without reservi
     assert.equal(ToolResources.targetSegment("issue%2Fread"), "issue%252Fread");
 });
 
-test("{§executor-tool-registry} an empty exact set publishes no executable family", () => {
+test("{§executor-tool-registry} an empty exact set publishes no runtime", () => {
     assert.deepEqual(ToolResources.render({
         runtime: "resources-only",
         summary: "An MCP server with no enabled tools.",

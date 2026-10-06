@@ -47,7 +47,7 @@ type CatalogEntryState = {
 };
 
 // {§scheme-catalog-aside} — prose is clipped so a row stays one line of orientation; an
-// invocation-form witness (a fenced one-liner, the shape a tool family's summary takes) is shown
+// invocation-form witness (a fenced one-liner, the shape a runtime's tool summary takes) is shown
 // whole, because a menu that is cut is no menu: the row exists so the model can invoke without a READ.
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;

@@ -1,4 +1,4 @@
-// {§scheme-module-slice} — what a daemon module contributes to the scheme family: a scheme handler,
+// {§scheme-module-slice} — what a daemon module contributes to the scheme kind: a scheme handler,
 // or a scheme facet over a runtime's own resources. The base module contract is
 // `@plurnk/plurnk-modules` ({§module-seam-slices}).
 import type { FindStatement, KillStatement, SendStatement } from "@plurnk/plurnk-contracts";

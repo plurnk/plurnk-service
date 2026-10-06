@@ -11,7 +11,7 @@ import Meta from "@plurnk/plurnk-meta";
 // own eligibility (credentials, URL support) decides per request, and the
 // built-in projection remains the fallback for recoverable outcomes.
 //
-// Discovery mirrors the executor family ({§extension-discovery}): scope-agnostic
+// Discovery mirrors the exec framework's ({§extension-discovery}): scope-agnostic
 // package scan, trust gate ({§extension-trust-boundary}), one flat id namespace —
 // two packages claiming one id fail hard, never silently shadow.
 
@@ -85,7 +85,7 @@ export default class MaterializerRegistry {
     static #current: MaterializerRegistry | null = null;
 
     // Discover installed materializer packages under <cwd>/node_modules
-    // (scope-agnostic), the same walk the executor family uses.
+    // (scope-agnostic), the same walk the exec framework uses.
     async discover(options: { cwd?: string; packageDirs?: Array<{ dir: string; name: string }> } = {}): Promise<MaterializerRegistry> {
         this.#promise ??= (async (): Promise<MaterializerRegistry> => {
             const dirs = options.packageDirs ?? await Meta.packageDirs(path.join(options.cwd ?? process.cwd(), "node_modules"));

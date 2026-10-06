@@ -154,9 +154,9 @@ so each search runs under the proposal policy.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server tools | `worker:///_plurnk/tools/<server>.md` family summary |
+| Server tools | `worker:///_plurnk/tools/<server>.md` runtime summary |
 | Complete tool definitions | `worker:///_plurnk/tools/<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
-| Enabled tool | `server (tool)` invocation in the family document; full input schema at `worker:///_plurnk/tools/<server>/<encoded-tool>.json` |
+| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `worker:///_plurnk/tools/<server>/<encoded-tool>.json` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

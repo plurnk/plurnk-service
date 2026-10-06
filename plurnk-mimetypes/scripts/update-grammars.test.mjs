@@ -3,14 +3,14 @@ import { mkdtempDisposable, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveGrammarExtensions, runGrammarLifecycle } from "./update-grammars.mjs";
+import { resolveGrammarPackages, runGrammarLifecycle } from "./update-grammars.mjs";
 
-const makeFamily = async (slugs = ["alpha", "beta"]) => {
+const makeGrammars = async (slugs = ["alpha", "beta"]) => {
     const temporary = await mkdtempDisposable(path.join(tmpdir(), "grammar-lifecycle-"));
     const frameworkRoot = path.join(temporary.path, "framework");
-    const familyRoot = path.join(temporary.path, "family");
+    const grammarsRoot = path.join(temporary.path, "grammars");
     await mkdir(frameworkRoot);
-    await mkdir(familyRoot);
+    await mkdir(grammarsRoot);
     await writeFile(path.join(frameworkRoot, "package.json"), JSON.stringify({
         devDependencies: Object.fromEntries(slugs.map((slug) => [
             `@plurnk/plurnk-mimetypes-grammar-${slug}`,
@@ -18,7 +18,7 @@ const makeFamily = async (slugs = ["alpha", "beta"]) => {
         ])),
     }));
     for (const slug of slugs) {
-        const directory = path.join(familyRoot, `plurnk-mimetypes-grammar-${slug}`);
+        const directory = path.join(grammarsRoot, `plurnk-mimetypes-grammar-${slug}`);
         await mkdir(directory);
         await writeFile(path.join(directory, "package.json"), JSON.stringify({
             name: `@plurnk/plurnk-mimetypes-grammar-${slug}`,
@@ -26,7 +26,7 @@ const makeFamily = async (slugs = ["alpha", "beta"]) => {
         }));
     }
     return {
-        familyRoot,
+        grammarsRoot,
         frameworkRoot,
         temporary,
         [Symbol.asyncDispose]: () => temporary.remove(),
@@ -34,18 +34,18 @@ const makeFamily = async (slugs = ["alpha", "beta"]) => {
 };
 
 test("requires every framework-declared grammar checkout", async () => {
-    await using fixture = await makeFamily();
+    await using fixture = await makeGrammars();
     await writeFile(path.join(fixture.frameworkRoot, "package.json"), JSON.stringify({
         devDependencies: {
             "@plurnk/plurnk-mimetypes-grammar-alpha": "1.0.0",
             "@plurnk/plurnk-mimetypes-grammar-missing": "1.0.0",
         },
     }));
-    await assert.rejects(resolveGrammarExtensions(fixture), /missing grammar extension checkouts: missing/);
+    await assert.rejects(resolveGrammarPackages(fixture), /missing grammar package checkouts: missing/);
 });
 
-test("check mode fails when any leaf probe fails", async () => {
-    await using fixture = await makeFamily();
+test("check mode fails when any grammar probe fails", async () => {
+    await using fixture = await makeGrammars();
     const run = async (command, args, cwd) => {
         if (path.basename(cwd).endsWith("alpha")) throw new Error("probe failed");
         return { stdout: "up to date\n", stderr: "" };
@@ -57,8 +57,8 @@ test("check mode fails when any leaf probe fails", async () => {
     }), /probe failed/);
 });
 
-test("check mode is read-only and reports every declared leaf", async () => {
-    await using fixture = await makeFamily();
+test("check mode is read-only and reports every declared grammar", async () => {
+    await using fixture = await makeGrammars();
     const calls = [];
     const run = async (command, args, cwd) => {
         calls.push({ command, args, cwd });
@@ -76,7 +76,7 @@ test("check mode is read-only and reports every declared leaf", async () => {
 });
 
 test("check mode recognizes an upstream with no stable release tags as current", async () => {
-    await using fixture = await makeFamily(["alpha"]);
+    await using fixture = await makeGrammars(["alpha"]);
     const run = async () => ({
         stdout: "https://example.test/alpha.git: no stable release tags upstream — staying pinned\n",
         stderr: "",
@@ -86,14 +86,14 @@ test("check mode recognizes an upstream with no stable release tags as current",
 });
 
 test("update refuses mutation without repository-local issue provenance", async () => {
-    await using fixture = await makeFamily(["alpha"]);
+    await using fixture = await makeGrammars(["alpha"]);
     const run = async () => ({ stdout: "BUMP old -> new\n", stderr: "" });
     await assert.rejects(runGrammarLifecycle({ ...fixture, check: false, run }),
         /update requires --issue-map/);
 });
 
 test("update stops at the first failed lifecycle command", async () => {
-    await using fixture = await makeFamily(["alpha"]);
+    await using fixture = await makeGrammars(["alpha"]);
     const issueMapPath = path.join(fixture.temporary.path, "issues.json");
     await writeFile(issueMapPath, JSON.stringify({ alpha: 7 }));
     const calls = [];

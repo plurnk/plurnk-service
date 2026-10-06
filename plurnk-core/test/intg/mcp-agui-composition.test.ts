@@ -167,7 +167,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the family document.\n````"),
+            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
             makeMockResponse([
                 PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture/echo.json) <1,-1>", null),
                 PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
@@ -305,14 +305,14 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);
         assert.match(firstPacket, /```fixture \(echo\)/);
         assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
-        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
+        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys runtime documents only");
         assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
             "the catalog and its full definitions are not injected into turn0");
-        const familyContract = packet(provider.requests, 1);
-        assert.match(familyContract, /Pass the message field unchanged\./, "READ of the family document retrieves the full authored instructions");
-        assert.match(familyContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
-        assert.doesNotMatch(familyContract, /```fixture \(fail\)/);
-        assert.match(familyContract, /worker:\/\/\/_plurnk\/tools\/fixture\.json/);
+        const runtimeContract = packet(provider.requests, 1);
+        assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
+        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
+        assert.doesNotMatch(runtimeContract, /```fixture \(fail\)/);
+        assert.match(runtimeContract, /worker:\/\/\/_plurnk\/tools\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
@@ -460,11 +460,11 @@ test(
         const provider = new PacketCapturingMock({
             contextWindow: 1_000_000,
             responses: [
-                makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>````\n````NOTE\nSelect the configuration tool linked from the family document.\n````"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>````\n````NOTE\nSelect the configuration tool linked from the runtime document.\n````"),
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes/configuration_view.json) <1,-1>````\n````NOTE\nUse the exact contract after reading it.\n````"),
                 makeMockResponse("\n````kubernetes (configuration_view)\n{\"minified\":true}\n````\n\n````NOTE\nInspect the returned configuration.\n````"),
                 makeMockResponse("````KILL\nThe current Kubernetes context is specimen.\n````"),
-                makeMockResponse("\n````READ (worker:///_plurnk/tools/goji.md) <1,-1>````\n````NOTE\nSelect the terminology tool linked from the family document.\n````"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/goji.md) <1,-1>````\n````NOTE\nSelect the terminology tool linked from the runtime document.\n````"),
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/goji/goji_explain_term.json) <1,-1>````\n````NOTE\nUse the documented tool and resource.\n````"),
                 makeMockResponse("\n````goji (goji_explain_term)\n{\"term\":\"AEO\"}\n````\n\n````READ (goji:///resources/goji%3A%2F%2Fabout)````\n````NOTE\nInspect both remote results.\n````"),
                 makeMockResponse("````KILL\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n````"),
@@ -575,13 +575,13 @@ test(
                 forwardedProps: { plurnk: { workspace, policy } },
             }));
             assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-            const familyCatalog = packet(provider.requests, 0);
-            assert.match(familyCatalog, /worker:\/\/\/_plurnk\/tools\/kubernetes\.md/);
-            assert.match(familyCatalog, /worker:\/\/\/_plurnk\/tools\/goji\.md/);
-            assert.doesNotMatch(familyCatalog, /configuration_view/, "Turn0 surveys only family documents");
-            const kubernetesFamily = packet(provider.requests, 1);
-            assert.match(kubernetesFamily, /worker:\/\/\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
-            assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
+            const runtimeCatalog = packet(provider.requests, 0);
+            assert.match(runtimeCatalog, /worker:\/\/\/_plurnk\/tools\/kubernetes\.md/);
+            assert.match(runtimeCatalog, /worker:\/\/\/_plurnk\/tools\/goji\.md/);
+            assert.doesNotMatch(runtimeCatalog, /configuration_view/, "Turn0 surveys only runtime documents");
+            const kubernetesRuntime = packet(provider.requests, 1);
+            assert.match(kubernetesRuntime, /worker:\/\/\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
+            assert.doesNotMatch(kubernetesRuntime, /pods_list/, "disabled remote tools stay out of the runtime document");
             const kubernetesContract = packet(provider.requests, 2);
             assert.match(kubernetesContract, /```kubernetes \(configuration_view\)/);
             assert.doesNotMatch(kubernetesContract, /pods_list/, "one exact document carries only its selected tool contract");

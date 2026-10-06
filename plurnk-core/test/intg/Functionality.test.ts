@@ -1,5 +1,5 @@
 // {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
-// through a fixture adapter: one client projection, one generated model family,
+// through a fixture adapter: one client projection, one generated runtime,
 // one durable workspace-owned state, one atomic publication.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -61,7 +61,7 @@ const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
 
 // A family whose definitions are {kind: ok | fail | doc | auth}. Service contributes
 // `svc`, enabled by default. `fail` refuses preparation; `doc` also publishes a
-// family document.
+// document of its own.
 const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
     family: "fx",
     namespaceOwner: OWNER,
@@ -132,7 +132,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
             await insertWorker(db, workspaceId, null, "model", "model");
             await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
             const doc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
-            assert.ok(doc, "the family document is a reference entry");
+            assert.ok(doc, "the runtime document is a reference entry");
             assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n```fx ("), true, "the generated header owns the H1 and the summary");
             assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
             assert.ok(doc.content.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the document, its authoring title removed:\n${doc.content}`);
@@ -701,11 +701,11 @@ fixture
         assert.deepEqual(await states(), ["svc:service:disabled"], "durable state is unchanged after a failed publication");
         assert.equal((await exec("svc")).status, 400, "the previous snapshot remains authoritative");
 
-        // Family documents reconcile with the snapshot under the generated subtree.
+        // A family's published documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
         await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/fx/docy.md)````") });
         const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
-        assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared family document");
+        assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared published document");
         for (const { content } of document) assert.match(content, /fixture document/);
         await invoke("remove", { alias: "docy" });
         assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" }), [], "removal withdraws the document");

@@ -2,7 +2,7 @@
 //
 // Per registry entry (plurnk-meta/external-packages.json): verify compatible-major dependency ranges plus
 // exact builtAgainst provenance. Compatible packages stay put; an incompatible managed package
-// is realigned to the current family head, then `npm install` pulls the published head from the registry,
+// is realigned to the current platform head, then `npm install` pulls the published head from the registry,
 // then `npm publish` (runs the repo's OWN prepublishOnly gate in its own context — a red there halts
 // with the repository's real exit code), then poll the registry until it serves. Same laws:
 // real exits, halt-on-red naming the repository and owner, and idempotency (a package already serving the version
@@ -110,7 +110,7 @@ for (const { dir, name, release, owner, platformDependencies, pushable } of regi
     if (pushable !== true) throw new Error(`${tag}: managed release requires pushable=true in the external registry`);
     await assertReleaseRepository(repo, externalRepositoryName(name));
 
-    // A compatible artifact survives family releases unchanged only while its
+    // A compatible artifact survives platform releases unchanged only while its
     // complete dependency contract still matches the immutable registry copy.
     // Changed dependencies or peers are a new artifact, even when every
     // @plurnk range already accepts this platform.
