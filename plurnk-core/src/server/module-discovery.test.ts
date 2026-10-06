@@ -188,7 +188,7 @@ test("{§module-discovery}: bad native configuration is diagnosed without exclud
     const found = await discoverDaemonModules({ hostPaths: new HostPaths({ home: root, env: {} }), packageDirs: [broken, healthy] });
     assert.equal(found.modules.length, 1);
     assert.equal(found.configurationErrors.length, 1);
-    assert.equal(found.configurationErrors[0]!.family, "extensions", "a declaration error is the extensions family's");
+    assert.equal(found.configurationErrors[0]!.owner, "extensions", "a declaration error is owned by extensions");
     assert.match(found.configurationErrors[0]!.cause.message, /native module must be beneath ai.plurnk/);
 });
 
@@ -199,7 +199,7 @@ test("{§module-discovery}: a package names its entry as an export subpath, reso
     const unexported = await packageOf(root, "@acme/unexported", { plurnk: { kind: "module", module: "./missing" } }, "export default {};");
     const found = await discoverDaemonModules({ packageDirs: [filePath, unexported] });
     assert.equal(found.modules.length, 0);
-    assert.deepEqual(found.configurationErrors.map(({ family }) => family), ["extensions", "extensions"], "a declaration error is the extensions family's");
+    assert.deepEqual(found.configurationErrors.map(({ owner }) => owner), ["extensions", "extensions"], "a declaration error is owned by extensions");
     assert.match(found.configurationErrors[0]!.cause.message, /@acme\/file-path: plurnk.module 'module.mjs' must be an export subpath such as "\.\/module"/u);
     assert.match(found.configurationErrors[1]!.cause.message, /@acme\/unexported: plurnk.module '\.\/missing' does not resolve through the package's exports/u);
 });
@@ -213,5 +213,5 @@ test("{§module-self-activation}: a module's own configuration error is attribut
     const healthy = await packageOf(root, "@acme/healthy", { plurnk: { kind: "module", module: "./module" } }, "export default { setup() {} };");
     const found = await discoverDaemonModules({ packageDirs: [misconfigured, healthy] });
     assert.deepEqual(found.modules.map(({ owner }) => owner), ["@acme/healthy"], "a healthy sibling still loads");
-    assert.deepEqual(found.configurationErrors.map(({ family, cause }) => [family, cause.key]), [["module:@acme/misconfigured", "ACME_SETTING"]]);
+    assert.deepEqual(found.configurationErrors.map(({ owner, cause }) => [owner, cause.key]), [["module:@acme/misconfigured", "ACME_SETTING"]]);
 });

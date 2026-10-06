@@ -11,7 +11,7 @@ test("{§configuration-repair-path} configuration containment preserves valid va
     assert.equal(await diagnostics.capture("hooks", () => { throw error; }), null);
     assert.deepEqual(diagnostics.notices(), [{
         source: "engine:configuration", kind: "configuration_unavailable", level: "warn",
-        family: "hooks", key: error.key, message: error.message,
+        owner: "hooks", key: error.key, message: error.message,
     }]);
 });
 

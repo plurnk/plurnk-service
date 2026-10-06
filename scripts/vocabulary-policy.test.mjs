@@ -29,6 +29,7 @@ test("every retired form is refused by name with its successor", () => {
         "the executor family's discovery and a trusted family claim",
         "the tool family and its family document",
         "Every code this family mints",
+        "assert.equal(notice?.family, \"module:@acme/x\"); a notice with family: \"extensions\"",
     ]) {
         const violations = refused(line);
         assert.ok(violations.length > 0, `refused: ${line}`);

@@ -1669,7 +1669,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const discoveredModules = await discoverDaemonModules({
             cwd: this.#discoveryCwd, hostPaths: this.#hostPaths, registered: new Set(this.#modules.map(({ owner }) => owner)),
         });
-        for (const { family, cause } of discoveredModules.configurationErrors) this.#configuration.record(family, cause);
+        for (const { owner, cause } of discoveredModules.configurationErrors) this.#configuration.record(owner, cause);
         this.#configuration.pluginReports(discoveredModules.reports);
         for (const packageName of discoveredModules.skipped) {
             console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);

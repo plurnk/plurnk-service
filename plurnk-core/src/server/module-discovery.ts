@@ -73,9 +73,9 @@ export const discoverDaemonModules = async (
     readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
-    // A declaration's error is the extensions family's; a module's own configuration error is the
-    // module's, `module:<owner>`.
-    readonly configurationErrors: ReadonlyArray<{ readonly family: string; readonly cause: ConfigurationError }>;
+    // A declaration's error is owned by `extensions`; a module's own configuration error by the
+    // module, `module:<package>`.
+    readonly configurationErrors: ReadonlyArray<{ readonly owner: string; readonly cause: ConfigurationError }>;
 }> => {
     const sources = await PluginSources.read({
         nodeModules: join(options.cwd ?? process.cwd(), "node_modules"),
@@ -86,8 +86,8 @@ export const discoverDaemonModules = async (
         ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
     ];
     const modules: Array<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }> = [];
-    const configurationErrors: Array<{ readonly family: string; readonly cause: ConfigurationError }> = sources.configurationErrors
-        .map((cause) => ({ family: "extensions", cause }));
+    const configurationErrors: Array<{ readonly owner: string; readonly cause: ConfigurationError }> = sources.configurationErrors
+        .map((cause) => ({ owner: "extensions", cause }));
     const skipped: string[] = [];
     for (const candidate of dirs) {
         let manifest: ModuleManifest | null;
@@ -95,7 +95,7 @@ export const discoverDaemonModules = async (
             manifest = await readManifest(candidate.dir);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            configurationErrors.push({ family: "extensions", cause });
+            configurationErrors.push({ owner: "extensions", cause });
             continue;
         }
         if (manifest === null) continue;
@@ -127,14 +127,14 @@ export const discoverDaemonModules = async (
             const created = await (exported as () => unknown | Promise<unknown>)();
             modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
-            const family = `module:${manifest.packageName}`;
+            const owner = `module:${manifest.packageName}`;
             if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
-                configurationErrors.push({ family, cause: new ConfigurationError(manifest.manifestPath,
+                configurationErrors.push({ owner, cause: new ConfigurationError(manifest.manifestPath,
                     `${manifest.packageName}: ${(cause as Error).message}`, { cause }) });
                 continue;
             }
             if (!(cause instanceof ConfigurationError)) throw cause;
-            configurationErrors.push({ family, cause });
+            configurationErrors.push({ owner, cause });
         }
     }
     return { modules, skipped, reports: sources.reports, configurationErrors };

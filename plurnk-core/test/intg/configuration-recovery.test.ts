@@ -46,7 +46,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
-    assert.ok(daemon.configurationNotices().some((notice) => notice.family === "executor:brokenfixture" && notice.key === key));
+    assert.ok(daemon.configurationNotices().some((notice) => notice.owner === "executor:brokenfixture" && notice.key === key));
     assert.equal(daemon.schemes.has("brokenfixture"), false, "no executable output scheme is invented");
     assert.equal(daemon.schemes.has("healthyfixture"), true);
     const ended: Array<{ loopId: number; result: OperationResult }> = [];
@@ -300,7 +300,7 @@ for (const [family, key, value] of [
         const references = await daemon.engine.referenceEntries(workspaceId);
         const documentation = references.find(({ pathname }) => pathname === `/_plurnk/plurnk/${family}.md`);
         assert.ok(documentation?.content.includes(key), "the manager's on-demand documentation also includes the diagnostic");
-        assert.equal(notices.filter((notice) => notice.source === "engine:configuration" && notice.key === key && notice.family === family).length, 1,
+        assert.equal(notices.filter((notice) => notice.source === "engine:configuration" && notice.key === key && notice.owner === family).length, 1,
             "the client receives the diagnostic without repeated warnings on unchanged turns");
         assert.ok(recoveryPacket.includes(key), "the model receives the configuration Problem through normal operation output");
         assert.match(recoveryPacket, /"family":\s*"env"/u, "an unrelated family remains operational");

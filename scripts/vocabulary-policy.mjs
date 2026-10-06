@@ -39,6 +39,7 @@ export const RETIRED = [
     { label: "family for a kind", re: new RegExp(`\\b(?:${KIND_WORDS})[- ]famil(?:y|ies)\\b|\\bfamily[- ](?:claims?|loaders?|packages?|roots?|inventory|maintenance)\\b|\\bfamilyRoot\\b`, "iu"), successor: "the kind, its framework or its packages; a family is one of core's six-verb managers" },
     { label: "family for a runtime", re: /\b(?:tool|executable|runtime|fence)[- ]famil(?:y|ies)\b|\bfamily[- ](?:documents?|docs?|orientation|level|paths?|summar(?:y|ies))\b|\bfamily(?:Doc|Contract|Catalog|Invocations)\b/iu, successor: "\"runtime\" or \"runtime document\"; a family is one of core's six-verb managers" },
     { label: "family for a Problem table", re: /\bthis family mints\b/iu, successor: "\"Every code minted here\"" },
+    { label: "retired notice key", re: /\bnotice\??\.family\b|\bfamily: "(?:extensions|plugins)"/u, successor: "a configuration notice's `owner`" },
     { label: "hook for a function", re: /\b(?:module|daemon|malformed) lifecycle hooks?\b|\bruntimes?[- ]hooks?\b|\b(?:discovery|executable|attribution)[- ]hooks?\b|\bdynamic-hook\b/iu, successor: "\"lifecycle member\" or \"function\"; a hook is the operator's command" },
 ];
 

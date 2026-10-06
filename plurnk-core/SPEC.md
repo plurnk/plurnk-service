@@ -4119,8 +4119,8 @@ service's explicit composition names its packages the same way. Standard bundles
 order. All trusted modules register before setup. A package the host registered explicitly is
 never also discovered: discovery skips that owner before importing it. Untrusted modules are reported and not imported. Invalid
 declarations, unavailable module files and configuration errors during construction are diagnosed
-at the affected extension, a declaration's error under the `extensions` family and a
-module's own configuration error under `module:<owner>`; healthy siblings remain available. A factory validates startup
+at the affected extension, a declaration's error owned by `extensions` and a
+module's own configuration error by `module:<package>`; healthy siblings remain available. A factory validates startup
 configuration before `setup` acquires resources. Failures after registration begins follow
 {§module-lifecycle} cleanup, not a partial-registration fallback.
 An invalid module object, factory result or lifecycle member is an implementation contract failure,
@@ -4336,7 +4336,10 @@ composition boundaries, not arbitrary exceptions:
 | Internal invariant, state, or implementation failure | Preserve the exception; never reclassify it as an operator configuration error. |
 
 Client discovery and passive synchronization report startup diagnostics through the
-existing Notice channel, even without a usable model. The first turn of a drain, and a changed diagnostic
+existing Notice channel, even without a usable model. Each is a Notice from `engine:configuration`
+of kind `configuration_unavailable` that names the failed setting's `key` and its `owner`: the
+setting's reader (such as `packet`, `model` or `executor:<runtime>`), a family, `extensions` for an
+extension declaration, or a module as `module:<package>`. The first turn of a drain, and a changed diagnostic
 thereafter, reports unresolved configuration to both client and model. An
 unchanged diagnostic is not repeated every turn. Operation failures remain Problems.
 

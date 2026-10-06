@@ -2,29 +2,31 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
 
-// {§configuration-repair-path}: containment records a diagnostic, not a replacement configuration.
+// {§configuration-repair-path}: containment records a diagnostic, not a replacement configuration. A
+// notice's `owner` names whose configuration failed: a setting's reader, a family, `extensions`,
+// `plugins`, or a module as `module:<package>`.
 export default class ConfigurationDiagnostics {
     readonly #notices = new Map<string, Notice>();
 
-    static notice(family: string, cause: ConfigurationError): Notice {
+    static notice(owner: string, cause: ConfigurationError): Notice {
         return {
             source: "engine:configuration", kind: "configuration_unavailable", level: "warn",
-            family, key: cause.key, message: cause.message,
+            owner, key: cause.key, message: cause.message,
         };
     }
 
-    async capture<T>(family: string, prepare: () => T | Promise<T>): Promise<T | null> {
+    async capture<T>(owner: string, prepare: () => T | Promise<T>): Promise<T | null> {
         try {
             return await prepare();
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            this.record(family, cause);
+            this.record(owner, cause);
             return null;
         }
     }
 
-    record(family: string, cause: ConfigurationError): void {
-        const notice = ConfigurationDiagnostics.notice(family, cause);
+    record(owner: string, cause: ConfigurationError): void {
+        const notice = ConfigurationDiagnostics.notice(owner, cause);
         this.#notices.set(JSON.stringify(notice), notice);
     }
 
@@ -33,7 +35,7 @@ export default class ConfigurationDiagnostics {
             const notice: Notice = {
                 source: "engine:configuration", kind: "plugin_configuration",
                 level: report.outcome === "ignored" || report.outcome === "shadowed" ? "info" : "warn",
-                family: "plugins", message: `${report.root}/${report.path}: ${report.message}`,
+                owner: "plugins", message: `${report.root}/${report.path}: ${report.message}`,
             };
             this.#notices.set(JSON.stringify(notice), notice);
         }

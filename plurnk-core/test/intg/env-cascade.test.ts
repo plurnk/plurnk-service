@@ -409,7 +409,7 @@ for (const built of [false, true]) {
         const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
             .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown });
         const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
-        for (const [family, key] of [
+        for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
             ["a2a-hosted", "PLURNK_A2A_ENDPOINT_PATH"],
             ["observability", "OTEL_TRACES_EXPORTER"],
@@ -425,7 +425,7 @@ for (const built of [false, true]) {
         ]) {
             const notice = notices.find((item) => item.key === key);
             assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
-            assert.equal(notice?.family, family);
+            assert.equal(notice?.owner, owner);
             assert.equal(notice?.level, "warn");
             assert.ok(notice?.message?.includes(key!));
         }

@@ -97,7 +97,7 @@ export const configuredDefinitions = async (
                 const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
                 if (!isServerName(alias) || entry.type === "sse") {
                     plugins!.report({
-                        source: "engine:configuration", kind: "plugin_configuration", level: "warn", family: "mcp",
+                        source: "engine:configuration", kind: "plugin_configuration", level: "warn", owner: "mcp",
                         message: `${file}#${reference}: ${entry.type === "sse" ? "legacy SSE transport is unsupported" : "server name must match [a-z][a-z0-9-]*"}; this entry was skipped.`,
                     });
                     continue;
