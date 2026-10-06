@@ -72,7 +72,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
 | `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
-| `log/entry` WAIT (model) | `CUSTOM plurnk.send` with the actual wait result; no invented plan or assistant speech |
+| `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is `CUSTOM plurnk.send` alone. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this conversation, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |

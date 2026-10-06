@@ -75,11 +75,14 @@ test("{§kill-conclusion}: only delivered KILL answers enter AG-UI live and repl
     assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["The answer is **42**."]);
 });
 
-test("{§agui-projection} WAIT conveys lifecycle without fabricating speech or a plan", () => {
+test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT conveys lifecycle alone and fabricates none", () => {
     const tr = t();
-    const events = tr.logEntry(entry({ op: "WAIT", coordinate: "1/1/3/WAIT", tx: { body: "Wait for the child." } }));
-    assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "CUSTOM"]);
-    assert.equal((events[2] as { name: string }).name, "plurnk.send");
+    const events = tr.logEntry(entry({ op: "WAIT", coordinate: "1/1/3/WAIT", tx: { body: "Pilot at 12 of 30, 9 passes; next read in ten minutes." } }));
+    assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
+    assert.equal((events[3] as { delta: string }).delta, "Pilot at 12 of 30, 9 passes; next read in ten minutes.", "the body is delivered as it was written");
+    assert.equal((events[5] as { name: string }).name, "plurnk.send");
+    const silent = tr.logEntry(entry({ op: "WAIT", coordinate: "1/2/3/WAIT", turn_id: 2, tx: { body: null } }));
+    assert.deepEqual(silent.filter((e) => e.type !== "STEP_FINISHED" && e.type !== "STEP_STARTED").map((e) => e.type), ["CUSTOM", "CUSTOM"], "no body, no speech");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
@@ -246,7 +249,7 @@ for (const streamed of [false, true]) {
         for (const row of rows.slice(1)) events.push(...tr.logEntry(row));
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 2,
             "one reasoning value per turn, including when a later turn repeats the same text");
-        assert.equal(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").length, 3);
+        assert.equal(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").length, 4, "three reply SENDs and the WAIT body: a WAIT that carries words speaks them ({§agui-projection})");
         assert.equal(events.filter(({ type }) => type === "ACTIVITY_SNAPSHOT").length, 0);
         assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.send"));
         const snapshot = tr.replay(rows.map(({ entry }) => entry)).find(({ type }) => type === "MESSAGES_SNAPSHOT");

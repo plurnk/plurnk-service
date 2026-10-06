@@ -163,7 +163,10 @@ export default class Translator {
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
             if (delayedSendRow) events.push(row);
-            if (response) {
+            // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
+            // teaches both as the worker's words to the user. A bodiless WAIT is lifecycle alone.
+            const waitSpeech = e.op === "WAIT" && e.origin === "model" && text.trim().length > 0;
+            if (response || waitSpeech) {
                 events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
                 events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
                 events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
