@@ -13,6 +13,13 @@ coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `enable`,
 family document's authored body is `docs/schedule.md`
 ({§functionality-model-projection}).
 
+## §schedule-module Daemon module
+
+The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
+({§module-discovery}). Its factory reads this package's configuration ({§module-self-activation});
+`setup` registers the family adapter before durable lifecycle recovery, and `start` arms the
+coordinator's persisted rules ({§schedule-residency}). It claims no HTTP mounts.
+
 ## §schedule-rule Rule text
 
 A rule is RFC 5545 text: an optional `DTSTART` line, exactly one `RRULE` line,

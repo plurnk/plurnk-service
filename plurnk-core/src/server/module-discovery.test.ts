@@ -77,16 +77,18 @@ test("{§module-discovery}: the trust gate skips a non-allowlisted declaration",
     }
 });
 
-test("{§module-discovery}: the service's explicit composition is never duplicated", async () => {
+test("{§module-discovery}: a package registered explicitly is never also discovered, nor imported", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         await packageOf(root, "@plurnk/plurnk-agui", {
             plurnk: { kind: "module", module: "./module" },
-        }, "export default { setup: () => {} };");
-        const { modules } = await discoverDaemonModules({
+        }, "throw new Error('an explicitly registered package must not be imported');");
+        const { modules, configurationErrors } = await discoverDaemonModules({
             packageDirs: [{ dir: join(root, "node_modules", "@plurnk/plurnk-agui"), name: "@plurnk/plurnk-agui" }],
+            registered: new Set(["@plurnk/plurnk-agui"]),
         });
-        assert.equal(modules.length, 0, "the AG-UI module is composed by the service, not discovered");
+        assert.equal(modules.length, 0, "the explicit registration wins");
+        assert.deepEqual(configurationErrors, []);
     } finally {
         await rm(root, { recursive: true, force: true });
     }

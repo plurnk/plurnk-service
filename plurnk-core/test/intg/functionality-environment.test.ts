@@ -32,7 +32,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
             },
             timers: { set: () => assert.fail("disabled schedules must not arm"), clear: () => {} },
         });
-        daemon.registerModule(schedule, "test-module");
+        daemon.registerModule(schedule, "@plurnk/plurnk-schedule");
         await daemon.start();
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });

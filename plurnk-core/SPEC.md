@@ -158,14 +158,15 @@ The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps 
 owners. Capability-specific behavior remains with the owning plug point.
 
 §service-worker-composition The service launcher and the live/demo workspace
-helper share one registration of default worker-facing modules: MCP, outbound
-A2A, and Schedule. Their management families and readable reference documents are
+helper share one registration of default worker-facing modules, MCP and outbound
+A2A, and both discover Schedule and command hooks ({§module-discovery}). The
+management families and readable reference documents are
 present even with no enabled definitions. Workspace capability policy controls every actor's
 surface; registering a family does not enable its definitions. The real-model
 profile ({§operator-config-real-model-profile}) leaves ambient MCP attachments and
 service schedules disabled by default; specimens may add their own through the
 ordinary management surface. Client and
-inbound-A2A listeners and host hooks remain launcher-owned.
+inbound-A2A listeners remain launcher-owned.
 
 ### §service-package-exports Package export surface
 
@@ -4115,8 +4116,8 @@ The export is one DaemonModule ({§module-contract}) object or no-argument facto
 records each module's owner, the package it came from, and its diagnostics name that owner; the
 service's explicit composition names its packages the same way. Standard bundles follow
 {§agent-plugins-hosting} source order, then other installed module packages load in package-name
-order. All trusted modules register before setup. The service's explicit AG-UI and MCP
-composition is never duplicated. Untrusted modules are reported and not imported. Invalid
+order. All trusted modules register before setup. A package the host registered explicitly is
+never also discovered: discovery skips that owner before importing it. Untrusted modules are reported and not imported. Invalid
 declarations, unavailable module files and configuration errors during construction are diagnosed
 at the affected native extension, a declaration's error under the `native-plugins` family and a
 module's own configuration error under `module:<owner>`; healthy siblings remain available. A factory validates startup

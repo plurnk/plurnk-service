@@ -1666,7 +1666,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§module-discovery} — third-party daemon-module composition: trusted
         // packages declaring `plurnk.kind: "module"` register beside the
         // service's explicit composition before any module setup runs.
-        const discoveredModules = await discoverDaemonModules({ cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
+        const discoveredModules = await discoverDaemonModules({
+            cwd: this.#discoveryCwd, hostPaths: this.#hostPaths, registered: new Set(this.#modules.map(({ owner }) => owner)),
+        });
         for (const { family, cause } of discoveredModules.configurationErrors) this.#configuration.record(family, cause);
         this.#configuration.pluginReports(discoveredModules.reports);
         for (const packageName of discoveredModules.skipped) {

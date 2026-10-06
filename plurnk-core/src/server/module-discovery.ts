@@ -13,11 +13,6 @@ import EnvDefaults from "../core/env-defaults.ts";
 // {§module-discovery} Standard plugin bundles and capability-library packages
 // meet the same daemon lifecycle; project roots never supply native code.
 
-const EXPLICIT_COMPOSITION = new Set([
-    "@plurnk/plurnk-agui",
-    "@plurnk/plurnk-mcp",
-]);
-
 interface ModuleManifest {
     readonly packageName: string;
     readonly module: string;
@@ -69,8 +64,10 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
     return { packageName: manifest.packageName, module: await moduleEntry(manifest, manifest.packageName, entry), manifestPath: manifest.manifestPath };
 };
 
+// `registered` names the owners the host already registered explicitly: a package registered
+// explicitly is never also discovered, and is skipped before its code is imported.
 export const discoverDaemonModules = async (
-    options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }> } = {},
+    options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }>; registered?: ReadonlySet<string> } = {},
 ): Promise<{
     // Each module with its owner, the package it came from ({§module-discovery}).
     readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
@@ -102,7 +99,7 @@ export const discoverDaemonModules = async (
             continue;
         }
         if (manifest === null) continue;
-        if (EXPLICIT_COMPOSITION.has(manifest.packageName)) continue;
+        if (options.registered?.has(manifest.packageName) === true) continue;
         if (!Meta.isTrusted(manifest.packageName)) {
             skipped.push(manifest.packageName);
             continue;
