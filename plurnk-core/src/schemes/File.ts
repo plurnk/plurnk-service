@@ -1,7 +1,7 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
-import { FILE_MISS_RECOVERY, missDetail, missExtensions } from "../core/plurnk-uri.ts";
+import { fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -254,7 +254,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
                     : executor
                         ? `\`${key}\` is an executor, not a path: run a program with a \`\`\`${key} fence and the program in the body; WORK starts a worker by \`worker://<name>\`.`
-                        : FILE_MISS_RECOVERY,
+                        : fileMissRecovery(key),
                 retryable: false,
             },
         ) as SchemeResultBase;

@@ -75,6 +75,16 @@ test("{§membership-read-refusal} every file miss names its member key and carri
     }
 });
 
+test("{§membership-read-refusal} a key beyond the root is told it is outside the root, never offered FIND, EDIT or admission", async (t) => {
+    const { dispatch } = await runtime(t);
+    for (const source of ["````READ (../outside/delete_tests.log)````", "````FIND (../outside/delete_tests.log)````", "````KILL (../outside/delete_tests.log)````"]) {
+        const { status, problem } = await dispatch(source);
+        assert.equal(status, 404, source);
+        assert.equal(problem.detail, "No member of this workspace is at '../outside/delete_tests.log'.", `${source}: the address's membership, nothing about the disk`);
+        assert.equal(problem.recovery, "'../outside/delete_tests.log' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.", source);
+    }
+});
+
 test("{§membership-read-refusal} a non-member the repository ignores is not offered an admission no model definition can make", async (t) => {
     const { dispatch } = await runtime(t);
     const ignored = await dispatch("````READ (generated.log)````");

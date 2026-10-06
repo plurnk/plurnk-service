@@ -85,9 +85,17 @@ export function entryAddress(scheme: string, authority: string, pathname: string
     return renderAddress({ scheme, authority, pathname });
 }
 
+// {§membership-read-refusal} — a key beyond the root (`../tmp/x`) is past every door the miss recovery
+// names under the default scopes; the sentence holds under every members scope (#1005).
+export function fileMissRecovery(key: string): string {
+    return key.startsWith("../")
+        ? `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.`
+        : FILE_MISS_RECOVERY;
+}
+
 // The extensions every miss carries: its target, and for a file the recovery above.
 export function missExtensions(scheme: string | null, target: string): { readonly target: string; readonly recovery?: string } {
-    return scheme === "file" ? { target, recovery: FILE_MISS_RECOVERY } : { target };
+    return scheme === "file" ? { target, recovery: fileMissRecovery(target) } : { target };
 }
 
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
