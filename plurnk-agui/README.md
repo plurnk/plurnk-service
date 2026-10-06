@@ -43,22 +43,11 @@ event schemas, and settlement rules live in [SPEC.md](./SPEC.md).
 
 ## Integration
 
-The daemon loads the module in process:
-
-```ts
-import { Module } from "@plurnk/plurnk-agui";
-
-daemon.registerModule(Module.init({
-    host: "127.0.0.1",
-    port: 1066,
-}));
-```
-
-The service supplies this package's `.env.defaults` through the assembled
-environment before module startup. A direct in-process consumer must provide
-that environment or an explicit `heartbeatMs`; explicit `token`, `maxTurns`,
-and `heartbeatMs` options override their corresponding environment values.
-`SPEC.md` owns the exact value contract.
+The daemon discovers this package as a module: its `package.json` declares
+`plurnk: { kind: "module", module: "./module" }`, and the service composes
+nothing by hand. The module mounts `/` and `/agui` on the daemon's listener
+and reads its settings from the assembled environment, which carries this
+package's `.env.defaults`. `SPEC.md` owns the exact value contract.
 
 The module owns transport authentication, request validation, event translation,
 and proposal delivery. It consumes core's disposition-bearing proposal projection

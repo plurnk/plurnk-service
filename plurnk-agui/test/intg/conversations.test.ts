@@ -8,10 +8,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import Module from "../../src/Module.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "../../src/types.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> }> => {
     const res = await fetch(`http://127.0.0.1:${port}/`, {
@@ -31,17 +29,10 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
     const db = await openTestDatabase();
-    const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules") });
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
-    const port = (module as unknown as Module).address().port;
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    await daemon.start();
+    const port = http.httpAddress().port;
 
     try {
         // Thread A (== workspace name: the default conversation) dispatches one ordered
@@ -142,6 +133,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             `per-worker reads are distinguishable: ${JSON.stringify([...perWorker])}`);
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });

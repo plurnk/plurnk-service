@@ -157,15 +157,15 @@ draft convention is projected.
 The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps core's internal
 owners. Capability-specific behavior remains with the owning plug point.
 
-§service-worker-composition The service launcher and the live/demo workspace
-helper both discover A2A, MCP, Schedule and command hooks ({§module-discovery}). The
+§service-worker-composition The service launcher composes no module: it and the live/demo
+workspace helper both discover AG-UI, A2A, MCP, Schedule and command hooks ({§module-discovery}). The
 management families and readable reference documents are
 present even with no enabled definitions. Workspace capability policy controls every actor's
 surface; registering a family does not enable its definitions. The real-model
 profile ({§operator-config-real-model-profile}) leaves ambient MCP attachments and
 service schedules disabled by default; specimens may add their own through the
-ordinary management surface. Client and
-inbound-A2A listeners remain launcher-owned.
+ordinary management surface. The one listener is the launcher's ({§http-host}); the helper binds
+none, so its daemon leaves out AG-UI ({§module-http-mounts}).
 
 ### §service-package-exports Package export surface
 
@@ -187,9 +187,9 @@ an explicitly specified subpath, not in the frozen root barrel.
 
 ```mermaid
 flowchart LR
-    LISTENER["Bind client listener<br/>unready: HTTP 503"] --> DB["Acquire daemon lock<br/>and admit SQLite schema"]
-    DB --> DAEMON["Construct and start<br/>daemon composition"]
-    DAEMON --> CLIENT["Activate client transport"]
+    LISTENER["Bind the daemon's listener<br/>unadmitted: HTTP 503"] --> DB["Acquire daemon lock<br/>and admit SQLite schema"]
+    DB --> DAEMON["Start the daemon:<br/>discover and start modules"]
+    DAEMON --> CLIENT["Admit the listener"]
     CLIENT --> SELECT["Worker selects or first uses a model"]
     SELECT --> PROVIDER["Construct and verify<br/>selected provider"]
     LISTENER -. failure .-> FAIL["Fail startup<br/>durable state untouched"]
@@ -216,8 +216,7 @@ specific claimed. Until daemon activation admits it the listener answers `503
 service-starting` to every request: the service has not admitted its client
 interface. Adapters claim their prefixes before setup and mount them at
 `start()`, after durable lifecycle recovery ({§module-http-mounts}), and
-none opens a socket of its own under the daemon — a module hosted *without* a
-daemon may bind a private one, which is outside this contract. The standards
+none opens a socket of its own. The standards
 address by URL, never by port (#641): AG-UI mounts `/` and `/agui`, A2A the
 well-known card and its endpoint path, on the same address.
 
@@ -4045,9 +4044,9 @@ a fresh-user configuration.
 ## §rpc Module seam
 
 Core implements the contracts-owned {§application-port} and hosts the module
-contract published in `@plurnk/plurnk-modules` ({§module-contract}). It owns no
-external listener, public
-action-name catalog, or generic string-dispatched method registry. A
+contract published in `@plurnk/plurnk-modules` ({§module-contract}). It owns the one
+listener modules mount on ({§http-host}), but no public action-name catalog or generic
+string-dispatched method registry. A
 client-interface module such as `plurnk-agui` owns its public protocol, action
 names, request validation, discovery result, and event projection.
 
@@ -4055,13 +4054,13 @@ names, request validation, discovery result, and event projection.
 
 ```mermaid
 flowchart LR
-    bind["Host may pre-bind client-interface listener<br/>unready"] --> register
-    register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
+    bind["Host binds the daemon's listener<br/>unadmitted"] --> register
+    register["Register explicit, then discovered modules"] --> setup["module.setup(ModuleSetupSeam)"]
     setup --> capabilities["Register static capabilities,<br/>workspace activators, and actions"]
     capabilities --> ready["Process-wide schemes ready"]
     ready --> recovery["Reconcile durable lifecycle"]
     recovery --> start["module.start(ApplicationPort)"]
-    start --> interface["Module-owned client protocol<br/>ready"]
+    start --> interface["Listener admitted:<br/>module-owned client protocol ready"]
     recovery -->|durable workspace work| demand["First workspace demand"]
     interface -->|client workspace work| demand
     demand --> lease["Acquire capability residency"]
@@ -4080,16 +4079,15 @@ flowchart LR
 Every registered module's `setup` runs in registration order before any
 module's `start` ({§module-phases}; failures follow {§module-failure}). Core
 then readies process-wide schemes, reconciles durable lifecycle, and starts
-modules in registration order. The production
-client-interface module may already own its socket under
-{§startup-listener-admission}; its `start` activates request handling without
-rebinding. Persisted workspaces with
+modules in registration order. The daemon's listener is bound before durable admission
+({§startup-listener-admission}) and admitted once every module has started
+({§module-http-mounts}). Persisted workspaces with
 no durable work stay passive until first demand; activation publishes their
 complete capabilities and documentation before the demanding operation
 proceeds. `setup` is the readiness boundary for every capability registered
-with Core: recovery may demand a workspace provider before `start`. For a
-pre-bound client interface, requests remain unavailable until `start`; every
-other module opens its module-owned exterior ingress only after recovery. No
+with Core: recovery may demand a workspace provider before `start`. Requests on
+the listener remain unavailable until it is admitted; a module opens any other exterior
+ingress only after recovery. No
 registered capability may depend on exterior ingress. A module, and any distinct
 lifetime object returned by `start`, may implement the following phases:
 
@@ -4111,10 +4109,12 @@ even if setup fails. A returned object identical to its module is tracked once.
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
 The export is one DaemonModule ({§module-contract}) object or no-argument factory. The host
-records each module's owner, the package it came from, and its diagnostics name that owner; the
-service's explicit composition names its packages the same way. Standard bundles follow
+records each module's owner, the package it came from, and its diagnostics name that owner. The
+service registers no module itself; a host that registers one explicitly, such as a test
+substituting a package, names it by its package the same way. Standard bundles follow
 {§agent-plugins-hosting} source order, then other installed module packages load in package-name
-order. All trusted modules register before setup. A package the host registered explicitly is
+order. All trusted modules register before setup; a daemon without a listener then leaves out
+every one that declares mounts ({§module-http-mounts}). A package the host registered explicitly is
 never also discovered: discovery skips that owner before importing it. Untrusted modules are reported and not imported. Invalid
 declarations, unavailable module files and configuration errors during construction are diagnosed
 at the affected extension, a declaration's error owned by `extensions` and a

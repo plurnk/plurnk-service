@@ -7,9 +7,7 @@ import { HttpAgent } from "@ag-ui/client";
 import { EventType, type RunErrorEvent } from "@ag-ui/core";
 import type { AguiEvent } from "../../src/types.ts";
 import { replayState } from "../state-replay.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import Module from "../../src/Module.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 test("{§agui-official-client-conformance} the official client accepts a real daemon run without paid inference", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
@@ -30,19 +28,11 @@ test("{§agui-official-client-conformance} the official client accepts a real da
     const sandbox = await mkdtemp(join(tmpdir(), "agui-official-fixture-"));
     const provider = await ProviderInstantiate.loadActiveProvider();
     assert.ok(provider);
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-    const started = Promise.withResolvers<Module>();
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            const module = await registration.start(seam);
-            started.resolve(module);
-            return module;
-        },
-    }, "test-module");
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
     try {
         await daemon.start();
-        const { host, port } = (await started.promise).address();
+        const { host, port } = http.httpAddress();
         const agent = new HttpAgent({ url: `http://${host}:${port}/`, threadId: "official-client" });
         agent.messages = [{ id: "m1", role: "user", content: "Exercise the installed one-shot interface." }];
         const events: AguiEvent[] = [];
@@ -100,6 +90,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.deepEqual(fixture.requests.map(({ journey }: { journey: string }) => journey), ["cli", "rejected"], "the provider refusal is not retried");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(sandbox, { recursive: true, force: true });
     }

@@ -2,10 +2,10 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { resolve } from "node:path";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
@@ -34,25 +34,20 @@ const setup = async (
     ] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000",
         PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...env,
     } }), "@plurnk/plurnk-mcp");
-    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    let agui: AguiModule | undefined;
-    daemon.registerModule({ start: async (seam) => {
-        agui = await registration.start(seam);
-        return agui;
-    } }, "test-module");
     t.after(async () => {
         await daemon.stop();
+        await http.close();
         await db.close();
     });
     await daemon.start();
-    assert.ok(agui);
-    const port = agui.address().port;
+    const { port } = http.httpAddress();
     const workspace = "mcp-interaction-composition";
     const post = async (additions: Record<string, unknown> = {}): Promise<Event[]> => {
         const response = await fetch(`http://127.0.0.1:${port}/`, {

@@ -11,7 +11,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -91,7 +91,6 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             return listener;
         },
     }, "test-module");
-    agent.registerModule(rootOwner(), "test-root");
 
     let unsubscribe: (() => void) | null = null;
     try {
@@ -231,7 +230,6 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             return listener;
         },
     }, "test-module");
-    agent.registerModule(rootOwner(), "test-root");
 
     let caller: Daemon | null = null;
     let unsubscribe: (() => void) | null = null;

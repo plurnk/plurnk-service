@@ -7,23 +7,19 @@ does not recompute them.
 
 ## Architecture
 
-- §agui-daemon-client **The module is an in-process module of the daemon** — the
-  production host pre-binds its AG-UI+ listener, then daemon activation
-  (`registerModule` → the application port) makes the client interface ready.
-  AG-UI claims and mounts the root of the daemon's one listener ({§http-host},
-  {§module-http-mounts}) and owns no
-  socket of its own under the daemon. No WebSocket, no separate process.
-- §agui-listener-admission **Bound is not ready.** Under the daemon the socket is
-  core's ({§startup-listener-admission}): bound before durable-state admission,
-  answering a retryable 503 until daemon activation admits it after every module
-  has started ({§module-http-mounts}). This module claims `/` and `/agui` and
-  registers them at `Module.start`, which installs the application port
-  ({§http-host}). Standalone, `Module.bind` owns a private TCP address with the
-  same admission shape — a retryable 503 until `Module.start`, a bind error that
-  rejects with its originating socket failure, and no unhandled server error,
-  silent pending promise, or close/rebind window; `Module.init` composes bind
-  and start for direct in-process use. `Module.create` is the daemon's door and
-  owns no socket.
+- §agui-daemon-client **The module is a discovered module of the daemon.** The package
+  declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
+  ({§module-discovery}); nothing composes it by hand. It claims the root of the daemon's one
+  listener and `/agui` ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
+  registers the `agui` message scheme, and its start seam is `AguiPort`, the slice of
+  {§application-port} it calls. A daemon without a listener leaves it out. No WebSocket, no
+  separate process.
+- §agui-listener-admission **Bound is not ready.** The socket is core's
+  ({§startup-listener-admission}): bound before durable-state admission and answering a
+  retryable `503 service-starting` until daemon activation admits it after every module has
+  started ({§module-http-mounts}). This module mounts `/` and `/agui` at `start`, so no
+  request reaches it before its port is installed; from `stop` it answers `503
+  service-stopping`.
 - §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread is a conversation over it**
   — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
   curated workspace) from the CONVERSATION (a worker: a history over that world). AG-UI's workspace
@@ -608,12 +604,13 @@ or turn disposition from an active conversation.
 
 The daemon assembles installed package defaults through
 {§operator-config-env-defaults}; AG-UI reads and validates its own keys from that
-environment. Explicit `Module.init` options override their corresponding environment
-values for direct in-process composition. The listener address remains service-owned.
+environment as the daemon discovers it, and an invalid value fails boot. Explicit
+`Module.create` options override their corresponding environment values. The listener
+address is the daemon's.
 
 | Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
 | ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
-| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | Service binds the address through `Module.bind`; direct compositions may use `Module.init`. |
+| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | The daemon's one listener ({§http-host}); AG-UI reads neither. |
 | `PLURNK_AGUI_TOKEN`                | AG-UI   | No module-level bearer requirement     | Any string                          | A non-empty value requires the exact bearer on every non-preflight request. |
 | `PLURNK_AGUI_ALLOW_ORIGIN`         | AG-UI   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§agui-cors}). |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
@@ -679,7 +676,6 @@ reconstruct one from `RUN_ERROR`.
 | code | status | contract |
 |---|---:|---|
 | `parse-failed` | 400 | A client-authored block did not parse; the detail is the parser's own diagnostic, verbatim, with its line, column and source ({§agui-outside-text}). |
-| `service-starting` | 503 | The PLURNK service owns this listener but has not completed durable recovery. |
 | `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |

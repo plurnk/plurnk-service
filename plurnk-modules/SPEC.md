@@ -27,7 +27,9 @@ up: one prefix claimed twice fails boot naming both owners, and a host with a li
 exactly one module to claim the root `/`. At `start` a module mounts exactly its claims through
 `registerHttpRoute`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
 listener answers `503 service-starting` until every module has started, so readiness never
-depends on registration order.
+depends on registration order. A host without a listener has nothing to serve a mount on:
+before any module sets up, it leaves out every module that declares mounts, registered or
+discovered, with an info notice owned by `module:<package>`.
 
 §module-phases **Every module's `setup` completes before any module's `start`.** `setup`
 registers what the host may demand during recovery: Functionality adapters, schemes and module
@@ -39,7 +41,8 @@ contract, and none is inferred from discovery.
 §module-self-activation **A module configures itself.** A discovered module's export is an object
 or a factory taking no arguments ({§module-discovery}), so it reads its own knobs from the
 environment its package documents. An unconfigured module is inert: it claims no mounts and
-registers nothing. The host decides nothing on a discovered module's behalf.
+registers nothing. The host decides nothing on a discovered module's behalf beyond leaving out
+what it cannot host ({§module-http-mounts}).
 
 §module-contained-configuration **A module contains a setting it cannot use.** When one of its
 own settings is invalid, a module withholds only the part that setting configures, keeps the rest

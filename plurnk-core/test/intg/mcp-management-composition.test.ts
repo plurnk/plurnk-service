@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { createHash } from "node:crypto";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { McpServer, ResourceTemplate, completable, createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import Daemon from "../../src/server/Daemon.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
@@ -27,21 +27,15 @@ const setup = async (
     const provider = new Mock({ contextWindow: 1_000_000, responses });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, hostPaths });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...settings,
     } }), "@plurnk/plurnk-mcp");
-    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    let agui: AguiModule | undefined;
-    daemon.registerModule({ start: async (seam) => {
-        agui = await registration.start(seam);
-        return agui;
-    } }, "test-module");
-    t.after(async () => { await daemon.stop(); await db.close(); });
+    t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    assert.ok(agui);
-    const url = `http://127.0.0.1:${agui.address().port}/`;
+    const url = `http://127.0.0.1:${http.httpAddress().port}/`;
     const post = async (
         workspace: string, action?: Record<string, unknown>, prompt?: string, onEvent?: (event: Event) => void,
     ): Promise<Event[]> => {

@@ -8,10 +8,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import Module from "../../src/Module.ts";
 import type { AguiEvent } from "../../src/types.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<AguiEvent[]> => {
     const response = await fetch(`http://127.0.0.1:${port}/`, {
@@ -33,18 +31,11 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const db = await openTestDatabase();
     const root = await mkdtemp(join(tmpdir(), "plurnk-action-stream-"));
-    const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32768, responses: [] }), nodeModulesPath: join(SERVICE, "node_modules") });
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32768, responses: [] }), nodeModulesPath: join(SERVICE, "node_modules"), http });
+    await daemon.start();
     try {
-        const port = (module as unknown as Module).address().port;
+        const port = http.httpAddress().port;
         const workspace = { workspace: "action-stream", projectRoot: root };
         // A host command proposes; the Run terminates at the gate like any client op.
         const proposed = await post(port, {
@@ -79,6 +70,7 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
         assert.equal((resumed.at(-1) as { outcome?: { type?: string } }).outcome?.type, "success");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(root, { recursive: true, force: true });
     }

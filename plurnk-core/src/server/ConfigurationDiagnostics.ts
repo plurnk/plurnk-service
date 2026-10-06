@@ -30,6 +30,12 @@ export default class ConfigurationDiagnostics {
         this.#notices.set(JSON.stringify(notice), notice);
     }
 
+    // {§module-http-mounts} — a module the host left out: information, never a failure.
+    leftOut(owner: string, message: string): void {
+        const notice: Notice = { source: "engine:configuration", kind: "module_left_out", level: "info", owner, message };
+        this.#notices.set(JSON.stringify(notice), notice);
+    }
+
     pluginReports(reports: readonly PluginReport[]): void {
         for (const report of reports) {
             const notice: Notice = {

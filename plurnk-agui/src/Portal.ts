@@ -69,7 +69,7 @@ interface InterruptContinuation {
 
 // The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
-type PortalSeam = Pick<
+export type PortalPort = Pick<
     ApplicationPort,
     | "subscribeToEvents"
     | "pendingProposals"
@@ -84,7 +84,7 @@ type PortalSeam = Pick<
 >;
 
 export default class Portal {
-    #seam: PortalSeam;
+    #seam: PortalPort;
     // A workspace may have several simultaneous AG-UI Runs. The worker/loop carried by
     // each notification selects its owner; a Run is not a second broadcast subscription.
     #threads = new Map<number, Set<Thread>>();
@@ -94,7 +94,7 @@ export default class Portal {
     #deliveryTails = new Map<number, Promise<void>>();
     #off: (() => void) | null = null;
 
-    constructor(seam: PortalSeam) {
+    constructor(seam: PortalPort) {
         this.#seam = seam;
         this.#hitl = new ProposalHitl(
             seam,

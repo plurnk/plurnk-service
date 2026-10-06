@@ -3,9 +3,9 @@
 // child, 0 again when that child concluded. The client reads the number; it never polls the directory.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -27,14 +27,11 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
         ],
     });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
-    const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    let agui: AguiModule | null = null;
-    daemon.registerModule({ start: async (seam) => { agui = await aguiRegistration.start(seam); return agui; } }, "test-module");
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, http });
     try {
         await daemon.start();
-        assert.ok(agui !== null);
-        const port = (agui as AguiModule).address().port;
+        const { port } = http.httpAddress();
         const workspace = `agui-children-${crypto.randomUUID()}`;
         const response = await fetch(`http://127.0.0.1:${port}/`, {
             method: "POST",
@@ -62,6 +59,7 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
         assert.ok(fullReplacements.every((value) => typeof value === "number"), "a whole-gauge replacement carries the count too");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });

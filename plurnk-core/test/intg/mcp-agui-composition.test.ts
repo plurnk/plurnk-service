@@ -9,11 +9,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
@@ -101,21 +101,15 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     const provider = new PacketCapturingMock({ responses: [makeMockResponse("```KILL\nOK\n```")], contextWindow: 1_000_000 });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, hostPaths });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, hostPaths, http });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
         PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }), "@plurnk/plurnk-mcp");
-    const started = Promise.withResolvers<AguiModule>();
-    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({ start: async (seam) => {
-        const module = await registration.start(seam);
-        started.resolve(module);
-        return module;
-    } }, "test-module");
-    t.after(async () => { await daemon.stop(); await db.close(); });
+    t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const { port } = (await started.promise).address();
+    const { port } = http.httpAddress();
     const workspace = "preparation-visibility";
     await daemon.createWorkspace({ name: workspace });
     const inspect = () => post(port, runInput(workspace, crypto.randomUUID(), {
@@ -192,11 +186,13 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         legacy: stdioEntry("legacy-server.mjs"),
     });
     const db = await openMigrated();
+    const http = await bindListener();
     const daemon = new Daemon({
         db,
         provider,
         nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
         hostPaths,
+        http,
     });
     daemon.registerModule(McpModule.init({
         env: {
@@ -206,20 +202,11 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             PLURNK_MCP_fixture_TOOLS: '["echo","fail"]',
         },
     }), "@plurnk/plurnk-mcp");
-    const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    let agui: AguiModule | null = null;
-    daemon.registerModule({
-        start: async (seam) => {
-            agui = await aguiRegistration.start(seam);
-            return agui;
-        },
-    }, "test-module");
     const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-composition-"));
 
     try {
         await daemon.start();
-        assert.ok(agui !== null);
-        const port = (agui as AguiModule).address().port;
+        const { port } = http.httpAddress();
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
         const listed = actionResult(await post(port, runInput(workspace, "list", {
@@ -441,6 +428,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.deepEqual((legacyServer?.detail as { tools?: string[] } | undefined)?.tools, ["legacy_echo"]);
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(projectRoot, { recursive: true, force: true });
         if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -508,11 +496,13 @@ test(
             goji: httpEntry("https://mcp.goji.agency/mcp"),
         });
         const db = await openMigrated();
+        const http = await bindListener();
         const daemon = new Daemon({
             db,
             provider,
             nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
             hostPaths,
+            http,
         });
         daemon.registerModule(McpModule.init({
             env: {
@@ -523,19 +513,10 @@ test(
                 PLURNK_MCP_goji_TOOLS: '["goji_explain_term"]',
             },
         }), "@plurnk/plurnk-mcp");
-        const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-        let agui: AguiModule | null = null;
-        daemon.registerModule({
-            start: async (seam) => {
-                agui = await aguiRegistration.start(seam);
-                return agui;
-            },
-        }, "test-module");
 
         try {
             await daemon.start();
-            assert.ok(agui !== null);
-            const port = (agui as AguiModule).address().port;
+            const { port } = http.httpAddress();
             const workspace = `mcp-dogfood-${crypto.randomUUID()}`;
 
             const kubernetes = actionResult(await post(port, runInput(workspace, "enable-kubernetes", {
@@ -608,6 +589,7 @@ test(
             assert.match(speech, /GOJI defines AEO as Answer Engine Optimisation/);
         } finally {
             await daemon.stop();
+            await http.close();
             await db.close();
             await rm(projectRoot, { recursive: true, force: true });
             if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;

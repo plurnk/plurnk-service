@@ -22,7 +22,7 @@ import {
 } from "./AguiPlus.ts";
 import type { AguiEvent, ProposalNotification } from "./types.ts";
 
-type HitlSeam = Pick<
+type HitlPort = Pick<
     ApplicationPort,
     | "subscribeToEvents"
     | "pendingProposals"
@@ -164,12 +164,12 @@ const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
 };
 
 export default class ProposalHitl {
-    readonly #seam: HitlSeam;
+    readonly #seam: HitlPort;
     readonly #emit: (workspaceId: number, delivery: HitlDelivery) => void;
     #off: (() => void) | null = null;
 
     constructor(
-        seam: HitlSeam,
+        seam: HitlPort,
         emit: (workspaceId: number, delivery: HitlDelivery) => void,
     ) {
         this.#seam = seam;

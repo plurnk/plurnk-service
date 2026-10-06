@@ -13,7 +13,7 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload, A2A_MOUNTS, rootOwner } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -77,7 +77,6 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     });
     let exposure: A2aExposure | undefined;
     daemon.registerModule({ mounts: A2A_MOUNTS, start: async (port) => { exposure = await registration.start(port); return exposure; } }, "test-module");
-    daemon.registerModule(rootOwner(), "test-root");
     let calls = 0;
     let protocolAddress = "";
     let unrelatedAddress = "";
@@ -176,7 +175,6 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             return a2a;
         },
     }, "test-module");
-    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -375,7 +373,6 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
             return listener;
         },
     }, "test-module");
-    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -458,7 +455,6 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             return firstListener;
         },
     }, "test-module");
-    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();
@@ -495,7 +491,6 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
                 return secondListener;
             },
         }, "test-module");
-        daemon.registerModule(rootOwner(), "test-root");
         await daemon.start();
         assert.ok(secondListener !== null);
         const secondClient = await connectHttpJsonAgent(serviceUrl(daemon));
@@ -557,7 +552,6 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
             return a2a;
         },
     }, "test-module");
-    daemon.registerModule(rootOwner(), "test-root");
 
     try {
         await daemon.start();

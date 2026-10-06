@@ -15,6 +15,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
         "./package.json": "./package.json"
     },
     "files": [
@@ -57,7 +62,8 @@
     },
     "author": "@wikitopian",
     "peerDependencies": {
-        "@plurnk/plurnk-modules": "^1.29.0"
+        "@plurnk/plurnk-modules": "^1.29.0",
+        "@plurnk/plurnk-schemes": "^1.29.0"
     },
     "publishConfig": {
         "access": "public"
@@ -67,7 +73,10 @@
         "@opentelemetry/api": "^1.9.1",
         "@plurnk/plurnk-contracts": "1.29.0",
         "@plurnk/plurnk-meta": "1.29.0",
-        "@plurnk/plurnk-parser": "1.29.0",
-        "@plurnk/plurnk-schemes": "1.29.0"
+        "@plurnk/plurnk-parser": "1.29.0"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
     }
 }

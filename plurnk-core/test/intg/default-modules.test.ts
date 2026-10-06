@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Daemon from "../../src/server/Daemon.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];
@@ -20,6 +21,27 @@ test("{§mcp-module} {§schedule-module} {§a2a-module} a bare daemon discovers 
             `the ${family} family arrives without explicit composition`,
         );
     }
+});
+
+test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at its root", async (t) => {
+    const db = await openMigrated();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: null, http });
+    t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
+    await daemon.start();
+    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            threadId: "discover", runId: "discover", state: {}, messages: [], tools: [], context: [],
+            forwardedProps: { plurnk: { action: { kind: "discover" } } },
+        }),
+    });
+    assert.equal(response.status, 200);
+    const result = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+        .map((frame) => JSON.parse(frame.slice(6)) as { type: string; name?: string; value?: { ok?: boolean } })
+        .find(({ type, name }) => type === "CUSTOM" && name === "plurnk.action.result");
+    assert.equal(result?.value?.ok, true, "the discovered client interface answers discover");
 });
 
 test("{§a2a-module} {§module-contained-configuration} an invalid exposure setting is reported and outbound A2A keeps working", async (t) => {

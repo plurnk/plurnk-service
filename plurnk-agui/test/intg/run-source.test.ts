@@ -10,10 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import Module from "../../src/Module.ts";
 import type { AguiEvent } from "../../src/types.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<AguiEvent[]> => {
     const response = await fetch(`http://127.0.0.1:${port}/`, {
@@ -38,17 +36,11 @@ for (const final of ["Four, precisely.", ""]) {
             { assistant: { content: PlurnkParser.frame("KILL", final), reasoning: null } },
         ] });
         const db = await openTestDatabase();
-        const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-        const started = Promise.withResolvers<Module>();
-        const registration = Module.init({ host: "127.0.0.1", port: 0 });
-        daemon.registerModule({ setup: registration.setup, start: async (seam: ApplicationPort) => {
-            const module = await registration.start(seam);
-            started.resolve(module);
-            return module;
-        } }, "test-module");
+        const http = await bindListener();
+        const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
         try {
             await daemon.start();
-            const { port } = (await started.promise).address();
+            const { port } = http.httpAddress();
             await daemon.createWorkspace({ name: "sent-reply", projectRoot: null });
             const events = await post(port, {
                 threadId: "conversation", runId: "initial",
@@ -68,6 +60,7 @@ for (const final of ["Four, precisely.", ""]) {
             assert.deepEqual(snapshot.messages.filter(({ role }) => role === "assistant").map(({ content }) => content), expected, "replay matches live delivery without a blank completion message");
         } finally {
             await daemon.stop();
+            await http.close();
             await db.close();
         }
     });
@@ -95,17 +88,11 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         { assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } },
     ] });
     const db = await openTestDatabase();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-    const started = Promise.withResolvers<Module>();
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({ setup: registration.setup, start: async (seam: ApplicationPort) => {
-        const module = await registration.start(seam);
-        started.resolve(module);
-        return module;
-    } }, "test-module");
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
     try {
         await daemon.start();
-        const { port } = (await started.promise).address();
+        const { port } = http.httpAddress();
         const { workspaceId } = await daemon.createWorkspace({ name: "injected-source", projectRoot: null });
         const result = post(port, {
             threadId: "conversation", runId: "initial",
@@ -167,6 +154,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
     } finally {
         release.resolve();
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });
@@ -193,17 +181,11 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
         makeMockResponse("````KILL\n````"),
     ] });
     const db = await openTestDatabase();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-    const started = Promise.withResolvers<Module>();
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({ setup: registration.setup, start: async (seam: ApplicationPort) => {
-        const module = await registration.start(seam);
-        started.resolve(module);
-        return module;
-    } }, "test-module");
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
     try {
         await daemon.start();
-        const { port } = (await started.promise).address();
+        const { port } = http.httpAddress();
         const { workspaceId } = await daemon.createWorkspace({ name: "collaborative-reply", projectRoot: null });
         const collaborator = await daemon.createConversationWorker({ workspaceId, name: "collaborator" });
         const result = post(port, {
@@ -234,6 +216,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
     } finally {
         release.resolve();
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });
@@ -259,20 +242,12 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
     });
     const db = await openTestDatabase();
     const root = await mkdtemp(join(tmpdir(), "plurnk-run-source-"));
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        setup: registration.setup,
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    await daemon.start();
 
     try {
-        const port = (module as unknown as Module).address().port;
+        const port = http.httpAddress().port;
         const events = await post(port, {
             threadId: "run-source",
             runId: "run-1",
@@ -356,6 +331,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         assert.equal(retained?.body, "Name your sender.");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(root, { recursive: true, force: true });
     }

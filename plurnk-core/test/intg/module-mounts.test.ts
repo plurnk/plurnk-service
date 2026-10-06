@@ -27,6 +27,9 @@ const fixture = async (t: TestContext) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
+    // {§module-discovery} — registering its package's name holds the client interface out of
+    // discovery, so each test composes its own root owner.
+    daemon.registerModule({}, "@plurnk/plurnk-agui");
     t.after(async () => {
         await daemon.stop();
         await http.close();

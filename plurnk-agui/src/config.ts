@@ -1,8 +1,6 @@
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
 
 export interface ModuleOptions {
-    readonly host: string;
-    readonly port: number;
     readonly token?: string;
     readonly allowOrigin?: string;
     readonly maxTurns?: number;
@@ -11,8 +9,6 @@ export interface ModuleOptions {
 }
 
 export interface ResolvedModuleOptions {
-    readonly host: string;
-    readonly port: number;
     readonly token: string;
     readonly allowOrigin: string;
     readonly maxTurns?: number;
@@ -50,8 +46,6 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
     const allowOrigin = options.allowOrigin === undefined ? env.PLURNK_AGUI_ALLOW_ORIGIN : options.allowOrigin;
     if (allowOrigin === undefined) throw new Error("PLURNK_AGUI_ALLOW_ORIGIN is missing from the assembled environment floor.");
     return {
-        host: options.host,
-        port: options.port,
         token,
         allowOrigin,
         maxTurns: options.maxTurns === undefined

@@ -9,10 +9,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import Module from "../../src/Module.ts";
 import type { AguiEvent } from "../../src/types.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const post = async (
     port: number,
@@ -86,23 +84,17 @@ test("a child proposal traverses its controlling conversation without losing eit
     });
     const db = await openTestDatabase();
     const root = await mkdtemp(join(tmpdir(), "plurnk-descendant-proposal-"));
+    const http = await bindListener();
     const daemon = new Daemon({
         db,
         provider,
         nodeModulesPath: join(SERVICE, "node_modules"),
+        http,
     });
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
+    await daemon.start();
 
     try {
-        const port = (module as unknown as Module).address().port;
+        const port = http.httpAddress().port;
         const first = await post(port, {
             threadId: "delegated-proposal",
             messages: [{ id: "message-1", role: "user", content: "Delegate this task." }],
@@ -139,6 +131,7 @@ test("a child proposal traverses its controlling conversation without losing eit
         );
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(root, { recursive: true, force: true });
     }

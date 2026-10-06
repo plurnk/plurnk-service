@@ -1,5 +1,5 @@
-// {§agui-daemon-client} The go-live smoke: the in-process transport module, activated
-// through the daemon's boot plug-point (registerModule → the ApplicationPort handle), drives
+// {§agui-daemon-client} The go-live smoke: the in-process client interface, discovered by the
+// daemon and mounted at the root of its listener, drives
 // a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
 // process, no DaemonClient. Gated on a configured model supplied to the runner;
 // skips clean when absent.
@@ -9,38 +9,27 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Module from "../../src/Module.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "../../src/types.ts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 // Needs a configured model and provider route from the invoking environment. The test
 // applies the assembled package-default floor after this gate.
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
-test("in-process module: boot plug-point → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
+test("in-process module: discovery → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
     await import(join(SERVICE, "test/floor.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
     const db = await openTestDatabase();
     const provider = await liveProvider();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
     const sandbox = await mkdtemp(join(tmpdir(), "agui-inproc-"));
 
-    // Hook D — the plug-point. The daemon hands the module its seam handle at boot;
-    // the module opens its own listener. This IS the module activation.
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
-    assert.ok(module !== null, "the plug-point activated the module at boot");
-    const addr = (module as Module).address();
+    // The daemon discovers the module, starts it on the application port, and admits its listener.
+    await daemon.start();
+    const addr = http.httpAddress();
 
     try {
         const res = await fetch(`http://${addr.host}:${addr.port}/`, {
@@ -86,6 +75,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the worker closes clean");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(sandbox, { recursive: true, force: true });
     }

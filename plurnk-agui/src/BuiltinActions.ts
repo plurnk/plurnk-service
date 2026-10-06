@@ -43,14 +43,45 @@ const parseFailureResult = ({
     ),
 });
 
+// {§module-seam-slices} — the calls the built-in actions make.
+export type BuiltinActionsPort = Pick<
+    ApplicationPort,
+    | "attachWorkspace"
+    | "cancelDrain"
+    | "createWorkspace"
+    | "dispatchClientAction"
+    | "ensureModelWorker"
+    | "executorJsonBodyTags"
+    | "executorTags"
+    | "forkWorker"
+    | "listModels"
+    | "listPrompts"
+    | "listProviders"
+    | "listWorkers"
+    | "listWorkspaces"
+    | "look"
+    | "readEntry"
+    | "readLog"
+    | "readWorkerEffort"
+    | "readWorkerModel"
+    | "readWorkspaceCapabilities"
+    | "renameWorkspace"
+    | "runLoop"
+    | "setWorkerEffort"
+    | "setWorkerModel"
+    | "setWorkerSpawnModel"
+    | "setWorkspaceCapabilities"
+    | "shareWorkspace"
+>;
+
 export default class BuiltinActions {
-    readonly #seam: () => ApplicationPort;
+    readonly #seam: () => BuiltinActionsPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
 
     constructor({ seam, capabilities, envelope, requireWorkspace }: {
-        seam: () => ApplicationPort;
+        seam: () => BuiltinActionsPort;
         capabilities: () => Promise<AguiDiscovery>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;

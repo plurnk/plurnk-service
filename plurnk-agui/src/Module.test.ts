@@ -4,8 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import Module from "./Module.ts";
+import { host } from "../test/host.ts";
 import Translator from "./Translator.ts";
 import type {
     ApplicationActionContext,
@@ -73,8 +72,7 @@ const mockSeam = () => {
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: ApplicationPort = {
         configurationNotices: () => [],
-        // {§http-host} — the mock daemon carries no listener; a module started against it under
-        // create() would mount here, and one bound privately never calls these.
+        // {§http-host} — the test host (../test/host.ts) mounts the module's routes on its own socket.
         registerHttpRoute: () => {},
         httpAddress: () => ({ host: "127.0.0.1", port: 0 }),
         listClientDisplayCapabilities: async () => [],
@@ -236,7 +234,7 @@ for (const status of [200, 502]) {
             });
             return { status: 100, action: "enqueued_new_loop", loopId: 9 };
         };
-        const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+        const mod = await host(seam);
         try {
             const events = await post(mod.address().port, {
                 threadId: "state-replay", messages: [{ role: "user", content: "Work." }],
@@ -273,7 +271,7 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
     ];
     const before = structuredClone(rows);
     seam.readLog = async () => logRows(rows);
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "history",
@@ -317,30 +315,6 @@ const waitForFixture = async (barrier: Promise<void>, detail: () => string): Pro
     }
 };
 
-test("{§agui-listener-admission}: a bound listener refuses work until daemon activation", async () => {
-    const { seam } = mockSeam();
-    const mod = await Module.bind({ host: "127.0.0.1", port: 0 });
-    try {
-        const port = mod.address().port;
-        const unavailable = await fetch(`http://127.0.0.1:${port}/`);
-        assert.equal(unavailable.status, 503);
-        assert.deepEqual(await unavailable.json(), Problems.create(
-            "agui:http",
-            "service-starting",
-            503,
-            "The PLURNK service owns this listener but has not completed durable recovery.",
-            { stage: "startup", retryable: true },
-        ));
-
-        await mod.start(seam);
-        const events = await post(port, {
-            threadId: "startup-admission",
-            forwardedProps: { plurnk: { action: { kind: "providers.list" } } },
-        });
-        assert.ok(events.some((event) => event.type === "RUN_FINISHED"), "activation makes the pre-bound listener ready");
-    } finally { await mod.close(); }
-});
-
 test("{§module-shutdown-order} stopping AG-UI refuses new work while an existing run receives its terminal event", async () => {
     const { seam, finish } = mockSeam();
     const entered = Promise.withResolvers<void>();
@@ -348,7 +322,7 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
         entered.resolve();
         return { status: 100, action: "enqueued_new_loop", loopId: 9, turnSeq: 1 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const stream = openStream(port, { threadId: "shutdown", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
@@ -364,24 +338,6 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
         assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
         assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
     } finally { await mod.close(); }
-});
-
-test("{§agui-listener-admission}: a lost bind race rejects with the socket error", async () => {
-    const holder = createServer();
-    try {
-        await new Promise<void>((resolvePromise, rejectPromise) => {
-            holder.once("error", rejectPromise);
-            holder.listen(0, "127.0.0.1", resolvePromise);
-        });
-        const address = holder.address();
-        if (address === null || typeof address === "string") throw new Error("test listener did not bind TCP");
-        await assert.rejects(
-            () => Module.bind({ host: "127.0.0.1", port: address.port }),
-            { code: "EADDRINUSE" },
-        );
-    } finally {
-        await new Promise<void>((resolvePromise) => holder.close(() => resolvePromise()));
-    }
 });
 
 test("{§agui-stream-producer} workspace stream notifications route to their producing worker's AG-UI Run", async () => {
@@ -405,7 +361,7 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
         if (runCalls === 2) bothRuns.resolve();
         return { status: 100, action: "enqueued_new_loop" as const, loopId: workerId === 77 ? 9 : 10 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const a = openStream(port, { threadId: "chat-a", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
@@ -438,7 +394,7 @@ test("a read-only management Run does not duplicate its conversation's model set
         await releaseRead.promise;
         return { status: 200, entry: { entryId: 1, target: "worker:///x", channels: {} } };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const conversation = openStream(port, {
@@ -495,7 +451,7 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
     // loop.inject below addresses a live world; it never mints one.
     seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "t1", projectRoot: null, workerId: 10, workerName: "client-1" });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "providers.list" } } } });
         const result = events.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } } };
@@ -568,7 +524,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
     });
     const preparation = [{ family: "mcp", alias: "search", phase: "preparing" as const, since: "2026-09-29T12:00:00.000Z" }];
     seam.workspacePreparationStatus = () => preparation;
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "status",
@@ -606,7 +562,7 @@ test("{§application-worker-observation}: an older running task owns the snapsho
         { ...base, id: 58, sequence: 4, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
         { ...base, id: 59, sequence: 5, status: 100, packetCount: 0 },
     ];
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "status",
@@ -622,7 +578,7 @@ test("{§application-worker-observation}: an older running task owns the snapsho
 test("{§agui-worker-model-actions}: worker model get/set reach the seam and child null means inherit", async () => {
     const { seam, modelSets } = mockSeam();
     seam.readWorkerModel = async () => ({ model: { alias: "opus", provider: "anthropic", model: "claude" }, spawnModel: { alias: "tiny", provider: "openai", model: "mini" } });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.get" } } } });
@@ -653,7 +609,7 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
 test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
     const { seam, effortSets } = mockSeam();
     seam.readWorkerEffort = async () => ({ effort: "adaptive", source: "default", supportedEfforts: ["off", "adaptive", "high"] });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.get" } } } });
@@ -698,7 +654,7 @@ test("entry.read defaults to the thread actor, honors an explicit actor, and pre
         calls.push(args);
         return Validator.assertEntryReadResult({ status: 200, entry });
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "entry-wire-thread",
@@ -758,7 +714,7 @@ test("#131: structured op.exec dispatches one valid statement with unknown sourc
         dispatched.push(statements);
         return [{ status: 200 }];
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, {
             threadId: "structured-exec-position",
@@ -779,7 +735,7 @@ test("#131: structured op.exec dispatches one valid statement with unknown sourc
 
 test("#58: op.parse projects the parser-owned diagnostic and structured position", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const text = "````sh (😀) <-1s,300>\nx\n````";
         const events = await post(mod.address().port, {
@@ -833,7 +789,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         calls.push(args);
         return { status: 200, content: "looked" };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const invoke = async (text: string): Promise<{
             ok: boolean;
@@ -953,7 +909,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
         dispatched.push(statements);
         return statements.map(() => ({ status: 201 }));
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const text = "````EDIT (worker:///ok)\nyes\n````\n\n````EDIT (worker:///bad";
         const events = await post(mod.address().port, {
@@ -1009,7 +965,7 @@ test("{§agui-module-actions} a module action colliding with an AG-UI built-in f
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
     await assert.rejects(
-        () => Module.init({ host: "127.0.0.1", port: 0 }).start(seam),
+        () => host(seam),
         /AG-UI action 'ping' is registered more than once/,
     );
 });
@@ -1037,10 +993,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
             prompt: "review",
         };
     };
-    const mod = await Module.init({
-        host: "127.0.0.1",
-        port: 0,
-    }).start(seam);
+    const mod = await host(seam);
     try {
         const discovered = await post(mod.address().port, {
             threadId: "module-discover",
@@ -1106,7 +1059,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
 
 test("{§agui-action-schema-enforcement} human-readable input failures retain the field and constraint", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "invalid-workspace-id",
@@ -1146,7 +1099,7 @@ test("advertised action schemas admit inputs and reject undeclared parameters be
         calls++;
         return { prompt: "review" };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const rejected = await post(mod.address().port, {
             threadId: "module-schema-reject",
@@ -1190,7 +1143,7 @@ test("an owner output violating its advertised schema fails at the AG-UI boundar
         },
     }];
     seam.invokeModuleAction = async () => ({ prompt: 42 });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "module-output-schema",
@@ -1222,7 +1175,7 @@ test("{§agui-module-action-scope} workspace module actions receive authority fr
         calls.push({ params, context });
         return { configured: true };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "module-workspace",
@@ -1265,7 +1218,7 @@ test("{§agui-module-action-scope} worker module actions receive authority from 
         calls.push({ params, context });
         return { configured: true };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "module-worker",
@@ -1311,7 +1264,7 @@ test("a module action preserves its owner-defined validation Problem", async () 
     seam.invokeModuleAction = async () => {
         throw Object.assign(new Error(problem.detail), { problem });
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "module-action-validation",
@@ -1336,7 +1289,7 @@ test("{§agui-module-actions} a throwing module action becomes one generic actio
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
     seam.invokeModuleAction = async () => { throw new Error("private extension detail"); };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "module-action-failure",
@@ -1369,7 +1322,7 @@ test("an action failure preserves its originating Problem instead of rebuilding 
         },
     );
     seam.readEntry = async () => ({ status: problem.status, problem, entry: null });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "action-problem",
@@ -1413,7 +1366,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
         await releaseInjection.promise;
         return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const conversation = openStream(port, {
@@ -1494,7 +1447,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
 test("an unexpected action exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
     seam.readEntry = async () => { throw new Error("private adapter detail"); };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "action-failure",
@@ -1529,7 +1482,7 @@ test("a streaming action remains open until its stream concludes", async () => {
         await dispatchReleased;
         return [{ status: 200 }];
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         let settled = false;
         const run = openStream(mod.address().port, {
@@ -1573,7 +1526,7 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
         cancelled({ workerId, ...(reason !== undefined ? { reason } : {}) });
         return true;
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const ac = new AbortController();
         const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
@@ -1618,7 +1571,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         pending = [];
         resolveProposal(logEntryId, resolution);
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "t2", runId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
@@ -1641,7 +1594,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
         }];
         seam.pendingClientInteractions = async () => pending;
         seam.listWorkers = async () => [workerRow(77, "resume-race")];
-        const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+        const mod = await host(seam);
         try {
             const interrupted = await post(mod.address().port, {
                 threadId: "resume-race", runId: "before-expiry",
@@ -1736,7 +1689,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
             usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
         })));
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const interrupted = await post(mod.address().port, {
             threadId: "interaction-thread",
@@ -1859,7 +1812,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
             }));
         });
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const agent = new HttpAgent({
             url: `http://127.0.0.1:${mod.address().port}/`,
@@ -1905,7 +1858,7 @@ test("a workspace name is its identity; attach rebinds", async () => {
     seam.createWorkspace = async (args) => { created.push(args); return { ...(await base(args)), workspaceName: args.name ?? "workspace-1" }; };
     seam.attachWorkspace = async (args) => { attached.push(args.workspaceId); return { workspaceId: args.workspaceId, workspaceName: "alpha", projectRoot: null, workerId: 10, workerName: "client-1" }; };
     seam.listWorkspaces = async () => [workspaceRow(4, "alpha")];
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         // 1) A workspace named like an existing world attaches to IT — the exact name.
         // (A world-scoped action binds the workspace; a control-plane one would not.)
@@ -1941,7 +1894,7 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "workspace",
@@ -1977,7 +1930,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
             { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         ]);
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "sync-client",
@@ -2030,7 +1983,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         workerRow(20, "sync-interrupt", "model", 10),
     ];
     seam.readLog = async () => [];
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "sync-interrupt",
@@ -2058,7 +2011,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
 
 test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a workspace", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
             method: "POST",
@@ -2084,7 +2037,7 @@ test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a 
 
 test("{§agui-conversation-sync}: unknown Run modes fail without echoing untrusted input", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
             method: "POST",
@@ -2120,7 +2073,7 @@ test("the official AG-UI client keeps the accepted current user message after au
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const agent = new HttpAgent({
             url: `http://127.0.0.1:${mod.address().port}/`,
@@ -2165,7 +2118,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "oriented-client",
@@ -2194,7 +2147,7 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     seam.createConversationWorker = async (a) => ({ workerId: 300, workerName: a.name ?? "x" });
     const drivenRuns: number[] = [];
     seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         // The `workspace` workspace prop selects the WORLD — not the threadId. Two
         // distinct threads naming the SAME workspace share the one workspace.
@@ -2222,7 +2175,7 @@ test("{§agui-thread-binding}: the same thread name remains isolated across work
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     const run = (workspace: string, runId: string) => post(mod.address().port, {
         threadId: "shared",
         runId,
@@ -2257,7 +2210,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
         assert.equal(res.status, 400, "the missing workspace is a request defect, not an internal failure");
@@ -2280,7 +2233,7 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
         assert.equal(res.status, 404, "an action addresses a world that exists");
@@ -2296,10 +2249,9 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
 test("{§agui-cors} the panel states which pages may read a reply, and its empty value sends no CORS header", async () => {
     const { seam } = mockSeam();
     const cors = async (allowOrigin: string): Promise<{ origin: string | null; headers: string | null; preflight: number }> => {
-        const mod = await Module.init({
-            host: "127.0.0.1", port: 0,
+        const mod = await host(seam, {
             env: { PLURNK_AGUI_TOKEN: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
-        }).start(seam);
+        });
         try {
             const base = `http://127.0.0.1:${mod.address().port}`;
             const preflight = await fetch(base, { method: "OPTIONS" });
@@ -2321,15 +2273,13 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
 
 test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({
-        host: "127.0.0.1",
-        port: 0,
+    const mod = await host(seam, {
         env: {
             PLURNK_AGUI_TOKEN: "expected",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
-    }).start(seam);
+    });
     const base = `http://127.0.0.1:${mod.address().port}`;
     const problem = async (path: string, init: RequestInit): Promise<Record<string, unknown>> => {
         const response = await fetch(`${base}${path}`, init);
@@ -2376,7 +2326,7 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
     seam.listWorkspaces = async () => [workspaceRow(1, "a"), workspaceRow(2, "b")];
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
     seam.ensureModelWorker = async () => { ensured++; return 2; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         // workspace.list with NO workspace prop — control plane, so no world required, none forged.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.list" } } } });
@@ -2396,7 +2346,7 @@ test("run.fork admits the contract's anonymous-fork form", async () => {
         calls.push(args);
         return { workerId: 11, workerName: "main-fork", parentWorkerId: args.workerId };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "anonymous-fork",
@@ -2424,7 +2374,7 @@ test("{§discovery} discover returns the exact public action and notification me
         { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
         { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
     ];
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { schemaVersion: number; actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>; notifications: Record<string, { payloadSchema: unknown }>; display: unknown[] } } };
@@ -2491,7 +2441,7 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, workerId: 3, workerName: "client-1" });
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-world" } } } });
@@ -2511,7 +2461,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
         cancelled.push({ workerId, ...(reason === undefined ? {} : { reason }) });
         return true;
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "w", workerId: "r1", forwardedProps: { plurnk: { workspace: "w", action: { kind: "loop.cancel", reason: "user_stop" } } } });
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean } } };
@@ -2536,7 +2486,7 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "chat-2", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
         assert.deepEqual(created, [{ workspaceId: 3, name: "chat-2" }], "the conversation worker is named for the thread, verbatim");
@@ -2560,7 +2510,7 @@ test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelo
         await new Promise<void>((resolve) => setTimeout(resolve, 30));
         return { workerId: 77, workerName: name! };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const runs = await Promise.all(Array.from({ length: 8 }, (_, index) => post(mod.address().port, {
             threadId: "new-worker", workerId: `run-${index}`,
@@ -2600,7 +2550,7 @@ test("{§agui-thread-binding}: concurrent conversations create one world with se
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const runs = await Promise.all(Array.from({ length: 8 }, (_, index) => post(mod.address().port, {
             threadId: `thread-${index}`, runId: `run-${index}`, messages: [{ role: "user", content: "go" }],
@@ -2628,7 +2578,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const action = fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({
             threadId: "cold", runId: "inspect", forwardedProps: { plurnk: { workspace: "cold", action: { kind: "loop.inject", prompt: "hello" } } },
@@ -2664,7 +2614,7 @@ for (const stage of ["envelope", "conversation"] as const) {
             if (fail && stage === "conversation") throw failure;
             return { workerId: 42, workerName: "named" };
         };
-        const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+        const mod = await host(seam);
         const input = { threadId: "named", runId: "fixture", forwardedProps: { plurnk: { workspace: "world", action: { kind: "workspace.workers" } } } };
         try {
             const refused = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(input)) });
@@ -2688,7 +2638,7 @@ test("a threadId naming an existing worker (a fork or prior conversation) binds 
     seam.listWorkers = async () => [workerRow(20, "model-1"), workerRow(44, "spike")];
     seam.createConversationWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
         assert.deepEqual(driven, [44], "the existing worker 'spike' is the conversation");
@@ -2705,7 +2655,7 @@ test("threadId == workspace name stays on the model worker (the default conversa
     seam.ensureModelWorker = async () => 20;
     seam.createConversationWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "workspace", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
         assert.deepEqual(driven, [20], "the default conversation is the model worker");
@@ -2721,7 +2671,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(44, "spike")];
     seam.runLoop = async (a) => { driven.push(a.workerId); messages.push(a); finish(a.workspaceId, a.workerId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
         assert.deepEqual(driven, [44], "the steer reached the thread's own worker");
@@ -2746,11 +2696,9 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     seam.ensureModelWorker = async () => 20;
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({
-        host: "127.0.0.1",
-        port: 0,
+    const mod = await host(seam, {
         env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
-    }).start(seam);
+    });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         const raw = await res.text();
@@ -2766,11 +2714,9 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({
-        host: "127.0.0.1",
-        port: 0,
+    const mod = await host(seam, {
         env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
-    }).start(seam);
+    });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.doesNotMatch(await res.text(), /^: hb$/m);
@@ -2788,16 +2734,14 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    const mod = await Module.init({
-        host: "127.0.0.1",
-        port: 0,
+    const mod = await host(seam, {
         env: {
             PLURNK_AGUI_TOKEN: "",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
-    }).start(seam);
+    });
     try {
         const input = { threadId: "w", messages: [{ role: "user", content: "continue" }], forwardedProps: { plurnk: { workspace: "w" } } };
         await post(mod.address().port, input);
@@ -2817,7 +2761,7 @@ test("{§agui-run-endpoint} the prompt is the last textual user message, and a n
         finish(a.workspaceId, a.workerId);
         return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, {
             threadId: "t-last", workerId: "r-last",
@@ -2852,7 +2796,7 @@ test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model sel
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
     seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         await post(mod.address().port, {
             threadId: "t-model", workerId: "r1",
@@ -2908,7 +2852,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
         throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
     };
     const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.equal(res.status, 200, "the SSE opened before the throw");
@@ -2941,7 +2885,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async () => { throw new Error("secret internal failure"); };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "w",
@@ -2966,7 +2910,7 @@ test("{§agui-run-authority} the AG-UI STANDARD face keeps the protocol's nouns:
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const events = await post(mod.address().port, { threadId: "w", runId: "agui-run-7", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
         const started = events.find((e) => e.type === "RUN_STARTED") as { runId?: string; workerId?: unknown };
@@ -2999,7 +2943,7 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
         runWorkers.push(workerId);
         return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
     };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         for (const [threadId, problem] of Object.entries(refusals)) {
@@ -3023,7 +2967,7 @@ test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a 
     const started = Promise.withResolvers<void>();
     seam.listWorkers = async () => [workerRow(77, "chat"), workerRow(78, "child", "model", 77)];
     seam.runLoop = async () => { started.resolve(); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
-    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    const mod = await host(seam);
     try {
         const port = mod.address().port;
         const run = openStream(port, { threadId: "chat", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "chat", descendants: true } } });

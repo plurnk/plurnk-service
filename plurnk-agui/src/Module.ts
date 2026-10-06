@@ -1,6 +1,6 @@
-// {§agui-daemon-client} The in-process transport module owns the AG-UI+ HTTP/SSE
-// listener. Production binds it before durable-state admission, then the daemon's
-// boot plug-point activates it with the ApplicationPort handle.
+// {§agui-daemon-client} The daemon's AG-UI+ client interface, a discovered module: it claims the
+// root of the daemon's one listener and `/agui` ({§module-http-mounts}), mounts both at start, and
+// owns no socket.
 //
 // This is the single external client interface:
 //   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
@@ -12,8 +12,8 @@
 // An AG-UI threadId names one conversation worker inside the explicitly forwarded
 // workspace ({§agui-thread-binding}); no prefix or inferred workspace is minted.
 
-import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
-import Portal from "./Portal.ts";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import Portal, { type PortalPort } from "./Portal.ts";
 import { aliveChildren, derivationActivity, descendantsState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
@@ -21,21 +21,36 @@ import { Problems, Validator, selectWorkerLoop, type AguiDiscovery, type Applica
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
-import BuiltinActions from "./BuiltinActions.ts";
+import BuiltinActions, { type BuiltinActionsPort } from "./BuiltinActions.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
-import RunHandler from "./RunHandler.ts";
+import RunHandler, { type RunPort } from "./RunHandler.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 
 export type { ModuleOptions } from "./config.ts";
 
-export interface ModuleRegistration extends DaemonModule<SchemeRegistrationSeam, ApplicationPort> {
-    setup(seam: SchemeRegistrationSeam): Promise<void>;
-    start(seam: ApplicationPort): Promise<Module>;
-}
-
-
+// {§module-seam-slices} — the start seam: the calls the module makes itself, and each
+// collaborator's slice.
+export type AguiPort = Pick<
+    ApplicationPort,
+    | "attachWorkspace"
+    | "configurationNotices"
+    | "createConversationWorker"
+    | "createWorkspace"
+    | "descendantAccounting"
+    | "ensureModelWorker"
+    | "invokeModuleAction"
+    | "listClientDisplayCapabilities"
+    | "listModuleActions"
+    | "listWorkerLoops"
+    | "listWorkers"
+    | "listWorkspaces"
+    | "readWorkerModel"
+    | "registerHttpRoute"
+    | "workspaceDerivationStatus"
+    | "workspacePreparationStatus"
+> & PortalPort & BuiltinActionsPort & RunPort;
 
 const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
     res.writeHead(problem.status, { "content-type": "application/problem+json" });
@@ -53,32 +68,28 @@ interface RegisteredAction extends AguiActionContract {
     readonly execute: ActionExecutor;
 }
 
-export default class Module implements DaemonModule<SchemeRegistrationSeam, ApplicationPort> {
-    #seam!: ApplicationPort;
-    #opts: ResolvedModuleOptions;
+export default class Module implements DaemonModule<SchemeRegistrationSeam, AguiPort> {
+    // {§module-http-mounts} — the root of the daemon's listener, and `/agui`.
+    readonly mounts: readonly string[] = Object.freeze(["/", "/agui"]);
+    #seam!: AguiPort;
+    readonly #opts: ResolvedModuleOptions;
     #portal!: Portal;
-    // {§http-host} — null under the daemon, which carries this module on its one listener; a
-    // private socket exists only for standalone hosting through bind().
-    #http: HttpServer | null;
     #threadEnvelopes = new Map<string, ClientEnvelope>();
     #threadWorkers = new Map<string, Promise<number>>();
     #workspaceAcquisitions = new Map<string, Promise<void>>();
     #actions = new Map<string, RegisteredAction>();
-    #listening = false;
     #activated = false;
     #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
-    #closing: Promise<void> | null = null;
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
-        this.#http = null;
     }
 
-    // {§http-host} — daemon composition: no socket of its own; start() mounts the module on
-    // the daemon's listener.
-    static create(opts: ModuleOptions): Module {
+    // {§agui-configuration} — the module reads its settings from the assembled environment;
+    // explicit options override them.
+    static create(opts: ModuleOptions = {}): Module {
         return new Module(opts);
     }
 
@@ -137,109 +148,34 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Appl
         return JSON.stringify([workspace, threadId]);
     }
 
-    static init(opts: ModuleOptions): ModuleRegistration {
-        return {
-            setup: Module.setup,
-            start: async (seam) => {
-                const module = await Module.bind(opts);
-                try { return await module.start(seam); }
-                catch (cause) {
-                    await module.close();
-                    throw cause;
-                }
-            },
-        };
-    }
-
-    static async setup(seam: SchemeRegistrationSeam): Promise<void> {
+    async setup(seam: SchemeRegistrationSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
     }
 
-    async setup(seam: SchemeRegistrationSeam): Promise<void> {
-        await Module.setup(seam);
-    }
-
-    // {§agui-listener-admission} Bind the process's client identity without
-    // admitting any durable state. Until start() installs the ApplicationPort,
-    // requests receive a transient 503 and cannot enter Core.
-    // Standalone hosting (tests, embedding without a daemon): a private socket the module owns.
-    static async bind(opts: ModuleOptions): Promise<Module> {
-        const module = new Module(opts);
-        module.#http = createServer((req, res) => { void module.#route(req, res); });
-        await module.listen();
-        return module;
-    }
-
-    async listen(): Promise<{ host: string; port: number }> {
-        if (this.#listening) throw new Error("plurnk-agui: listener already bound");
-        const http = this.#http;
-        if (http === null) throw new Error("plurnk-agui: create() owns no socket; the daemon's listener carries this module");
-        await new Promise<void>((resolve, reject) => {
-            const onError = (cause: Error): void => {
-                http.off("listening", onListening);
-                reject(cause);
-            };
-            const onListening = (): void => {
-                http.off("error", onError);
-                resolve();
-            };
-            http.once("error", onError);
-            http.once("listening", onListening);
-            http.listen(this.#opts.port, this.#opts.host);
-        });
-        this.#listening = true;
-        const addr = http.address();
-        if (addr === null || typeof addr === "string") throw new Error("plurnk-agui: listener bound no TCP address");
-        return { host: this.#opts.host, port: addr.port };
-    }
-
-    // {§module-http-mounts} — hosted by the daemon, the module claims the root and `/agui`; a module
-    // bound to a private socket mounts nothing on the daemon's listener.
-    get mounts(): readonly string[] {
-        return this.#http === null ? ["/", "/agui"] : [];
-    }
-
-    async start(seam: ApplicationPort): Promise<Module> {
+    // {§http-host} — mounted as the root, every request nothing more specific claims is AG-UI's, so
+    // unknown paths keep their refusals. The daemon admits its listener only after every module
+    // has started ({§agui-listener-admission}).
+    async start(seam: AguiPort): Promise<void> {
         if (this.#stopped) throw new Error("plurnk-agui: stopped module cannot be activated");
         if (this.#activated) throw new Error("plurnk-agui: module already activated");
-        if (this.#http === null) {
-            // {§http-host} — mount as the root: every request nothing more specific claims is
-            // AG-UI's, exactly as when it owned the socket, so unknown paths keep their refusals.
-            seam.registerHttpRoute("/", (req, res) => this.#route(req, res));
-            seam.registerHttpRoute("/agui", (req, res) => this.#route(req, res));
-        } else if (!this.#listening) {
-            throw new Error("plurnk-agui: a privately bound listener must be bound before activation");
-        }
+        seam.registerHttpRoute("/", (req, res) => this.#route(req, res));
+        seam.registerHttpRoute("/agui", (req, res) => this.#route(req, res));
         this.#seam = seam;
         this.#registerActions();
         this.#portal = new Portal(seam);
         this.#portal.start();
         this.#activated = true;
-        return this;
-    }
-
-    address(): { host: string; port: number } {
-        if (this.#http === null) throw new Error("plurnk-agui: no private listener; the daemon's httpAddress() is the address");
-        const addr = this.#http.address();
-        if (addr === null || typeof addr === "string") throw new Error("plurnk-agui: not listening");
-        return { host: this.#opts.host, port: addr.port };
     }
 
     stop(): void {
         this.#stopped = true;
     }
 
-    async close(): Promise<void> {
+    close(): void {
         this.stop();
-        if (this.#activated) {
-            this.#activated = false;
-            this.#portal.stop();
-        }
-        const http = this.#http;
-        if (!this.#listening || http === null) return;
-        this.#closing ??= new Promise<void>((resolve, reject) => http.close((e) => (e ? reject(e) : resolve())));
-        await this.#closing;
-        this.#listening = false;
+        if (!this.#activated) return;
+        this.#activated = false;
+        this.#portal.stop();
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -249,15 +185,6 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Appl
                 503,
                 "The PLURNK service is shutting down and no longer accepts requests.",
                 { stage: "shutdown", retryable: true },
-            ));
-            return;
-        }
-        if (!this.#activated) {
-            writeHttpProblem(res, httpProblem(
-                "service-starting",
-                503,
-                "The PLURNK service owns this listener but has not completed durable recovery.",
-                { stage: "startup", retryable: true },
             ));
             return;
         }

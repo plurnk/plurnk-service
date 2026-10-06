@@ -19,7 +19,6 @@ import OperatorConfig from "./core/OperatorConfig.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import ServiceModules from "./server/ServiceModules.ts";
 import { discoverDaemonModules } from "./server/module-discovery.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
@@ -223,8 +222,8 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
-        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the AG-UI module binds
-        // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
+        // {§http-host} — PLURNK_PORT is the daemon's one listener; the discovered client interface
+        // claims its root ({§module-http-mounts}).
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
         const configuration = Service.#configuration;
@@ -233,9 +232,8 @@ export default class Service {
         await configuration.capture("model-child", () => resolveChildRoute());
         // {§startup-listener-admission}: the daemon's one listener wins the configured
         // address before anything may mutate durable state ({§http-host}). It answers 503
-        // until the client-interface module mounts the root at daemon activation.
+        // until daemon activation admits it, after every module has started.
         const listener = await HttpListener.bind({ host, port });
-        const aguiModule = AguiModule.create({ host, port });
         let db: Db | null = null;
         let daemon: Daemon | null = null;
         let observability: Awaited<ReturnType<typeof startObservability>> = null;
@@ -253,9 +251,8 @@ export default class Service {
             // implementation loads; teardown already owns the admitted DB.
             observability = await configuration.capture("observability", () => startObservability());
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
-            // {§rpc}: AG-UI claims the root of the daemon's listener ({§module-http-mounts}); the
-            // socket never closes or rebinds between admission and readiness.
-            daemon.registerModule(aguiModule, "@plurnk/plurnk-agui");
+            // {§module-discovery} — the service composes no module: the daemon discovers every one,
+            // and the socket never closes or rebinds between admission and readiness.
             await daemon.start();
             const aguiAddr = listener.httpAddress();
             for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);

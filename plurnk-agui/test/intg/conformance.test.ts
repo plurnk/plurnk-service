@@ -6,9 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Module from "../../src/Module.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
 test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
@@ -19,17 +17,10 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
 
     const db = await openTestDatabase();
     const provider = await liveProvider();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
-    let module: Module | null = null;
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            module = await registration.start(seam);
-            return module;
-        },
-    }, "test-module");
-    await daemon.start({ host: "127.0.0.1", port: 0 });
-    const addr = (module as Module | null)?.address();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    await daemon.start();
+    const addr = http.httpAddress();
     assert.ok(addr !== undefined);
     const sandbox = await mkdtemp(join(tmpdir(), "agui-conf-"));
 
@@ -48,6 +39,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
         assert.match(String(last.content ?? ""), /pong/i, "the reply answers the prompt");
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
         await rm(sandbox, { recursive: true, force: true });
     }

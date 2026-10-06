@@ -1677,6 +1677,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         for (const { module, owner } of discoveredModules.modules) {
             this.#modules.push({ module, owner });
         }
+        // {§module-http-mounts} — a daemon without a listener has nothing to serve a mount on: it
+        // leaves out every module that declares one, and says so.
+        if (this.#http === null) {
+            this.#modules = this.#modules.filter(({ module, owner }) => {
+                const mounts = module.mounts ?? [];
+                if (mounts.length === 0) return true;
+                this.#configuration.leftOut(`module:${owner}`, `module '${owner}' mounts ${mounts.map((prefix) => `'${prefix}'`).join(", ")} and this daemon has no HTTP listener: left out`);
+                return false;
+            });
+        }
         // {§module-contained-configuration} — what a module contained is its own configuration diagnostic.
         for (const { module, owner } of this.#modules) {
             for (const { key, message } of module.contained ?? []) this.#configuration.record(`module:${owner}`, new ConfigurationError(key, message));

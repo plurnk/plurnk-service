@@ -2,7 +2,7 @@
 import { Exposure as A2aExposure } from "@plurnk/plurnk-a2a";
 import { Mock, type Provider } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, rootOwner, serviceUrl } from "../intg/_a2a.ts";
+import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, serviceUrl } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 
@@ -76,7 +76,6 @@ const db = await openMigrated(process.argv[2]);
 const http = await bindListener();
 const daemon = new Daemon({ db, provider: new TckProvider(db, () => daemon), http });
 let baseUrl = "";
-daemon.registerModule(rootOwner(), "test-root");
 daemon.registerModule({
     mounts: A2A_MOUNTS,
     start: async (port) => {

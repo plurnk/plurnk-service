@@ -10,22 +10,18 @@ const floor: NodeJS.ProcessEnv = {
 };
 
 test("[{§agui-configuration}] AG-UI consumes and validates its package-owned environment", () => {
-    assert.deepEqual(resolveModuleOptions({ host: "127.0.0.1", port: 1066, env: floor }), {
-        host: "127.0.0.1",
-        port: 1066,
+    assert.deepEqual(resolveModuleOptions({ env: floor }), {
         token: "",
         allowOrigin: "*",
         maxTurns: undefined,
         heartbeatMs: 15000,
     });
-    assert.equal(resolveModuleOptions({ host: "127.0.0.1", port: 0, env: { ...floor, PLURNK_AGUI_MAX_TURNS: "-1" } }).maxTurns, -1);
-    assert.equal(resolveModuleOptions({ host: "127.0.0.1", port: 0, env: { ...floor, PLURNK_AGUI_MAX_TURNS: "0" } }).maxTurns, 0);
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "-1" } }).maxTurns, -1);
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "0" } }).maxTurns, 0);
 });
 
 test("[{§agui-configuration}] explicit in-process options override the assembled environment", () => {
     assert.deepEqual(resolveModuleOptions({
-        host: "localhost",
-        port: 1,
         token: "explicit",
         allowOrigin: "https://portal.example",
         maxTurns: 3,
@@ -37,16 +33,12 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
             PLURNK_AGUI_HEARTBEAT_MS: "25",
         },
     }), {
-        host: "localhost",
-        port: 1,
         token: "explicit",
         allowOrigin: "https://portal.example",
         maxTurns: 3,
         heartbeatMs: 0,
     });
     assert.equal(resolveModuleOptions({
-        host: "localhost",
-        port: 1,
         token: "",
         heartbeatMs: 0,
         env: { PLURNK_AGUI_TOKEN: "environment", PLURNK_AGUI_ALLOW_ORIGIN: "*" },
@@ -54,7 +46,7 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
 });
 
 test("[{§agui-configuration}] missing and malformed numeric configuration fails at the owner", () => {
-    const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ host: "127.0.0.1", port: 0, env });
+    const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ env });
     // {§operator-config-only-home} — an absent token key is a broken floor, never a silently open listener.
     assert.throws(() => resolve({}), /PLURNK_AGUI_TOKEN is missing from the assembled environment floor/);
     assert.throws(() => resolve({ PLURNK_AGUI_TOKEN: "" }), /PLURNK_AGUI_ALLOW_ORIGIN is missing from the assembled environment floor/);
@@ -68,12 +60,12 @@ test("[{§agui-configuration}] missing and malformed numeric configuration fails
         /PLURNK_AGUI_MAX_TURNS must be a safe integer from -1 through 9007199254740991/,
     );
     assert.throws(
-        () => resolveModuleOptions({ host: "127.0.0.1", port: 0, heartbeatMs: null as unknown as number, env: floor }),
+        () => resolveModuleOptions({ heartbeatMs: null as unknown as number, env: floor }),
         /ModuleOptions.heartbeatMs must be a safe integer/,
         "an invalid explicit option fails instead of falling through to the environment",
     );
     assert.throws(
-        () => resolveModuleOptions({ host: "127.0.0.1", port: 0, maxTurns: "" as unknown as number, env: floor }),
+        () => resolveModuleOptions({ maxTurns: "" as unknown as number, env: floor }),
         /ModuleOptions.maxTurns must be a safe integer/,
         "only an empty environment value means no module turn default",
     );

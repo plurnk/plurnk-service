@@ -1,31 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import Module from "../../src/Module.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Validator } from "@plurnk/plurnk-contracts";
-import { openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { default: McpModule } = await import(join(SERVICE, "../plurnk-mcp/src/Module.ts"));
     const db = await openTestDatabase();
-    const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules") });
-    const started = Promise.withResolvers<Module>();
-    const registration = Module.init({ host: "127.0.0.1", port: 0 });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules"), http });
     daemon.registerModule(McpModule.init(), "@plurnk/plurnk-mcp");
-    daemon.registerModule({
-        start: async (seam: ApplicationPort) => {
-            const module = await registration.start(seam);
-            started.resolve(module);
-            return module;
-        },
-    }, "test-module");
     try {
         await daemon.start();
-        const module = await started.promise;
-        const { host, port } = module.address();
+        const { host, port } = http.httpAddress();
         const response = await fetch(`http://${host}:${port}/`, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -135,6 +124,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
         }
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 }

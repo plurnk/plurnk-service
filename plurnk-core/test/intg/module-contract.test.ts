@@ -10,7 +10,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener, rootOwner } from "./_a2a.ts";
+import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 
 // The witness reads its own knob and stays inert without it ({§module-self-activation}); configured,
@@ -35,6 +35,8 @@ export default () => {
 `;
 
 const PACKAGE = "@acme/witness-package";
+// {§module-discovery} — registering a package's name holds that package out of discovery.
+const CLIENT_INTERFACE = "@plurnk/plurnk-agui";
 const BUNDLE = "witness-bundle";
 let root = "";
 let nodeModules = "";
@@ -79,7 +81,6 @@ const boot = async (t: TestContext) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
-    daemon.registerModule(rootOwner(), "test-root");
     let stopped = false;
     const stop = async (): Promise<void> => {
         if (stopped) return;
@@ -120,7 +121,23 @@ test("{§module-http-mounts} a discovered module beside no root owner fails boot
     const http = await bindListener();
     const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
+    daemon.registerModule({}, CLIENT_INTERFACE);
     await assert.rejects(daemon.start(), /no module claims the HTTP root '\/'/u);
+});
+
+test("{§module-http-mounts} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
+    environment(t, { ACME_PACKAGE_ROUTE: "/package" });
+    await writeFile(trace, "");
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
+    assert.deepEqual(
+        daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(),
+        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"]],
+    );
+    assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
 
 test("{§module-self-activation} an unconfigured module is inert: it claims nothing and runs nothing", async (t) => {
@@ -128,7 +145,7 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
     const { daemon, get, lines } = await boot(t);
     await daemon.start();
     assert.deepEqual(await lines(), []);
-    assert.equal(await get("/package"), "", "the root owner answers what no module claimed");
+    assert.match(await get("/package"), /route-not-found/u, "the client interface answers what no module claimed");
 });
 
 test("{§module-contained-configuration} a contained setting is the module's own notice, and the rest of the module works", async (t) => {

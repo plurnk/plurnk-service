@@ -15,8 +15,11 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 
 const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
 
+// {§module-seam-slices} — the calls a Run makes outside its Portal thread.
+export type RunPort = Pick<ApplicationPort, "cancelDrain" | "configurationNotices" | "listProviders" | "readLog">;
+
 export default class RunHandler {
-    readonly #seam: () => ApplicationPort;
+    readonly #seam: () => RunPort;
     readonly #opts: () => ResolvedModuleOptions;
     readonly #portal: () => Portal;
     readonly #requiresWorkspace: (kind: string) => boolean;
@@ -27,7 +30,7 @@ export default class RunHandler {
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
 
     constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, workerStatus, action }: {
-        seam: () => ApplicationPort;
+        seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
         requiresWorkspace: (kind: string) => boolean;
