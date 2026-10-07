@@ -35,6 +35,10 @@ export const assertGrammarPackageContract = async (directory) => {
     const cliVersion = manifest.devDependencies?.[CLI_PACKAGE];
     const label = manifest.name ?? path.basename(directory);
 
+    invariant(["dependencies", "optionalDependencies", "peerDependencies"]
+        .every((field) => manifest[field]?.["@plurnk/plurnk-mimetypes"] === undefined),
+    `${label}: grammar assets must not depend on the Plurnk framework`);
+
     const sourceUrl = URL.canParse(source) ? new URL(source) : null;
     invariant(sourceUrl?.protocol === "https:"
         && sourceUrl.username === ""

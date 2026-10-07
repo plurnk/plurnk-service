@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-html",
-    "version": "1.29.0",
+    "version": "2.0.0",
     "description": "text/html and application/xhtml+xml mimetype handler for plurnk-service. Structural extraction via parse5; readable markdown (content channel) via Readability + an owned serializer over linkedom.",
     "keywords": [
         "plurnk",
@@ -62,7 +62,7 @@
     },
     "dependencies": {
         "@mozilla/readability": "^0.6.0",
-        "@plurnk/plurnk-meta": "1.29.0",
+        "@plurnk/plurnk-meta": "^2.0.0",
         "@xmldom/xmldom": "^0.9.10",
         "linkedom": "^0.18.12",
         "parse5": "^8.0.1",
@@ -70,7 +70,7 @@
     },
     "devDependencies": {},
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.29.0"
+        "@plurnk/plurnk-mimetypes": "^2.0.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-text-html#readme",
     "bugs": {

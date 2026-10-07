@@ -87,6 +87,11 @@ contract is `skill://plurnk/packages/@plurnk/plurnk-skills/SPEC.md`.
 
 ## Examples
 
+The [Tavily plugin](https://github.com/plurnk/plurnk-tavily-plugin) is a working,
+separately installed example: a standard `plugin.json`, one HTTP materializer
+extension, its own configuration floor, and public-interface installation tests.
+It is not bundled with the service.
+
 A plugin directory, under a plugin root or packaged for npm:
 
 ```text

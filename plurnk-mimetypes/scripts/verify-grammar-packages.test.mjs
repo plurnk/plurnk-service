@@ -70,6 +70,15 @@ test("accepts one exact, locked, strictly authorized local CLI", async () => {
     await assert.doesNotReject(assertGrammarPackageContract(pkg.directory));
 });
 
+test("{§mimetype-grammar-packages} rejects a framework dependency on a data-only grammar", async () => {
+    for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+        await using pkg = await makePackage({
+            manifest: { [field]: { "@plurnk/plurnk-mimetypes": "^2.0.0" } },
+        });
+        await assert.rejects(assertGrammarPackageContract(pkg.directory), /grammar assets must not depend on the Plurnk framework/);
+    }
+});
+
 test("rejects a floating CLI version", async () => {
     await using pkg = await makePackage({
         manifest: {

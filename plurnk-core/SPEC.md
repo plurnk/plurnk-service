@@ -3696,6 +3696,12 @@ their runtime dependency graphs contain no extension of their kind. A required
 default extension missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
+
+`@plurnk/plurnk-tavily-plugin` is the separately installed, opt-in plugin showcase,
+not a service dependency. Its own tests own installation, native discovery,
+configuration, and HTTP materialization; service installation coverage proves it
+is absent from the default composition.
+
 Packed executor coverage distinguishes installation from enablement: verify
 the package floor, explicit opt-in, and composed allowlist/disable behavior
 through discovery and registration outside the development dependency graph

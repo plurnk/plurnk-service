@@ -285,11 +285,10 @@ ok(
 );
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
-ok(serviceDependencies.includes(tavilyPackage), "the service bundles the standard Tavily Agent Plugin");
+ok(!serviceDependencies.includes(tavilyPackage) && !existsSync(resolve(mods, ...tavilyPackage.split("/"))), "the default service install does not bundle the opt-in Tavily showcase plugin");
 ok(!existsSync(resolve(mods, "@plurnk", "plurnk-schemes-http-tavily")), "the retired Tavily package is absent from the clean composition");
 const materializerInventory = packedMaterializerInventory();
-ok(materializerInventory.owners.includes(tavilyPackage), "the installed extension contributes its own configuration floor");
-ok(materializerInventory.id === "tavily-extract" && materializerInventory.eligibility === null, "the materializer kind imports the installed extension and safely declines without credentials");
+ok(!materializerInventory.owners.includes(tavilyPackage) && materializerInventory.id === undefined, "the absent showcase plugin contributes neither configuration nor a materializer");
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
 const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
 const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
