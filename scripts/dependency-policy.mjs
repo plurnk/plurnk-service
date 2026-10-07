@@ -138,11 +138,6 @@ if (import.meta.main) {
         const manifest = JSON.parse(await fs.readFile(file, "utf8"));
         if (file !== "package.json") workspaceManifests.push({ file, manifest });
         if (file === "plurnk-core/package.json") violations.push(...defaultGrammarViolations(manifest));
-        for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
-            if (typeof command === "string" && /\bnpm outdated\b/.test(command)) {
-                violations.push(`${file}: scripts.${name} duplicates the root release freshness gate`);
-            }
-        }
         for (const section of sections) {
             for (const name of Object.keys(manifest[section] ?? {})) {
                 if (name !== "web-tree-sitter" && forbidden.test(name)) {

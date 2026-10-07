@@ -136,6 +136,10 @@ for each public change; describe the service's outward effect explicitly when it
 also needs a release. Compatible, unchanged packages do not need new versions.
 Standalone repositories use their own version preparation and dependency ranges.
 
+Dependency upgrades are separate maintenance. Inspect available updates with
+`npm outdated --include-workspace-root --workspaces`; newer versions alone do
+not block publication ({§release-candidate-graph}).
+
 ```sh
 npm run changeset
 npm run release:version
