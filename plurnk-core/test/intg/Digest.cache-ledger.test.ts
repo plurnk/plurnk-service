@@ -31,7 +31,7 @@ const packet = (turn: number): DurablePacket => ({
     assistantRaw: null,
 });
 
-const prompt = (turn: number): string => PacketWire.packetToWireMessages(packet(turn), new Map())
+const prompt = (turn: number): string => PacketWire.packetToWireMessages(packet(turn))
     .map(({ role, content }) => `${role}\n${content}`)
     .join("\n");
 

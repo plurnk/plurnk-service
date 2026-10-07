@@ -328,14 +328,10 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row !== undefined);
         const packet = JSON.parse(row.packet) as { weight: number; sections: StoredPacketSection[] };
-        const announced = new Map((await db.test_emission_rows_by_worker.all<{ coordinate: string; rx: string }>({ worker_id: workerId }))
-            .map(({ coordinate, rx }) => [coordinate, (JSON.parse(rx) as { content: string }).content] as const));
-        const placed = PacketWire.placedEmissions(packet.sections, announced);
-        assert.deepEqual(placed, [], "the first request contains no content history and never its own forthcoming response");
+        assert.equal(PacketWire.sectionContent(packet, "previous-emission"), "", "the first request never contains its own forthcoming response");
         const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
-            + contentWeight(PacketWire.renderSlot(packet.sections, "user"))
-            + placed.reduce((sum, coordinate) => sum + contentWeight(PacketWire.deliveredEmission(announced.get(coordinate)!)), 0);
-        assert.equal(packet.weight, requestWeight, "an emission weighs what the wire delivers ({§emission-row})");
+            + contentWeight(PacketWire.renderSlot(packet.sections, "user"));
+        assert.equal(packet.weight, requestWeight, "all request text is charged once within its slot");
     } finally { await db.close(); }
 });
 

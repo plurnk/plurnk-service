@@ -44,15 +44,15 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
-    assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"], "only the content draft occupies assistant history");
-    assert.equal(draft.find(({ role }) => role === "assistant")!.content, "```EDIT (worker:///a.md)\n```",
-        "the wire shows the worker's operation without its body; its NOTE lives only in its row");
+    assert.deepEqual(roles(draft), ["system", "user"]);
+    assert.equal(draft[1]!.content.split("\n\n## Previous Emission\n\n")[1], "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
+        "the exact complete canonical program closes the user message");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "the retired draft left with its row; the KILL's emission took its place");
-    assert.ok(!last.some(({ role, content }) => role === "assistant" && content.includes("EDIT (worker:///a.md)")));
+    assert.deepEqual(roles(last), ["system", "user"]);
+    assert.equal(last[1]!.content.split("\n\n## Previous Emission\n\n")[1], "```KILL (log:///1/2/2/emission)\n```\n\n```NOTE\nRetired the first emission.\n```");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);

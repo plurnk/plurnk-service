@@ -131,7 +131,7 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
     const after = await f.build(provider);
     assert.notEqual(budgetOf(before).budget, budgetOf(after).budget, "the ceiling uses new model evidence");
     assert.equal(packetSection(after, "log"), packetSection(before, "log"), "all historical rows, including the bounded prompt, stay byte-identical");
-    const prefix = (packet: RequestPacket) => PacketWire.packetToWireMessages(packet, f.packets.emissionsFor(packet))
+    const prefix = (packet: RequestPacket) => PacketWire.packetToWireMessages(packet)
         .map(({ content }) => content.split("## Context")[0]).join("\n");
     assert.equal(prefix(after), prefix(before), "the complete prefix before the volatile budget remains reusable");
     await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);

@@ -165,7 +165,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
             provider: probeProvider,
             gitStatus: null,
         });
-        const exactChars = PacketWire.packetToWireMessages(probe, probeBuilder.emissionsFor(probe))
+        const exactChars = PacketWire.packetToWireMessages(probe)
             .reduce((sum, { content }) => sum + content.length, 0);
         const capacity = Math.floor((probe.weight + exactChars) / 2);
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");

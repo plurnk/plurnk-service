@@ -12,9 +12,6 @@
 body?
 ```
 
-> [!NOTE]
-> OP emission body content is automatically moved from previous responses to log.
-
 ## Plurnk Workflow OPs
 
 * NOTE: Free text, facts, findings, conclusions, decisions, and plans.

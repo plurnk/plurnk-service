@@ -295,7 +295,7 @@ type PacketFacts = {
     readonly notices: Notice[];
     readonly transientOpenLogEntryId: number | null;
     // {§context-own-rows-fit} — the rows the wall took for this turn's packet, shared by every rebuild.
-    readonly bodiless: Set<number>;
+    readonly projection: { readonly bodiless: Set<number>; omitPreviousEmission: boolean };
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
@@ -586,18 +586,15 @@ export default class TurnRunner {
     // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
-        // {§packet-wire-envelope} — each emission row the packet placed carries its emission as the
-        // worker's own assistant message.
-        const emissions = this.#packets.emissionsFor(packet);
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {
-                messages: PacketWire.packetToWireMessages(packet, emissions) as ChatMessage[],
+                messages: PacketWire.packetToWireMessages(packet) as ChatMessage[],
                 nativeInputs: [],
             };
         }
         const nativeInputs = new Set<string>();
-        const messages = await PacketWire.wireMessages(packet, emissions, async (attachment) => {
+        const messages = await PacketWire.wireMessages(packet, async (attachment) => {
             const bytes = await NativeContent.read(ctx.db, attachment.contentHash);
             nativeInputs.add(attachment.coordinate);
             return bytes;
@@ -853,7 +850,7 @@ export default class TurnRunner {
             turnId: initializationTurn.id,
             fromSequence: 1,
             failOnOperationError: true,
-            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, bodiless: new Set() }),
+            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitPreviousEmission: false } }),
             signal: this.#loopSignal(loopId),
             onDispatch,
             onSettled,
@@ -981,7 +978,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, turnId);
         // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
         // would render now. The drained notices join the same facts below.
-        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, bodiless: new Set() };
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitPreviousEmission: false } };
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
@@ -1071,8 +1068,9 @@ export default class TurnRunner {
         return nextActionIndex;
     }
 
-    #buildPacket({ messages, recap, workspaceId, workerId, loopId, provider }: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
-        return this.#packets.buildRequestPacket({
+    async #buildPacket(args: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
+        const { messages, recap, workspaceId, workerId, loopId, provider } = args;
+        const packet = await this.#packets.buildRequestPacket({
             initialMessages: messages,
             recap,
             workspaceId,
@@ -1084,8 +1082,16 @@ export default class TurnRunner {
             notices: facts.notices,
             transientOpenLogEntryId: facts.transientOpenLogEntryId,
             turnId: facts.turnId,
-            bodiless: facts.bodiless,
+            bodiless: facts.projection.bodiless,
+            omitPreviousEmission: facts.projection.omitPreviousEmission,
         });
+        // {§previous-emission}: all builds, including result-admission probes, shed the optional
+        // replay before taking result bodies. Share the decision across this request's rebuilds.
+        if (PacketWire.sectionContent(packet, "previous-emission").length > 0 && this.#packets.windowOverflow(packet, provider) !== null) {
+            facts.projection.omitPreviousEmission = true;
+            return this.#buildPacket(args, facts);
+        }
+        return packet;
     }
 
     // {§context-fit} — the budget left for one more row, measured by building the packet as it would
@@ -1138,7 +1144,7 @@ export default class TurnRunner {
             let taken = 0;
             for (const { id, tokens } of this.#packets.bodiedRowsOf(current.packet).toReversed()) {
                 if (shed >= overflow.excessWeight) break;
-                current.bodiless.add(id);
+                current.projection.bodiless.add(id);
                 shed += tokens;
                 taken += 1;
             }

@@ -87,6 +87,21 @@ WHERE le.loop_id = $loop_id
   )
 ORDER BY t.sequence, le.sequence;
 
+-- PREP: engine_previous_emission
+-- {§previous-emission}: select the immediate model turn BEFORE testing eligibility.
+WITH previous AS (
+    SELECT id FROM turns
+    WHERE loop_id = $loop_id AND sequence < $current_turn_seq
+      AND producer = 'model' AND kind = 'inference' AND completed_at IS NOT NULL
+    ORDER BY sequence DESC LIMIT 1
+)
+SELECT json_extract(le.rx, '$.content') AS content
+FROM previous p
+JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
+JOIN turn_sources source ON source.turn_id = p.id AND source.kind = 'ops'
+JOIN turn_attempts attempt ON attempt.model_call_id = source.model_call_id
+WHERE attempt.accepted = 1 AND json_array_length(attempt.parse_errors) = 0;
+
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
 -- Yields log_entries for the whole worker — the conversation's working

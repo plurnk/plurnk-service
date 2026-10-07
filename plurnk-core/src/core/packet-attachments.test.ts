@@ -51,7 +51,7 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
         assert.throws(() => StoredPacket.assert({ ...packet, attachments: [{ ...rendered.attachments[0], duration }] }), /duration must be a nonnegative finite number/u);
     }
     const bytes = new Uint8Array([82, 73, 70, 70]);
-    const user = (await PacketWire.wireMessages(packet, new Map(), async () => bytes)).at(-1)!;
+    const user = (await PacketWire.wireMessages(packet, async () => bytes)).at(-1)!;
     assert.ok(Array.isArray(user.content));
     assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ → file:///clip.wav (audio/wav, 1.25 s): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
@@ -127,7 +127,7 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     const bytesOf = async (attachment: { kind: string }) => attachment.kind === "image" ? png : pdf;
-    const wired = await PacketWire.wireMessages(packet, new Map(), bytesOf);
+    const wired = await PacketWire.wireMessages(packet, bytesOf);
     const [system] = wired;
     const user = wired.at(-1)!;
     assert.equal(system.role, "system");
@@ -139,9 +139,9 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/READ → contract.pdf (application/pdf, 3 pages): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[4], { type: "file", data: pdf, mediaType: "application/pdf" });
     assert.equal(user.content.length, 5);
-    const imageOnly = (await PacketWire.wireMessages(packet, new Map(), bytesOf, (kind) => kind === "image")).at(-1)!;
+    const imageOnly = (await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image")).at(-1)!;
     assert.ok(Array.isArray(imageOnly.content) && imageOnly.content.length === 3, "a kind the route refuses contributes neither caption nor part");
-    await assert.rejects(PacketWire.wireMessages(packet, new Map(), async () => { throw new Error("Missing immutable native content"); }), /Missing immutable native content/);
+    await assert.rejects(PacketWire.wireMessages(packet, async () => { throw new Error("Missing immutable native content"); }), /Missing immutable native content/);
 });
 
 test("{§packet-attachment-parts} a stored packet admits attachments of a known kind and refuses malformed ones", () => {
@@ -156,7 +156,7 @@ test("{§packet-attachment-parts} a stored packet admits attachments of a known 
     assert.deepEqual(JSON.parse(StoredPacket.stringify(withAttachment)), bag, "stored request evidence retains its native deliveries");
 });
 
-test("{§packet-wire-envelope} {§emission-row} native attachments ride the closing user message, after the emission that READ them and its result", async () => {
+test("{§packet-wire-envelope} {§emission-row} native attachments precede the complete previous emission at the user tail", async () => {
     const emissionRow = {
         coordinate: "1/1/1", op: "READ", origin: "_plurnk", producer: "model", status: 200,
         attrs: { kind: "emission" },
@@ -166,26 +166,27 @@ test("{§packet-wire-envelope} {§emission-row} native attachments ride the clos
         mimetype_rx: "application/json", initial_folded: [[1, -1]], folded: [],
     };
     const rendered = PacketWire.renderLogWithAccounting([emissionRow, readRow()], weigh);
-    assert.deepEqual(rendered.emissions.map(({ coordinate, content }) => ({ coordinate, content })), [{ coordinate: "1/1/1", content: emissionRow.rx.content }]);
     const packet: RequestPacket = {
         weight: 1000, attributions: [], attachments: [...rendered.attachments],
         sections: [
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
             { name: "worker", slot: "user", header: "Worker", content: '{"loop":1,"turn":2}', weight: 8 },
+            { name: "previous-emission", slot: "user", header: "Previous Emission", content: emissionRow.rx.content, weight: 20 },
         ],
     };
-    const emissions = new Map(rendered.emissions.map(({ coordinate, content }) => [coordinate, content] as const));
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-    const wire = await PacketWire.wireMessages(packet, emissions, async () => bytes, () => true);
-    assert.deepEqual(wire.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    assert.equal(wire[1]!.content, `## Log\n\n${rendered.records[0]}`, "the user stub: the log heading and the emission's row");
-    assert.equal(wire[2]!.content, PacketWire.deliveredEmission(emissionRow.rx.content), "the emission, as the wire shows it, is the worker's own message");
+    const wire = await PacketWire.wireMessages(packet, async () => bytes, () => true);
+    assert.deepEqual(wire.map(({ role }) => role), ["system", "user"]);
     const closing = wire.at(-1)!.content;
     assert.ok(Array.isArray(closing));
-    assert.deepEqual(closing[0], { type: "text", text: `${rendered.records[1]}\n\n## Worker\n{"loop":1,"turn":2}` }, "the READ result, then the status clump");
+    assert.deepEqual(closing[0], { type: "text", text: `## Log\n\n${rendered.records.join("\n\n")}\n\n## Worker\n{"loop":1,"turn":2}` }, "the READ result, then the status clump");
     assert.deepEqual(closing[1], { type: "text", text: PacketWire.attachmentCaption(rendered.attachments[0]!) });
     assert.deepEqual(closing[2], { type: "file", data: bytes, mediaType: "image/png" });
+    assert.deepEqual(closing[3], { type: "text", text: `\n\n## Previous Emission\n\n${emissionRow.rx.content}` });
+    assert.equal(closing.length, 4, "nothing follows the previous emission");
+    const textOnly = await PacketWire.wireMessages(packet, async () => { throw new Error("no media should be read"); }, () => false);
+    assert.deepEqual(textOnly, PacketWire.packetToWireMessages(packet), "unsupported media do not change the text envelope");
 });
 
 test("{§packet-attachment-parts} native-only observations are weighed and reclaimable", () => {

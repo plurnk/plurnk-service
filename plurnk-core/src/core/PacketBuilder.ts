@@ -128,7 +128,6 @@ export default class PacketBuilder {
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
     // {§context-budget} — each loop's high-water budget, for the input capacity it was derived from.
     readonly #loopBudgets = new Map<number, { readonly inputCapacity: number; readonly budget: number }>();
-    readonly #emissions = new WeakMap<readonly StoredPacketSection[], ReadonlyMap<string, string>>();
     // {§context-own-rows-fit} — the rows of each built packet the wall may still take, newest last.
     readonly #bodiedRows = new WeakMap<readonly StoredPacketSection[], readonly BodiedLogRow[]>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
@@ -208,13 +207,6 @@ export default class PacketBuilder {
         }
     }
 
-    // {§packet-wire-envelope} — the emissions this packet placed, keyed by their rows' coordinates.
-    emissionsFor(packet: RequestPacket): ReadonlyMap<string, string> {
-        const emissions = this.#emissions.get(packet.sections);
-        if (emissions === undefined) throw new Error("emissionsFor: the packet was not built by this PacketBuilder");
-        return emissions;
-    }
-
     curationBudgetFor(packet: RequestPacket): number | null {
         const budget = this.#curationBudgets.get(packet.sections);
         if (budget === undefined) throw new Error("curationBudgetFor: the packet was not built by this PacketBuilder");
@@ -235,6 +227,7 @@ export default class PacketBuilder {
         transientOpenLogEntryId = null,
         turnId = null,
         bodiless,
+        omitPreviousEmission = false,
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -254,6 +247,8 @@ export default class PacketBuilder {
         turnId?: number | null;
         // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id.
         bodiless?: ReadonlySet<number>;
+        // {§previous-emission} — omitted whole before the wall takes any result bodies.
+        omitPreviousEmission?: boolean;
     }): Promise<RequestPacket> {
         // {§configuration-repair-path} — a retired packet knob refuses packet construction, never startup.
         PacketBuilder.assertConfiguration();
@@ -379,14 +374,11 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§emission-row} {§packet-wire-envelope} — an emission rides with its row: the rows present in
-        // the final log section place their emissions, and the packet charges exactly those.
-        const announced = new Map(renderedLog.emissions.map(({ coordinate, content }) => [coordinate, content] as const));
-        const placed = PacketWire.placedEmissions(drafts, announced);
-        const emissions = new Map(placed.map((coordinate) => [coordinate, announced.get(coordinate)!] as const));
-        const emissionsWeight = renderedLog.emissions
-            .filter(({ coordinate }) => emissions.has(coordinate))
-            .reduce((sum, { weight }) => sum + weight, 0);
+        // {§previous-emission}: the source is not a transformable draft. The stored section remains
+        // present when empty, identifying this envelope for historical evidence readers.
+        if (drafts.some(({ name }) => name === "previous-emission")) throw new Error("previous-emission is a core-owned packet section");
+        const previous = omitPreviousEmission ? undefined : await this.#db.engine_previous_emission.get<{ content: string }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
+        drafts = [...drafts, { name: "previous-emission", slot: "user", header: "Previous Emission", content: previous?.content ?? "" }];
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const transformedLog = drafts.find((section) => section.name === "log");
@@ -398,8 +390,7 @@ export default class PacketBuilder {
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
-                    + attachmentsWeight
-                    + emissionsWeight;
+                    + attachmentsWeight;
             }, curationTargets);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
@@ -412,11 +403,9 @@ export default class PacketBuilder {
             items: section.name === "log" && section.content === renderedLog.content ? renderedLog.records : [section.content],
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries,
-        // and so do the emissions it places ({§emission-row}).
-        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight + emissionsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
+        // {§packet-attachment-parts}: text, including the previous program, is already in the slots.
+        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#curationBudgets.set(packet.sections, curationBudget);
-        this.#emissions.set(packet.sections, emissions);
         // {§context-own-rows-fit} — a transformed log is one item the wall cannot take row by row.
         this.#bodiedRows.set(packet.sections, drafts.find((section) => section.name === "log")?.content === renderedLog.content ? renderedLog.bodied : []);
         this.#streamObservations.set(packet.sections, openChannels);

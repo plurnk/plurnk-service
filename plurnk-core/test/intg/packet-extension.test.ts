@@ -56,6 +56,7 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         const userOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "user").map((s) => s.name);
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
+        assert.equal(userOrder.at(-1), "previous-emission", "core's final source section follows every transformed draft");
     } finally { await db.close(); }
 });
 
