@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { SqlRiteSync } from "@possumtech/sqlrite";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Validator, type KillStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
@@ -42,6 +44,59 @@ const shape = (path: string): string => {
 
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
+
+test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
+    const path = await released(RELEASED);
+    const operation = (heading: string): ReadStatement | KillStatement => {
+        const item = PlurnkParser.parseStatements(PlurnkParser.frame(heading, null)).items.find((item) => item.kind === "statement");
+        assert.ok(item?.kind === "statement" && (item.statement.op === "READ" || item.statement.op === "KILL"));
+        return item.statement;
+    };
+    const first = operation("READ (a) <1,3> /shared/");
+    const second = operation("READ (b) <4,6>");
+    const member = ({ target, lineMarker, metadata, matcher }: ReadStatement | KillStatement) => ({ target, lineMarker, metadata, matcher });
+    const shared = { ...first, group: [member({ ...first, matcher: null }), member(second)] };
+    const own = { ...first, matcher: { dialect: "regex", raw: "/own/", pattern: "own", flags: "" }, group: [member(first), member(second)] };
+    const kill = operation("KILL (log:///1/1/1/READ)");
+    const killNext = operation("KILL (log:///1/1/2/READ)");
+    const groupedKill = { ...kill, lineMarker: { marks: [1, 3] }, body: "retained distillation", group: [member(kill), member(killNext)] };
+    const originalOps = [second, shared, own, groupedKill, second];
+    const content = '```READ (a) (b)\n```\n\noriginal \\"source\\"';
+    const reasoning = "original reasoning\r\nincluding whitespace  ";
+    const packet = { weight: 123, attributions: [], assistant: { content, reasoning, ops: originalOps }, assistantRaw: { content, reasoning, opaque: [1, null] } };
+    const unchanged = JSON.stringify({ weight: 0, attributions: [], assistant: { content: "", reasoning: null, ops: [second] }, assistantRaw: null });
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'astUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
+                VALUES (1, 1, 1, 'retain evidence', '{"proposals":"reject"}', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
+                VALUES (1, 1, 1, 'model', 'inference', 102, NULL), (2, 1, 2, 'model', 'inference', 102, NULL);
+        `);
+        before.prepare("UPDATE turns SET packet = ? WHERE id = 1").run(JSON.stringify(packet));
+        before.prepare("UPDATE turns SET packet = ? WHERE id = 2").run(unchanged);
+        before.prepare("INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'ops', ?), (1, 'reasoning', ?)").run(content, reasoning);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        const migrated = JSON.parse(after.prepare("SELECT packet FROM turns WHERE id = 1").get()!.packet as string);
+        assert.deepEqual(migrated.assistant.ops, [
+            second, first, { ...second, aside: first.aside, position: first.position, matcher: first.matcher },
+            { ...first, matcher: first.matcher }, { ...second, aside: first.aside, position: first.position },
+            { ...kill, body: groupedKill.body }, { ...killNext, position: kill.position }, second,
+        ], "the old members, not their duplicated top-level fields, defined the actual selections");
+        for (const op of migrated.assistant.ops) assert.equal(Validator.validatePlurnkStatement(op).valid, true);
+        assert.deepEqual({ ...migrated, assistant: { ...migrated.assistant, ops: originalOps } }, packet);
+        assert.equal(after.prepare("SELECT packet FROM turns WHERE id = 2").get()!.packet, unchanged, "a packet without groups is untouched byte-for-byte");
+        assert.deepEqual(after.prepare("SELECT kind, content FROM turn_sources ORDER BY kind").all().map((row) => ({ ...row })),
+            [{ kind: "ops", content }, { kind: "reasoning", content: reasoning }]);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);

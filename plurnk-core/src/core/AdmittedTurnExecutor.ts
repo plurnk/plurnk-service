@@ -15,7 +15,6 @@ import type { DispatchResult } from "./Dispatcher.ts";
 import { observed } from "../observe/spans.ts";
 import { OPS_DISPATCHED, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
-import { expandTargetGroup } from "./operation-target-groups.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
@@ -141,7 +140,7 @@ export default class AdmittedTurnExecutor {
         let realCommands = 0;
         const admitted = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement)
             || realCommands++ < maxCommands);
-        const scheduled = scheduleTurnOps(admitted.flatMap(expandTargetGroup));
+        const scheduled = scheduleTurnOps(admitted);
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
             worker_id: workerId,
         }))?.max_id;

@@ -361,12 +361,6 @@ aside: (string | null)
  */
 metadata: (string[] | null)
 target: (ParsedPath | null)
-/**
- * The heading's target group ({§target-group}): every `(path)` slot with the scope and metadata that follow it, in authored order, the first repeating `target`, `lineMarker` and `metadata`. Present only when the heading carries more than one slot; absent, as in every statement stored before groups existed, the operation has its one target.
- *
- * @minItems 2
- */
-group?: [ResourceSelection, ResourceSelection, ...(ResourceSelection)[]]
 lineMarker: (TextLineMarker | null)
 /**
  * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
@@ -374,22 +368,6 @@ lineMarker: (TextLineMarker | null)
 matcher: (MatcherBody | null)
 body: null
 position: Position
-}
-/**
- * One COPY/MOVE resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; metadata belongs to the selected scheme endpoint; lineMarker scopes the selected textual content.
- */
-
-export interface ResourceSelection {
-target: ParsedPath
-/**
- * Opaque ordered scheme-metadata modifier blocks owned by this operand's addressed scheme.
- */
-metadata: (string[] | null)
-lineMarker: (TextLineMarker | null)
-/**
- * The selection matcher lifted from the operand's `[{"pattern": …}]` option; meaningful on the source operand, refused by the owner on a destination.
- */
-matcher: (MatcherBody | null)
 }
 /**
  * The ordered components parsed from a text-coordinate <scope>. A line position may be numeric or a rendered five-character Base62 line anchor; columns remain numeric. Core resolves anchors against the addressed current text before a numeric scope reaches its operation owner.
@@ -425,6 +403,22 @@ aside: (string | null)
 source: ResourceSelection
 destination: ResourceSelection
 position: Position
+}
+/**
+ * One COPY/MOVE resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; metadata belongs to the selected scheme endpoint; lineMarker scopes the selected textual content.
+ */
+
+export interface ResourceSelection {
+target: ParsedPath
+/**
+ * Opaque ordered scheme-metadata modifier blocks owned by this operand's addressed scheme.
+ */
+metadata: (string[] | null)
+lineMarker: (TextLineMarker | null)
+/**
+ * The selection matcher lifted from the operand's `[{"pattern": …}]` option; meaningful on the source operand, refused by the owner on a destination.
+ */
+matcher: (MatcherBody | null)
 }
 
 export interface MoveStatement {
@@ -523,12 +517,6 @@ aside: (string | null)
  */
 metadata: (string[] | null)
 target: (ParsedPath | null)
-/**
- * The heading's target group ({§target-group}): every `(path)` slot with the scope and metadata that follow it, in authored order, the first repeating `target`, `lineMarker` and `metadata`. Present only when the heading carries more than one slot; absent, as in every statement stored before groups existed, the operation has its one target.
- *
- * @minItems 2
- */
-group?: [ResourceSelection, ResourceSelection, ...(ResourceSelection)[]]
 /**
  * Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target.
  */

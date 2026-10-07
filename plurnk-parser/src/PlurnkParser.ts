@@ -91,13 +91,6 @@ export default class PlurnkParser {
             if (statement.op === "COPY" || statement.op === "MOVE") {
                 selection(statement.source);
                 selection(statement.destination);
-            } else if ((statement.op === "READ" || statement.op === "KILL") && statement.group !== undefined) {
-                // {§target-group} — every member with its own scope and metadata, then the group's naked pattern.
-                for (const member of statement.group) selection(member);
-                const own = statement.group[0].matcher;
-                if (statement.matcher !== null && (own === null || own.raw !== statement.matcher.raw)) {
-                    modifiers.push(...metadataOf(null, statement.matcher, true));
-                }
             } else {
                 if (statement.target !== null) {
                     modifiers.push(`(${spelled(statement.target)})`);
@@ -179,7 +172,7 @@ export default class PlurnkParser {
         const warnings = new Map<PlurnkStatement, PlurnkParseError[]>();
         const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx) => {
             const { value, advisories } = AstBuilder.collectAdvisories(() => AstBuilder.build(ctx));
-            warnings.set(value, advisories);
+            if (value[0] !== undefined) warnings.set(value[0], advisories);
             return value;
         }, {}, "reasoning");
         const operations = result.items.flatMap((item) => item.kind === "statement"
@@ -261,7 +254,7 @@ export default class PlurnkParser {
     static #run<S extends ClientStatement = PlurnkStatement>(
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
-        buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
+        buildFn: (ctx: any) => S[] = ((ctx: any) => AstBuilder.build(ctx) as S[]),
         options: ParseOptions = {},
         tier: "statements" | "model" | "reasoning" = "statements",
     ): { result: ParseResult<S>; lexer: plurnkLexer } {
@@ -458,7 +451,7 @@ export default class PlurnkParser {
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
         items: ParseItem<S>[],
-        buildFn: (ctx: any) => S,
+        buildFn: (ctx: any) => S[],
         boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {
@@ -489,8 +482,8 @@ export default class PlurnkParser {
                     }
                 } else {
                     try {
-                        const { value: statement, advisories } = AstBuilder.collectAdvisories(() => buildFn(c));
-                        items.push({ kind: "statement", statement });
+                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(c));
+                        for (const statement of statements) items.push({ kind: "statement", statement });
                         // {§misplaced-aside-advisory} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
                     } catch (e) {

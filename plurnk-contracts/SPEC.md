@@ -654,9 +654,9 @@ normalize optional bodies to null. Closing fences are conventional, never requir
 ({§closer-fallback}).
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
-runtime fences from the shared AST, with one blank line between operations; a
-target group renders every member with its own scope and metadata, then the
-group's naked pattern ({§target-group}).
+runtime fences from the shared AST, with one blank line between operations. A
+target group compiles to ordinary statements, each rendered with its resolved
+selection ({§target-group}).
 Every closing fence occupies its own line, including bodyless operations;
 inline fences remain accepted input, not generated examples.
 It chooses at least three backticks and more than any run within the body
@@ -692,15 +692,23 @@ below the header.
 
 §target-group **READ and KILL take a target group.** A READ or KILL heading may carry several
 `(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked
-pattern on the heading ({§naked-pattern}) is the group's and applies to every member. The AST keeps
-the first slot in `target`, `lineMarker` and `metadata` and, only when the heading carries more than
-one slot, repeats it with the rest as `group: ResourceSelection[]` in authored order, each member's
-`matcher` the one its own metadata carried. The operation runs once per member, in authored order,
-under the core SPEC's {§safe-uri-target-groups}; a distilling body ({§log-kill-distillation}) lands
+pattern on the heading ({§naked-pattern}) supplies the default for each member without its own
+metadata `pattern`. The parser compiles the complete heading into one ordinary statement per
+member, in authored order, each with its own target, scope, metadata and resolved matcher. No
+duplicated first-member or group representation crosses the parser boundary. Every resulting
+statement retains the heading's source position and aside; a heading-level parse error refuses
+all its members, not valid sibling headings. A distilling body ({§log-kill-distillation}) lands
 once, with the first member. COPY and MOVE keep their two operands with their own meaning
 ({§transfer-resource-selections}); every other operation takes one slot, and a second slot on its
 heading is the slot-opener diagnostic. The form is accepted, not taught: it rescues a bulk attempt
 written one path per slot.
+
+§safe-uri-target-groups **An explicit URI list is a target group.** In READ and KILL only,
+one path slot may contain several explicit `scheme://` URIs separated by top-level commas or
+whitespace; braces protect their contents. Every member must independently parse as a URI,
+otherwise the target stays singular and exact. Local filenames containing spaces or commas
+are never split. Each URI inherits its slot's scope and metadata and compiles through
+{§target-group}; COPY/MOVE and other operations do not admit this tolerance.
 
 §scope-on-scopeless **A scope on an operation that takes none is dropped, and named.** WORK, FORK,
 BARE and NOTE take no scope, and neither does a SEND without a recipient; a `<…>` slot on such a
@@ -1879,7 +1887,9 @@ diagnostics are:
   until what remains is the matcher. `READ (a.rs) /fn resolve_/ <1,-1> <!-- entities -->`
   is the same operation as `READ (a.rs) <1,-1> /fn resolve_/ <!-- entities -->`, with
   one warning-severity advisory naming the canonical order for the scope or block:
-  the grammar swallows up anything that passes as legitimate plurnk. A matcher that
+  recovery requires a single possible path-slot owner. With multiple slots, a trailing scope
+  or metadata block refuses the heading rather than relocating or discarding the slot.
+  A matcher that
   itself ends in one of those shapes takes the option escape.
   `plurnk.md` teaches one order — `OP (path)? <scope|range>? [metadata]? pattern?
   <!-- aside -->?` — and free ordering is not taught. Small departure, small

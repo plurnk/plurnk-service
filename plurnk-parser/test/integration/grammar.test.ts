@@ -268,9 +268,12 @@ test("COPY and MOVE require exactly two singular path operands", () => {
     }
 
     // {§target-group} — on READ a second slot is a member, never a transfer operand.
-    const read = oneStatement(section("READ", " (brief.md) (drafts/brief.md)"));
-    if (read.op !== "READ") assert.fail("expected READ");
-    assert.deepEqual(read.group?.map(({ target }) => target.raw), ["brief.md", "drafts/brief.md"]);
+    const reads = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
+    assert.deepEqual(reads.items.map((item) => {
+        assert.equal(item.kind, "statement");
+        assert.ok(item.kind === "statement" && item.statement.op === "READ");
+        return item.statement.target?.raw;
+    }), ["brief.md", "drafts/brief.md"]);
 });
 
 test("{§extra-path-slot}: parentheses in bodies remain literal text, not operand slots", () => {

@@ -433,10 +433,6 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        // {§safe-uri-target-groups} — a group never reaches dispatch unexpanded.
-        if ((context.statement.op === "READ" || context.statement.op === "KILL") && context.statement.group !== undefined) {
-            throw new Error(`Dispatcher.dispatch: a ${context.statement.op} target group is expanded before dispatch`);
-        }
         await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
         const result = await this.#dispatch(context);

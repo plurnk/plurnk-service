@@ -114,9 +114,10 @@ slotModifiers
     | lineMarker targetWithMetadata?
     ;
 
-// {§target-group} — one selection, then any number more: `(a) <1,3> (b) [meta] (c)`.
+// {§target-group} — each path owns its modifiers. A leading scope can only have one target.
 targetGroup
-    : slotModifiers resourceSelection*
+    : resourceSelection+
+    | lineMarker targetWithMetadata?
     ;
 
 // The fence selects the executor; its program/tool path and metadata retain

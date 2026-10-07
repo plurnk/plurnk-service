@@ -7,6 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const response = (content: string): MockResponse => ({
     assistant: { content, reasoning: null },
@@ -17,7 +18,7 @@ const setup = async () => {
     const workspaceId = await insertWorkspace(db, `target-groups-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "exercise target groups");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { db, workspaceId, workerId, loopId, engine };
 };
 
@@ -268,3 +269,68 @@ test("{§target-group} {§safe-uri-target-groups}: a READ written one path per s
         await db.close();
     }
 });
+
+test("{§target-group}: READ keeps each scope and local matcher while applying the heading default to other members", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const content = "outside\nlocal\nshared\nlocal\nshared\noutside";
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content });
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content });
+        const source = '```READ (worker:///alpha.md) <2,3> [{"pattern":"/local/"}] (worker:///beta.md) <3,4> /shared/\n```';
+        const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read the selected lines." }] });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
+        const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        assert.deepEqual(reads.map(({ pathname, status_rx, rx }) => [pathname, status_rx, JSON.parse(rx).content]),
+            [["/alpha.md", 200, "local\n"], ["/beta.md", 200, "shared\n"]]);
+        assert.deepEqual(reads.map(({ rx }) => JSON.parse(rx).lineOrdinals), [[2], [3]]);
+    } finally { await db.close(); }
+});
+
+test("{§trailing-slots}: an ambiguous grouped KILL changes no member, while its sibling NOTE still executes", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const sourceTurnId = await insertTurn(db, loopId, 1);
+        const ids = [await seedLogRead(db, workerId, loopId, sourceTurnId, 1), await seedLogRead(db, workerId, loopId, sourceTurnId, 2)];
+        const source = '```KILL (log:///1/1/1/READ) (log:///1/1/2/READ) /source/ <1,3>\n```\n\n```NOTE\nsibling retained\n```';
+        const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Curate selected lines." }] });
+        const originals = await db.test_log_entries_by_turn.all<{ id: number; active: number; folded: string }>({ turn_id: sourceTurnId });
+        assert.deepEqual(originals.filter(({ id }) => ids.includes(id)).map(({ id, active, folded }) => [id, active, folded]),
+            ids.map((id) => [id, 1, "[]"]));
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
+        assert.equal(rows.some(({ op }) => op === "KILL"), false);
+        assert.ok(rows.some(({ op, status_rx }) => op === "NOTE" && status_rx === 200));
+        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && /scope or metadata block with its path/u.test(rx)));
+    } finally { await db.close(); }
+});
+
+for (const limit of [0, 1, 2]) {
+    test(`{§operator-config-workspace-max-commands-floor} {§target-group}: limit ${limit} counts compiled targets, not headings`, async () => {
+        const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
+        process.env.PLURNK_SERVICE_MAX_COMMANDS = limit === 0 ? "-1" : String(limit);
+        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        try {
+            if (limit === 0) await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ maxCommands: 0 }) });
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
+            const source = "```READ (worker:///alpha.md) (worker:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```KILL\n```";
+            const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
+            const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
+            const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+            assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
+                [["/alpha.md", 200], ["/beta.md", 200]].slice(0, limit));
+            assert.equal(rows.some(({ op }) => op === "NOTE"), false);
+            assert.ok(rows.some(({ op }) => op === "KILL"), "lifecycle intent is never silently dropped by the action cap");
+            const error = rows.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("max-commands-exceeded"));
+            assert.ok(error !== undefined, "omitted operations have the ordinary durable limit notice");
+            assert.equal(error.problem.omittedOperations, 3 - limit);
+            assert.notEqual(result.status, 200, "dropped work cannot be reported as completed");
+        } finally {
+            await db.close();
+            if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
+            else process.env.PLURNK_SERVICE_MAX_COMMANDS = original;
+        }
+    });
+}

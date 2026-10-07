@@ -60,6 +60,7 @@ import {
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { PathSyntax, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
+import { targetMembers } from "./target-members.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -294,24 +295,7 @@ export default class AstBuilder {
         const options = AstBuilder.metadataOptions(metadata);
         if (options === null || !Object.hasOwn(options, "pattern")) {
             const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
-            // {§naked-pattern} {§local-path-fragment} — `#name` alone after a target that names no channel is the
-            // channel, exactly as if written on the path: the receipt advertises `#readable`, and a model that
-            // writes it after the parenthesis means the channel, not a glob beginning with `#` (#1000).
-            const channel = bare === null || target === null ? null : /^#([A-Za-z][A-Za-z0-9_-]*)$/u.exec(bare.text);
-            if (channel !== null && (target!.fragment === null || target!.fragment === undefined)) {
-                target!.fragment = channel[1]!;
-                if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]!}`;
-                return { matcher: null, metadata: metadata ?? (bare!.metadata === null ? null : [bare!.metadata]), aside: bare!.aside, scope: bare!.scope, consumed: true };
-            }
-            return bare === null
-                ? { matcher: null, metadata, aside: null, scope: null, consumed: false }
-                : {
-                    matcher: AstBuilder.#parseMatcherBody(bare.text, position, target),
-                    metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
-                    aside: bare.aside,
-                    scope: bare.scope,
-                    consumed: true,
-                };
+            return AstBuilder.#liftBareMatcher(bare, metadata, position, target);
         }
         const pattern = options.pattern;
         if (typeof pattern !== "string") {
@@ -321,6 +305,22 @@ export default class AstBuilder {
         const matcher = AstBuilder.#parseMatcherBody(pattern, position, target);
         const others = Object.keys(options).filter((key) => key !== "pattern");
         return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null, consumed: false };
+    }
+
+    static #liftBareMatcher(bare: { text: string; aside: string | null; scope: string | null; metadata: string | null } | null, metadata: SchemeMetadata, position: Position, target: ParsedPath | null) {
+        if (bare === null) return { matcher: null, metadata, aside: null, scope: null, consumed: false };
+        // {§local-path-fragment}: a bare channel suffix belongs to each selected target.
+        const channel = target === null ? null : /^#([A-Za-z][A-Za-z0-9_-]*)$/u.exec(bare.text);
+        const attaches = channel !== null && target!.fragment == null;
+        if (attaches) {
+            target!.fragment = channel[1]!;
+            if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]!}`;
+        }
+        return {
+            matcher: attaches ? null : AstBuilder.#parseMatcherBody(bare.text, position, target),
+            metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
+            aside: bare.aside, scope: bare.scope, consumed: true,
+        };
     }
 
     // {§matcher-body-redirect} {§transfer-resource-selections} — an operation that takes no body ignores the text
@@ -354,15 +354,16 @@ export default class AstBuilder {
     static #JSONPATH = new JSONPathEnvironment();
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
-    static build(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
-        const statement = AstBuilder.#buildAny(ctx);
+    static build(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement[] {
+        const built = AstBuilder.#buildAny(ctx);
+        const statements = Array.isArray(built) ? built : [built];
         // {§naked-operation} — the name alone opened it; the receipt names the taught form, once.
         const opener = ctx.start?.text ?? "";
         if (opener.length > 0 && !opener.startsWith("`")) {
             AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is three backticks.`, "warning"));
-            return AstBuilder.#withoutNakedCloser(statement);
+            return statements.map((statement) => AstBuilder.#withoutNakedCloser(statement));
         }
-        return statement;
+        return statements;
     }
 
     // {§naked-operation} — a naked block expects no closer, so a closer the author wrote anyway is still its last
@@ -379,7 +380,7 @@ export default class AstBuilder {
         return { ...statement, body } as PlurnkStatement;
     }
 
-    static #buildAny(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
+    static #buildAny(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement | PlurnkStatement[] {
         // Disposition and SEND contexts can arrive without a statement wrapper.
         if (ctx instanceof DispositionStatementContext) return AstBuilder.#buildDisposition(ctx);
         if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
@@ -430,9 +431,9 @@ export default class AstBuilder {
     // (delegated to build, returning a PlurnkStatement — which IS a ClientStatement) or one of
     // the two client-only ops. Kept separate from build() so the protocol return type stays the
     // closed PlurnkStatement and client ops never leak into it.
-    static buildClient(ctx: ClientStatementContext): ClientStatement {
+    static buildClient(ctx: ClientStatementContext): ClientStatement[] {
         const statement = ctx.statement(); if (statement) return AstBuilder.build(statement);
-        const look = ctx.lookStatement(); if (look) return AstBuilder.#buildLook(look);
+        const look = ctx.lookStatement(); if (look) return [AstBuilder.#buildLook(look)];
         throw new Error("clientStatement context has no recognized alternative");
     }
 
@@ -451,54 +452,64 @@ export default class AstBuilder {
         };
     }
 
-    static #buildRead(ctx: ReadStatementContext): ReadStatement {
+    static #buildRead(ctx: ReadStatementContext): ReadStatement[] {
         const position = AstBuilder.#positionOf(ctx);
-        const group = ctx.targetGroup();
-        const slots = AstBuilder.#extractTextSlots(group?.slotModifiers() ?? null, position);
+        const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        AstBuilder.#bareTarget("READ", slots.target, split.inline, position);
+        AstBuilder.#bareTarget("READ", slots[0]!.target, split.inline, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
-        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null, slots.target);
+        const lifted = AstBuilder.#liftSelections("READ", slots, position, split.inline ?? bodied.raw, split.inline !== null);
         AstBuilder.#ignoreUnread("READ", AstBuilder.#unread(lifted.consumed, split.inline, bodied.raw), position, AstBuilder.#PATTERN_HINT);
         const aside = bodied.aside ?? lifted.aside;
         // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
         // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
-        return {
+        return lifted.selections.flatMap(AstBuilder.#selectionTargets).map((selection) => ({
             op: "READ",
             aside,
-            ...slots,
-            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
-            metadata: lifted.metadata,
-            matcher: lifted.matcher,
-            ...AstBuilder.#targetGroup("READ", group, slots, lifted.metadata, position),
+            ...selection,
             body: null,
             position,
-        };
+        }));
     }
 
-    // {§target-group} — the heading's slots beyond the first, each with the scope and metadata that follow
-    // it; the first member repeats the statement's own target, scope and metadata, with the matcher its
-    // metadata carried and never the heading's naked pattern, which is the group's.
-    static #targetGroup(
-        op: string,
-        ctx: TargetGroupContext | null,
-        slots: TextSlots,
-        metadata: SchemeMetadata,
-        position: Position,
-    ): { group?: ReadStatement["group"] } {
-        const rest = ctx?.resourceSelection() ?? [];
-        if (rest.length === 0) return {};
-        if (slots.target === null) {
-            throw new PlurnkParseError(position.line, position.column, "visitor",
-                `\`${op}\` names a target group whose first slot has no target.`, "error",
-                `Write every member in parentheses: \`${op} (a) (b)\`.`);
+    static #targetSelections(ctx: TargetGroupContext | null, position: Position): TextSlots[] {
+        const selections = ctx?.resourceSelection() ?? [];
+        return selections.length === 0
+            ? [AstBuilder.#extractTextSlots(ctx, position)]
+            : selections.map((selection) => AstBuilder.#extractTextSlots(selection, position));
+    }
+
+    static #selectionTargets(selection: TextSlots & { matcher: MatcherBody | null }): (TextSlots & { matcher: MatcherBody | null })[] {
+        return selection.target === null ? [selection]
+            : targetMembers(selection.target, AstBuilder.parsePath).map((target) => ({ ...selection, target }));
+    }
+
+    // {§target-group} {§trailing-slots}: recover only when ownership is unique, before admitting any member.
+    static #liftSelections(op: string, slots: TextSlots[], position: Position, raw: string | null, inline: boolean): {
+        selections: (TextSlots & { matcher: MatcherBody | null })[];
+        aside: string | null;
+        consumed: boolean;
+    } {
+        const sole = slots.length === 1 ? slots[0]! : null;
+        if (sole !== null) {
+            const lifted = AstBuilder.#liftMatcher(op, sole.metadata, position, raw, inline, sole.lineMarker !== null, sole.target);
+            return {
+                selections: [{ ...sole, metadata: lifted.metadata, matcher: lifted.matcher,
+                    lineMarker: sole.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)) }],
+                aside: lifted.aside, consumed: lifted.consumed,
+            };
         }
-        const options = AstBuilder.metadataOptions(slots.metadata);
-        const own = options !== null && typeof options.pattern === "string"
-            ? AstBuilder.#parseMatcherBody(options.pattern, position, slots.target) : null;
-        const first: ResourceSelection = { target: slots.target, metadata, lineMarker: slots.lineMarker, matcher: own };
-        const [second, ...others] = rest.map((selection) => AstBuilder.#resourceSelectionFromCtx(selection, position, op));
-        return { group: [first, second!, ...others] };
+        const bare = AstBuilder.#bareMatcher(raw, op, inline, position);
+        if (bare?.scope != null || bare?.metadata != null) {
+            throw new PlurnkParseError(position.line, position.column, "visitor",
+                "Put each scope or metadata block with its path, before the shared pattern.");
+        }
+        const selections = slots.map((selection) => {
+            const own = AstBuilder.#liftMatcher(op, selection.metadata, position, null, false, false, selection.target);
+            const lifted = own.matcher === null ? AstBuilder.#liftBareMatcher(bare, own.metadata, position, selection.target) : own;
+            return { ...selection, metadata: lifted.metadata, matcher: lifted.matcher };
+        });
+        return { selections, aside: bare?.aside ?? null, consumed: bare !== null };
     }
 
     static #buildEdit(ctx: EditStatementContext): EditStatement {
@@ -649,36 +660,32 @@ export default class AstBuilder {
         };
     }
 
-    static #buildKill(ctx: KillStatementContext): KillStatement {
+    static #buildKill(ctx: KillStatementContext): KillStatement[] {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
-        const group = ctx.targetGroup();
-        const slots = AstBuilder.#extractTextSlots(group?.slotModifiers() ?? null, position);
+        const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
+        const first = slots[0]!;
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        if (slots.target === null && slots.lineMarker === null && slots.metadata === null) {
-            return {
-                op: "KILL", aside: AstBuilder.#asideOf(ctx), ...slots, matcher: null,
+        if (first.target === null && first.lineMarker === null && first.metadata === null) {
+            return [{
+                op: "KILL", aside: AstBuilder.#asideOf(ctx), ...first, matcher: null,
                 body: AstBuilder.#headingBody("KILL", ctx, split.inline, position), position,
-            };
+            }];
         }
         // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
-        const distilling = slots.target !== null && slots.target.kind === "url" && slots.target.scheme === "log";
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null, slots.target);
+        const distilling = first.target !== null && first.target.kind === "url" && first.target.scheme === "log";
+        const lifted = AstBuilder.#liftSelections("KILL", slots, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null);
         if (!distilling) AstBuilder.#ignoreUnread("KILL with a target", AstBuilder.#unread(lifted.consumed, split.inline, split.below), position, AstBuilder.#PATTERN_HINT);
         const distillation = !distilling ? null
             : lifted.consumed || split.inline === null ? split.below : AstBuilder.#headingBody("KILL", ctx, split.inline, position);
-        return {
+        return lifted.selections.flatMap(AstBuilder.#selectionTargets).map((selection, index) => ({
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
-            ...slots,
-            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
-            metadata: lifted.metadata,
-            matcher: lifted.matcher,
-            ...AstBuilder.#targetGroup("KILL", group, slots, lifted.metadata, position),
-            body: distillation !== null && distillation.trim() !== "" ? distillation : null,
+            ...selection,
+            body: index === 0 && distillation !== null && distillation.trim() !== "" ? distillation : null,
             position,
-        };
+        }));
     }
 
     static #buildWork(ctx: WorkStatementContext): WorkStatement {
@@ -753,7 +760,7 @@ export default class AstBuilder {
         };
     }
 
-    static #extractTextSlots(modCtx: SlotModifiersContext | null, pos: Position): TextSlots {
+    static #extractTextSlots(modCtx: SlotModifiersContext | ResourceSelectionContext | TargetGroupContext | null, pos: Position): TextSlots {
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),

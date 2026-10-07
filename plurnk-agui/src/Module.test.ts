@@ -901,6 +901,34 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
     } finally { await mod.close(); }
 });
 
+test("{§agui-op-parse} {§target-group}: each compiled target returns its own result through the client action", async () => {
+    const { seam } = mockSeam();
+    const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
+    seam.dispatchClientAction = async ({ statements }) => {
+        dispatched.push(statements);
+        return statements.map((_statement, index) => ({ status: 200, content: `result ${index}` }));
+    };
+    const mod = await host(seam);
+    try {
+        const text = '```READ (worker:///a) <1,3> [{"pattern":"/local/"}] (worker:///b) <4,6> /shared/\n```';
+        const events = await post(mod.address().port, {
+            threadId: "parse-group",
+            forwardedProps: { plurnk: { workspace: "parse-group", action: { kind: "op.parse", text } } },
+        });
+        assert.equal(dispatched.length, 1, "one action, not independent client loops");
+        assert.deepEqual(dispatched[0].map((statement) => {
+            assert.ok(statement.op === "READ");
+            return [statement.target?.raw, statement.lineMarker?.marks, statement.matcher?.raw];
+        }), [["worker:///a", [1, 3], "/local/"], ["worker:///b", [4, 6], "/shared/"]]);
+        const event = events.find((candidate) => candidate.type === "CUSTOM"
+            && (candidate as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok: boolean; result?: { results?: unknown[] } };
+        } | undefined;
+        assert.equal(event?.value?.ok, true);
+        assert.deepEqual(event?.value?.result?.results, [{ status: 200, content: "result 0" }, { status: 200, content: "result 1" }]);
+    } finally { await mod.close(); }
+});
+
 // {§agui-op-parse} {§unparsed-tail-boundary}
 test("#127: op.parse dispatches only the trusted prefix and appends one parser-owned tail failure", async () => {
     const { seam } = mockSeam();

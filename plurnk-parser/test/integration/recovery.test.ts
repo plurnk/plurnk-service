@@ -140,9 +140,13 @@ for (const header of ["READ (a.md) <2,3> (extra.md)", "KILL (a.md) (extra.md)"])
         for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
             const r = parse(turn(frame(header, null)));
             assert.deepEqual(errors(r), [], header);
-            const [statement] = statements(r);
-            assert.ok(statement !== undefined && (statement.op === "READ" || statement.op === "KILL") && statement.group?.length === 2, header);
-            assert.deepEqual(statements(r).map(writtenOp), [header.split(" ")[0]!, "WAIT"]);
+            const [first, second] = statements(r);
+            assert.ok(first !== undefined && (first.op === "READ" || first.op === "KILL"));
+            assert.ok(second !== undefined && second.op === first.op);
+            assert.deepEqual([first.target?.raw, second.target?.raw], ["a.md", "extra.md"]);
+            assert.deepEqual(first.lineMarker, first.op === "READ" ? { marks: [2, 3] } : null);
+            assert.equal(second.lineMarker, null);
+            assert.deepEqual(statements(r).map(writtenOp), [header.split(" ")[0]!, header.split(" ")[0]!, "WAIT"]);
         }
     });
 }
