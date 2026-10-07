@@ -4,7 +4,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -38,7 +39,7 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: the digest counts reasonin
         } finally {
             await db.close();
         }
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
 
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         // 3 reasoning rows landed, 1 was killed by turn 2
@@ -70,7 +71,7 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: when reasoning rows are di
         } finally {
             await db.close();
         }
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
 
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(report, /^Reasonings: 0 of 1 landed \(unbudgeted or disabled\)$/mu);

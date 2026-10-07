@@ -12,7 +12,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, } from "./_dsl.ts";
@@ -61,7 +62,7 @@ for (const [label, reasoning, reasoningLine] of [
     }
 
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         const reasoningMarkdown = await readFile(join(digestDir, "reasoning.md"), "utf8");
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {

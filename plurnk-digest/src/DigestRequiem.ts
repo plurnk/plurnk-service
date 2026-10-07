@@ -13,9 +13,6 @@ import {
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import PacketWire from "../core/packet-wire.ts";
-import StoredPacket from "../core/StoredPacket.ts";
-import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import {
     aggregateProviderAccounting,
     ProviderError,
@@ -28,15 +25,8 @@ import {
 } from "@plurnk/plurnk-providers";
 
 import DigestRender from "./DigestRender.ts";
-import DigestEvidence from "./DigestEvidence.ts";
 import { digestPaths } from "./digest-paths.ts";
-import { readDigestDb } from "./digest-db.ts";
 import type {
-    SyncPrep,
-    WorkerRow,
-    EmissionRow,
-    LoopRow,
-    TurnRow,
     TurnAttemptRow,
     DigestOptions,
     RequiemCallRecord,
@@ -59,7 +49,11 @@ const requiemResponseEvidence = (response: unknown): unknown => {
     const { rawBody: _nestedRawBody, ...assistantRaw } = withoutRawBody.assistantRaw;
     return { ...withoutRawBody, assistantRaw };
 };
-const readPositiveInt = (name: string): number => Knob.integer(name, 1);
+const readPositiveInt = (name: string): number => {
+    const retired = name.replace("PLURNK_DIGEST_", "PLURNK_SERVICE_");
+    if (process.env[retired] !== undefined) throw new Error(`${retired} is retired: use ${name}`);
+    return Knob.integer(name, 1);
+};
 
 const writeJsonDurably = (path: string, value: unknown): void => {
     const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
@@ -87,7 +81,7 @@ const writeJsonDurably = (path: string, value: unknown): void => {
 export default class DigestRequiem {
     // {§digest-requiem}: one out-of-band audit per model-bearing worker, with exact
     // historical evidence and a required witness provider.
-    static async interview(opts: DigestOptions & { signal?: AbortSignal; provider?: Provider }): Promise<{ path: string; reportPath: string; workers: number }> {
+    static async interview(opts: DigestOptions & { signal?: AbortSignal; provider: Provider | null }): Promise<{ path: string; reportPath: string; workers: number }> {
         const { dbPath, digestDir } = digestPaths(opts);
         // {§share}: a writer never deletes; an existing interview is removed by its caller first.
         for (const name of ["requiem.json", "requiem.md"]) {
@@ -95,27 +89,24 @@ export default class DigestRequiem {
         }
         mkdirSync(digestDir, { recursive: true });
 
-        const provider = opts.provider ?? await ProviderInstantiate.loadActiveProvider();
+        const provider = opts.provider;
         if (provider === null) throw new Error("requiem: no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
-        const maxTokens = readPositiveInt("PLURNK_SERVICE_REQUIEM_MAX_TOKENS");
-        const retryMaxTokens = readPositiveInt("PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS");
+        const maxTokens = readPositiveInt("PLURNK_DIGEST_REQUIEM_MAX_TOKENS");
+        const retryMaxTokens = readPositiveInt("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS");
         if (retryMaxTokens < maxTokens) {
-            throw new Error("PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_SERVICE_REQUIEM_MAX_TOKENS");
+            throw new Error("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_DIGEST_REQUIEM_MAX_TOKENS");
         }
 
-        const { workers, byWorker, emissionsByWorker } = readDigestDb(dbPath, (db) => {
-            const workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
+        const { workers, byWorker, finalPacketsByWorker } = (() => {
+            using evidence = opts.openEvidence(dbPath);
+            const { workers, emissionRows, loops, turnAttempts, turns } = evidence.rows();
             // {§emission-row}: the worker's final request is its transcript, emissions in place.
             const emissionsByWorker = new Map<number, Map<string, string>>();
-            for (const row of (db.digest_emissions as SyncPrep<EmissionRow>).all()) {
+            for (const row of emissionRows) {
                 const map = emissionsByWorker.get(row.worker_id) ?? new Map<string, string>();
                 map.set(row.coordinate, row.content);
                 emissionsByWorker.set(row.worker_id, map);
             }
-            const loops = (db.digest_loops as SyncPrep<LoopRow>).all();
-            const turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
-            const turns = (db.digest_turns as SyncPrep<TurnRow>).all();
-            const evidence = new DigestEvidence(db);
             const loopById = new Map(loops.map((l) => [l.id, l]));
             const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
             for (const attempt of turnAttempts) {
@@ -130,7 +121,7 @@ export default class DigestRequiem {
             const byWorker = new Map<number, Array<{
                 loopSeq: number;
                 turnSeq: number;
-                sections: Parameters<typeof PacketWire.renderSlot>[0];
+                turnId: number;
                 assistant: string;
                 providerAttempts: Array<{
                     sequence: number;
@@ -152,8 +143,8 @@ export default class DigestRequiem {
                 arr.push({
                     loopSeq: loop.sequence,
                     turnSeq: t.sequence,
-                    sections: packet.sections,
-                    assistant: StoredPacket.isAdmitted(packet) ? packet.assistant.content : "",
+                    turnId: t.id,
+                    assistant: packet.assistant?.content ?? "",
                     providerAttempts: (attemptsByTurn.get(t.id) ?? [])
                         .map((attempt) => ({
                             sequence: attempt.sequence,
@@ -167,8 +158,15 @@ export default class DigestRequiem {
                 });
                 byWorker.set(loop.worker_id, arr);
             }
-            return { workers, byWorker, emissionsByWorker };
-        });
+            const turnsById = new Map(turns.map((turn) => [turn.id, turn]));
+            const finalPacketsByWorker = new Map<number, ChatMessage[]>();
+            for (const [workerId, entries] of byWorker) {
+                const last = entries.toSorted((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq).at(-1)!;
+                const packet = evidence.packet(turnsById.get(last.turnId)!).packet!;
+                finalPacketsByWorker.set(workerId, packet.messages(emissionsByWorker.get(workerId) ?? new Map()));
+            }
+            return { workers, byWorker, finalPacketsByWorker };
+        })();
 
         const out: string[] = [
             "# plurnk-service requiem",
@@ -213,7 +211,7 @@ export default class DigestRequiem {
                 ];
                 const evidence = {
                     finalPacket: {
-                        messages: PacketWire.packetToWireMessages({ sections: last.sections }, emissionsByWorker.get(worker.id) ?? new Map()),
+                        messages: finalPacketsByWorker.get(worker.id)!,
                     },
                     providerAttempts: quoted,
                     ...(providerAttempts.length === 0 && last.assistant !== ""

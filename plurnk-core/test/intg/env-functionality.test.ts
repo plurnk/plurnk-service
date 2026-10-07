@@ -7,7 +7,8 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -260,7 +261,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         await daemon.stop();
         await db.close();
         quiescent = true;
-        Digest.run({ dbPath, digestDir: join(scratch, "digest") });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(scratch, "digest") });
         const waterfall = await readFile(join(scratch, "digest", "digest.md"), "utf8");
         assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(worker\) · ENV_WITNESS \(masked\)/u,
             "the waterfall names alice's spawn environment with each value's provenance");

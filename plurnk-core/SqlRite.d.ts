@@ -295,7 +295,6 @@ export class SqlRiteSync {
 	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
-	share_snapshot: SqlRiteSyncPreparedStatements;
 	strike_rail_state: SqlRiteSyncPreparedStatements;
 	strike_rail_assess: SqlRiteSyncPreparedStatements;
 	engine_calibration_samples: SqlRiteSyncPreparedStatements;
@@ -585,7 +584,6 @@ export default class SqlRite {
 	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;
-	share_snapshot: SqlRitePreparedStatements;
 	strike_rail_state: SqlRitePreparedStatements;
 	strike_rail_assess: SqlRitePreparedStatements;
 	engine_calibration_samples: SqlRitePreparedStatements;

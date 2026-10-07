@@ -27,8 +27,10 @@ import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
 import { startObservability, validateObservabilityConfiguration } from "./observe/init.ts";
-import Digest from "./digest/Digest.ts";
-import Share from "./share/Share.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import ProviderInstantiate from "./core/ProviderInstantiate.ts";
+import { Share } from "@plurnk/plurnk-digest";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -482,10 +484,12 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
             const workspace = values.workspace;
             if (workspace !== undefined && (typeof workspace !== "string" || !/^[1-9]\d*$/u.test(workspace))) Service.#die(64, "--workspace takes a workspace id");
             handler = async () => {
-                const dbPath = typeof positionals[1] === "string" ? positionals[1] : Digest.defaultDbPath();
-                const folder = typeof positionals[2] === "string" ? positionals[2] : Share.defaultFolder(process.env, Service.#hostPaths);
-                const shared = await Share.write({
-                    dbPath, folder, requiem: values.requiem === true,
+                const dbPath = typeof positionals[1] === "string" ? positionals[1] : Service.#hostPaths.configuredDatabasePath();
+                const folder = typeof positionals[2] === "string" ? positionals[2] : Service.#hostPaths.shareFolder();
+                const provider = values.requiem === true ? await ProviderInstantiate.loadActiveProvider() : undefined;
+                if (provider === null) throw new Error("requiem: no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
+                const shared = await Share.write({ openEvidence: EvidenceReader.open,
+                    dbPath, folder, requiem: provider,
                     ...(typeof workspace === "string" ? { workspaceId: Number(workspace) } : {}),
                 });
                 process.stdout.write(`${shared.folder}\n`);
@@ -494,7 +498,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
         } else if (command === "requiem") {
             if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
             handler = async () => {
-                const { path, reportPath, workers } = await Digest.requiem({ dbPath: positionals[1] as string, digestDir: positionals[2] as string });
+                const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1] as string, digestDir: positionals[2] as string, provider: await ProviderInstantiate.loadActiveProvider() });
                 process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
             };
         } else if (command === "paths" && action === "migrate") {

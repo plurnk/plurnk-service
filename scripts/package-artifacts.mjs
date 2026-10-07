@@ -14,6 +14,8 @@ const projections = new Map([
             "dist/core/content_weight.js",
             // {§daemon-launch} — the candidate driver loads the pinned runtime's launcher by exact path.
             "dist/launch/Launch.js",
+            "dist/evidence/EvidenceReader.js",
+            "dist/evidence/digest.sql",
             "INSTALL.md",
             // {§systemd-user-unit} — available to npm consumers, not only source checkouts.
             "plurnk.service",
@@ -34,6 +36,10 @@ const projections = new Map([
     }],
     ["plurnk-skills", {
         required: ["docs/skills.md"],
+        forbiddenPrefixes: [],
+    }],
+    ["plurnk-digest", {
+        required: ["dist/index.js", "dist/share.sql"],
         forbiddenPrefixes: [],
     }],
     ["plurnk-mimetypes-application-pdf", {

@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import HostPaths from "./HostPaths.ts";
 
+test("{§share-folder} an unset share folder is a stamped child of the XDG state shares folder", () => {
+    const paths = new HostPaths({ home: "/home/tester", env: {} });
+    const now = new Date("2026-09-26T15:04:05.678Z");
+    assert.equal(paths.shareFolder({}, now), `${paths.stateDir}/shares/share-20260926T150405Z`);
+});
+
+test("{§share-folder} a configured share folder expands a leading ~/ like every explicit Plurnk path", () => {
+    const paths = new HostPaths({ home: "/home/tester", env: {} });
+    const now = new Date("2026-09-26T15:04:05.678Z");
+    assert.equal(paths.shareFolder({ PLURNK_SERVICE_SHARE_FOLDER: "~/benchmarks" }, now), "/home/tester/benchmarks/share-20260926T150405Z");
+});
+
+test("{§host-path-layout} forensic defaults honor the daemon's explicit database path", () => {
+    const paths = new HostPaths({ home: "/home/tester", env: {} });
+    assert.equal(paths.configuredDatabasePath({}), paths.databaseFile);
+    assert.equal(paths.configuredDatabasePath({ PLURNK_SERVICE_DB_PATH: "~/evidence.db" }), "/home/tester/evidence.db");
+});
+
 test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () => {
     const paths = new HostPaths({ env: {}, home: "/home/ada" });
     assert.equal(paths.configFile, "/home/ada/.config/plurnk/.env");

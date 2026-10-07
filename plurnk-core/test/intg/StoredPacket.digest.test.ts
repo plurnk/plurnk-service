@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import type { KillStatement } from "@plurnk/plurnk-contracts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
@@ -46,7 +47,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
         await db.close();
     }
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         assert.equal(await readFile(join(digestDir, `${stems[0]}.assistant.md`), "utf8"), source);
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
@@ -126,7 +127,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     }
 
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         for (const [index, source] of sources.entries()) {
             assert.equal(
@@ -218,7 +219,7 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
         }
 
         try {
-            Digest.run({ dbPath, digestDir });
+            Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
             const stems = await digestStems(digestDir);
             assert.deepEqual(stems, ["analyst-1-1", "analyst-1-2"], "source-backed initialization and inference retain their log coordinates");
             assert.equal(
@@ -269,7 +270,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
     }
 
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.packet.md`)));
         assert.match(
@@ -317,7 +318,7 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
         }
     } finally { await db.close(); }
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.deepEqual(json.turns.map((turn: { attachments: unknown }) => turn.attachments), [[attachment], [], null]);
     } finally { await rm(dir, { recursive: true, force: true }); }
@@ -347,7 +348,7 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
     }
 
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         assert.equal(
             await readFile(join(digestDir, `${stems[0]}.packet.raw.txt`), "utf8"),

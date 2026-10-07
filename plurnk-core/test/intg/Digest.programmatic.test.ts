@@ -252,7 +252,7 @@ test("{§digest-programmatic-surface}: importing the public subpath performs no 
             console.error = () => { throw new Error("digest import called console.error"); };
             process.exit = (code) => { throw new Error(\`digest import called process.exit(\${code})\`); };
             process.chdir(${JSON.stringify(dir)});
-            await import("@plurnk/plurnk-service/digest");
+            await import("@plurnk/plurnk-digest");
             writeFileSync("after-import", "returned");
         `;
         const result = await execFileP(process.execPath, [
@@ -297,13 +297,14 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         await db.close();
     }
 
-    const { default: Digest } = await import("@plurnk/plurnk-service/digest");
+    const { Digest } = await import("@plurnk/plurnk-digest");
+    const { default: EvidenceReader } = await import("@plurnk/plurnk-service/evidence");
     const run = async (
         name: string,
         selectors: { workerId?: number; workspaceId?: number },
     ): Promise<{ json: DigestJson; markdown: string; reasoning: string; files: string[] }> => {
         const digestDir = join(dir, name);
-        Digest.run({ dbPath, digestDir, ...selectors });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir, ...selectors });
         const files = (await readdir(digestDir)).toSorted();
         return {
             json: JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as DigestJson,

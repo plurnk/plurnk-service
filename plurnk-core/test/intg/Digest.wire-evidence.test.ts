@@ -4,7 +4,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
@@ -63,7 +64,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
             await db.close();
         }
         assert.equal(requests, 2, "the model recovers on the next ordinary turn");
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
         assert.equal(raw.rawBody, undefined);

@@ -89,6 +89,8 @@ Where things are, for an agent that has to act before it has read everything:
   implements and the base setup seam. Each framework owns the slice for what
   modules contribute to its kind.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
+- `plurnk-digest` owns forensic reports, consistent snapshots and interviews;
+  core supplies canonical evidence through its public reader.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
   `plurnk-execs*` own their respective extension contracts and implementations.
 - `plurnk-meta` contains shared package discovery and model-facing reference

@@ -14,7 +14,8 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Daemon from "../../src/server/Daemon.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -217,7 +218,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
         await db.close();
         dbOpen = false;
 
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const digestJson = await readFile(join(digestDir, "digest.json"), "utf8");
         const digestMarkdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assertNoStructuralSecrets(digestJson, "digest JSON");

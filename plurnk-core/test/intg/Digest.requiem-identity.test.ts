@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
@@ -177,7 +178,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         }],
     });
     const digestDir = join(TMP_DIR, `requiem-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const stems = await digestStems(digestDir);
     const durableAttempt = JSON.parse(readFileSync(
         join(digestDir, `${stems[0]}.attempt001.rejected.response.json`),
@@ -197,7 +198,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         assert.equal(journal.workers[0]?.calls[0]?.state, "open");
         observedDurableOpenCall = true;
     };
-    const { path, reportPath, workers } = await Digest.requiem({ dbPath, digestDir, provider });
+    const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
 
     assert.equal(workers, 1, "the one model-bearing worker was interviewed");
     assert.equal(observedDurableOpenCall, true, "call identity is materialized before provider I/O");
@@ -280,7 +281,7 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
 
     const provider = new WitnessMock({ contextWindow: 100_000, responses: [] });
     const digestDir = join(TMP_DIR, `requiem-failure-out-${crypto.randomUUID()}`);
-    await assert.rejects(Digest.requiem({ dbPath, digestDir, provider }), /no more queued responses/);
+    await assert.rejects(Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider }), /no more queued responses/);
 
     const report = JSON.parse(readFileSync(join(digestDir, "requiem.json"), "utf8")) as {
         workers: Array<{

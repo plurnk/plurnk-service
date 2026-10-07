@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { Validator } from "@plurnk/plurnk-contracts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import Results from "../../src/core/results.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
@@ -51,7 +52,7 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
         const [row] = await db.test_error_rows_for_worker.all<{ rx: string; weight: number }>({ worker_id: workerId });
         assert.deepEqual(JSON.parse(row!.rx), minted.result, "the returned and durable failure are identical");
         assert.equal(row!.weight, 0, "the metadata-only Problem has no canonical body weight");
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             log_entries: Array<{ problem?: unknown }>;
         };

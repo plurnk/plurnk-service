@@ -8,7 +8,8 @@ import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, Provider
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
@@ -1316,7 +1317,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         }
 
         try {
-            Digest.run({ dbPath, digestDir });
+            Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
             const stems = await digestStems(digestDir);
             assert.equal(
                 await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.assistant.md`), "utf8"),

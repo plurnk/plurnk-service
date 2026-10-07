@@ -4,7 +4,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
@@ -45,7 +46,7 @@ test("{§provider-request-evidence} recovery and digest retain failed output wit
         assert.equal(calls, 2);
         assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/never.txt", scheme: "worker" }), undefined);
     } finally { await db.close(); }
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
     assert.equal(digest.provider_requests.length, 2);
     const [failed, recovered] = await Promise.all(digest.provider_requests.map(async (request: { evidence: string }) =>

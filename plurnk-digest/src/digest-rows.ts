@@ -1,13 +1,5 @@
-// Row and model shapes the digest reads from the DB ({§digest-programmatic-surface}); shared by
-// Digest (the reader), DigestRender, and DigestRequiem.
-import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import type { DurablePacket } from "../core/StoredPacket.ts";
-import type DigestEvidence from "./DigestEvidence.ts";
-
-// sqlrite types dynamic PREP accessors as `any` ([method: string]); bind each
-// block accessor to its shipped generic statement shape at the use site.
-export type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
+import type { DigestEvidence, EvidencePacket, OpenEvidence } from "./evidence.ts";
 
 export interface WorkspaceRow { id: number; name: string }
 export interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string }
@@ -41,8 +33,9 @@ export interface TurnRow {
     meta: string | null;  // {§meta-passthrough}, {§operator-grammar}
     program: string | null;
     outside: string | null;  // {§outside-text}
+    packetEchoes: number;
 }
-export interface PacketEvidence { packet: DurablePacket | null; packetFailure: PacketFailure | null }
+export interface PacketEvidence { packet: EvidencePacket | null; packetFailure: PacketFailure | null }
 export interface TurnAttemptRow {
     id: number; model_call_id: number; turn_id: number; sequence: number; kind: "emission";
     state: "pending" | "response" | "error"; accepted: number | null;
@@ -84,6 +77,7 @@ export interface ModelCallRow {
     log_entry_id: number | null;
 }
 export interface ProviderRequestRow {
+    accounting: ProviderRequestAccounting | null;
     id: number;
     inference_call_id: number;
     turn_attempt_id: number | null;
@@ -116,6 +110,7 @@ export interface ProviderRequestRow {
     completed_at: string | null;
 }
 export interface LogRow {
+    target: string | null;
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; source: string | null; model_call_id: number | null; attrs: string;
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
@@ -249,6 +244,7 @@ export interface CacheLedgerEntry {
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
 // workerId/workspaceId narrows the digest to one scope instead of the whole DB.
 export interface DigestOptions {
+    openEvidence: OpenEvidence;
     dbPath: string;
     digestDir?: string;
     workerId?: number;

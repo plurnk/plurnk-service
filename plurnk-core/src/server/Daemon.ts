@@ -3,7 +3,8 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import Share from "../share/Share.ts";
+import { Share } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../core/Db.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
@@ -1233,7 +1234,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
         if (this.#dbPath === undefined) throw new Error("share: this daemon was started without its database path");
-        return await Share.write({ dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
+        return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 
     listPrompts(workspaceId: number, limit?: number, workerId?: number) {

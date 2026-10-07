@@ -5,7 +5,8 @@
 // benchmark child that has a database but no digest and completes that step.
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import Digest from "../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 
 export const missingDigestDirs = (benchmarks: string): string[] => {
     if (!existsSync(benchmarks)) return [];
@@ -20,7 +21,7 @@ export const missingDigestDirs = (benchmarks: string): string[] => {
 export const recoverDigest = (dir: string): void => {
     const digestDir = join(dir, "digest");
     rmSync(digestDir, { recursive: true, force: true });
-    Digest.run({ dbPath: join(dir, "plurnk.db"), digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath: join(dir, "plurnk.db"), digestDir });
 };
 
 if (import.meta.main) {

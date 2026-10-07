@@ -22,22 +22,17 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
-        "./digest": {
-            "plurnk-dev": "./src/digest/Digest.ts",
-            "types": "./dist/digest/Digest.d.ts",
-            "default": "./dist/digest/Digest.js"
-        },
-        "./share": {
-            "plurnk-dev": "./src/share/Share.ts",
-            "types": "./dist/share/Share.d.ts",
-            "default": "./dist/share/Share.js"
-        },
         "./launch": {
             "plurnk-dev": "./src/launch/Launch.ts",
             "types": "./dist/launch/Launch.d.ts",
             "default": "./dist/launch/Launch.js"
         },
-        "./package.json": "./package.json"
+        "./package.json": "./package.json",
+        "./evidence": {
+            "plurnk-dev": "./src/evidence/EvidenceReader.ts",
+            "types": "./dist/evidence/EvidenceReader.d.ts",
+            "default": "./dist/evidence/EvidenceReader.js"
+        }
     },
     "bin": {
         "plurnk-service": "dist/service.js"
@@ -162,7 +157,8 @@
         "@plurnk/plurnk-schemes-http": "1.29.0",
         "@plurnk/plurnk-tavily-plugin": "^1.25.0",
         "@possumtech/sqlrite": "^6.5.3",
-        "diff": "^9.0.0"
+        "diff": "^9.0.0",
+        "@plurnk/plurnk-digest": "1.29.0"
     },
     "devDependencies": {
         "@a2a-js/sdk": "1.3.0",

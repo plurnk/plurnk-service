@@ -10,7 +10,8 @@ import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import LogEntry from "../../src/server/logEntry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
@@ -183,7 +184,7 @@ Branch-only decision.
         assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
         assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map((message) => "content" in message ? message.content : null), [original]);
         const digestDir = join(dir, "digest");
-        Digest.run({ dbPath, digestDir, workerId });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir, workerId });
         const evidence = await readFile(join(digestDir, "reasoning.md"), "utf8");
         assert.ok(evidence.includes(original));
         assert.ok(!evidence.includes("Revised conclusion."), "denied source edits cannot alter forensic reasoning");

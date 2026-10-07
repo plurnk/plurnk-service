@@ -106,7 +106,7 @@ test("#224: retained diagnostics redact credentials, account identity, and URL a
 
 test("#242: secret discovery does not mistake token-limit controls for credentials", () => {
     const env = {
-        PLURNK_SERVICE_REQUIEM_MAX_TOKENS: "16384",
+        PLURNK_DIGEST_REQUIEM_MAX_TOKENS: "16384",
         OPENAI_API_KEY: "credential-value",
         CLOUDFLARE_ACCOUNT_ID: "account-value",
     };

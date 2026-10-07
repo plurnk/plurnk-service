@@ -54,7 +54,8 @@ Protect durable history with a [consistent database backup](./INSTALL.md#backup-
 The `share` command exports diagnostic reports, not a restorable database.
 
 Clients use AG-UI; extension authors use the owning framework packages.
-Programmatic forensic use imports `@plurnk/plurnk-service/digest`.
+Programmatic forensic use imports [`@plurnk/plurnk-digest`](../plurnk-digest/README.md)
+with the canonical reader from `@plurnk/plurnk-service/evidence`.
 The digest requires a new or empty output directory, separate from its input
 database. Existing output and overlapping input/output paths are refused.
 

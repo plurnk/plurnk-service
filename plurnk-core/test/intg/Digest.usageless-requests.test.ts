@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
@@ -91,7 +92,7 @@ test("{§digest-forensic-fidelity}: a settled request without usage is named on 
     } finally { await db.close(); }
 
     const digestDir = join(TMP_DIR, `usageless-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(
         markdown,

@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
-import Digest from "../../src/digest/Digest.ts";
-import DigestRender from "../../src/digest/DigestRender.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import { DigestRender } from "@plurnk/plurnk-digest";
 import type { Db } from "../../src/core/Db.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
@@ -81,7 +82,7 @@ test("{§digest-edit-census}: a worker's EDITs are counted by form, refusal and 
     } finally { await db.close(); }
 
     const digestDir = join(TMP_DIR, `edit-census-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
 
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /^EDITs: {6}7 · hash=1 range=1 insert=1 column=1 append=1 pattern=1 whole=1 · refused=1 · revisits=2$/mu,

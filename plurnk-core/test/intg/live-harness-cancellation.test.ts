@@ -11,7 +11,7 @@ import { liveLoop, liveWorkspace } from "../_live-harness.ts";
 import { connect, rpcCall, withDaemon, waitForDb } from "./_rpc.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
 
 test("{§live-harness-deadline}: an expired specimen finishes cleanup before the next specimen", async () => {
     const env = { ...process.env };

@@ -26,7 +26,8 @@ import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_db.ts";
 import { lastReply } from "./intg/_packet.ts";
 import { connect, rpcCall, runLoopToTerminal, WaitTimeoutError } from "./intg/_rpc.ts";
-import Digest from "../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { failAfterCleanup } from "./live-failure.ts";
 import { liveTimeoutMs } from "./live-test.ts";
@@ -95,7 +96,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     const ownsSandbox = projectRoot === undefined;
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(async () => { if (ownsSandbox && projectRoot !== undefined) await rm(projectRoot, { recursive: true, force: true }); });
-    lifetime.defer(async () => { Digest.run({ dbPath, digestDir: join(runDir, "digest") }); });
+    lifetime.defer(async () => { Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") }); });
     lifetime.defer(async () => { await db.close(); });
     lifetime.defer(async () => { await daemon.stop(); });
     lifetime.defer(async () => { ws?.close(); });

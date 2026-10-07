@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 test("digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
@@ -75,7 +76,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
     }
 
     try {
-        Digest.run({ dbPath, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             log_entries: Array<{

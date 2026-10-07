@@ -4,8 +4,9 @@ import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Digest from "../../src/digest/Digest.ts";
-import Share from "../../src/share/Share.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import { Share } from "@plurnk/plurnk-digest";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§share} {§share-scope}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {
@@ -27,7 +28,7 @@ test("{§share} {§share-scope}: a scoped share preserves a checkpointed source 
     const before = readFileSync(dbPath);
 
     const folder = join(root, "shares", "share_this_session_here");
-    const shared = await Share.write({ dbPath, folder, workspaceId: kept });
+    const shared = await Share.write({ openEvidence: EvidenceReader.open, dbPath, folder, workspaceId: kept });
 
     assert.deepEqual(shared, { folder });
     assert.ok(existsSync(join(folder, "digest.md")));
@@ -42,7 +43,7 @@ test("{§share}: a folder that already holds files, the database's own included,
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
     await (await openMigrated(dbPath)).close();
-    await assert.rejects(Share.write({ dbPath, folder: root }), { message: `digest: ${root} already exists and is not an empty folder; remove it first` });
+    await assert.rejects(Share.write({ openEvidence: EvidenceReader.open, dbPath, folder: root }), { message: `digest: ${root} already exists and is not an empty folder; remove it first` });
     assert.ok(existsSync(dbPath));
 });
 
@@ -54,7 +55,7 @@ test("{§share-snapshot}: a snapshot of an open WAL database keeps the commits a
     t.after(() => db.close());
     await insertWorkspace(db, "committed-in-wal");
     const workspacesOf = (copy: string, digestDir: string): string[] => {
-        Digest.run({ dbPath: copy, digestDir });
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath: copy, digestDir });
         return (JSON.parse(readFileSync(join(digestDir, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }> }).workspaces.map(({ name }) => name);
     };
 

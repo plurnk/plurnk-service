@@ -4,8 +4,8 @@
 // the model chose is reported, not required — models take any taught address that lands, and the
 // census on the ladder measures the distribution; the specimen measures the landing.
 import assert from "node:assert/strict";
-import DigestRender from "../../src/digest/DigestRender.ts";
-import { EDIT_FORMS, type EditForm } from "../../src/digest/digest-rows.ts";
+import { DigestRender } from "@plurnk/plurnk-digest";
+import { EDIT_FORMS, type EditForm } from "@plurnk/plurnk-digest";
 import { liveTest as test } from "../live-test.ts";
 import { liveLoop, liveWorkspace, readBody, seedEntry, type LiveWorkspace } from "../_live-harness.ts";
 

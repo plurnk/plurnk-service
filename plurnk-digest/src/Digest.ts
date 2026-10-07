@@ -1,84 +1,25 @@
-#!/usr/bin/env node
-//
-// Worker-digest tool for plurnk-service DBs. Reads a sqlite plurnk*.db and
-// emits per-worker forensic artifacts to test/digest/. First-order forensic
-// surface; read-only; safe to re-run.
-//
-//   test/digest/digest.md           Health triage rollup (clean/degenerate-win/failed loops) +
-//                                   worker-shape header + waterfall (per-loop health verdict; per-turn:
-//                                   status, ⚠ errs=N, source-artifact summary, indented op list)
-//   test/digest/digest.json         Same data, machine-queryable
-//   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
-//   test/digest/requiem.md          Out-of-band model audit
-//   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
-//   <digest>/<stem>.system.md       Stored system text slot, before provider/SDK transformations.
-//   <digest>/<stem>.user.md         User text slot; digest.json retains native attachment descriptors.
-//   <digest>/<stem>.wire.json       Reconstructed text-message envelope, emissions in place; not HTTP bytes.
-//   <digest>/<stem>.response.md      Request-only note when no response was admitted.
-//   <digest>/<stem>.assistant.md     Exact persisted turnOps, regardless of producer.
-//   <digest>/<stem>.reasoning.md     Exact persisted reasoning, regardless of producer.
-//   <digest>/<stem>.assistantRaw.json  Opaque provider response.
-//   <digest>/<stem>.packet.raw.txt      Exact malformed stored packet text.
-//   <digest>/<stem>.packet.invalid.json Validation failure for that packet.
-//   <digest>/<stem>.attemptNNN.rejected.assistant.md
-//                                          Rejected provider emission.
-//   <digest>/<stem>.attemptNNN.rejected.response.json
-//                                          Full rejected provider response.
-//   <digest>/<stem>.attemptNNN.rejected.parse-errors.json
-//                                          Admission errors for that attempt.
-//
-// Packet text slots use the Engine's PacketWire projection; they do not capture transport controls
-// or native payloads ({§share-packet-names}). Assistant files preserve durable turnOps.
-//
-// SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
-// the sync CLI/script facade). Each PREP block is read through its own accessor.
-
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { observedSync } from "../observe/spans.ts";
-import type SqlRiteSync from "@possumtech/sqlrite/sync";
-import HostPaths from "../core/HostPaths.ts";
+import { join } from "node:path";
+import { trace } from "@opentelemetry/api";
+import { observedSync } from "@plurnk/plurnk-meta";
 import DigestRender from "./DigestRender.ts";
 import DigestRequiem from "./DigestRequiem.ts";
-import DigestEvidence from "./DigestEvidence.ts";
+import type { DigestEvidence } from "./evidence.ts";
 import { digestPaths } from "./digest-paths.ts";
-import { readDigestDb } from "./digest-db.ts";
 import type {
-    SyncPrep,
-    WorkspaceRow,
     WorkerRow,
+    EditRow,
     LoopRow,
     TurnRow,
     TurnAttemptRow,
-    InferenceCallRow,
-    ModelCallRow,
     ProviderRequestRow,
     LogRow,
-    EditRow, EmissionRow, ReasoningRow,
-    LogCurationEffectRow,
-    WorkerRollupRow,
     OpMixRow,
-    ExecutionEnvironmentRow,
-    SearchStateRow,
-    DispositionCountRow,
-    DispositionRow,
-    DerivationStateRow,
     DigestModel,
     DigestOptions,
-    StorageRow,
-    StorageTableRow,
 } from "./digest-rows.ts";
 
 export default class Digest {
-    // Default DB path mirrors the host path contract and an explicit service override.
-    static defaultDbPath(): string {
-        const paths = new HostPaths();
-        const env = process.env.PLURNK_SERVICE_DB_PATH;
-        return env !== undefined && env.length > 0
-            ? resolve(paths.expandUserPath(env))
-            : paths.databaseFile;
-    }
-
     // {§digest-requiem} — the out-of-band forensic interview lives in DigestRequiem.
     static requiem(opts: Parameters<typeof DigestRequiem.interview>[0]): ReturnType<typeof DigestRequiem.interview> {
         return DigestRequiem.interview(opts);
@@ -87,48 +28,22 @@ export default class Digest {
     static run(opts: DigestOptions): void {
         // {§observability-boundary} — the evidence write is observed; the digest
         // paths themselves are environment-specific and stay off the boundary.
-        observedSync("digest.write", {}, () => { Digest.#runSettled(opts); });
+        observedSync(trace.getTracer("@plurnk/plurnk-digest"), "digest.write", {}, () => { Digest.#runSettled(opts); });
     }
 
     static #runSettled(opts: DigestOptions): void {
-        // {§digest-programmatic-surface}: digest.sql is packaged beside this module
-        // (src/digest → dist/digest via copy-sql), including in an installed package.
+        // {§digest-programmatic-surface}: refuse the destination before opening evidence.
         const { dbPath, digestDir } = digestPaths(opts);
         // {§share}: the digest never deletes; a caller reusing a folder removes it first.
         if (existsSync(digestDir) && (!statSync(digestDir).isDirectory() || readdirSync(digestDir).length > 0)) {
             throw new Error(`digest: ${digestDir} already exists and is not an empty folder; remove it first`);
         }
-        readDigestDb(dbPath, (db) => Digest.#write(db, dbPath, digestDir, opts));
+        using evidence = opts.openEvidence(dbPath);
+        Digest.#write(evidence, dbPath, digestDir, opts);
     }
 
-    static #write(db: SqlRiteSync, dbPath: string, digestDir: string, opts: DigestOptions): void {
-        // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
-        // mode) inspect cleanly; this tool only reads. The DB is quiescent at
-        // digest time, so each PREP reads on its own — no cross-query snapshot.
-        const rows = {
-            workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow>).all(),
-            workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
-            loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
-            turns: (db.digest_turns as SyncPrep<TurnRow>).all(),
-            inferenceCalls: (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all(),
-            modelCalls: (db.digest_model_calls as SyncPrep<ModelCallRow>).all(),
-            turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
-            providerRequests: (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all(),
-            logEntries: (db.digest_log_entries as SyncPrep<LogRow>).all(),
-            editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
-            emissionRows: (db.digest_emissions as SyncPrep<EmissionRow>).all(),
-            reasoningRows: (db.digest_reasonings as SyncPrep<ReasoningRow>).all(),
-            curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
-            workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
-            opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
-            environmentRows: (db.digest_execution_environments as SyncPrep<ExecutionEnvironmentRow>).all(),
-            searchState: (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get(),
-            derivationState: (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get(),
-            dispositionCounts: (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all(),
-            dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
-            storage: (db.digest_storage as SyncPrep<StorageRow>).get(),
-            storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
-        };
+    static #write(evidence: DigestEvidence, dbPath: string, digestDir: string, opts: DigestOptions): void {
+        const rows = evidence.rows();
         let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, editRows, curationEffects, workerRollupRows, opMixRows } = rows;
         const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows, reasoningRows } = rows;
@@ -229,7 +144,7 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            evidence: new DigestEvidence(db),
+            evidence,
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,

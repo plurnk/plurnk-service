@@ -104,6 +104,22 @@ export default class HostPaths {
         this.legacyDir = join(this.home, ".plurnk");
     }
 
+    // {§share-folder}: command defaults use the same host path authority as the daemon.
+    shareFolder(env: NodeJS.ProcessEnv = process.env, now = new Date()): string {
+        const configured = env.PLURNK_SERVICE_SHARE_FOLDER;
+        const root = configured === undefined || configured === ""
+            ? join(this.stateDir, "shares")
+            : resolve(this.expandUserPath(configured));
+        return join(root, `share-${now.toISOString().replace(/[-:]/gu, "").replace(/\.\d+Z$/u, "Z")}`);
+    }
+
+    configuredDatabasePath(env: NodeJS.ProcessEnv = process.env): string {
+        const configured = env.PLURNK_SERVICE_DB_PATH;
+        return configured !== undefined && configured.length > 0
+            ? resolve(this.expandUserPath(configured))
+            : this.databaseFile;
+    }
+
     projectSkillsDir(projectRoot: string): string {
         return join(this.projectAgentsDir(projectRoot), "skills");
     }

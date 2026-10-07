@@ -136,10 +136,10 @@ const packedMaterializerInventory = () => {
 const packedPublicSurface = () => {
     const program = `
         const root = await import("@plurnk/plurnk-service");
-        const digest = await import("@plurnk/plurnk-service/digest");
+        const digest = await import("@plurnk/plurnk-digest");
         process.stdout.write(JSON.stringify({
             root: Object.keys(root).sort(),
-            digestDefault: typeof digest.default,
+            digest: typeof digest.Digest,
         }));
     `;
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
@@ -276,7 +276,7 @@ ok(
     ]),
     "the packed root exports match {§service-package-exports} exactly",
 );
-ok(publicSurface.digestDefault === "function", "the packed digest subpath remains importable");
+ok(publicSurface.digest === "function", "the packed forensic package is importable");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
 const rootDeclarations = readFileSync(resolve(installedRoot, "dist", "index.d.ts"), "utf8");
 ok(
@@ -366,7 +366,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 
 // {§digest-programmatic-surface}: exercise the package export from the clean
 // consumer, not the workspace source condition. A successful run proves the
-// packed dist/digest/digest.sql resolved beside Digest.js.
+// packed evidence/digest.sql resolved beside the core reader and the independent reporter ran.
 const packedDigestDir = resolve(sandbox, "packed-digest");
 const packedTurnOps = "````SEND\n````";
 // The schema's own indexes call `sha256` (migrations 003 and 005), so a connection that does not
@@ -398,8 +398,9 @@ try {
     digestFixture.close();
 }
 const packedDigestProgram = `
-    import Digest from "@plurnk/plurnk-service/digest";
-    Digest.run({ dbPath: ${JSON.stringify(migratedDb)}, digestDir: ${JSON.stringify(packedDigestDir)} });
+    import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath: ${JSON.stringify(migratedDb)}, digestDir: ${JSON.stringify(packedDigestDir)} });
 `;
 execFileSync(process.execPath, ["--input-type=module", "--eval", packedDigestProgram], {
     cwd: sandbox,

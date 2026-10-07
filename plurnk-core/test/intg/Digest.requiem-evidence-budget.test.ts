@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import type { ChatMessage, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
@@ -80,10 +81,10 @@ const recordFatAttempt = async (db: Db, turnId: number, marker: string): Promise
 };
 
 test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest attempts behind a marker and the interview lands", async () => {
-    const savedMax = process.env.PLURNK_SERVICE_REQUIEM_MAX_TOKENS;
-    const savedRetry = process.env.PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS;
-    process.env.PLURNK_SERVICE_REQUIEM_MAX_TOKENS = "256";
-    process.env.PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS = "512";
+    const savedMax = process.env.PLURNK_DIGEST_REQUIEM_MAX_TOKENS;
+    const savedRetry = process.env.PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS;
+    process.env.PLURNK_DIGEST_REQUIEM_MAX_TOKENS = "256";
+    process.env.PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS = "512";
     try {
         const dbPath = join(TMP_DIR, `requiem-budget-${crypto.randomUUID()}.db`);
         const db = await openMigrated(dbPath);
@@ -113,7 +114,7 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
             }],
         });
         const digestDir = join(TMP_DIR, `requiem-budget-out-${crypto.randomUUID()}`);
-        const { workers } = await Digest.requiem({ dbPath, digestDir, provider });
+        const { workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
 
         assert.equal(workers, 1, "the worker was interviewed despite overflowing evidence");
         assert.equal(provider.calls.length, 1, "one interview call");
@@ -129,9 +130,9 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
         const report = provider.calls[0].messages;
         assert.equal(report.length, 2, "system + budgeted user evidence only");
     } finally {
-        if (savedMax === undefined) delete process.env.PLURNK_SERVICE_REQUIEM_MAX_TOKENS;
-        else process.env.PLURNK_SERVICE_REQUIEM_MAX_TOKENS = savedMax;
-        if (savedRetry === undefined) delete process.env.PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS;
-        else process.env.PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS = savedRetry;
+        if (savedMax === undefined) delete process.env.PLURNK_DIGEST_REQUIEM_MAX_TOKENS;
+        else process.env.PLURNK_DIGEST_REQUIEM_MAX_TOKENS = savedMax;
+        if (savedRetry === undefined) delete process.env.PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS;
+        else process.env.PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS = savedRetry;
     }
 });

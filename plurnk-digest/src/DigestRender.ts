@@ -2,20 +2,11 @@
 // artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import PacketWire from "../core/packet-wire.ts";
-import FabricatedLog from "../core/FabricatedLog.ts";
-import StoredPacket from "../core/StoredPacket.ts";
-import { contentWeight } from "../core/content-weight.ts";
-import { renderTarget } from "../core/plurnk-uri.ts";
 import {
     aggregateProviderAccounting,
     type ProviderAccounting,
     type ProviderRequestAccounting,
 } from "@plurnk/plurnk-providers";
-import {
-    providerRequestFromStorageRow,
-    type ProviderRequestStorageRow,
-} from "../core/provider-accounting.ts";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import type {
     WorkerRow,
@@ -55,10 +46,10 @@ export default class DigestRender {
     }
 
     static #requestAccounting(row: ProviderRequestRow): ProviderRequestAccounting {
-        if (row.state !== "settled" || row.outcome === null || row.cost_kind === null) {
+        if (row.state !== "settled" || row.accounting === null) {
             throw new TypeError(`digest: provider request ${row.id} is not settled`);
         }
-        return providerRequestFromStorageRow(row as ProviderRequestStorageRow);
+        return row.accounting;
     }
 
     static #accounting(rows: readonly ProviderRequestRow[]): ProviderAccounting | null {
@@ -109,7 +100,7 @@ export default class DigestRender {
     }
 
     static #renderTarget(le: LogRow): string | null {
-        return renderTarget(le);
+        return le.target;
     }
 
     static #renderStream(le: LogRow): string | null {
@@ -241,7 +232,7 @@ export default class DigestRender {
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
         if (packet === null) return null;
-        return PacketWire.packetToWireMessages(packet, DigestRender.#emissionsOf(turn, m))
+        return packet.messages(DigestRender.#emissionsOf(turn, m))
             .map(({ role, content }) => `${role}\n${content}`)
             .join("\n");
     }
@@ -359,7 +350,7 @@ export default class DigestRender {
                             ? null
                             : text.length === 0
                                 ? 0
-                                : Math.round(request.usage_input * contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / contentWeight(text));
+                                : Math.round(request.usage_input * m.evidence.textWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / m.evidence.textWeight(text));
                 ledger.set(request.id, {
                     adjacentPrefixTokensEstimate,
                     cachedTokens: request.usage_input_cache_read,
@@ -423,7 +414,7 @@ export default class DigestRender {
 
     static #renderTurnLine(turn: TurnRow, m: DigestModel): string {
         const { packet, packetFailure } = m.evidence.packet(turn);
-        const assistant = packet !== null && StoredPacket.isAdmitted(packet) ? packet.assistant : null;
+        const assistant = packet?.assistant ?? null;
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
         const accounting = DigestRender.#accounting(m.requestsByTurn.get(turn.id) ?? []);
@@ -438,7 +429,7 @@ export default class DigestRender {
             : ` rails=${attached === true ? "client" : attached}`;
         const model = turn.model ?? "—";
         // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
-        const outside = turn.outside === null ? "" : ` outside=${contentWeight(turn.outside)} tok`;
+        const outside = turn.outside === null ? "" : ` outside=${m.evidence.textWeight(turn.outside)} tok`;
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
             .filter((le) => le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
@@ -484,7 +475,7 @@ export default class DigestRender {
                 : `  ↳ reasoning: ${reasoning.trim()}`)
             : null;
         // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
-        const wireLine = content.length === 0 && packet !== null && StoredPacket.isAdmitted(packet) ? DigestRender.wireLine(packet.assistantRaw) : null;
+        const wireLine = content.length === 0 && packet?.assistant != null ? DigestRender.wireLine(packet.assistantRaw) : null;
         const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
         return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
     }
@@ -565,7 +556,7 @@ export default class DigestRender {
         const killed = rows.filter((row) => row.active === 0).length;
         const echoes = (m.loopsByWorker.get(worker.id) ?? [])
             .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
-            .reduce((sum, turn) => sum + FabricatedLog.echoes(turn.outside ?? ""), 0);
+            .reduce((sum, turn) => sum + turn.packetEchoes, 0);
         return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
     }
 
@@ -679,7 +670,7 @@ export default class DigestRender {
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
             if (attempts.length === 0) {
                 const { packet, packetFailure } = m.evidence.packet(t);
-                const reasoning = packet !== null && StoredPacket.isAdmitted(packet)
+                const reasoning = packet?.assistant != null
                     ? packet.assistant.reasoning
                     : null;
                 lines.push("");
@@ -806,13 +797,13 @@ export default class DigestRender {
             }
             if (packet !== null) {
                 files.push(
-                    [`${padded}.system.md`, PacketWire.renderSlot(packet.sections, "system")],
-                    [`${padded}.user.md`, PacketWire.renderSlot(packet.sections, "user")],
+                    [`${padded}.system.md`, packet.slot("system")],
+                    [`${padded}.user.md`, packet.slot("user")],
                 );
                 // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
                 // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
                 try {
-                    files.push([`${padded}.wire.json`, JSON.stringify(PacketWire.packetToWireMessages(packet, DigestRender.#emissionsOf(turn, m)), null, 2)]);
+                    files.push([`${padded}.wire.json`, JSON.stringify(packet.messages(DigestRender.#emissionsOf(turn, m)), null, 2)]);
                 } catch (cause) {
                     files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
                 }
@@ -822,7 +813,7 @@ export default class DigestRender {
             }
             const reasoning = m.evidence.reasoning(turn);
             if (reasoning !== null) files.push([`${padded}.reasoning.md`, reasoning]);
-            if (packet !== null && StoredPacket.isAdmitted(packet)) {
+            if (packet?.assistant != null) {
                 if (source !== null && packet.assistant.content !== source) {
                     throw new TypeError(`digest: turn ${turn.id} packet assistant differs from its turnOps source`);
                 }

@@ -5,7 +5,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -92,7 +93,7 @@ test("{§digest-cache-ledger}: consecutive requests of a loop carry their shared
     } finally { await db.close(); }
 
     const digestDir = join(TMP_DIR, `cache-ledger-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
 
     // Turn N+1's prompt extends turn N's, so the shared prefix is turn N's whole prompt.
     assert.ok(prompt(2).startsWith(prompt(1)) && prompt(3).startsWith(prompt(2)), "the fixture prompts grow by extension");
@@ -148,7 +149,7 @@ test("{§digest-cache-ledger}: measured cache ratios include first requests, cro
         }
     } finally { await db.close(); }
     const digestDir = join(TMP_DIR, `cache-boundaries-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
         provider_requests: Array<{ adjacentPrefixTokensEstimate: number | null; cachedTokens: number | null; inputTokens: number | null }>;
     };
@@ -183,7 +184,7 @@ test("{§digest-cache-ledger}: BARE usage is measured without borrowing its pare
         await recordRequests(db, await insertPacketTurn(db, loopId, 2, packet(2), 200), [{ input: 100, cached: 90 }]);
     } finally { await db.close(); }
     const digestDir = join(TMP_DIR, `cache-bare-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
         provider_requests: Array<{ kind: string; adjacentPrefixTokensEstimate: number | null; cachedTokens: number | null; inputTokens: number | null }>;
     };
@@ -212,7 +213,7 @@ test("{§digest-cache-ledger}: zero and wholly unreported input have no invented
         }
     } finally { await db.close(); }
     const digestDir = join(TMP_DIR, `cache-unknown-out-${crypto.randomUUID()}`);
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /cache-zero\n\nCache: 0 of 0 reported input tokens read from cache \(n\/a\) over 1 request\n/u);
     assert.match(markdown, /cache-unknown\n\nCache: 0 of 0 reported input tokens read from cache \(n\/a\) over 0 requests · 1 missing input or cache usage \(excluded\)/u);

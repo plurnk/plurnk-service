@@ -172,7 +172,7 @@ none, so its daemon leaves out AG-UI ({§module-http-mounts}).
 | Export path                           | Current contract                                                                                                                                                        |
 |---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `@plurnk/plurnk-service`              | Legacy internal exports listed below. It gains no new APIs and is not the client boundary. Extracted capabilities belong to their owning packages, without compatibility aliases. |
-| `@plurnk/plurnk-service/digest`       | Supported programmatic forensic surface owned by {§digest-programmatic-surface}.                                                                                         |
+| `@plurnk/plurnk-service/evidence` | Canonical evidence reader consumed by the separate report package ({§digest-evidence-reader}).                                                                                         |
 | `@plurnk/plurnk-service/package.json` | Supported package metadata surface.                                                                                                                                      |
 
 | Root exports | Names |
@@ -912,12 +912,6 @@ loop created running and on the move from queued otherwise; later re-claims neve
 move it. The digest reports, per loop, the claim time and how long after it the
 first model turn started, so a stall between claim and inference (a heartbeat has
 waited 7.5 h, #703) is a number rather than a gap.
-
-§digest-storage **The digest states the file's health.** Beside the database path it
-reports the file size, the free pages it holds, its `auto_vacuum` mode, and the six
-largest tables and indexes by allocated bytes (`dbstat`), so growth is a number in
-every digest (#764). The digest reads loops as stored, so it tolerates databases
-missing later lifecycle columns.
 
 §loop-execution-allowance **One task has one execution allowance.** The first
 execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` on the loop. Active segments
@@ -3914,8 +3908,6 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD` | Max period length cycle detection examines ({§engine-rails}). |
-| `PLURNK_SERVICE_REQUIEM_MAX_TOKENS` | Initial forensic witness output allowance ({§digest-requiem}). |
-| `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
@@ -5203,39 +5195,7 @@ operation turns and therefore store `NULL`. Digest projects exact operation
 source independently from this optional model-exchange record; a request-only
 turn receives a note instead of a fabricated response.
 
-§digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
-After selectors are applied, digest retains every turn with exact content or reasoning source, a
-valid stored provider request, or malformed stored packet evidence; orders those
-turns by durable chronology; and names each by its log coordinate ({§share-packet-names}). The
-producer does not affect projection.
-
-§share-packet-names **Packet artifacts carry the coordinate the log uses.** A turn's files are named
-`<worker>-<loop>-<turn>`, the worker's name and the loop and turn sequences that `log:///<loop>/<turn>/…`
-addresses: the model's first turn in its first loop is `<worker>-1-2`, because the initialization
-survey is turn 1 and writes no packet. A digest spanning several workspaces nests each workspace's
-files in a folder named for it; a name that cannot name a file (a workspace named by its path,
-`~/ptl/x`) is slugged for the folder, `ptl-x`, while the digest text keeps the name verbatim, and
-two names that slug alike are told apart by the row's id. `digest.json` records each turn's stem as `artifact`, so no
-consumer reconstructs a name. A name that cannot be a file name, or two turns sharing one, fails.
-
-| Artifact | Present when | Authority |
-|----------|--------------|-----------|
-| `<stem>.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
-| `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
-| `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
-| `<stem>.wire.json` | The turn stored a provider request | Reconstructed text-message envelope with its worker's emission rows placed ({§packet-wire-envelope}), not dispatched HTTP bytes. Excludes native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected |
-| `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
-| `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
-| `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
-| `<stem>.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
-| `<stem>.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
-
-A source-backed turn without provider participation produces only its source-channel
-artifacts; a request-only turn produces no fabricated assistant. A
-source-less programmatic turn with no provider request has no forensic payload
-to project and writes no files.
-
-The external tokenless draft and transformation boundary is owned by
+he external tokenless draft and transformation boundary is owned by
 {§scheme-packet-transform}. Core alone extends each validated draft with its
 measured `weight` field for storage. #74 tracks coverage that mistakes the sum
 of section weights for the rendered request weight.
@@ -5424,82 +5384,13 @@ the same deadline through {§application-loop-observation}, not a restarted cloc
 
 §share **A share is the database's record, ready to send.** `plurnk-service share [<file.db>] [<folder>]`, and `npm run share` from a checkout, take a consistent copy of the database (`VACUUM INTO`; a live database is never read in place), and write its digest into `<folder>`, an ordinary folder the user archives or attaches however they like. Without a database the service's own is shared. Nothing is overwritten: a folder that exists and is not empty is refused, and a caller reusing a place removes it first. The share is the user's bug report and our dogfood, benchmark and forensics artifact alike.
 
-§share-snapshot **A database is copied by SQLite, never by the filesystem.** `Share.snapshot(dbPath, copy)`, exported as `@plurnk/plurnk-service/share` with `Share.write`, is the one consistent copy: a byte copy of a WAL-mode database drops every committed page still in its `-wal` file. A harness that keeps the database beside its digest takes it through `snapshot`; an existing `copy` is refused.
-
 §share-scope **A share is unredacted.** `--workspace=<id>` limits a share to one workspace; without it the whole database is shared. Nothing is filtered, redacted or scanned: a share holds what the models saw and wrote in scope, including prompts, file contents read, command output and reasoning, and the command says so. `--requiem` adds the forensic interview ({§digest-requiem}), which calls a model; `plurnk-service requiem <file.db> <folder>` adds it later to a digest already written.
 
 §share-folder **Shares land in one place.** With no folder named, a share is a stamped child, `share-<UTC stamp>`, of `PLURNK_SERVICE_SHARE_FOLDER` (a leading `~/` expands, as for every explicit Plurnk path) or of `$XDG_STATE_HOME/plurnk/shares`.
 
-§digest-programmatic-surface **The digest is an importable forensic surface.**
-
-| Surface                                | Contract                                                                                                                                            |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Import `@plurnk/plurnk-service/digest` | Ships `Digest` and its package-owned SqlRite statements; importing performs no I/O or process action. The CLI wrapper alone invokes it.             |
-| `run({ dbPath })`                      | Reads the required database and writes a complete digest to `./test/digest` relative to the caller's working directory.                             |
-| `digestDir`                            | Selects a nonempty output path. `run` refuses a folder that exists and is not empty, and `requiem` refuses an existing `requiem.json` or `requiem.md`, before database or provider I/O; neither deletes ({§share}). Concurrent callers use distinct folders. |
-| Reader lifetime                       | `run` reads heavy evidence on demand while rendering, then closes its reader on success or failure. `requiem` closes its reader before awaiting witness inference. |
-| §candidate-pinned-runtime Candidate runtime | At launch, after its optional build, the candidate copies every workspace's package projection (`files`) into `<state>/runtime`, links third-party dependencies, and resolves `@plurnk/*` to those copies. Its daemon and its digest export both run from that copy, never the shared checkout, so neither source edits nor a concurrent candidate's or developer's rebuild after launch changes the code a run finishes on. The copy is removed once the digest is written. |
-| Export completion                     | Packet and response bodies are read and serialized one record at a time, without discarding evidence. `digest.json` is promoted from a partial file only after every artifact is written; its absence identifies an incomplete export. |
-| `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
-| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. |
-
-§digest-cost-kind **Cost basis named.** A rendered Cost line carries the basis of its dollar figure: `(charged)` only when every settled request's cost is provider-charged; `(estimated — catalog rates)` when any settled request's cost is an estimate, because a mixed sum is no more trustworthy than its weakest term. A dollar figure without its basis reads as billed truth, and an estimate must never impersonate a charge.
+§candidate-pinned-runtime **Candidate runtime stays pinned.** At launch, after its optional build, the candidate copies every workspace's package projection (`files`) into `<state>/runtime`, links third-party dependencies, and resolves `@plurnk/*` to those copies. Its daemon and its digest export both run from that copy, never the shared checkout, so neither source edits nor a concurrent candidate's or developer's rebuild after launch changes the code a run finishes on. The copy is removed once the digest is written.
 
 §output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model's grammar for a cut the engine's own ceiling made. The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
-
-§digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
-
-§digest-cache-ledger **Measured cache reuse and estimated prompt overlap are separate.**
-
-| Projection | Meaning |
-|---|---|
-| `digest.json` provider-request `cachedTokens`, `inputTokens` | Exact provider-reported cache reads and input tokens; absent quantities remain `null`, reported zero remains zero. Every physical request counts, including retries and first requests of new loops. Stored packet availability is irrelevant to these counters. |
-| Turn `cache=<cached>/<input>` | Sum each measured quantity over that turn's requests. If any request omits a quantity, that sum is `?`. |
-| Workspace `Cache: <cached> of <input> reported input tokens read from cache (<pct>%) over <n> requests` | Sum only requests reporting both counters. Percentage is cache reads / input, rounded to one decimal; zero input is `n/a`. Requests missing either counter are counted separately as `missing input or cache usage (excluded)`. |
-| `digest.json` provider-request `adjacentPrefixTokensEstimate` | Optional loop-local diagnostic: the longest common character prefix with the preceding request, weighted under {§tokenomics-agnostic-ruler} as a share of the current stored prompt, multiplied by reported input tokens. First request: `0`; missing current/preceding packet or current input: `null`. Empty prompts have zero overlap. |
-
-The prefix estimate uses the stored emission packet's wire message order, roles
-and content. A BARE request's input is not that packet; its prefix estimate and
-the following request's comparison are unknown. The estimate is
-neither provider tokenization nor a cache ceiling, and never supplies a cache-ratio
-denominator. Caching across loops or against other provider-resident prefixes
-does not make the measured counters inconsistent.
-
-§digest-edit-census **Every model EDIT by the form it authored, how it landed, and whether it came back.** For each worker the digest reads every model-authored EDIT row and classifies the form from the row's stored marker and the durable statement's pattern: `hash` (one anchor), `line` (one line number), `range` (two marks), `insert` (the zero-width `<L,1,L,1>` form, {§zero-width-column-one-insert}), `column` (any other four-mark region), `prepend` / `append` (`<0>` / `<-1>`), `offset` (a tolerated anchor offset, {§anchor-offset}), `pattern` (a selection matcher), `whole` (no marker: a creation when it lands 201). It counts the EDITs, those refused (status ≥ 400), and the *revisits*: an EDIT of a path the same worker had edited within its previous two model turns — the shape of a repair without the claim of one. Each worker summary renders `EDITs: <n> · <form>=<count>… · refused=<k> · revisits=<r>` (`(no edits)` for none); `digest.json` carries the census as `edit_census` on every worker and stamps every EDIT log entry with its `edit_form` and `edit_revisit`. A form is a fact about what was written, never about intent; the bench sheet reads the counts as friction and leaves the judgement to the reader.
-
-§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result, settlement time, scheduled due time, recurring interval, and recurrence lineage; and every ordered physical provider request. Programs still produce chronological `assistant.md` artifacts after every READ receipt is KILLed; source is independent of log curation. Each worker summary's `Emissions:` line counts its announced emission rows, those the worker KILLed, and the headings it echoed ({§emission-row}); its `Reasonings:` line counts its landed reasoning rows, those the worker KILLed, and the turns that reasoned ({§reasoning-row}); the op mix leaves both harness rows out. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups consecutive identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse, and non-consecutive events preserve their chronological order. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
-
-Unrecognized actionless log rows are retained and labelled as such, not
-interpreted as executable turnOps or allowed to prevent the remaining digest.
-
-§digest-executor-evidence **A red command is work, not a defect.** Engine-materialized
-completion rows for a failed command carry the executor's problem identity
-(`https://problems.plurnk.xyz/executor/*`), and the digest classifies them as
-evidence: they render like any row but never count toward a loop's error total,
-its health verdict, or the per-turn `errs=` badge — a loop that concluded green
-over red test runs is CLEAN, not DEGENERATE-WIN. This is the digest mirror of the
-strike rail's exemption ({§engine-rails}, #425 F1): structural violations count,
-executor evidence never does.
-
-§digest-requiem **A requiem is an out-of-band forensic interview, not a worker
-turn.** It cannot execute operations or alter the audited history.
-
-| Aspect    | Contract                                                                                                                                                        |
-|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Scope     | One interview for each worker with model-bearing inference turns; workers without inference evidence are omitted.                                                |
-| Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
-| Witness   | An explicitly supplied provider or the active configured provider; absence fails hard.                                                                          |
-| Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as the `workerId`, without asserting a live worker topology. |
-| Attempts  | One call at `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`.         |
-| Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
-
-§digest-requiem-evidence-budget **Quoted evidence fits the witness.** The
-interview's user message is budgeted against the witness provider's context
-window minus the retry output allowance and system framing (chars/2, the
-capacity gate's own estimator). Overflow elides the oldest provider attempts
-behind an explicit `elidedOldestAttempts` count marker, never silently; the
-final packet and the newest attempts always testify. A windowless witness
-(`contextWindow` null) quotes unbudgeted.
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. The completion beat carries the spend ({§turn-accounting-notice}). Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 

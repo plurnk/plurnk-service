@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import Digest from "../../src/digest/Digest.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 test("{§digest-executor-evidence}: executor completion rows never count toward health or errs", async () => {
@@ -41,7 +42,7 @@ test("{§digest-executor-evidence}: executor completion rows never count toward 
         await insert(3, "model", { status: 416, problem: { type: "https://problems.plurnk.xyz/scheme/file/range", title: "Range past end", status: 416, detail: "past the end" } }, 416);
     } finally { await db.close(); }
 
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /errs=1\b/, "only the genuine fault counts in the errs badge");
     assert.doesNotMatch(markdown, /errs=[23]\b/, "executor evidence never inflates the badge");
@@ -74,7 +75,7 @@ test("{§digest-executor-evidence}: a green conclusion over only red commands is
         if (row === undefined) throw new Error("fixture insert returned no row");
     } finally { await db.close(); }
 
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /CLEAN/, "red commands under a green conclusion stay CLEAN");
     assert.doesNotMatch(markdown, /DEGENERATE-WIN/);

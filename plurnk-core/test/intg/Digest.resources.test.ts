@@ -7,8 +7,9 @@ import { join } from "node:path";
 import { StatementSync } from "node:sqlite";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Mock } from "@plurnk/plurnk-providers";
-import Digest from "@plurnk/plurnk-service/digest";
-import DigestRender from "../../src/digest/DigestRender.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import { DigestRender } from "@plurnk/plurnk-digest";
 import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§digest-programmatic-surface}: artifact failure closes the reader and cannot publish a complete digest", async (t) => {
@@ -21,7 +22,7 @@ test("{§digest-programmatic-surface}: artifact failure closes the reader and ca
     const failure = new Error("packet artifact write failed");
     t.mock.method(DigestRender, "packetFiles", () => { throw failure; });
     const digestDir = join(root, "digest");
-    assert.throws(() => Digest.run({ dbPath, digestDir }), (cause) => cause === failure);
+    assert.throws(() => Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir }), (cause) => cause === failure);
     assert.equal(close.mock.callCount(), 1);
     await assert.rejects(access(join(digestDir, "digest.json")), { code: "ENOENT" });
     await access(join(digestDir, "digest.json.partial"));
@@ -49,7 +50,7 @@ for (const surface of ["run", "requiem"] as const) {
                     return all.call(this, ...args);
                 });
             }
-            const invoke = () => Digest[surface]({
+            const invoke = () => Digest[surface]({ openEvidence: EvidenceReader.open,
                 dbPath,
                 digestDir: join(root, "output"),
                 provider: new Mock({ contextWindow: 8192, responses: [] }),
@@ -88,7 +89,7 @@ test("{§digest-requiem}: releases the reader before waiting for the witness, in
         assert.equal(close.mock.callCount(), 1, "the witness must not retain a database connection");
         throw failure;
     });
-    await assert.rejects(Digest.requiem({ dbPath, digestDir: join(root, "output"), provider }), (cause) => cause === failure);
+    await assert.rejects(Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(root, "output"), provider }), (cause) => cause === failure);
     assert.equal(generate.mock.callCount(), 1);
     assert.equal(close.mock.callCount(), 1);
 });

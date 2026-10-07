@@ -323,9 +323,9 @@ export default class PacketWire {
     // order, split after each placed emission row so that row's emission follows as the worker's own
     // assistant message. The user contents joined by one blank line equal renderSlot(user) byte for
     // byte; the request always closes on a user message.
-    static packetToWireMessages(packet: Packet, emissions: ReadonlyMap<string, string>): Array<{ role: string; content: string }> {
+    static packetToWireMessages(packet: Packet, emissions: ReadonlyMap<string, string>): Array<ChatMessage & { content: string }> {
         const sections = packet.sections ?? [];
-        const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
+        const messages: Array<ChatMessage & { content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
         let pending: string[] = [];
         for (const section of sections) {
             if (section.slot !== "user") continue;
@@ -1218,7 +1218,7 @@ export default class PacketWire {
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
     ): Promise<ChatMessage[]> {
-        const messages = PacketWire.packetToWireMessages(packet, emissions) as ChatMessage[];
+        const messages: ChatMessage[] = PacketWire.packetToWireMessages(packet, emissions);
         // {§packet-attachment-parts} — native parts ride the closing user message.
         const closing = messages.at(-1)!;
         const parts: ChatContentPart[] = [{ type: "text", text: closing.content as string }];

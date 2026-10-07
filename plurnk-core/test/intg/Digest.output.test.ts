@@ -6,7 +6,8 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import Digest from "@plurnk/plurnk-service/digest";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated } from "./_db.ts";
 
@@ -53,7 +54,7 @@ for (const kind of ["parent", "ancestor", "database", "input-alias", "output-ali
             }
         }
         let failure: unknown;
-        try { Digest.run({ dbPath, digestDir }); }
+        try { Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir }); }
         catch (cause) { failure = cause; }
         assert.equal(existsSync(original), true, "digest must preserve the database pathname");
         assert.equal(existsSync(dbPath), true, "digest must preserve the caller's input pathname");
@@ -73,13 +74,13 @@ test("{§digest-programmatic-surface}: a sibling with the database's filename pr
     const digestDir = join(root, "evidence");
     await mkdir(digestDir);
     await writeFile(join(digestDir, "stale.md"), "stale");
-    assert.throws(() => Digest.run({ dbPath, digestDir }), { message: `digest: ${digestDir} already exists and is not an empty folder; remove it first` });
+    assert.throws(() => Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir }), { message: `digest: ${digestDir} already exists and is not an empty folder; remove it first` });
     assert.equal(await readFile(join(digestDir, "stale.md"), "utf8"), "stale", "an occupied folder is never cleared");
     await rm(join(digestDir, "stale.md"));
-    Digest.run({ dbPath, digestDir });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     assert.equal(existsSync(dbPath), true);
     assert.deepEqual(JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")).workspaces, []);
-    Digest.run({ dbPath, digestDir: join(digestDir, "nested") });
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(digestDir, "nested") });
     assert.equal(existsSync(join(digestDir, "nested", "digest.md")), true);
 });
 
@@ -93,8 +94,9 @@ for (const entrypoint of ["CLI", "built package"]) {
         const args = entrypoint === "CLI"
             ? ["--conditions=plurnk-dev", "src/service.ts", "share", dbPath, root]
             : ["--input-type=module", "--eval", `
-                import Digest from "@plurnk/plurnk-service/digest";
-                Digest.run(${JSON.stringify({ dbPath, digestDir: root })});
+                import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+                Digest.run({ ...${JSON.stringify({ dbPath, digestDir: root })}, openEvidence: EvidenceReader.open });
             `];
         await assert.rejects(execFileP(process.execPath, args, {
             cwd: resolve(import.meta.dirname, "../.."),
@@ -114,7 +116,7 @@ test("{§digest-programmatic-surface}: an empty output path is not the caller's 
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
     await writeFile(dbPath, "not opened during output validation");
-    assert.throws(() => Digest.run({ dbPath, digestDir: "" }), {
+    assert.throws(() => Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: "" }), {
         message: "digest: output directory must not be empty",
     });
     assert.equal(await readFile(dbPath, "utf8"), "not opened during output validation");
@@ -129,7 +131,7 @@ for (const name of ["requiem.json", "requiem.md"]) {
         await db.close();
         const before = await readFile(dbPath);
         let failure: unknown;
-        try { await Digest.requiem({ dbPath, digestDir: root, provider: new Mock({ contextWindow: 8192, responses: [] }) }); }
+        try { await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir: root, provider: new Mock({ contextWindow: 8192, responses: [] }) }); }
         catch (cause) { failure = cause; }
         assert.ok((await readFile(dbPath)).equals(before), "requiem must preserve its input database bytes");
         assert.ok(failure instanceof Error);
