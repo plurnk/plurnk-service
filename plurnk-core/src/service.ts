@@ -22,7 +22,7 @@ import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import ServiceModules from "./server/ServiceModules.ts";
 import { discoverDaemonModules } from "./server/module-discovery.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
-import { configurationDirectories } from "./server/AgentRoots.ts";
+import { workspacePaths } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
@@ -112,7 +112,7 @@ export default class Service {
     static async #validateConfiguration(): Promise<void> {
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
-        await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
+        await ServiceModules.validateConfiguration(workspacePaths(Service.#hostPaths, process.cwd()).configurationRoots.map(({ directory }) => directory));
         // {§module-self-activation} — a discovered module validates its own configuration as its factory
         // constructs it; the offline check constructs every one, starts none, and fails on what any
         // contained ({§module-contained-configuration}).

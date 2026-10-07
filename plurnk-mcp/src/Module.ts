@@ -298,7 +298,7 @@ const catalogDetail = (executor: McpExecutor): object => {
 
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
-    "workspaceConfigurationDirectories" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
+    "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
     & FunctionalitySeam<RuntimeRegistration> & WorkspacePluginsSeam;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -308,7 +308,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
     #stateDirectory!: SetupSeam["workspaceStateDirectory"];
-    #configurationDirectories!: SetupSeam["workspaceConfigurationDirectories"];
+    #paths!: SetupSeam["workspacePaths"];
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -336,7 +336,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
-        this.#configurationDirectories = (workspaceId) => seam.workspaceConfigurationDirectories(workspaceId);
+        this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
@@ -392,7 +392,8 @@ export default class Module implements DaemonModule<SetupSeam> {
         const { workspaceId } = identity;
         const notices: Notice[] = [];
         this.#configurationNotices.set(workspaceId, notices);
-        return configuredDefinitions(await this.#configurationDirectories(workspaceId), this.#env, {
+        const { configurationRoots } = await this.#paths(workspaceId);
+        return configuredDefinitions(configurationRoots.map(({ directory }) => directory), this.#env, {
             ...await this.#plugins(workspaceId), report: (notice) => notices.push(notice),
         });
     }

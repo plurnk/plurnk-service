@@ -84,10 +84,20 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
 
+// {§module-workspace-paths} — host placement, not a module-owned discovery cascade.
+export interface WorkspacePaths {
+    readonly home: string;
+    readonly projectRoot: string | null;
+    readonly configurationRoots: readonly {
+        readonly scope: string;
+        readonly directory: string;
+    }[];
+}
+
 // {§module-seam-slices} — the base setup slice: what every host offers every module.
 export interface ModuleSetupSeam {
-    // {§agent-roots} Read-only configuration sources in highest-precedence-first order.
-    workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]>;
+    // {§module-workspace-paths}
+    workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
     // {§mcp-launch-environment} What a module's subprocess inherits: the operator's environment
     // without plurnk's own secrets ({§exec-env-scoped}), not the model's command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;

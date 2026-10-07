@@ -1,5 +1,6 @@
 // {§agent-roots} — configuration roots this daemon reads, nearest first.
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import type { WorkspacePaths } from "@plurnk/plurnk-modules";
 import type HostPaths from "../core/HostPaths.ts";
 
 export const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
@@ -16,12 +17,17 @@ export const agentRootScopes = (environment: NodeJS.ProcessEnv = process.env): R
     return new Set(listed.filter(isScope));
 };
 
-export const configurationDirectories = (paths: HostPaths, projectRoot: string | null): readonly string[] => {
+export const workspacePaths = (paths: HostPaths, projectRoot: string | null): WorkspacePaths => {
     const selected = agentRootScopes();
-    return AGENT_ROOT_SCOPES.flatMap((scope) => {
-        if (!selected.has(scope)) return [];
-        if (scope === "global") return [paths.globalAgentsDir];
-        if (scope === "plurnk") return [paths.configDir];
-        return projectRoot === null ? [] : [paths.projectAgentsDir(projectRoot)];
-    });
+    return {
+        home: paths.home,
+        projectRoot,
+        configurationRoots: AGENT_ROOT_SCOPES.flatMap((scope) => {
+            if (!selected.has(scope)) return [];
+            const directory = scope === "global" ? paths.globalAgentsDir
+                : scope === "plurnk" ? paths.configDir
+                    : projectRoot === null ? null : paths.projectAgentsDir(projectRoot);
+            return directory === null ? [] : [{ scope, directory }];
+        }),
+    };
 };

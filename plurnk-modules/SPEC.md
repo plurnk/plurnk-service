@@ -73,7 +73,7 @@ contribution types live in its framework's package, so this package never depend
 
 | Slice | Owner | Offers |
 | --- | --- | --- |
-| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Configuration directories; operator, workspace and worker environment; the workspace state directory; module actions |
+| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths; operator, workspace and worker environment; the workspace state directory; module actions |
 | `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter` |
 | `SchemeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§scheme-module-slice}) | `registerScheme`, and the facet a runtime or a family manager exposes |
 | `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-module-slice}) | The runtimes a resident family prepares |
@@ -89,7 +89,7 @@ contract is the one package that depends on it directly. There is no manifest ve
 
 | Function | Contract |
 | --- | --- |
-| `workspaceConfigurationDirectories(workspaceId)` | Returns the workspace's read-only configuration sources in highest-precedence-first order ({§agent-roots}). |
+| §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§agent-roots}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
 | `operatorEnvironment()` | Returns what a module's subprocess inherits: the operator's environment without plurnk's own secrets ({§exec-env-scoped}), not the model's command ceiling ({§mcp-launch-environment}). |
 | `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§workspace-env}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without worker overrides. |
 | `readWorkerEnvironment(workspaceId, workerId)` | The same layers with the worker's own overrides on top ({§functionality-scope}): what a command of that worker runs under. |

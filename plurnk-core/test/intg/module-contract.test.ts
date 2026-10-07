@@ -148,6 +148,38 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
     assert.match(await get("/package"), /route-not-found/u, "the client interface answers what no module claimed");
 });
 
+test("{§module-workspace-paths} a module receives the bound project and ordered input roots, independent of private state placement", async (t) => {
+    environment(t, { PLURNK_SERVICE_ROOTS: "global,project,plurnk" });
+    const paths = new HostPaths({ home: root, env: {
+        XDG_CONFIG_HOME: join(root, "config"),
+        PLURNK_SERVICE_STATE_ROOT: join(root, "isolated"),
+    } });
+    const project = join(root, "project");
+    await mkdir(project);
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, hostPaths: paths, provider: null });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    let readPaths: ((workspaceId: number) => Promise<unknown>) | undefined;
+    daemon.registerModule({ setup(seam) {
+        readPaths = (workspaceId) => seam.workspacePaths(workspaceId);
+    } }, "@acme/paths");
+    await daemon.start();
+    assert.ok(readPaths, "the module received its setup seam");
+    const bound = await daemon.createWorkspace({ name: "bound-paths", projectRoot: project });
+    const folderless = await daemon.createWorkspace({ name: "folderless-paths" });
+    const inherited = [
+        { scope: "plurnk", directory: join(root, "config/plurnk") },
+        { scope: "global", directory: join(root, ".agents") },
+    ];
+    assert.deepEqual(await readPaths(bound.workspaceId), {
+        home: root, projectRoot: project,
+        configurationRoots: [{ scope: "project", directory: join(project, ".agents") }, ...inherited],
+    });
+    assert.deepEqual(await readPaths(folderless.workspaceId), {
+        home: root, projectRoot: null, configurationRoots: inherited,
+    });
+});
+
 test("{§module-contained-configuration} a contained setting is the module's own notice, and the rest of the module works", async (t) => {
     environment(t, {});
     const { daemon } = await boot(t);

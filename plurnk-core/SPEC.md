@@ -4411,9 +4411,10 @@ its discovery roots explicitly ({§operator-config-real-model-profile}), so
 operator roots do not shape a gate. Root selection does not restrict explicit
 source definitions. Skills mutations change workspace bindings, not these roots
 ({§skills-functionality}); MCP mutations likewise remain workspace-owned. The module setup seam's
-`workspaceConfigurationDirectories` supplies selected `<project>/.agents`,
-`$XDG_CONFIG_HOME/plurnk`, and `~/.agents` directories in precedence order, omitting
-project when no project is bound. Modules own their file formats; core owns discovery roots.
+`workspacePaths` supplies selected `<project>/.agents`, `$XDG_CONFIG_HOME/plurnk`,
+and `~/.agents` directories in precedence order with their scopes, omitting project
+when no project is bound ({§module-workspace-paths}). Modules own their file formats;
+core owns discovery roots.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
