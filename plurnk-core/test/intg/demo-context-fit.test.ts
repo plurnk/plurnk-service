@@ -56,7 +56,7 @@ for (const retire of [false, true]) test(`{§context-fit}: sixteen attachments l
     const provider = new Mock({
         contextWindow: 20_000,
         responses: [
-            makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
+            makeMockResponse("````KILL (log:///**/FIND)````\n````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
             makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`KILL
 ${fixture.answer}
 \`\`\`\``),
@@ -83,6 +83,11 @@ ${fixture.answer}
                 assert.ok(evidence.receipts > 0, "the budget ran out: the rest are receipts");
                 assert.equal(evidence.modelTurns, 2, "receipts cost no turn; the model answered in two");
                 assert.equal(evidence.receiptActive, !retire);
+                const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
+                const recovered = rows.filter((row) => row.origin === "model" && row.op === "READ" && row.pathname === "incident.txt");
+                assert.equal(recovered.length, 1, "the model made its own recovery READ");
+                assert.equal(recovered[0]!.status_rx, 200);
+                assert.match(JSON.parse(recovered[0]!.rx).content, new RegExp(fixture.answer, "u"), "the scripted answer is backed by a delivered result");
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }
         });

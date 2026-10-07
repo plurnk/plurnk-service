@@ -68,8 +68,8 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
 };
 
 // {§context-fit} {§context-verbs} — attachments beyond the room land as receipts, the longest prefix
-// of lines above each; the model reaches the answer by range.
-test("budget: attachments beyond the room land as receipts; the model retrieves the recovery site by range", async (t) => {
+// of lines above each; the model retrieves an answer absent from its opening packet.
+test("budget: attachments beyond the room land as receipts; the model retrieves the recovery site", async (t) => {
     const fixture = await seedAttachmentFixture();
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);
@@ -87,7 +87,7 @@ test("budget: attachments beyond the room land as receipts; the model retrieves 
         const discipline = await assertBudgetDiscipline(s.db, result.loopId);
         console.error(`[budget:receipts] landed=${evidence.landed} receipts=${evidence.receipts} modelTurns=${discipline.modelTurns} overTurns=${discipline.overTurns} finalStatus=${result.finalStatus}`);
         assert.ok(evidence.landed > 0 && evidence.receipts > 0, `the room held some attachments whole and the rest as receipts: landed=${evidence.landed} receipts=${evidence.receipts}`);
-        assert.equal(result.finalStatus, 200, "the model completes the task from receipts and range READs");
+        assert.equal(result.finalStatus, 200, "the model retrieves the omitted answer and completes the task");
         assert.ok(result.lastContent.includes(fixture.answer), `the model reports the recorded recovery site; got: ${result.lastContent.slice(0, 300)}`);
     } catch (error) {
         await failAfterCleanup(error, () => lifetime.disposeAsync());

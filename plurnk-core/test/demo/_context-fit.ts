@@ -1,6 +1,6 @@
 // {§methods-loop-run-open-paths} {§context-fit}: client attachments are ordinary markerless READs
-// dispatched before inference. Each lands whole when it fits the remaining budget and as a bodiless
-// 413 receipt otherwise. Nothing overflows, nothing is withheld, no turn is manufactured.
+// dispatched before inference. Each lands whole when it fits the remaining budget, or as a 413
+// with the prefix that fits. Source content remains readable; no recovery turn is manufactured.
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +32,7 @@ export const seedAttachmentFixture = async () => {
         content,
         telemetry,
         prompt: "Which recovery site is recorded in the attached incident report?",
-        openPaths: ["incident.txt", ...otherPaths],
+        openPaths: [...otherPaths, "incident.txt"],
         cleanup: () => rm(workspace, { recursive: true, force: true }),
     };
 };
@@ -60,6 +60,9 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     }
     const firstModel = turns.find(({ producer, kind, packet }) => producer === "model" && kind === "inference" && packet !== null);
     assert.ok(firstModel?.packet, "the model received a request");
+    assert.equal(packetSection(JSON.parse(firstModel.packet), "log").includes(fixture.answer), false, "the opening packet does not reveal the answer before recovery");
+    assert.ok(turns.some(({ id, producer, packet }) => id !== firstModel.id && producer === "model" && packet !== null
+        && packetSection(JSON.parse(packet), "log").includes(fixture.answer)), "a later model request contains the recovered answer");
     const loop = await db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: firstModel.loop_id });
     assert.ok(loop);
 
@@ -93,6 +96,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
 
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
     assert.ok(incident);
+    assert.equal(incident.status_rx, 413, "the incident attachment needed recovery, not just the unrelated telemetry");
     const recovered = await daemon.look({ workspaceId, workerId, statement: readStmt(localPath("incident.txt"), { marks: [2] }) });
     assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
     assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
