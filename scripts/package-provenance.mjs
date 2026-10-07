@@ -12,7 +12,7 @@ const { values } = parseArgs({
     options: {
         write: { type: "boolean", default: false },
         pack: { type: "boolean", default: false },
-        only: { type: "string" },
+        only: { type: "string", multiple: true },
     },
 });
 
@@ -21,11 +21,10 @@ if (values.write && values.pack) throw new Error("--write and --pack are separat
 const rootManifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const workspaceDirs = rootManifest.workspaces;
 if (!Array.isArray(workspaceDirs)) throw new Error("root package.json must declare workspaces");
-if (values.only !== undefined && !workspaceDirs.includes(values.only)) {
-    throw new Error(`unknown workspace directory: ${values.only}`);
+const dirs = [...new Set(values.only ?? workspaceDirs)];
+for (const dir of dirs) {
+    if (!workspaceDirs.includes(dir)) throw new Error(`unknown workspace directory: ${dir}`);
 }
-
-const dirs = values.only === undefined ? workspaceDirs : [values.only];
 const repositoryUrl = "git+https://github.com/plurnk/plurnk-service.git";
 const bugsUrl = "https://repo.possumtech.com/plurnk/plurnk-service/issues";
 const expectedFor = (dir) => ({

@@ -18,7 +18,7 @@
 | Selection | The stable-release workflow selects named packages at their committed `major.minor.patch` manifest versions. An inventory or a neighboring checkout does not authorize its publication or make it a prerequisite. |
 | Resolution | Candidate dependency and peer ranges must admit the selected version of that dependency. Unselected dependencies resolve normally from the registry; an excluded product cannot block the release. |
 | Preparation | Version and dependency edits precede qualification. Publication never edits source, stamps another repository, or substitutes a different candidate. |
-| Qualification | Build and test the sources; inspect projected archives and exercise the installed composition before publication. No ignored peer conflicts, forced incompatible overrides, or reliance on an unpublished registry version. |
+| Qualification | Build and test the source repositories; run package-specific release checks only for the selected packages, inspect their projected archives, and exercise the installed composition before publication. No ignored peer conflicts, forced incompatible overrides, or reliance on an unpublished registry version. |
 | Publication | Publish dependencies before consumers. Query the exact package/version, not its latest tag. A registry failure is not evidence that a package is unpublished. |
 | Retry | Retain qualified artifacts and their source identities. Resume only missing publication steps; a conflicting immutable artifact fails rather than being overwritten or accepted as equivalent. |
 

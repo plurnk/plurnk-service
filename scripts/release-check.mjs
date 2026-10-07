@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { assertClean, output, packCandidate, selectPackages, writeJson } from "./release-candidate.mjs";
+import { assertClean, output, packCandidate, readJson, selectPackages, writeJson } from "./release-candidate.mjs";
 import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
 import { assertReleaseHosting } from "./release-finalize.mjs";
 import { verifyConsumer } from "./release-consumer.mjs";
@@ -28,7 +28,11 @@ await mkdir(directory); // Never replace an earlier qualification or its retaine
 for (const [root] of repositories) {
     await run("npm", ["run", "build", "--if-present"], root);
     await run("npm", ["test"], root);
-    await run("npm", ["run", "release:gate", "--if-present"], root);
+    const manifest = await readJson(path.join(root, "package.json"));
+    const selection = manifest.workspaces === undefined ? [] : records
+        .filter((record) => record.root === root)
+        .flatMap(({ cwd }) => ["--only", path.relative(root, cwd)]);
+    await run("npm", ["run", "release:gate", "--if-present", "--", ...selection], root);
     await assertClean(root);
     const commit = await output("git", ["rev-parse", "HEAD"], root);
     if (records.some((record) => record.root === root && record.commit !== commit)) throw new Error(`${root}: release sources changed during qualification`);

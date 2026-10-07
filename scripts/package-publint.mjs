@@ -6,11 +6,14 @@ import { formatMessage, formatMessagePath } from "publint/utils";
 
 const { values } = parseArgs({
     options: {
-        only: { type: "string" },
+        only: { type: "string", multiple: true },
     },
 });
 const root = JSON.parse(await readFile("package.json", "utf8"));
-const directories = values.only === undefined ? root.workspaces : [values.only];
+const directories = [...new Set(values.only ?? root.workspaces)];
+for (const directory of directories) {
+    if (!root.workspaces.includes(directory)) throw new Error(`unknown workspace directory: ${directory}`);
+}
 const failures = [];
 
 for (const directory of directories) {
