@@ -594,20 +594,16 @@ One in-process subscription receives Core events; AG-UI routes each event to the
 Run that owns it. A message AG-UI Run binds to the Worker selected by its thread
 and then to the exact `loopId` returned by `ApplicationPort.runLoop`; an
 interrupt-resume Run restores its predecessor's projection and notification
-scope. An exact-owner interrupt remains bound to the pending item's Worker and
-Loop. A descendant interrupt keeps the controlling ancestor's Worker and Loop
-binding while using the pending item's Worker and Loop only as its release
-identity. Only the controlling Run's bound Loop terminal may emit
+scope. A same-worker interrupt remains bound to the pending item's Worker and
+Loop. A foreign-worker interrupt preserves the owner's controlling Run binding,
+using the pending item's Worker and Loop only as its release identity. Only the
+controlling Run's bound Loop terminal may emit
 `plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
-Stopped-world tool calls and interrupt outcomes first route to open Runs bound to
-their persisted loop. When no Run owns that loop, they route to their owning
-Worker's Runs so an action-produced interrupt can settle its initiating Run. When
-neither exists, they route to the nearest live ancestor conversation according to
-Core's Worker topology. They never interrupt a concurrent Run while an exact loop
-owner is live, and a gate that reaches a Run inside an open reasoning lifecycle waits for
+Gate routing follows {§agui-worker-owner}; topology does not confer authority.
+A gate that reaches a Run inside an open reasoning lifecycle waits for
 it ({§agui-gate-deferral}). Terminations
 that race ahead of the `runLoop` acknowledgement are held until the loop identity
 is known. Sibling and concurrent loops therefore cannot end, relabel, or duplicate
@@ -620,7 +616,8 @@ this Run.
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
 An operation Run owns an execution from the row that announces it: a started or
-queued execution row carries `attrs.stream`, and that address stays open for the Run
+queued execution receipt (`200` or `202`) carries `attrs.stream`. A failed receipt's
+proposed address opens no stream. An admitted address stays open for the Run
 until its `stream/concluded`, so the action result is deferred even when the
 command writes late or never (a `stream/event` is a race the result must not
 win). A detached execution (`<-1>`) is nobody's obligation and never defers the

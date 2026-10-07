@@ -16,8 +16,10 @@ import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 // applies the assembled package-default floor after this gate.
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
-test("in-process module: discovery → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
+test("in-process module: discovery → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async (t) => {
     await import(join(SERVICE, "test/floor.ts"));
+    const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
+    serverProposals(t, "accept");
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
@@ -42,7 +44,7 @@ test("in-process module: discovery → AG-UI+ run → real model → SSE", { ski
                 messages: [{ id: "message-1", role: "user", content: "Reply with exactly one short sentence: say pong." }],
                 tools: [],
                 context: [],
-                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, policy: { proposals: "accept" }, maxTurns: 6 } },
+                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, maxTurns: 6 } },
             }),
         });
         assert.equal(res.status, 200);

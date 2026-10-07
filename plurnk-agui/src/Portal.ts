@@ -253,7 +253,9 @@ export default class Portal {
     // obligation ({§worker-obligations}) and opens nothing.
     static #openedStream(method: string, params: unknown): string | null {
         if (method === "log/entry") {
-            const attrs = (params as { entry?: { attrs?: { stream?: unknown; detached?: unknown } | null } }).entry?.attrs;
+            const entry = (params as { entry?: { rx?: { status?: number }; attrs?: { stream?: unknown; detached?: unknown } | null } }).entry;
+            if (entry?.rx?.status !== 200 && entry?.rx?.status !== 202) return null;
+            const attrs = entry.attrs;
             return typeof attrs?.stream === "string" && attrs.detached !== true ? attrs.stream : null;
         }
         return method === "stream/event" ? Portal.#streamTarget(params) : null;

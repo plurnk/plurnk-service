@@ -11,9 +11,10 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { AguiEvent } from "../../src/types.ts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
-const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<AguiEvent[]> => {
+const post = async (port: number, input: Readonly<Record<string, unknown>>, signal: AbortSignal): Promise<AguiEvent[]> => {
     const response = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST",
+        signal,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [], ...input }),
     });
@@ -26,7 +27,7 @@ const post = async (port: number, input: Readonly<Record<string, unknown>>): Pro
 
 const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as { name: string }).name : event.type;
 
-test("{§agui-broadcast-fan} a client command that writes late concludes inside its operation Run", { timeout: 60_000 }, async () => {
+test("{§agui-broadcast-fan} a client command that writes late concludes inside its operation Run", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const db = await openTestDatabase();
@@ -40,8 +41,9 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
         // A host command proposes; the Run terminates at the gate like any client op.
         const proposed = await post(port, {
             threadId: "action-stream",
+            tools: [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }],
             forwardedProps: { plurnk: { ...workspace, action: { kind: "op.exec", command: "sleep 1; printf late" } } },
-        });
+        }, t.signal);
         const gate = proposed.at(-1) as { type?: string; outcome?: { type?: string; interrupts?: Array<{ interruptId?: string; id?: string }> } };
         assert.equal(gate.type, "RUN_FINISHED");
         assert.equal(gate.outcome?.type, "interrupt", JSON.stringify(proposed));
@@ -51,9 +53,10 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
 
         const resumed = await post(port, {
             threadId: "action-stream",
+            tools: [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }],
             forwardedProps: { plurnk: workspace },
             resume: [{ interruptId, status: "resolved", payload: { decision: "accept", outcome: "auto: sh" } }],
-        });
+        }, t.signal);
         const order = resumed.map(label);
         const started = resumed.find((e) => label(e) === "plurnk.row"
             && typeof (e as { value?: { attrs?: { stream?: unknown } } }).value?.attrs?.stream === "string") as { value: { attrs: { stream: string }; rx: { outcome?: string } } } | undefined;
@@ -73,5 +76,34 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
         await http.close();
         await db.close();
         await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§worker-owner-resolution} a client without review support receives a refused command, not an endless stream", { timeout: 15_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32768, responses: [] }), nodeModulesPath: join(SERVICE, "node_modules"), http });
+    try {
+        await daemon.start();
+        const events = await post(http.httpAddress().port, {
+            threadId: "no-review",
+            forwardedProps: { plurnk: { workspace: "no-review", action: { kind: "op.exec", command: "printf never-executed" } } },
+        }, t.signal);
+        const result = events.find((event) => label(event) === "plurnk.action.result") as { value?: { ok?: boolean; problem?: { status?: number; type?: string } } } | undefined;
+        assert.equal(result?.value?.ok, false, JSON.stringify(events));
+        assert.equal(result?.value?.problem?.status, 400);
+        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/proposal/rejected");
+        const receipt = events.find((event) => label(event) === "plurnk.row") as { value?: { rx?: { outcome?: string } } } | undefined;
+        assert.equal(receipt?.value?.rx?.outcome, "no_review_channel");
+        assert.equal(events.some((event) => label(event) === "plurnk.stream"), false);
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+        const [workspace] = await daemon.listWorkspaces();
+        assert.deepEqual(await daemon.pendingProposals(workspace!.id), []);
+    } finally {
+        await daemon.stop();
+        await http.close();
+        await db.close();
     }
 });

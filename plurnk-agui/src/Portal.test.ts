@@ -538,7 +538,7 @@ test("a descendant proposal interrupts its controlling conversation and resumes 
     await nextTask();
     assert.ok(
         firstSeen.some((event) => event.type === "TOOL_CALL_END"),
-        "the nearest live ancestor conversation receives its child's gate",
+        "the owning conversation receives its child's gate",
     );
     portal.closeRun(3, first);
 
@@ -978,6 +978,36 @@ const startedExec = (over: Record<string, unknown> = {}) => ({
     },
 });
 const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as { name: string }).name : event.type;
+
+for (const status of [400, 403, 499, 503]) {
+    test(`{§agui-broadcast-fan} failed execution ${status} does not open its proposed stream`, () => {
+        const m = mockSeam();
+        const seen: AguiEvent[] = [];
+        const portal = new Portal(m.seam);
+        portal.start();
+        const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "refused-op", notificationScope: "operation", emit: (events) => seen.push(...events) });
+        const { entry } = startedExec();
+        m.fire(3, "log/entry", { entry: { ...entry, status_rx: status, rx: { status } } });
+        portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status } } }]);
+        assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "a stream address is not evidence that execution started");
+        portal.stop();
+    });
+}
+
+test("{§agui-broadcast-fan} queued execution remains an obligation even when approval supplies the outcome", () => {
+    const m = mockSeam();
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "queued-op", notificationScope: "operation", emit: (events) => seen.push(...events) });
+    const { entry } = startedExec();
+    m.fire(3, "log/entry", { entry: { ...entry, status_rx: 202, rx: { status: 202, outcome: "auto: sh" } } });
+    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 202 } } }]);
+    assert.equal(seen.some(({ type }) => type === "RUN_FINISHED"), false);
+    m.fire(3, "stream/concluded", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: "completed", wakeAction: "no-loop" });
+    assert.equal(seen.at(-1)?.type, "RUN_FINISHED");
+    portal.stop();
+});
 
 test("{§agui-broadcast-fan} an operation Run owns an execution from the row that announces it, so a late-writing command concludes inside the Run", () => {
     const m = mockSeam();

@@ -221,8 +221,10 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
     }
 });
 
-test("{§agui-run-source}: a curated arrival remains readable, copyable and replyable by its conversation message address", { timeout: 60_000 }, async () => {
+test("{§agui-run-source}: a curated arrival remains readable, copyable and replyable by its conversation message address", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
+    const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
+    serverProposals(t, "accept");
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
         import(join(SERVICE, "test/intg/_mock.ts")),
@@ -252,7 +254,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
             threadId: "run-source",
             runId: "run-1",
             messages: [{ id: "message 1", role: "user", content: "Name your sender." }],
-            forwardedProps: { plurnk: { workspace: "run-source", projectRoot: root, policy: { proposals: "accept" }, maxTurns: 3 } },
+            forwardedProps: { plurnk: { workspace: "run-source", projectRoot: root, maxTurns: 3 } },
         });
         const terminal = events.at(-1) as { type?: string; outcome?: { type?: string } } | undefined;
         assert.equal(terminal?.type, "RUN_FINISHED", JSON.stringify(terminal));

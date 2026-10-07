@@ -9,8 +9,10 @@ import { join } from "node:path";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
-test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
+test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async (t) => {
     await import(join(SERVICE, "test/floor.ts"));
+    const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
+    serverProposals(t, "accept");
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { HttpAgent } = await import("@ag-ui/client");
@@ -28,7 +30,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
         const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/agui`, threadId: "conformance" });
         agent.messages = [{ id: "m1", role: "user", content: "Reply with exactly one short sentence: say pong." }];
         const seen = new Set<string>();
-        await agent.runAgent({ forwardedProps: { plurnk: { workspace: "conformance", projectRoot: sandbox, policy: { proposals: "accept" }, maxTurns: 6 } } }, {
+        await agent.runAgent({ forwardedProps: { plurnk: { workspace: "conformance", projectRoot: sandbox, maxTurns: 6 } } }, {
             onEvent: ({ event }: { event: { type: string } }) => { seen.add(event.type); },
         });
         // Their verifier throwing = rejection; reaching here = the stream validated.
