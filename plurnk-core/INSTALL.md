@@ -42,6 +42,42 @@ inspection available. Model providers are constructed and verified on selection 
 first use, not on startup. An invalid default never selects a different model:
 choose a valid model in the client or correct the daemon's configuration.
 
+## Backup and restore
+
+The database holds worker history and workspace state. Its default path is in
+the table above; `PLURNK_SERVICE_DB_PATH` overrides it, and
+`PLURNK_SERVICE_STATE_ROOT` relocates the default. Back up the actual daemon's
+database, not a different client's default.
+
+Use SQLite's consistent-copy operation while the daemon is running **or** stopped
+({§share-snapshot}). Copying only a live `.db` can omit committed data still in
+its `-wal` file; copying those files separately is not a consistent snapshot.
+This example uses Node, already required by Plurnk, and the default XDG path.
+Choose a new destination for each backup:
+
+```sh
+(
+  umask 077
+  node --input-type=module -e '
+    import { DatabaseSync } from "node:sqlite";
+    const db = new DatabaseSync(process.argv[1], { readOnly: true });
+    try { db.prepare("VACUUM INTO ?").run(process.argv[2]); }
+    finally { db.close(); }
+  ' "${XDG_DATA_HOME:-$HOME/.local/share}/plurnk/plurnk.db" "$HOME/plurnk-backup.db"
+)
+```
+
+Keep backups private: they include prompts, reasoning, and recorded tool output.
+Back up project files, configuration, and extension-owned files separately; a
+database snapshot does not copy them. `plurnk-service share` produces diagnostic
+artifacts from a temporary snapshot and then removes that snapshot; it is not
+a substitute for this backup.
+
+To restore, stop the daemon and retain its old database and any `-wal`/`-shm`
+sidecars together. Copy the backup to a fresh working path, select that path with
+`PLURNK_SERVICE_DB_PATH`, and start the same or a newer compatible service version.
+Do not overwrite a live database or pair a restored file with old sidecars.
+
 ## Precedence
 
 Highest priority first ({§operator-config-precedence}):

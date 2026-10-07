@@ -34,7 +34,7 @@ reports the choices shared by a worker's selected model and spawn override.
 
 ```sh
 npm install -g @plurnk/plurnk-service
-plurnk-service migrate    # apply the disposable schema baseline (its chapters, in order)
+plurnk-service migrate    # apply pending database upgrades, preserving existing data
 plurnk-service start      # daemon
 ```
 
@@ -49,6 +49,9 @@ the complete installed option catalog and `plurnk-service config check` to
 validate without contacting a provider. **[`INSTALL.md`](./INSTALL.md) is the
 configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit
 `plurnk-service paths migrate` command.
+
+Protect durable history with a [consistent database backup](./INSTALL.md#backup-and-restore).
+The `share` command exports diagnostic reports, not a restorable database.
 
 The 1.x package retains its frozen root library barrel for SemVer compatibility;
 it is not the client boundary and gains no new APIs. Programmatic forensic use
