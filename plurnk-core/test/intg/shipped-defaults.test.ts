@@ -45,6 +45,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // Core has no parallel token budget or packing-margin contract.
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_BUDGET"), undefined);
     assert.equal(env.get("PLURNK_SERVICE_SAFETY"), undefined);
+    assert.equal(env.get("PLURNK_SERVICE_MAX_TURNS"), "-1", "model-call ceilings are opt-in, not a lifetime allowance");
     // {§markerless-first-page} — the page's two knobs ship: 100 lines, 16000 characters.
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");

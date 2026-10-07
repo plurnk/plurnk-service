@@ -4,6 +4,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import AdministrativeLoop from "../../src/core/AdministrativeLoop.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import Envelope from "../../src/server/envelope.ts";
+import type { Db } from "../../src/core/Db.ts";
+import { insertWorker } from "./_db.ts";
 import { connect, flush, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -22,6 +27,79 @@ const declaredProvider = (name: string, model: string): ProviderAlias => {
     process.env[key] = `${spec.provider}/${spec.model}`;
     return spec;
 };
+
+const modelUnderRuntime = async (db: Db, workspaceId: number): Promise<number> => {
+    const runtimeId = await RuntimeWorker.ensure(db, workspaceId);
+    const bookkeeping = await AdministrativeLoop.open(db, runtimeId, "runtime");
+    await Envelope.closeClientLoop(db, bookkeeping.id, { status: 200 });
+    return insertWorker(db, workspaceId, runtimeId, "model-tree", "model");
+};
+
+test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared child/grandchild ceiling", async () => {
+    const mock = new Mock({ contextWindow: 32_768, responses: [
+        makeMockResponse("````WORK (worker://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
+        makeMockResponse("````WORK (worker://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
+        makeMockResponse("````NOTE\nLeaf work is in progress.\n````"),
+        makeMockResponse("````KILL\nLeaf work is complete.\n````"),
+        makeMockResponse("````KILL\nThis fifth call exceeds the explicit ceiling.\n````"),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `runtime-tree-${crypto.randomUUID()}` });
+            const { id: workspaceId } = created.result as { id: number };
+            const workerId = await modelUnderRuntime(db, workspaceId);
+            const result = await runLoopToTerminal(ws, 2, {
+                workerId, prompt: "delegate twice", maxTurns: 4, policy: { proposals: "accept" },
+            }, { timeoutMs: 20_000 });
+            assert.equal(result.finalStatus, 429);
+            assert.equal(result.hitMaxTurns, true);
+            assert.deepEqual(
+                [result.result.problem?.treeModelCalls, result.result.problem?.maximumTurns],
+                [4, 4],
+                "one parent call, one child call and two grandchild calls exhaust the same ceiling",
+            );
+            assert.equal(mock.received.length, 4, "the runtime ancestor cannot make the model tree uncapped");
+            assert.equal(mock.remaining, 1);
+            const workers = await db.test_workers_with_parent.all<{ id: number; name: string; parent_worker_id: number | null }>({});
+            const child = workers.find(({ name }) => name === "child");
+            const grandchild = workers.find(({ name }) => name === "grandchild");
+            assert.equal(child?.parent_worker_id, workerId);
+            assert.equal(grandchild?.parent_worker_id, child?.id);
+        } finally { ws.close(); }
+    });
+});
+
+test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects the model tree's cap", async () => {
+    const childSpec = declaredProvider("runtime-bare", "runtime-bare-model");
+    const parent = new Mock({ contextWindow: 32_768, responses: [
+        makeMockResponse("````BARE\nOne allowed answer.\n````\n\n````BARE\nNo room for another answer.\n````\n\n````NOTE\nReview the results.\n````"),
+        makeMockResponse("````KILL\nThis call must not run.\n````"),
+    ] });
+    const child = new Mock({ contextWindow: 8_192, responses: [
+        { assistant: { content: "allowed", reasoning: null } },
+        { assistant: { content: "beyond the ceiling", reasoning: null } },
+    ] });
+    ProviderInstantiate.registerInstance(child, childSpec);
+    await withDaemon(parent, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `runtime-bare-${crypto.randomUUID()}` });
+            const { id: workspaceId } = created.result as { id: number };
+            const workerId = await modelUnderRuntime(db, workspaceId);
+            const result = await runLoopToTerminal(ws, 2, {
+                workerId, prompt: "answer twice", childSelector: childSpec.alias,
+                maxTurns: 2, policy: { proposals: "accept" },
+            });
+            assert.equal(result.finalStatus, 429);
+            assert.equal(result.hitMaxTurns, true);
+            assert.equal(parent.received.length, 1);
+            assert.equal(child.received.length, 1);
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: result.loopId });
+            assert.deepEqual(rows.filter(({ op }) => op === "BARE").map(({ status_rx }) => status_rx), [200, 429]);
+        } finally { ws.close(); }
+    });
+});
 
 test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a batch is refused past the ceiling", async () => {
     const parentSpec = declaredProvider("tree-cap-parent", "tree-cap-parent-model");

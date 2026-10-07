@@ -3947,7 +3947,8 @@ External extensions declare their own env vars in their own `.env.defaults`, ass
 
 §turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
 calls.** The owner is the current loop of the topmost ancestor-or-self worker that has
-one: for a tree a client started, the root worker's loop current when this loop began (its
+one, excluding the runtime actor (origin `_plurnk`): for a tree a client started,
+the root worker's loop current when this loop began (its
 `max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no
 such ancestor owns its own budget. Every model call on the owner's loop and on any later
 loop of the owner's descendants spends it, emission turns and BARE calls alike, open or
@@ -3955,6 +3956,10 @@ settled, one per call however many physical requests it took. `LoopDriver` reads
 terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
 429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
 child loop inherits the value and binds the same count.
+
+The runtime actor supplies no ceiling and does not combine otherwise independent model
+subtrees into one allowance. Its descendants still share their own model tree's ceiling.
+The shipped ceiling is `-1` (uncapped); client and transport defaults introduce no finite cap.
 
 §operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` at `-1` is no cap; when an operator sets a positive value, the per-call request is `min()`-capped against it. Other termination rules remain independent ({§loop-terminals}).
 

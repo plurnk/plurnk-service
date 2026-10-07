@@ -173,21 +173,21 @@ SELECT streams, workers FROM loop_obligations WHERE loop_id = $loop_id;
 
 -- PREP: lifecycle_tree_budget
 -- {§turn-cap-counts-the-tree} — the budget of the worker tree a loop belongs to. The owner is
--- the current loop (id at or below this loop's) of the topmost ancestor-or-self worker that has
--- one: for a tree a client started, the root worker's loop current when this loop began; a loop
+-- the current loop (id at or below this loop's) of the topmost non-runtime ancestor-or-self worker
+-- that has one: for a tree a client started, the root worker's loop current when this loop began; a loop
 -- with no such ancestor owns its own budget. Every model call on the owner's loop and on any
 -- later loop of the owner's descendants spends it, emission and BARE alike, open or settled, one
 -- per call however many physical requests it took.
-WITH RECURSIVE up(id, parent_worker_id, depth) AS (
-    SELECT w.id, w.parent_worker_id, 0 FROM workers w
+WITH RECURSIVE up(id, parent_worker_id, origin, depth) AS (
+    SELECT w.id, w.parent_worker_id, w.origin, 0 FROM workers w
     WHERE w.id = (SELECT worker_id FROM loops WHERE id = $loop_id)
     UNION ALL
-    SELECT w.id, w.parent_worker_id, up.depth + 1 FROM workers w JOIN up ON w.id = up.parent_worker_id
+    SELECT w.id, w.parent_worker_id, w.origin, up.depth + 1 FROM workers w JOIN up ON w.id = up.parent_worker_id
 ),
 owner AS (
     SELECT l.id AS loop_id, l.max_turns, up.id AS worker_id FROM up
     JOIN loops l ON l.worker_id = up.id
-    WHERE l.id <= $loop_id
+    WHERE l.id <= $loop_id AND up.origin != '_plurnk'
     ORDER BY up.depth DESC, l.id DESC LIMIT 1
 ),
 tree(id) AS (
