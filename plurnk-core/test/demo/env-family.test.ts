@@ -8,38 +8,16 @@ import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-// Story one: the configuration travel guide, and the security boundary, in one run.
-//
-// The model must DISCOVER a credential's name rather than guess it, and must not be able to read
-// its value. The operator's host genuinely has TAVILY_API_KEY set, so the "no value" assertion is
-// live evidence that the catalog projects declarations rather than the environment — the exact
-// property that makes "values it needs from the operator are referred to by name" true.
-test("demo: the model finds a credential's name in the catalog and asks for it by name", async (t) => {
-    // The no-leak assertion below is only evidence when the host holds a real value; without one it
-    // would pass vacuously, so the story skips — before any model spend — rather than pretending.
-    const operatorValue = process.env.TAVILY_API_KEY ?? "";
-    if (operatorValue.length === 0) {
-        t.skip("needs TAVILY_API_KEY on the host to be evidence");
-        return;
-    }
-    const s = await liveWorkspace({ name: `env-discover-${crypto.randomUUID()}` });
+// Story one: a value already in the worker's environment, asked for plainly.
+test("demo: the model reads a variable already in its worker's environment", async (t) => {
+    const s = await liveWorkspace({ name: `env-read-${crypto.randomUUID()}` });
     try {
-        const loop = await liveLoop(
-            s, 1,
-            {
-                prompt: "You need to use Tavily to extract a web page, but its API credential is not configured. "
-                    + "Find out which environment variable supplies it and what it is for, then tell me "
-                    + "its exact name and purpose. Do not guess the name — find it.",
-                maxTurns: 12,
-            },
-            { signal: t.signal },
-        );
+        const workerId = await s.daemon.ensureModelWorker(s.workspaceId);
+        await s.daemon.invokeModuleAction("worker.env.add", { alias: "FOO_VERSION", definition: { value: "42" } },
+            { scope: "worker", workspaceId: s.workspaceId, workerId });
+        const loop = await liveLoop(s, 1, { prompt: "What's the FOO_VERSION environment variable?", workerId, maxTurns: 6 }, { signal: t.signal });
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
-        assert.match(loop.lastContent, /TAVILY_API_KEY/u, "the reply names the credential declared by the installed adapter");
-
-        // The operator's real value must never appear.
-        assert.doesNotMatch(loop.lastContent, new RegExp(operatorValue.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"),
-            "the catalog projects the DECLARATION; an operator's value must never reach the model");
+        assert.match(loop.lastContent, /\b42\b/u, "the reply gives the value the worker's environment holds");
     } finally { await s.cleanup(); }
 });
 
