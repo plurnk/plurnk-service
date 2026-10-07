@@ -4,10 +4,11 @@
 // exercise the pause/resume machinery + the log-render visibility filter
 // against a tiny test scheme that always proposes.
 
+import { ownWorker, serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { InvalidLoopPolicyError, type EditStatement } from "@plurnk/plurnk-contracts";
+import { type EditStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "@plurnk/plurnk-contracts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -65,6 +66,7 @@ const setupEngine = async (db: Db, proposing: ProposingTest = new ProposingTest(
     const engine = new Engine({ db, schemes });
     const workspaceId = await insertWorkspace(db, `prop-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
+    await ownWorker(db, workspaceId, workerId);
     const loopId = await insertLoop(db, workerId, 1, "proposal test");
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { engine, workspaceId, workerId, loopId, turnId };
@@ -332,7 +334,7 @@ test("{§proposal-202-pauses}: a WAIT over live work parks without a proposal", 
     } finally { await db.close(); }
 });
 
-test("{§proposal-ownership-loop-auto} proposal: loop acceptance is core-owned and needs no daemon listener", async (t) => {
+test("{§worker-owner-resolution} proposal: server acceptance is core-owned and needs no daemon listener", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -342,12 +344,7 @@ test("{§proposal-ownership-loop-auto} proposal: loop acceptance is core-owned a
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        // Persist canonical loop acceptance. Engine owns settlement; no
-        // Daemon listener is needed to make the policy effective.
-        await db.test_set_loop_policy.run({
-            loop_id: ctx.loopId,
-            policy: JSON.stringify({ proposals: "accept", attended: true }),
-        });
+        serverProposals(t, "accept");
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -370,10 +367,7 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        await db.test_set_loop_policy.run({
-            loop_id: ctx.loopId,
-            policy: JSON.stringify({ proposals: "accept", attended: true }),
-        });
+        serverProposals(t, "accept");
         const observerCause = new Error("observer failed");
         ctx.engine.onProposalPending(() => { throw observerCause; });
 
@@ -394,17 +388,14 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
     } finally { await db.close(); }
 });
 
-test("proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async () => {
+test("proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async (t) => {
     const db = await openMigrated();
     try {
-        let loopId = 0;
         const ctx = await setupEngine(db, new ProposingTest(async () => {
-            await db.test_set_loop_policy.run({
-                loop_id: loopId,
-                policy: JSON.stringify({ proposals: "sometimes", attended: true }),
-            });
+            const previous = process.env.PLURNK_SERVICE_PROPOSALS;
+            t.after(() => { process.env.PLURNK_SERVICE_PROPOSALS = previous; });
+            process.env.PLURNK_SERVICE_PROPOSALS = "sometimes";
         }));
-        loopId = ctx.loopId;
         let logEntryId: number | undefined;
         await assert.rejects(
             ctx.engine.dispatch({
@@ -419,8 +410,8 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
             }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${ctx.loopId} has invalid persisted policy.`);
-                assert.ok(error.cause instanceof InvalidLoopPolicyError);
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.problem?.key, "PLURNK_SERVICE_PROPOSALS");
                 return true;
             },
         );

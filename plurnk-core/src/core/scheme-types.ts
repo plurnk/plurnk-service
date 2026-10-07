@@ -18,7 +18,6 @@ import type {
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
 export type {
-    LoopPolicy,
     SchemeManifest,
     WriterTier,
 } from "./types.ts";

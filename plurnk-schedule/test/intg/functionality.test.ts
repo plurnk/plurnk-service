@@ -98,7 +98,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
 };
 
 const HEARTBEAT = { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." };
-const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat.", policy: { proposals: "accept" } };
+const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." };
 
 const family = (time: FakeTime, env: Record<string, string> = {}, reports: string[] = []): ScheduleFunctionality =>
     new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
@@ -202,7 +202,6 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
             next: "2026-09-16T12:30:16+00:00[UTC]",
             exhausted: false,
             target: "worker://bot",
-            policy: { proposals: "accept" },
         },
     });
     assert.deepEqual(prepared.outcomes.get("heartbeat"), {
@@ -253,7 +252,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     adapter.scheduler.start(port);
     await (await adapter.prepare(preparation(3, { beat: BEAT }))).commit();
     await time.advance(FIRST);
-    assert.deepEqual(port.deliveries, [{ workspaceId: 3, workerId: 7, prompt: "Beat.", source: "schedule://beat", policy: { proposals: "accept" } }]);
+    assert.deepEqual(port.deliveries, [{ workspaceId: 3, workerId: 7, prompt: "Beat.", source: "schedule://beat" }]);
     assert.deepEqual(refreshed, [3], "a settled delivery republishes the outcomes");
     assert.deepEqual(time.delays(), [HOUR], "the next occurrence armed from the fire");
     const republished = await adapter.prepare(preparation(3, { beat: BEAT }));
@@ -264,7 +263,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
     const done = await adapter.prepare(preparation(3, { beat: BEAT }));
     assert.deepEqual((done.outcomes.get("beat") as { detail: { next: null; exhausted: boolean } }).detail, {
-        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times", next: null, exhausted: true, target: "worker://bot", policy: { proposals: "accept" },
+        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times", next: null, exhausted: true, target: "worker://bot",
     });
     await adapter.scheduler.close();
 });

@@ -7,4 +7,3 @@
 // ({§capability-ctx}). Service-coupled `PlurnkSchemeContext` remains internal
 // in `scheme-types.ts`.
 export type { WriterTier, SchemeManifest } from "@plurnk/plurnk-schemes";
-export type { LoopPolicy, LoopPolicyRequest } from "@plurnk/plurnk-contracts";

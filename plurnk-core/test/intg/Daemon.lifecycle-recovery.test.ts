@@ -30,7 +30,6 @@ const enqueueLoop = async (
         spawn_model_route_id: null,
         effort: "adaptive",
         max_turns: 50,
-        policy: JSON.stringify({ proposals: "review", attended: true }),
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
     // {§message-arrival} — as the daemon's enqueue does: the assignment is ordinal 1 of the inbox.
@@ -248,7 +247,6 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
             worker_id: workerId,
             prompt: "first orphan",
             prompt_source: "worker://sender-1",
-            policy: JSON.stringify({ proposals: "review", attended: true }),
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
             effort: "adaptive",

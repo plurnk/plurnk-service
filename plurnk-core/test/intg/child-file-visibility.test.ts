@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§membership} {§worker-scheme-collect} — a child worker's admitted file write is a workspace
 // member for every worker at once: after the child's `EDIT count.txt` (200) is observed, the
 // parent's own `READ count.txt` answers the content, never `entry-not-found` (#373) — scoped
@@ -34,7 +35,8 @@ const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> 
 ];
 
 for (const c of CASES) {
-    test(`{§machine-processes-one-filesystem} a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
+    test(`{§machine-processes-one-filesystem} a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
@@ -52,7 +54,7 @@ reading
                 const ws = await connect(addr);
                 try {
                     await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
-                    const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+                    const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count" }, { timeoutMs: 20000 });
                     await flush();
                     const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                     const edit = all.find((r) => r.op === "EDIT");
@@ -87,7 +89,8 @@ reading
 // {§child-orientation} {§worker-read-scope} — a child is told whose child it is (#394): its packet
 // carries a Parent Worker pointer naming the parent, so it can address the parent's streams and
 // space by name. The root worker has no such section.
-test("a child's packet names its parent worker; the root's packet does not", async () => {
+test("a child's packet names its parent worker; the root's packet does not", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````WORK (worker://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````KILL\n3\n````", 10),
@@ -98,7 +101,7 @@ test("a child's packet names its parent worker; the root's packet does not", asy
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
             const workspaceId = 1;
-            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
             assert.equal(finalStatus, 200);
             await flush();
             const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });

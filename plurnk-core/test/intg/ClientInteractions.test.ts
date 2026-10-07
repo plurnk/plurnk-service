@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type {
@@ -24,6 +25,8 @@ test("{§message-envelope-evidence}: competing interaction answers admit exactly
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, "interaction-message-race");
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending(observed.resolve);
@@ -35,7 +38,7 @@ test("{§message-envelope-evidence}: competing interaction answers admit exactly
     });
     const { interactionId } = await observed.promise;
     const resolution = { status: "resolved", payload: { repository: "plurnk-service" } } as const;
-    const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, {
+    const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, respondent, {
         body: messageId, source: "a2a://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
     })));
     assert.equal(outcomes[0]!.status, "fulfilled");
@@ -52,6 +55,8 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-${crypto.randomUUID()}`);
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending(observed.resolve);
@@ -62,6 +67,7 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
     assert.deepEqual(pending, {
         interactionId: pending.interactionId,
         ...ids,
+        recipient: TEST_OWNER,
         request,
     });
     assert.deepEqual(await interactions.list(ids.workspaceId), [{
@@ -69,20 +75,21 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
         workerId: ids.workerId,
         loopId: ids.loopId,
         turnId: ids.turnId,
+        recipient: TEST_OWNER,
         request,
     }]);
 
     await interactions.resolve(pending.interactionId, {
         status: "resolved",
         payload: { repository: "plurnk-service" },
-    });
+    }, respondent);
     assert.deepEqual(await awaiting, {
         status: "resolved",
         payload: { repository: "plurnk-service" },
     });
     assert.deepEqual(await interactions.list(ids.workspaceId), []);
     await assert.rejects(
-        interactions.resolve(pending.interactionId, { status: "cancelled" }),
+        interactions.resolve(pending.interactionId, { status: "cancelled" }, respondent),
         /Client interaction .* is not pending/,
     );
 });
@@ -91,6 +98,7 @@ test("{§client-interactions}: owner cancellation removes the durable request an
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-abort-${crypto.randomUUID()}`);
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending(observed.resolve);
@@ -108,6 +116,8 @@ test("{§client-interactions}: owner cancellation removes the durable request an
 test("{§client-interactions}: invalid response content leaves the same interaction answerable", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-invalid-response");
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending(observed.resolve);
@@ -116,7 +126,7 @@ test("{§client-interactions}: invalid response content leaves the same interact
     try {
         await assert.rejects(interactions.resolve(pending.interactionId, {
             status: "resolved", payload: { repository: 42 },
-        }), (cause: unknown) => {
+        }, respondent), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
             assert.match(cause.result.problem!.type, /\/interaction-response-invalid$/u);
@@ -125,11 +135,11 @@ test("{§client-interactions}: invalid response content leaves the same interact
         assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, pending.interactionId);
         await interactions.resolve(pending.interactionId, {
             status: "resolved", payload: { repository: "plurnk-service" },
-        });
+        }, respondent);
         assert.deepEqual(await awaiting, { status: "resolved", payload: { repository: "plurnk-service" } });
     } finally {
         if ((await interactions.list(ids.workspaceId)).length) {
-            await interactions.resolve(pending.interactionId, { status: "cancelled" });
+            await interactions.resolve(pending.interactionId, { status: "cancelled" }, respondent);
         }
         await awaiting;
         await db.close();
@@ -139,22 +149,24 @@ test("{§client-interactions}: invalid response content leaves the same interact
 test("{§methods-client-interaction-resolve} {§client-interactions}: a retired interrupt identity never addresses a subsequent input request", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-identities");
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     let observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending((event) => observed.resolve(event));
     const first = interactions.request(request, ids);
     const firstId = (await observed.promise).interactionId;
-    await interactions.resolve(firstId, { status: "cancelled" });
+    await interactions.resolve(firstId, { status: "cancelled" }, respondent);
     await first;
     observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     const second = interactions.request(request, ids);
     const secondId = (await observed.promise).interactionId;
     try {
         assert.notEqual(secondId, firstId);
-        await assert.rejects(interactions.resolve(firstId, { status: "cancelled" }), /is not pending/u);
+        await assert.rejects(interactions.resolve(firstId, { status: "cancelled" }, respondent), /is not pending/u);
         assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, secondId);
     } finally {
-        await interactions.resolve(secondId, { status: "cancelled" });
+        await interactions.resolve(secondId, { status: "cancelled" }, respondent);
         await second;
         await db.close();
     }
@@ -165,6 +177,7 @@ test("{§client-interactions}: insertion requires one exact workspace/worker/loo
     t.after(() => db.close());
     const first = await seedEnvelope(db, `interaction-owner-a-${crypto.randomUUID()}`);
     const second = await seedEnvelope(db, `interaction-owner-b-${crypto.randomUUID()}`);
+    await ownWorker(db, first.workspaceId, first.workerId, ["choose_repository"]);
     const interactions = new ClientInteractions(db);
 
     await assert.rejects(
@@ -179,11 +192,13 @@ test("{§client-interactions}: boot recovery removes a request whose process-loc
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-recovery-${crypto.randomUUID()}`);
+    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
     const inserted = await db.client_interaction_insert.get({
         workspace_id: ids.workspaceId,
         worker_id: ids.workerId,
         loop_id: ids.loopId,
         turn_id: ids.turnId,
+        recipient: TEST_OWNER,
         request: JSON.stringify(request),
     });
     assert.ok(inserted !== undefined);

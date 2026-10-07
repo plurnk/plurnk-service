@@ -8,7 +8,6 @@
 // callback the daemon wires in.
 
 import type { Db } from "./Db.ts";
-import type { LoopPolicy } from "./types.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
@@ -79,11 +78,6 @@ export type InjectWorkerNotify = (args: {
     // {§env-option} — the child's starting environment from the heading: each name becomes the
     // child's own entry through the family's add, after the copy it inherited at creation.
     environment?: Readonly<Record<string, string>>;
-    // {§worker-delegation-inherits-policy} — the sender's complete effective
-    // policy for a fresh delegated loop. An active or parked recipient keeps
-    // its existing immutable loop policy; this value is not a reconfiguration
-    // request for that loop.
-    freshLoopPolicy?: LoopPolicy;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
 
 // Abort a worker's in-flight work by id — the worker:// op family's KILL primitive

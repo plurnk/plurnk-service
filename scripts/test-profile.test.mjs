@@ -13,7 +13,7 @@ const operatorEnvironment = resolve(root, "scripts", "operator-environment.sh");
 const expectedProfile = {
     PLURNK_SERVICE_FILES_ITEMS: "-1",
     PLURNK_SERVICE_GIT_AUTO: "1",
-    PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept",
+    PLURNK_SERVICE_PROPOSALS: "accept",
     PLURNK_SERVICE_POLICY: "",
     PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_SERVICE_ROOTS: "project",

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§edit-receipt-anchored-context} — an applied EDIT's row shows the landed neighbourhood with
 // anchors, and those anchors resolve in the next batch without a READ in between.
 import test from "node:test";
@@ -15,7 +16,8 @@ import { makeMockResponse } from "./_mock.ts";
 const execFileP = promisify(execFile);
 const SOURCE = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
 
-test("{§edit-receipt-anchored-context} the EDIT row renders the landed lines with anchors that the next EDIT can cite without a READ", async () => {
+test("{§edit-receipt-anchored-context} the EDIT row renders the landed lines with anchors that the next EDIT can cite without a READ", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-recanchor-"));
     try {
         const env = hermeticGitEnv();
@@ -49,7 +51,7 @@ second
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "recanchor", projectRoot: root });
-                const first = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(first.result.status, 200);
                 const editRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
                     .find(({ op, status_rx }) => op === "EDIT" && status_rx === 200);
@@ -63,7 +65,7 @@ second
                 assert.match(log, /3<@[0-9A-Za-z]{5}>func requireFn\(a int\) int \{/, "the model sees line 3 with its anchor on the EDIT row");
                 const line3 = lines.find((line) => /^ *3<@[0-9A-Za-z]{5}>func requireFn/.test(line))!;
                 pending.anchor = /<(@[0-9A-Za-z]{5})>/.exec(line3)![1]!;
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit again", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit again" });
                 assert.equal(second.result.status, 200);
                 // The worker persists across loops: the first loop's one EDIT row precedes this loop's.
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });

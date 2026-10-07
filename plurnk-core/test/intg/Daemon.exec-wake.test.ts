@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§worker-lifecycle-wake-liveness}, {§notifications-stream-concluded}.
 
 import test from "node:test";
@@ -40,7 +41,8 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
+test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
         mockResponse("````KILL\nThe command was cancelled.\n````"),
@@ -54,7 +56,7 @@ test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream a
         try {
             await rpcCall(ws, 1, "workspace.attach", { workspaceId });
             const accepted = await daemon.runLoop({
-                workspaceId, workerId, prompt: "Observe a command's outcome.", policy: { proposals: "accept" },
+                workspaceId, workerId, prompt: "Observe a command's outcome.",
             });
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
             const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
@@ -82,6 +84,7 @@ test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream a
 });
 
 test("{§notifications-stream-concluded}: a pending completion wake is not reported as an executed resume", async (t) => {
+    serverProposals(t, "accept");
     const parked = Promise.withResolvers<void>();
     const ensureDrain = DrainSupervisor.prototype.ensureDrain;
     t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (
@@ -114,7 +117,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
         try {
             const attached = await rpcCall(ws, 1, "workspace.attach", { workspaceId });
             assert.equal((attached.result as { id: number }).id, workspaceId);
-            const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Await the command.", policy: { proposals: "accept" } });
+            const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Await the command." });
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
             // The database transition precedes drain teardown. Exercise a settled
             // park, not a completion racing the still-active drain.
@@ -139,7 +142,8 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
     });
 });
 
-test("{§methods-loop-run-model}: an async wake resumes with the loop's durable provider", async () => {
+test("{§methods-loop-run-model}: an async wake resumes with the loop's durable provider", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
@@ -167,7 +171,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                 const started = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run on B, park, then resume on B",
                     selector: "wakeb",
-                    policy: { proposals: "accept" },
+
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
 
@@ -183,7 +187,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                 const conflict = await rpcCall(ws, 3, "loop.run", {
                     prompt: "silently change this parked loop to the boot model",
                     selector: "mocktest",
-                    policy: { proposals: "accept" },
+
                 });
                 const problem = rpcProblem(conflict);
                 assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
@@ -209,7 +213,8 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     }
 });
 
-test("{§methods-loop-run-model}: a selector-less continuation resumes the loop's durable provider, never the boot default", async () => {
+test("{§methods-loop-run-model}: a selector-less continuation resumes the loop's durable provider, never the boot default", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-default-"));
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
@@ -237,7 +242,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
                 const started = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run on B, park, then resume on B without a selector",
                     selector: "wakedefault",
-                    policy: { proposals: "accept" },
+
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
 
@@ -250,7 +255,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
                 // collides with the loop's durable provider (a false 409). It must resume on B.
                 const resumed = await rpcCall(ws, 3, "loop.run", {
                     prompt: "resume the parked loop without naming a model",
-                    policy: { proposals: "accept" },
+
                 });
                 const resumedResult = resumed.result as { problem?: { type?: string }; action?: string } | undefined;
                 assert.equal(resumedResult?.problem, undefined, "selector-less continuation must not conflict");
@@ -265,6 +270,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
 });
 
 test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async (t) => {
+    serverProposals(t, "accept");
     const boot = new Mock({
         contextWindow: 16384,
         responses: [mockResponse("````KILL\nboot provider must remain unused\n````")],
@@ -309,7 +315,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
             workerId,
             prompt: "park on B before restart",
             selector: "restartb",
-            policy: { proposals: "accept" },
+
         });
         await parked.promise;
         stopping = first.stop();
@@ -356,7 +362,8 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
     }
 });
 
-test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
+test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // First loop: execution echo + WAIT — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
@@ -382,7 +389,7 @@ test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN P
             // conclusion; in general a user reply), so loop.run cannot resolve on it without
             // deadlocking the very client that must send that event. Park, resume, and the
             // true terminal all arrive via events. {§worker-lifecycle-wake-liveness}.
-            const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", policy: { proposals: "accept" } });
+            const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park" });
             const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
             assert.equal((firstWorker.result as { status: number }).status, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
 
@@ -427,7 +434,8 @@ test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN P
     });
 });
 
-test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async () => {
+test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -443,7 +451,7 @@ test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cum
             const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
             const accepted = await rpcCall(ws, 2, "loop.run", {
                 prompt: "run once, park, and exhaust the durable loop ceiling",
-                policy: { proposals: "accept" },
+
                 maxTurns: 1,
             });
             const loopId = (accepted.result as { loopId: number }).loopId;
@@ -466,7 +474,8 @@ test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cum
     });
 });
 
-test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async () => {
+test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Loop emits exec + an NOTE per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
     // wake should see active loop and skip.
@@ -488,7 +497,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-active" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", policy: { proposals: "accept" } });
+            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec" });
             await flush();
             // Event-driven: wait for the exec to conclude (it finishes while the loop is
             // still emitting in-progress inventories), not a fixed sleep racing the spawn.
@@ -507,7 +516,8 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     });
 });
 
-test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async () => {
+test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // A countdown emits 5 lines over ~2.5s. The model waits — the loop SLEEPS
     // while the countdown runs on. When the countdown concludes, the loop RESUMES in
     // place, and the conclusion's summary reflects the COMPLETE stdout (10 bytes for
@@ -530,7 +540,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
 
             const startedAt = Date.now();
-            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", policy: { proposals: "accept" } });
+            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave" });
             const firstResult = firstResp.result as { loopId: number; status: number };
             const parkedLoop = firstResult.loopId;
             const firstElapsed = Date.now() - startedAt;
@@ -568,7 +578,8 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     });
 });
 
-test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
+test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with result.status=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({
@@ -586,7 +597,7 @@ test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel m
             const workspaceId = (created.result as { id: number }).id;
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", policy: { proposals: "accept" } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream" });
             await flush();
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn.
@@ -616,7 +627,8 @@ test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel m
     });
 });
 
-test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async () => {
+test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // printf lands "a\nb\n" (4 bytes) immediately, then `sleep 30` runs; at
     // cancel time those bytes are already in the channel. Under
     // {§executor-cancellation}, loop.cancel process-group-kills the job; the 499
@@ -637,7 +649,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
             const streamEvents = subscribeNotifications(ws, "stream/event");
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output", policy: { proposals: "accept" } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output" });
 
             // Deterministic: cancel only AFTER the 4 bytes have actually
             // landed in the stdout channel — no fixed sleep racing printf.

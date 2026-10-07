@@ -48,6 +48,101 @@ const shape = (path: string): string => {
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
 
+test("{§a2a-worker-ownership}: migration reparents A2A contexts without adopting ordinary roots or losing task evidence", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'a2aUpgrade');
+            INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id)
+                VALUES (1, 1, 'context', 'model', NULL), (2, 1, 'task', 'model', 1), (3, 1, 'ordinary', 'model', NULL);
+            INSERT INTO loops (id, worker_id, sequence, prompt, prompt_source, policy, max_turns)
+                VALUES (1, 2, 1, 'Retain this task', 'a2a://anonymous/contexts/context/tasks/task/messages/message', '{"proposals":"accept","attended":true}', -1);
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        const context = after.prepare("SELECT parent_worker_id, owner FROM workers WHERE id = 1").get()!;
+        const runtime = after.prepare("SELECT id, owner FROM workers WHERE origin = '_plurnk'").get()!;
+        assert.equal(context.parent_worker_id, runtime.id);
+        assert.equal(context.owner, "_plurnk");
+        assert.equal(runtime.owner, "_plurnk");
+        assert.equal(after.prepare("SELECT parent_worker_id FROM workers WHERE id = 2").get()!.parent_worker_id, 1);
+        assert.equal(after.prepare("SELECT parent_worker_id FROM workers WHERE id = 3").get()!.parent_worker_id, null);
+        assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "Retain this task");
+        assert.equal(columns(after, "loops").includes("policy"), false);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
+test("{§schedule-delivery}: upgrades remove message-carried authority without losing schedules or other family state", async () => {
+    const path = await released(RELEASED);
+    const definition = { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." };
+    const state = { version: 1, definitions: {
+        beat: { origin: "workspace", enabled: true, definition: { ...definition, policy: { proposals: "accept" } } },
+        disabled: { origin: "workspace", enabled: false, definition: { ...definition, policy: { proposals: "reject" } } },
+        inherited: { origin: "service", enabled: false },
+    } };
+    const before = new DatabaseSync(path);
+    try {
+        before.exec("INSERT INTO workspaces (id, name) VALUES (1, 'scheduleUpgrade')");
+        const insert = before.prepare("INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (1, ?, ?)");
+        insert.run("@plurnk/plurnk-schedule", JSON.stringify(state));
+        insert.run("other", JSON.stringify(state));
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        const read = async (owner: string) => JSON.parse((await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: 1, namespace_owner: owner }))!.state);
+        assert.deepEqual(await read("@plurnk/plurnk-schedule"), { version: 1, definitions: {
+            beat: { origin: "workspace", enabled: true, definition },
+            disabled: { origin: "workspace", enabled: false, definition },
+            inherited: { origin: "service", enabled: false },
+        } });
+        assert.deepEqual(await read("other"), state);
+    } finally { await db.close(); }
+});
+
+test("{§worker-owner-creation}: upgrades retain conversations, assign runtime ownership and enforce inherited references", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'ownersUpgrade'), (2, 'otherWorkspace');
+            INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id)
+                VALUES (1, 1, 'parent', 'model', NULL), (2, 1, 'child', 'model', 1), (3, 1, '_plurnk', '_plurnk', NULL);
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
+                VALUES (1, 1, 1, 'original conversation', '{"proposals":"accept","attended":true}', -1);
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    after.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        after.exec("PRAGMA foreign_keys = ON");
+        assert.deepEqual(after.prepare("SELECT id, owner FROM workers ORDER BY id").all().map((row) => ({ ...row })),
+            [1, 2, 3].map((id) => ({ id, owner: "_plurnk" })), "old loop policy does not guess an approval owner");
+        assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "original conversation");
+        assert.deepEqual(after.prepare("SELECT workspace_id, address, tools FROM worker_owners ORDER BY workspace_id").all().map((row) => ({ ...row })),
+            [1, 2].map((workspace_id) => ({ workspace_id, address: "_plurnk", tools: "[]" })));
+        after.exec(`
+            INSERT INTO worker_owners (workspace_id, address, tools) VALUES (1, 'agui://owner', '["request_approval"]');
+            UPDATE workers SET owner = 'agui://owner' WHERE id = 1;
+            INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id) VALUES (4, 1, 'later', 'model', 1);
+        `);
+        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "agui://owner");
+        assert.throws(() => after.exec("UPDATE workers SET owner = 'missing' WHERE id = 2"), /worker owner does not belong/);
+        assert.throws(() => after.exec("UPDATE workers SET owner = 'agui://owner' WHERE id = 3"), /worker owner does not belong/);
+        assert.throws(() => after.exec("DELETE FROM worker_owners WHERE address = 'agui://owner'"), /worker owner is still referenced/);
+        assert.throws(() => after.exec("INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES (2, 'wrong', 1)"), /worker owner or parent does not belong/);
+        after.exec("DELETE FROM workspaces WHERE id = 1");
+        assert.equal(after.prepare("SELECT count(*) AS n FROM worker_owners WHERE workspace_id = 1").get()!.n, 0);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations} {§skills-module}: extraction preserves bindings and fetched bytes without the former namespace", async (t) => {
     const path = await released(RELEASED);
     const home = await mkdtemp(join(tmpdir(), "plurnk-skills-upgrade-"));

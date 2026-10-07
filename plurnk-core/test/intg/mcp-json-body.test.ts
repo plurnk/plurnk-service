@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
@@ -18,6 +19,7 @@ for (const [name, source] of [
     ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "```fixture (inspect)", "{\"query\":\"fixture\"}", "```", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
     ["arguments on its heading line are its body ({§bare-option-object})", "```fixture (inspect) {\"query\":\"fixture\"}\n```"],
 ] as const) test(`{§pairing-objective}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const received: unknown[] = [];
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "json-body-fixture", version: "1.0.0" });
@@ -45,7 +47,7 @@ for (const [name, source] of [
     const ws = await connect({ daemon });
     t.after(() => ws.close());
     await rpcCall(ws, 1, "workspace.create", { name: "mcp-json-body" });
-    const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect.", policy: { proposals: "accept" } });
+    const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect." });
     assert.equal(result.finalStatus, 200);
     assert.deepEqual(received, [{ query: "fixture" }], "the tool receives the one object the model wrote");
 });

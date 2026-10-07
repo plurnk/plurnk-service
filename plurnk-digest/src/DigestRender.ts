@@ -604,6 +604,7 @@ export default class DigestRender {
             for (const worker of workspaceWorkers) {
                 lines.push("");
                 lines.push(`### Worker #${worker.id} — ${worker.name}`);
+                lines.push(`Owner: ${worker.owner}`);
                 lines.push("");
                 lines.push("```");
                 lines.push(DigestRender.#renderWorkerShape(worker, m));
@@ -628,11 +629,6 @@ export default class DigestRender {
                     if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
                         lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${terminal.problem.detail.trim()}`);
                     }
-                    const policy = DigestRender.parseJson(loop.policy, {}) as Record<string, unknown>;
-                    const policySummary = Object.entries(policy)
-                        .map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`)
-                        .join(" ");
-                    if (policySummary.length > 0) lines.push(`Policy: ${policySummary}`);
                     lines.push("");
                     const turnLines = (m.turnsByLoop.get(loop.id) ?? []).map((t) => DigestRender.#renderTurnLine(t, m));
                     const findMaxTicks = (s: string): number => {
@@ -885,12 +881,13 @@ export default class DigestRender {
                 id: r.id,
                 workspace_id: r.workspace_id,
                 name: r.name,
+                owner: r.owner,
                 accounting: DigestRender.#accounting(m.requestsByWorker.get(r.id) ?? []),
                 edit_census: DigestRender.#editCensus(m).byWorker.get(r.id) ?? null,
             })),
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
-                prompt: l.prompt, policy: DigestRender.parseJson(l.policy, {}),
+                prompt: l.prompt,
                 terminated_by: l.terminated_by,
                 claimed_at: l.claimed_at,
                 terminated_at: l.terminated_at,

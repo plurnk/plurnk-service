@@ -6,6 +6,7 @@
 import { chatMessageText } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { serverProposals } from "./_approval.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,7 +57,7 @@ const runInput = (
     runId,
     state: {},
     messages: [],
-    tools: [],
+    tools: [{ name: "request_approval", description: "Review proposals.", parameters: { type: "object" } }],
     context: [],
     forwardedProps: { plurnk: { workspace } },
     ...additions,
@@ -543,9 +544,8 @@ test(
                 },
             })));
             assert.equal(goji.ok, true, JSON.stringify(goji.problem));
-            // A tool's read effect is its server's own readOnlyHint ({§mcp-model-projection}); these Runs
-            // accept proposals so the composition does not depend on third-party annotations.
-            const policy = { proposals: "accept" };
+            // {§mcp-model-projection} These third-party tools may omit readOnlyHint.
+            serverProposals(t, "accept");
 
             const kubernetesRun = await post(port, runInput(workspace, "call-kubernetes", {
                 messages: [{
@@ -553,7 +553,7 @@ test(
                     role: "user",
                     content: "Use the attached Kubernetes configuration tool and report the current context.",
                 }],
-                forwardedProps: { plurnk: { workspace, policy } },
+                forwardedProps: { plurnk: { workspace } },
             }));
             assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             const runtimeCatalog = packet(provider.requests, 0);
@@ -574,7 +574,7 @@ test(
                     role: "user",
                     content: "Ask GOJI to explain AEO and read its about resource.",
                 }],
-                forwardedProps: { plurnk: { workspace, policy } },
+                forwardedProps: { plurnk: { workspace } },
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             assert.match(packet(provider.requests, 5), /worker:\/\/\/_plurnk\/tools\/goji\/goji_explain_term\.md/);

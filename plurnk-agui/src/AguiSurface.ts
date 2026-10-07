@@ -57,11 +57,12 @@ const worker = object({
     id: POSITIVE,
     name: NONEMPTY,
     created_at: NONEMPTY,
+    owner: NONEMPTY,
     origin: { enum: ["model", "client", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
     kind: { enum: ["conversation", "fork", "work"] },
     lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "failed"] },
-}, ["id", "name", "created_at", "origin", "parentWorkerId", "kind", "lifecycle"]);
+}, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle"]);
 const capabilityProjection = ref("CapabilityProjection");
 // {§worker-effort-source} — `source` says whether the effort was chosen or seeded.
 const effortResult = object({

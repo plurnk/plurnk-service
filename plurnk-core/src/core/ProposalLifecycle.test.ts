@@ -96,7 +96,9 @@ test("pending projection rejects malformed durable review material at its owner"
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
         attrs: "{}",
-        loop_policy: JSON.stringify({ proposals: "review", attended: true }),
+        owner: "test://primary",
+        owner_tools: '["request_approval"]',
+        turn_kind: "model",
     };
     const cases = [
         {
@@ -104,8 +106,8 @@ test("pending projection rejects malformed durable review material at its owner"
             error: /Pending proposal 7 has invalid attrs JSON/,
         },
         {
-            row: { ...base, loop_policy: JSON.stringify({ proposals: "sometimes", attended: true }) },
-            error: /Loop 13 has invalid persisted policy/,
+            row: { ...base, owner_tools: '[42]' },
+            error: /WorkerOwner/,
         },
     ];
 
@@ -113,7 +115,11 @@ test("pending projection rejects malformed durable review material at its owner"
         const db = {
             proposal_get_pending: { get: async () => row },
         } as unknown as Db;
-        await assert.rejects(lifecycleWithDb(db).pending(7), error);
+        const lifecycle = lifecycleWithDb(db);
+        const waiting = lifecycle.awaitResolution(7);
+        await assert.rejects(lifecycle.pending(7), error);
+        lifecycle.resolve(7, { decision: "reject" });
+        await waiting;
     }
 });
 

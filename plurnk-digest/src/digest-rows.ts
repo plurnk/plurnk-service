@@ -2,14 +2,13 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import type { DigestEvidence, EvidencePacket, OpenEvidence } from "./evidence.ts";
 
 export interface WorkspaceRow { id: number; name: string }
-export interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string }
+export interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string; owner: string }
 export interface LoopRow {
     id: number;
     worker_id: number;
     sequence: number;
     status: number;
     prompt: string;
-    policy: string;
     terminated_by: string | null;
     terminal_result: string | null;
     claimed_at: string | null;

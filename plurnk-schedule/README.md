@@ -20,8 +20,7 @@ PLURNK_SCHEDULE_heartbeat={"rule":"FREQ=HOURLY","target":"worker://plurnkbot","p
   defaults it to UTC; the shell overrides; a workspace overrides through the
   `env` family.
 - `PLURNK_SCHEDULE_<alias>` is one definition as JSON: `rule`, `target`
-  (`worker://<name>`), `prompt`, and optionally `policy`
-  (`{"proposals":"accept"}` for a loop nobody watches). A service rule may be
+  (`worker://<name>`) and `prompt`. A service rule may be
   unbounded; a rule a worker adds carries `COUNT` or `UNTIL`. Without a
   `DTSTART` a service rule starts when the daemon starts: `FREQ=HOURLY` is a
   check-in at start and every hour after; `BYHOUR`, `BYMINUTE` and `BYSECOND`

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§edit-execution} {§edit-batch-merges}: independent EDIT effects and verified prefix normalization.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +29,8 @@ type Row = { op: string; origin: string; status_rx: number; rx: string };
 const editRows = (rows: Row[]): Array<{ status: number; rx: Record<string, unknown> }> =>
     rows.filter(({ op }) => op === "EDIT").map(({ status_rx, rx }) => ({ status: status_rx, rx: JSON.parse(rx) }));
 
-test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endpoint", async () => {
+test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endpoint", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -40,7 +42,7 @@ test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endp
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "merge", projectRoot: root });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
@@ -52,7 +54,8 @@ test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endp
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} a READ rendering pasted back as a body is stripped only when its anchors verify; a look-alike is written as authored", async () => {
+test("{§edit-batch-merges} a READ rendering pasted back as a body is stripped only when its anchors verify; a look-alike is written as authored", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -83,7 +86,7 @@ editing
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "paste", projectRoot: root });
-                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
@@ -92,7 +95,7 @@ editing
                 // line 7's "prefix" carries a hash that is not this resource's anchor.
                 pending.body = `1<${anchors[0]}>var x int\n2<${anchors[1]}>`;
                 pending.fake = "7<@zzzzz>func other() { /* kept */ }";
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
@@ -104,7 +107,8 @@ editing
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} a paste from an older READ still verifies, against the anchors that READ published", async () => {
+test("{§edit-batch-merges} a paste from an older READ still verifies, against the anchors that READ published", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -131,7 +135,7 @@ editing
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "stale-paste", projectRoot: root });
-                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
@@ -139,7 +143,7 @@ editing
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.
                 await writeFile(join(root, "f.go"), SOURCE.replace("\treturn a\n", "\treturn a // changed\n"));
                 pending.body = `1<${anchors[0]}>var x int64\n2<${anchors[1]}>`;
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
@@ -150,7 +154,8 @@ editing
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinary no-change result", async () => {
+test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinary no-change result", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -162,7 +167,7 @@ test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinar
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "twin", projectRoot: root });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 304]);
@@ -175,7 +180,8 @@ test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinar
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an earlier EDIT", async () => {
+test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an earlier EDIT", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -188,7 +194,7 @@ test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an e
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "relocate", projectRoot: root });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
@@ -200,7 +206,8 @@ test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an e
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§edit-batch-merges} a shortened region does not secretly relocate a later numeric EDIT", async () => {
+test("{§edit-batch-merges} a shortened region does not secretly relocate a later numeric EDIT", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-merge-"));
     try {
         await seeded(root);
@@ -212,7 +219,7 @@ test("{§edit-batch-merges} a shortened region does not secretly relocate a late
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "contain", projectRoot: root });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "edit", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200]);

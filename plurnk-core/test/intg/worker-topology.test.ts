@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§worker-loop-lifecycle} topology join — a child worker finishing is a WAKE EDGE for a parent that parked
 // awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
@@ -18,7 +19,8 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async () => {
+test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Response order is forced by causality: the parent can't resume until the child concludes,
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
     // 16384: the parent's final resume carries the whole child subtree; that accumulation crests at the 8192 edge
@@ -38,7 +40,7 @@ test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent
             const terminated = subscribeNotifications(ws, "loop/terminated");
             // runLoopToTerminal awaits the PARENT's loop/terminated. If the child-wake doesn't fire,
             // the parent stays parked at 202 forever and this times out — so reaching 200 IS the proof.
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it" });
             assert.equal(finalStatus, 200, "the parent resumed from 202 (woken by the child) and concluded");
             assert.equal(turnIds?.length, 3, "the terminal event includes initialization and both model turns across park/resume");
             await flush();
@@ -49,7 +51,8 @@ test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent
     });
 });
 
-test("a child cancelling itself (499) also wakes the parent — any conclusion is a wake edge", async () => {
+test("a child cancelling itself (499) also wakes the parent — any conclusion is a wake edge", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // The parent observes cancellation as well as successful completion.
     // 16384: the parent's woken turn carries the whole child history + collect delta, cresting at the
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
@@ -63,7 +66,7 @@ test("a child cancelling itself (499) also wakes the parent — any conclusion i
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "child-fail" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn doomed, wait", policy: { proposals: "accept" } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn doomed, wait" });
             assert.equal(finalStatus, 200, "the parent woke on the child's 499 and concluded — a failed child is still a wake edge");
         } finally { ws.close(); }
     });
@@ -154,7 +157,8 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
     });
 });
 
-test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async () => {
+test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://stream-child)\nrun the empty failing stream and report its outcome\n````\n\n````WAIT\nwaiting on stream-child\n````", 10),
         makeMockResponse("````sh (emptyfail)\ngo\n````\n\n````WAIT\nwaiting for emptyfail\n````", 10),
@@ -189,7 +193,7 @@ test("an empty failed child stream is observed by the child before its terminal 
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const { finalStatus } = await runLoopToTerminal(ws, 2, {
                 prompt: "delegate a failing stream and wait for its result",
-                policy: { proposals: "accept" },
+
             });
             assert.equal(finalStatus, 200);
             await flush();
@@ -201,6 +205,7 @@ test("an empty failed child stream is observed by the child before its terminal 
 });
 
 test("{§worker-lifecycle-total-reap}: abandonment survives child activation finishing after cancellation", async (t) => {
+    serverProposals(t, "accept");
     const activationStarted = Promise.withResolvers<void>();
     const releaseActivation = Promise.withResolvers<void>();
     const childSettled = Promise.withResolvers<void>();
@@ -242,7 +247,7 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "abandon-tree" });
             const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
-            const parent = runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", workerId, policy: { proposals: "accept" } });
+            const parent = runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", workerId });
             await activationStarted.promise;
             const { finalStatus } = await parent;
             assert.equal(finalStatus, 499);
@@ -260,7 +265,8 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
     });
 });
 
-test("wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
+test("wake propagates UP a grandchild chain (parent→child→grandchild)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
@@ -276,13 +282,14 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "grandchild" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a 2-deep chain and wait", policy: { proposals: "accept" } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a 2-deep chain and wait" });
             assert.equal(finalStatus, 200, "the wake propagated up two levels — the parent concluded only after the whole subtree did");
         } finally { ws.close(); }
     });
 });
 
-test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
+test("a parent wakes across SEQUENTIAL children (multiple wakes)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // 16384: the parent's woken turn carries the whole child history; generous headroom over the
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -296,7 +303,7 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "sequential" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", policy: { proposals: "accept" } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence" });
             assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
             const workers = await db.test_workers_with_parent.all<{ id: number; name: string; parent_worker_id: number | null; origin: string }>({});
             const modelWorkers = workers.filter(({ origin }) => origin === "model");
@@ -311,7 +318,8 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     });
 });
 
-test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's durable model", async () => {
+test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's durable model", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Under {§worker-lifecycle-idle-is-concluded}, an actor with nothing to wait on CONCLUDES — it does not
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
@@ -330,7 +338,7 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
             const created = await rpcCall(ws, 1, "workspace.create", { name: "irc-wake" });
             const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", policy: { proposals: "accept" } });
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code" });
             const modelWorkerId = (response.result as { modelWorkerId: number }).modelWorkerId;
             const loopId = (response.result as { loopId: number }).loopId;
             // The actor concludes its first (idle) loop — nothing to wait on.
@@ -359,7 +367,8 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
     });
 });
 
-test("an empty wait continues through the real loop until the assignment is answered", async () => {
+test("an empty wait continues through the real loop until the assignment is answered", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
         makeMockResponse("````KILL\nNo work remains.\n````", 10),
@@ -369,7 +378,7 @@ test("an empty wait continues through the real loop until the assignment is answ
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "idle-concludes" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", policy: { proposals: "accept" } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do" });
             const t = await waitFor(() => terminated() as Array<{ result: { status: number }; loopId?: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
             assert.equal(t.length, 1, "the loop concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].result.status, 200, "the answered assignment concludes the loop");
@@ -380,15 +389,8 @@ test("an empty wait continues through the real loop until the assignment is answ
     });
 });
 
-test("spawn and fork carry the delegating loop's policy — an accepting parent's child EDITs without proposing", async () => {
-    // The four-sweep fan-out wedge: injectWorker dropped policy, so a delegated child's every
-    // side-effecting op proposed into a resolver-less void (300s auto-cancel per attempt).
-    // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
-    // state='resolved' (accept disposition inherited), never state='proposed'/'cancelled'.
-    // 16Ki (not the 8Ki the sibling tests use): a topology packet carries the child-orientation
-    // section for the spawned + forked workers on top of the base system prompt, so it sits well above a
-    // single-worker packet. At 8Ki it crossed the budget edge in about half the runs, and grammar 0.74.55's
-    // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
+test("{§worker-owner-resolution} server auto-approval settles both WORK and FORK child edits", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
         makeMockResponse("````WORK (worker://worker)\nedit something and finish\n````\n\n````FORK (worker://mirror)\nedit something and finish\n````\n\n````WAIT\ndelegated; waiting\n````", 10),
@@ -404,22 +406,20 @@ test("spawn and fork carry the delegating loop's policy — an accepting parent'
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "delegation-policy" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything", policy: { proposals: "accept" } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything" });
             assert.equal(finalStatus, 200, "the whole topology concluded — no child stalled in a proposal void");
-            // The delegated loops' persisted policy carries the parent's proposal disposition.
-            const loops = await db.test_all_loops.all<{ id: number; worker_id: number; policy: string }>({});
-            const childLive = loops.filter((loop) => JSON.parse(loop.policy).proposals === "accept");
-            assert.ok(childLive.length >= 3, `parent + both delegated live loops carry acceptance; got ${JSON.stringify(loops)}`);
-            // And the children's EDITs resolved — never proposed into the void.
             const edits = await db.test_edit_states.all<{ pathname: string; state: string }>({});
-            for (const e of edits.filter((x) => /from-(worker|fork)/.test(x.pathname))) {
-                assert.equal(e.state, "resolved", `child EDIT ${e.pathname} accepted under inherited policy`);
+            const childEdits = edits.filter((x) => /from-(worker|fork)/.test(x.pathname));
+            assert.equal(childEdits.length, 2, "both delegated children performed their EDIT");
+            for (const e of childEdits) {
+                assert.equal(e.state, "resolved", `child EDIT ${e.pathname} accepted by server policy`);
             }
         } finally { ws.close(); }
     });
 });
 
-test("a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
+test("a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // The delegation-policy race: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
     // terminal and broadcast a QUEUED loop as loop/terminated{100}.
@@ -438,7 +438,7 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "wake-requeue" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a helper and await it", policy: { proposals: "accept" } });
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a helper and await it" });
             const loopId = (accept.result as { loopId: number }).loopId;
             // The parent's loop is re-queued in place by the child-wake, then continues to its own terminal.
             const seen = await waitFor(
@@ -452,7 +452,8 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     });
 });
 
-test("log-targeted KILL is recorded in the DB, and a failed one persists", async () => {
+test("log-targeted KILL is recorded in the DB, and a failed one persists", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-kill-meta-operation}
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -465,7 +466,7 @@ test("log-targeted KILL is recorded in the DB, and a failed one persists", async
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "meta-ops" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
             const kills = rows.filter((r) => r.origin === "model" && r.op === "KILL" && JSON.parse(r.tx).target !== null);

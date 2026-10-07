@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
@@ -1053,6 +1054,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
     await withDaemon(null, async (db, daemon, _addr) => {
         const workspaceId = await insertWorkspace(db, `prop-seam-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
@@ -1067,7 +1069,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
         assert.ok(row !== undefined);
         const pending = await daemon.pendingProposals(workspaceId);
         assert.deepEqual(pending, [], "persistence without this process's lifecycle owner is not a stopped world");
-        const problem = await rejectedProblem(() => daemon.resolveProposal(row.id, { decision: "accept" }));
+        const problem = await rejectedProblem(() => daemon.resolveProposal(row.id, { decision: "accept" }, { workspaceId, address: TEST_OWNER }));
         assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/resolution/proposal-not-pending");
         assert.equal(problem.status, 409);
         assert.equal(problem.logEntryId, row.id);

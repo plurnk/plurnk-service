@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§configuration-repair-path} — the ordinary agent remains its own repair environment.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -13,6 +14,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { BaseExecutor, type ExecArgs, type ExecutorMetadata } from "@plurnk/plurnk-execs";
 
 test("{§configuration-repair-path} a misconfigured installed executor leaves its sibling usable and its own invocation truthful", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const key = "PLURNK_FIXTURE_ENDPOINT";
     const ran: string[] = [];
     class FixtureExecutor extends BaseExecutor {
@@ -52,7 +54,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect both executor outcomes.", policy: { proposals: "accept" } });
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect both executor outcomes." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.deepEqual(ran, ["healthyfixture"]);
@@ -66,6 +68,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
 });
 
 test("{§configuration-repair-path} invalid scratch configuration does not block an inline program", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_EXEC_SCRATCH;
     process.env.PLURNK_SERVICE_EXEC_SCRATCH = "relative";
     t.after(() => {
@@ -86,7 +89,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Run an inline program.", policy: { proposals: "accept" } });
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Run an inline program." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.match(userText(provider.received[1]), /inline-still-works/u);
@@ -99,6 +102,7 @@ for (const [key, invocation] of [
     ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (worker:///program.sh)"],
 ] as const) {
     test(`{§configuration-repair-path} ${key} refuses the execution without blocking ordinary READ and EDIT`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
         const previous = process.env[key];
         process.env[key] = "invalid";
         t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
@@ -118,7 +122,7 @@ for (const [key, invocation] of [
         t.after(daemon.subscribeToEvents((_id, method, params) => {
             if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         }));
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect and repair the configuration.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect and repair the configuration." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.equal(provider.received.length, 3);
@@ -136,10 +140,11 @@ for (const [key, invocation] of [
 }
 
 for (const key of [
-    "PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_ATTENDED",
+    "PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_PROPOSALS",
     "PLURNK_SERVICE_RETAIN_PACKET_TURNS", "PLURNK_SERVICE_COLLECT_CONTENTS", "PLURNK_SERVICE_AUTO_VACUUM",
 ] as const) {
     test(`{§configuration-repair-path} ${key} preserves an explicitly configured model loop and inspection`, async (t) => {
+        serverProposals(t, "accept");
         const previous = process.env[key];
         process.env[key] = "invalid";
         t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
@@ -158,16 +163,7 @@ for (const key of [
         t.after(daemon.subscribeToEvents((_id, method, params) => {
             if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         }));
-        if (key === "PLURNK_SERVICE_ATTENDED") await assert.rejects(
-            daemon.runLoop({ workspaceId, workerId, prompt: "no implicit policy" }),
-            (cause: unknown) => {
-                const problem = Problems.fromError(cause);
-                assert.equal(problem?.status, 503);
-                assert.equal(problem?.key, key);
-                return true;
-            },
-        );
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration error.", policy: { proposals: "accept", attended: true } });
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration error." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.match(userText(provider.received[1]), /"family":\s*"env"/u);
@@ -175,6 +171,7 @@ for (const key of [
 }
 
 test("{§configuration-repair-path} retired packet configuration preserves startup and reports the failed demand before inference", async (t) => {
+    serverProposals(t, "accept");
     const key = "PLURNK_SERVICE_PROMPT_BUDGET";
     const previous = process.env[key];
     process.env[key] = "1024";
@@ -191,20 +188,21 @@ test("{§configuration-repair-path} retired packet configuration preserves start
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
     }));
-    const failed = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect.", policy: { proposals: "accept" } });
+    const failed = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === failed.loopId), { timeoutMs: 20_000 });
     const result = ended.find(({ loopId }) => loopId === failed.loopId)?.result;
     assert.equal(result?.status, 503);
     assert.equal(result?.problem?.key, key);
     assert.equal(provider.received.length, 0, "an invalid packet policy never reaches the provider");
     delete process.env[key];
-    const repaired = await daemon.runLoop({ workspaceId, workerId, prompt: "The setting is corrected.", policy: { proposals: "accept" } });
+    const repaired = await daemon.runLoop({ workspaceId, workerId, prompt: "The setting is corrected." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === repaired.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === repaired.loopId)?.result.status, 200);
     assert.equal(provider.received.length, 1);
 });
 
 test("{§configuration-repair-path} startup diagnostics reach the model and client once while ordinary operations still execute", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `startup-repair-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
@@ -224,7 +222,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         if (method === "notice/event") notices.push((params as { notice: Notice }).notice);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the environment and report the configuration problem.", policy: { proposals: "accept" } });
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the environment and report the configuration problem." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.equal(provider.received.length, 2);
@@ -246,6 +244,7 @@ for (const [family, key, value] of [
     ["skills", "PLURNK_SERVICE_ROOTS", "unknown"],
 ] as const) {
     test(`{§configuration-repair-path} ${key} leaves a model able to inspect the error and use another family`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
         const previous = process.env[key];
         const previousMcpEnabled = process.env.PLURNK_MCP_ENABLED;
         if (key === "PLURNK_MCP_GH_BEARER") process.env.PLURNK_MCP_ENABLED = "0";
@@ -284,7 +283,7 @@ for (const [family, key, value] of [
             if (method === "notice/event") notices.push((params as { notice: Notice }).notice);
         });
         t.after(unsubscribe);
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration problem, list the environment, and report.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration problem, list the environment, and report." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.equal(provider.received.length, 2, "a configuration error does not prevent inference or recovery");

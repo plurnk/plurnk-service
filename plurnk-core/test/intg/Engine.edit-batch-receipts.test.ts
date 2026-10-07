@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§edit-batch-receipt} {§edit-collision}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -63,6 +64,7 @@ const cases: readonly {
 ];
 
 for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async (t) => {
+    serverProposals(t, "accept");
     if (fixture.hashCollision) {
         // {§line-anchor-disambiguation}: ordinary repetitions now resolve;
         // force a residual truncated-hash collision at the derivation boundary.
@@ -105,7 +107,7 @@ editing
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "batch-receipt", projectRoot: root });
-                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
                     .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
@@ -128,7 +130,7 @@ replacement
 \`\`\`\``),
                 ];
                 pending.batch = statements.join("\n\n");
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200, "the model concludes after observing the individual failures");
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
                 const edits = rows.filter(({ op }) => op === "EDIT");

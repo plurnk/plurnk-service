@@ -36,7 +36,7 @@ RETURNING id, name, origin;
 -- {§application-worker-observation}: kind is minted lineage (fork boundary → fork, other child →
 -- work, root → conversation); loop observations feed the shared lifecycle selector in TS.
 -- PREP: envelope_get_worker_by_id
-SELECT id, name, workspace_id, created_at, origin,
+SELECT id, name, workspace_id, created_at, origin, owner,
        parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
@@ -47,7 +47,7 @@ FROM workers
 WHERE id = $id;
 
 -- PREP: envelope_get_worker_by_name
-SELECT id, name, workspace_id, created_at, origin,
+SELECT id, name, workspace_id, created_at, origin, owner,
        parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
@@ -58,7 +58,7 @@ FROM workers
 WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, origin, parent_worker_id AS parentWorkerId,
+SELECT id, name, created_at, origin, owner, parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'conversation' END AS kind,
@@ -136,8 +136,8 @@ LIMIT $limit;
 -- sequence is auto-computed: 1 + max(existing sequence in this worker) so
 -- multiple client connections attaching to the same worker get distinct loops.
 -- An administrative loop runs no model turns, so no turn ceiling governs it (-1).
-INSERT INTO loops (worker_id, sequence, status, prompt, policy, max_turns)
-VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', $policy, -1)
+INSERT INTO loops (worker_id, sequence, status, prompt, max_turns)
+VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', -1)
 RETURNING id, sequence;
 
 -- PREP: envelope_close_client_loop

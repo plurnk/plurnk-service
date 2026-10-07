@@ -6,7 +6,6 @@ import type { GitStatus } from "./git-state.ts";
 import WorkerName from "./WorkerName.ts";
 import { generatedPathname, renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
@@ -258,10 +257,7 @@ export default class PacketBuilder {
     }): Promise<RequestPacket> {
         // {§configuration-repair-path} — a retired packet knob refuses packet construction, never startup.
         PacketBuilder.assertConfiguration();
-        // {§loop-policy-effective-read} Validate active-loop policy before any
-        // packet assembly or provider spend, independently of its presentation.
-        await LoopPolicyReader.read(this.#db, loopId);
-        await CapabilityPolicies.layers(this.#db, workspaceId, loopId);
+        await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}

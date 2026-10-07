@@ -18,6 +18,7 @@ import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
+    owner: string | null;
     workerId: number;
     loopId: number | null;
     notificationScope: NotificationScope;
@@ -61,8 +62,10 @@ export interface Descendant {
 interface InterruptContinuation {
     readonly workspaceId: number;
     readonly gate: WorkerBinding;
-    readonly control: WorkerBinding;
+    readonly control: { readonly workerId: number; readonly loopId: number | null };
+    readonly owner: string;
     readonly threadId: string;
+    readonly inputRunId: string;
     readonly notificationScope: NotificationScope;
     readonly state: TranslatorContinuation;
 }
@@ -125,6 +128,10 @@ export default class Portal {
                 continue;
             }
             if (!Portal.#ownsNotification(thread, method, params)) continue;
+            if (method === "loop/packet" && thread.loopId === null) {
+                const loopId = (params as { loopId?: unknown }).loopId;
+                if (typeof loopId === "number") thread.loopId = loopId;
+            }
             if (method === "loop/terminated") {
                 const loopId = (params as { loopId?: unknown }).loopId;
                 if (typeof loopId !== "number") continue;
@@ -293,13 +300,6 @@ export default class Portal {
         this.#continuations.clear();
     }
 
-    #exactThreads(workspaceId: number, binding: WorkerBinding): Thread[] {
-        const workerThreads = [...(this.#threads.get(workspaceId) ?? [])]
-            .filter((thread) => thread.notificationScope !== "result" && thread.workerId === binding.workerId);
-        const loopThreads = workerThreads.filter((thread) => thread.loopId === binding.loopId);
-        return loopThreads.length > 0 ? loopThreads : workerThreads;
-    }
-
     #emitDelivery(
         workspaceId: number,
         delivery: HitlDelivery,
@@ -309,11 +309,6 @@ export default class Portal {
         for (const thread of threads) {
             const controlLoopId = thread.loopId
                 ?? (thread.workerId === delivery.workerId ? delivery.loopId : null);
-            if (controlLoopId === null) {
-                throw new Error(
-                    `worker ${thread.workerId} cannot control worker ${delivery.workerId} without an active loop`,
-                );
-            }
             // {§agui-gate-deferral} — the first gate waits on the open lifecycle; a later one stays durable
             // and re-surfaces after the first resolves.
             if (thread.router.reasoningOpen) {
@@ -323,11 +318,14 @@ export default class Portal {
             const paused = thread.router.interrupt();
             for (const interrupt of delivery.batch.interrupts) {
                 const key = interrupt.toolCallId ?? interrupt.id;
-                this.#continuations.set(key, {
+                const existing = this.#continuations.get(key);
+                if (existing === undefined || existing.inputRunId === thread.inputRunId) this.#continuations.set(key, {
                     workspaceId,
+                    owner: delivery.recipient,
                     gate: { workerId: delivery.workerId, loopId: delivery.loopId },
                     control: { workerId: thread.workerId, loopId: controlLoopId },
                     threadId: thread.threadId,
+                    inputRunId: thread.inputRunId,
                     notificationScope: thread.notificationScope,
                     state: paused.continuation,
                 });
@@ -357,32 +355,11 @@ export default class Portal {
     }
 
     #routeHitl(workspaceId: number, delivery: HitlDelivery): void {
-        const exact = this.#exactThreads(workspaceId, delivery);
-        if (exact.length > 0) {
-            this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, exact));
-            return;
-        }
-        this.#enqueueDelivery(workspaceId, async () => {
-            const workers = await this.#seam.listWorkers(workspaceId);
-            const byId = Portal.#workerMap(workers);
-            const ancestors = Portal.#ancestors(delivery.workerId, byId);
-            for (const ancestorId of ancestors) {
-                const threads = [...(this.#threads.get(workspaceId) ?? [])]
-                    .filter((thread) => thread.notificationScope === "conversation"
-                        && thread.workerId === ancestorId);
-                if (threads.length === 0) continue;
-                await Promise.all(threads.map(async (thread) => {
-                    if (thread.loopId === null) {
-                        thread.loopId = await this.#activeLoopId(workspaceId, thread.workerId);
-                    }
-                }));
-                this.#withHitl(
-                    delivery.batch,
-                    () => this.#emitDelivery(workspaceId, delivery, threads),
-                );
-                return;
-            }
-        });
+        const threads = [...(this.#threads.get(workspaceId) ?? [])]
+            .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope !== "result");
+        const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
+        const recipients = exact.length > 0 ? exact : threads.filter((thread) => thread.notificationScope === "conversation");
+        this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, recipients));
     }
 
     #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {
@@ -436,25 +413,10 @@ export default class Portal {
         return ancestors;
     }
 
-    async #controlledWorkerIds(workspaceId: number, workerId: number): Promise<ReadonlySet<number>> {
-        const byId = Portal.#workerMap(await this.#seam.listWorkers(workspaceId));
-        if (!byId.has(workerId)) throw new Error(`worker topology omits controlling worker ${workerId}`);
-        const controlled = new Set<number>();
-        for (const candidate of byId.keys()) {
-            if (candidate === workerId || Portal.#ancestors(candidate, byId).includes(workerId)) {
-                controlled.add(candidate);
-            }
-        }
-        return controlled;
-    }
-
-    async #activeLoopId(workspaceId: number, workerId: number): Promise<number> {
+    async #activeLoopId(workspaceId: number, workerId: number): Promise<number | null> {
         const active = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId }))
             .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
-        if (active === null) {
-            throw new Error(`controlling worker ${workerId} has no active loop`);
-        }
-        return active.id;
+        return active?.id ?? null;
     }
 
     interruptForToolCall(toolCallId: string): Interrupt | null {
@@ -468,11 +430,12 @@ export default class Portal {
     // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
-    openThread(args: { workspaceId: number; workerId: number; threadId: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)) ?? [];
         const restored = candidates.find((candidate) => candidate !== undefined
             && candidate.workspaceId === args.workspaceId
+            && candidate.owner === args.owner
             && candidate.threadId === args.threadId);
         const continuation = restored?.state;
         const router = new EventRouter({
@@ -483,6 +446,7 @@ export default class Portal {
             ...(continuation === undefined ? {} : { continuation }),
         });
         const t: Thread = {
+            owner: args.owner ?? null,
             workerId: restored?.control.workerId ?? args.workerId,
             loopId: restored?.control.loopId ?? null,
             notificationScope: restored?.notificationScope ?? args.notificationScope,
@@ -549,12 +513,10 @@ export default class Portal {
     }
 
     async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
-        const deliveries = await this.#hitl.resurface(workspaceId);
+        if (thread.owner === null) return false;
+        const deliveries = await this.#hitl.resurface(workspaceId, thread.owner);
         if (deliveries.length === 0) return false;
-        const workerIds = thread.notificationScope === "conversation"
-            ? await this.#controlledWorkerIds(workspaceId, thread.workerId)
-            : new Set([thread.workerId]);
-        const delivery = deliveries.find(({ workerId }) => workerIds.has(workerId));
+        const delivery = deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
         if (delivery === undefined) return false;
         if (thread.loopId === null) {
             thread.loopId = delivery.workerId === thread.workerId
@@ -584,12 +546,13 @@ export default class Portal {
     // stopped-world is re-presented first; otherwise an active Loop stays attached
     // and an idle conversation settles immediately. Returns true only while this
     // thread remains attached to independently-owned live work.
-    async synchronize(workspaceId: number, thread: unknown): Promise<boolean> {
+    async synchronize(workspaceId: number, thread: unknown, waitForWork = false): Promise<boolean> {
         const bound = thread as Thread;
         if (await this.#resurfaceControlled(workspaceId, bound)) return false;
         const loop = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
             .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
         if (loop === null) {
+            if (waitForWork) return true;
             this.finishThread(bound, []);
             return false;
         }
@@ -613,6 +576,7 @@ export default class Portal {
     // releasing every addressed interrupt.
     async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
         const bound = thread as Thread;
+        if (bound.owner === null) throw new Error("an observer cannot resolve interrupts");
         bound.resolvingInterrupts = true;
         const continuations = entries.map(({ interruptId }) => this.#continuations.get(interruptId));
         const persisted = continuations.filter(
@@ -625,6 +589,7 @@ export default class Portal {
         if (continuation !== undefined) {
             for (const candidate of persisted) {
                 if (candidate.workspaceId !== continuation.workspaceId
+                    || candidate.owner !== continuation.owner
                     || candidate.threadId !== continuation.threadId
                     || candidate.gate.workerId !== continuation.gate.workerId
                     || candidate.gate.loopId !== continuation.gate.loopId
@@ -634,9 +599,10 @@ export default class Portal {
                 }
             }
         }
-        await this.#hitl.resolve(workspaceId, entries, async (resolution) => {
+        await this.#hitl.resolve(workspaceId, bound.owner, entries, async (resolution) => {
             if (continuation !== undefined) {
                 if (continuation.workspaceId !== workspaceId
+                    || continuation.owner !== bound.owner
                     || continuation.threadId !== bound.threadId
                     || continuation.gate.workerId !== resolution.workerId
                     || continuation.gate.loopId !== resolution.loopId) {
@@ -647,29 +613,25 @@ export default class Portal {
                 bound.notificationScope = continuation.notificationScope;
             } else {
                 const exact = resolution.workerId === bound.workerId;
-                const controlled = exact
-                    ? true
-                    : bound.notificationScope === "conversation"
-                        && (await this.#controlledWorkerIds(workspaceId, bound.workerId))
-                            .has(resolution.workerId);
-                if (!controlled) {
-                    throw new Error(
-                        `worker ${bound.workerId} does not control pending worker ${resolution.workerId}`,
-                    );
-                }
                 bound.loopId = exact
                     ? resolution.loopId
                     : await this.#activeLoopId(workspaceId, bound.workerId);
             }
         });
+        bound.emit(entries.map((entry) => ({
+            type: EventType.TOOL_CALL_RESULT,
+            toolCallId: entry.interruptId,
+            messageId: `${entry.interruptId}/result`,
+            content: JSON.stringify({ status: entry.status, payload: entry.payload ?? null }),
+        })));
         // {§agui-proposal-resolve} A stale or expired answer owns its failure,
         // even when the previously interrupted loop has already terminated.
         bound.resolvingInterrupts = false;
-        if (bound.loopId === null) throw new Error("resolved interrupts did not bind a loop");
-        this.#bindLoop(bound, bound.loopId);
+        if (bound.loopId !== null) this.#bindLoop(bound, bound.loopId);
         for (const { interruptId } of entries) this.#continuations.delete(interruptId);
         if (this.#threads.get(workspaceId)?.has(bound)) {
-            await this.#resurfaceControlled(workspaceId, bound);
+            const surfaced = await this.#resurfaceControlled(workspaceId, bound);
+            if (!surfaced && bound.loopId === null) this.finishThread(bound, []);
         }
     }
 }

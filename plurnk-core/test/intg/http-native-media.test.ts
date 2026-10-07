@@ -23,7 +23,7 @@ const run = async (provider: Mock) => withDaemon(provider, async (db, _daemon, a
     const client = await connect(addr);
     try {
         await rpcCall(client, 1, "workspace.create", { name: "http-media" });
-        const result = await rpcCall(client, 2, "loop.run", { prompt: "Inspect HTTP media.", policy: { proposals: "accept" } });
+        const result = await rpcCall(client, 2, "loop.run", { prompt: "Inspect HTTP media." });
         const loopId = (result.result as { loopId: number }).loopId;
         await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20000 });
     } finally { client.close(); }

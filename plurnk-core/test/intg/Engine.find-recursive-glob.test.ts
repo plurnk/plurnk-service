@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // #449 — a body FIND over a large member tree survives a member whose content crashes
 // a mimetype handler (an unbalanced HTML template partial that walks Readability into a null).
 import test from "node:test";
@@ -14,7 +15,8 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("#449: a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", async () => {
+test("#449: a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-findglob-"));
     try {
         const env = hermeticGitEnv();
@@ -44,7 +46,7 @@ test("#449: a body FIND over ~2k members with a handler-crashing member answers 
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "findglob", projectRoot: root });
-                const outcome = await runLoopToTerminal(ws, 2, { prompt: "find", policy: { proposals: "accept" } });
+                const outcome = await runLoopToTerminal(ws, 2, { prompt: "find" });
                 assert.equal(outcome.result.status, 200);
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: outcome.modelWorkerId! });
                 const find = rows.find(({ op }) => op === "FIND");

@@ -14,12 +14,12 @@ BEGIN
     -- Loops: inherited history, never live work — a non-terminal status is clamped to 200 and
     -- given a plain success result ({§machine-processes-fork-copies-the-log}).
     INSERT INTO loops (
-        worker_id, sequence, status, prompt, policy, model_route_id,
+        worker_id, sequence, status, prompt, model_route_id,
         spawn_model_route_id, effort, max_turns, terminal_result
     )
     SELECT NEW.id, l.sequence,
            CASE WHEN l.status IN (200, 413, 429, 499, 500, 504, 508) THEN l.status ELSE 200 END,
-           l.prompt, l.policy, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns,
+           l.prompt, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns,
            CASE WHEN l.status IN (200, 413, 429, 499, 500, 504, 508) THEN l.terminal_result ELSE '{"status":200}' END
     FROM loops l
     WHERE l.worker_id = NEW.parent_worker_id

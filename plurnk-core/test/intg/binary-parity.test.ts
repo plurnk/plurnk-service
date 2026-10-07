@@ -45,7 +45,7 @@ working
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `binparity-${Date.now()}`, projectRoot: root });
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "relocate the binary", policy: { proposals: "accept" } });
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "relocate the binary" });
             const loopId = (run.result as { loopId: number }).loopId;
             await waitForDb(
                 () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
@@ -222,7 +222,7 @@ copied
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `binentry-${Date.now()}`, projectRoot: root });
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "round-trip the binary", policy: { proposals: "accept" } });
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "round-trip the binary" });
             const loopId = (run.result as { loopId: number }).loopId;
             await waitForDb(
                 () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
@@ -359,3 +359,6 @@ test("{§binary-parity} FIND searches a binary entry as its bytes, never its bas
         assert.equal(resourcePaths(needle).some((p) => p.includes("stash.png")), false, "the binary entry is never poisoned into a text match");
     } finally { await db.close(); }
 });
+
+// The specimen exercises results after server admission, not interactive approval.
+process.env.PLURNK_SERVICE_PROPOSALS = "accept";

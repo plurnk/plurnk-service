@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -32,10 +33,11 @@ test("{§functionality-state} schedule startup rejects malformed persisted enabl
 });
 
 test("{§schedule-residency} restart arms the coordinator's complete definitions and per-workspace enabledness", async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     const baseline = {
         rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY",
-        target: "worker://recipient", prompt: "Baseline.", policy: { proposals: "accept" },
+        target: "worker://recipient", prompt: "Baseline.",
     };
     const replacement = { rule: `${baseline.rule};COUNT=2`, target: "worker://alternate", prompt: "Workspace override." };
     const instances: Daemon[] = [];

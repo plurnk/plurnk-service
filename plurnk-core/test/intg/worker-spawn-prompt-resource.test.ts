@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§worker-spawn-prompt-resource} — WORK's slot is overloaded by scheme: a worker:// path names
 // the child; a path of any other scheme is read whole as the child's prompt, composed with the
 // body as BARE's combined form, and the child is auto-named.
@@ -31,7 +32,8 @@ const childPrompts = async (db: Db, parentWorkerId: number) => {
     return { child, prompts };
 };
 
-test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's prompt, and the child is auto-named", async () => {
+test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's prompt, and the child is auto-named", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = parentThenChild("Count the lines in every file.\n", "````WORK (brief.md)\n````");
@@ -39,7 +41,7 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-file", projectRoot: root });
-                const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+                const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
                 await flush();
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
@@ -55,7 +57,8 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank line, as BARE composes them", async () => {
+test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank line, as BARE composes them", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = parentThenChild("The brief.\n", "````WORK (brief.md)\nAlso report the total.\n````");
@@ -63,7 +66,7 @@ test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank li
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-combined", projectRoot: root });
-                const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+                const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
                 await flush();
                 const { prompts } = await childPrompts(db, modelWorkerId!);
@@ -73,7 +76,8 @@ test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank li
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§worker-spawn-prompt-resource}: a missing resource is the operation's failure and spawns nothing; a worker:// path keeps the address rules", async () => {
+test("{§worker-spawn-prompt-resource}: a missing resource is the operation's failure and spawns nothing; a worker:// path keeps the address rules", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
@@ -84,7 +88,7 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-missing", projectRoot: root });
-                const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20000 });
+                const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
                 await flush();
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });

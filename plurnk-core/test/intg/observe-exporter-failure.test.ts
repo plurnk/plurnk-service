@@ -52,7 +52,6 @@ const explosionProofLoop = async (): Promise<boolean> => {
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: "Prove exporter failure cannot change the product.",
-                policy: { proposals: "accept" },
             }, { timeoutMs: 60_000 });
             finalStatus = term.finalStatus;
             return Promise.resolve();

@@ -61,6 +61,40 @@ does not recompute them.
   lifecycle dialect. PLURNK owns the internal worker/loop/turn topology and projects it
   through standard events plus namespaced `plurnk.*` extensions.
 
+## §agui-worker-owner Approval ownership
+
+An owning conversation is `agui://anonymous/threads/<encoded threadId>`, scoped by
+workspace. It is not a socket, Run, or client bookkeeping worker. `RunAgentInput.tools`
+declares its supported client-tool names. Control attachment registers those capabilities
+and claims only runtime-owned work under {§worker-ownership}; observation does neither.
+Capabilities survive disconnection and a later declaration replaces them for future requests.
+
+| Request | Ownership effect |
+|---|---|
+| Prompt, interrupt resume, or client operation | Control attachment for this conversation and its administrative actor. |
+| Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
+| Passive synchronization / connection; other management reads | No claim and no capability replacement. |
+
+Approval delivery matches the recorded owner; interaction delivery matches its recorded
+recipient. No connected-ancestor fallback or topology-based authority exists. An owner may
+review an independently active child while its own worker is idle. Concurrent connections
+to one owner can see the same gate; Core settles it at most once. A matching worker's Run
+receives its own gate; only when none is connected does delivery use the owner's conversation
+Runs. Unrelated operation Runs do not receive it.
+Resurfacing a gate preserves its originating Run's continuation. Successful resume emits
+the standard `TOOL_CALL_RESULT` for each settled interrupt before continuing; this acknowledges
+the decision, not completion of the approved operation.
+Server approval policy belongs to Core, not message ingress.
+
+## §agui-owner-connection Persistent observation
+
+`POST /agui/connect` accepts the standard `RunAgentInput`, without messages, actions, or
+resumes. It uses the same snapshots, events, and interrupt representation as synchronization
+({§agui-conversation-sync}), but waits when the worker is idle. New work, including owner-addressed
+child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
+ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
+This is the transport implementation of the AG-UI `connect()` extension, not another event protocol.
+
 ## §agui-projection The projection
 
 One accepted Run or daemon notification produces zero-or-more AG-UI events:
@@ -319,14 +353,11 @@ interrupt carries its optional `message` and `responseSchema`. A resolved resume
 the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI
 never sees or reconstructs an upstream protocol's continuation state.
 
-§agui-proposal-disposition **AG-UI consumes disposition; it does not infer policy.** Both the live `loop/proposal` payload and `ApplicationPort.pendingProposals()` return the contracts-owned `ProposalProjection`. `disposition.owner` is the sole presentation branch:
-
-| Disposition owner | AG-UI behavior                                                                |
-| ----------------- | ----------------------------------------------------------------------------- |
-| `client`          | Emit/re-surface the proposal tool call and standard interrupt                 |
-| `loop`            | Emit no tool call; core applies the carried decision and the Run continues    |
-
-The complete loop policy, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
+§agui-proposal-disposition AG-UI consumes Core's `ProposalProjection` identically
+for live delivery and reconnect. A `review` disposition becomes a tool call and
+standard interrupt only for the matching owner. `accept` and `reject` remain
+Core's automatic settlements and never become client review work. Operation,
+attrs and stale-target facts remain evidence, not authority inputs.
 
 §agui-provider-policy-forwarding A textual Run forwards `selector` and
 `childSelector` from `forwardedProps.plurnk` unchanged to `ApplicationPort.runLoop`.
@@ -620,11 +651,11 @@ address is the daemon's.
 
 `POST /agui` accepts a schema-valid AG-UI `RunAgentInput`: the last textual
 `user` message becomes the
-`ApplicationPort.runLoop` prompt (`maxTurns` and the general loop `policy` from
-the forwarded PLURNK properties or module defaults); the response is `text/event-stream`,
+`ApplicationPort.runLoop` prompt (`maxTurns` from
+the forwarded PLURNK properties); the response is `text/event-stream`,
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
 is rejected until the model-loop seam supports it deliberately. Proposal
-disposition remains Core policy; the module forwards it without reinterpretation.
+disposition remains Core policy; this module routes review to the worker's owner.
 
 §agui-run-source The run's user message is the causal actor behind its inbound SEND
 ({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
@@ -687,6 +718,8 @@ reconstruct one from `RUN_ERROR`.
 | `interrupt-set-incomplete` | 409 | The resume does not address every pending interrupt for worker *id*. Recovery: Resolve every pending interrupt for this worker in one resume. |
 | `invalid-json` | 400 | The request body is not valid JSON. |
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
+| `loop-policy-retired` | 400 | Loop policy is retired; advertise client tools and let the worker's owner handle approvals. |
+| `control-invalid` | 400 | control must be a boolean. |
 | `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
 | `invalid-sync-input` | 400 | Conversation synchronization cannot include messages, an action, or an interrupt resume. |
 | `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |

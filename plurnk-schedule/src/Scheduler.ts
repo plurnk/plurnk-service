@@ -3,7 +3,7 @@
 // the source `schedule://<alias>`, joining the worker's live loop or starting one. Then the next
 // occurrence arms from now: a late fire delivers once and skips what it missed, never a backlog.
 // A delivery failure disarms the rule and holds its Problem for the outcome; `enable` retries.
-import { MAX_TIMER_MS, Problems, type LoopPolicyRequest, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { MAX_TIMER_MS, Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import { targetWorkerName, type ScheduleDefinition } from "./definition.ts";
@@ -22,7 +22,6 @@ export interface DeliveryPort {
         readonly workerId: number;
         readonly prompt: string;
         readonly source: string;
-        readonly policy?: LoopPolicyRequest;
     }): Promise<unknown>;
 }
 
@@ -260,7 +259,6 @@ export default class Scheduler {
             workerId: worker.id,
             prompt: rule.definition.prompt,
             source: `schedule://${encodeURIComponent(rule.alias)}`,
-            ...(rule.definition.policy === undefined ? {} : { policy: rule.definition.policy }),
         });
     }
 }

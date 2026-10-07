@@ -105,8 +105,8 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **BARE inference**           | One isolated child-provider model call whose response becomes an ordinary BARE log result. It has no worker, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
 | **cycle**                    | Repeated operational inputs and observed results under {§engine-cycle-evidence}. |
 | **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service and workspace layers compose without granting authority. |
-| **loop policy**              | One immutable `review`, `accept`, or `reject` proposal disposition. |
-| **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
+| **approval owner**           | One durable, workspace-scoped recipient for a worker's approval requests ({§worker-ownership}). |
+| **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition selects owner review or automatic settlement ({§proposal-disposition}). |
 | **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§agui-proposal-resolve}). |
 
 ### §packet-terms Packet terms
@@ -258,6 +258,52 @@ launchers consume the same contract by reading the line themselves.
 
 ## §actor-boundary Workers and workspace boundaries
 
+### §worker-ownership Approval ownership
+
+Every worker has one workspace-scoped approval owner. Ownership is independent of
+origin, parentage, messages and connection presence. It controls approval routing,
+not access to workspace resources ({§actor-boundary-no-mutex}).
+
+| Event | Ownership |
+| --- | --- |
+| Root creation | Explicit owner, otherwise the runtime `_plurnk`. |
+| WORK, FORK, or a fresh child | Inherit the parent's owner. |
+| SEND, schedule occurrence, or other incoming message | Preserve the recipient's owner. |
+| Explicit client control attachment | Claim a runtime-owned conversation and its runtime-owned descendants; never claim the runtime actor or replace another owner. |
+| Observation or disconnect | No change. |
+
+An owner declares the client tool names it implements. The declaration remains
+durable while it is disconnected. A proposal requiring review waits for
+that owner; unsupported review fails at the request boundary. `_plurnk` implements
+no client tools. Server approval policy may settle a proposal automatically; it
+cannot fabricate an interaction answer. Kernel maintenance remains kernel work
+({§actor-boundary-self-hosting}).
+
+§worker-owner-creation Ownership, inheritance, and runtime-owner creation are
+database invariants. A newly created worker cannot be left without an owner;
+an unknown explicit owner is an error. Existing workers migrate to runtime ownership
+without deriving approval authority from their message history. Control attachment
+can claim them through the same path as any other runtime-owned conversation.
+
+§worker-owner-resolution A proposal names its worker's owner and one disposition:
+`review`, `accept`, or `reject`. Review routes to that owner, not to the sender,
+the current observer, or whichever ancestor has a live Run. A decision is accepted
+only for that owner and the still-pending gate. Disconnect does not substitute a
+different owner. Capability admission remains independent and precedes approval.
+
+§client-interaction-routing Clarification is not approval. A protocol adapter may
+register a reply route for the conversations it serves (for example, A2A
+`input-required`). Matching routes must identify one distinct recipient; conflicting
+recipients are an error. With no matching route, the worker's owner receives it if
+its declared tools support the request. No
+matching recipient means an immediate unsupported-interaction result, not a park.
+The pending interaction records that recipient and accepts a response only from
+it, through the ordinary response-schema validation and settlement path. Protocol
+routes confer no proposal authority and never alter worker ownership. Adapter
+lifetime, not an individual connection's presence, governs a protocol route.
+
+### Worker boundaries
+
 ```mermaid
 flowchart LR
     child["Child worker"] -->|"durable activity<br/>environment door"| parent["Direct parent log"]
@@ -283,7 +329,8 @@ Functionality ({§module-workspace-capabilities}); runtimes, runtime
 schemes, and tools resolve by `workspaceId`. Operations journal in the
 submitting actor's `workerId` ({§connection-lifecycle}), which must belong to
 the workspace. Runtime and policy resolution require no second worker identity.
-Attachment remains many-to-one, non-owning, and unrelated to parentage.
+Attachment remains many-to-one and unrelated to parentage. Explicit control
+attachment may claim approval ownership under {§worker-ownership}.
 
 §actor-boundary-two-doors **Cross-worker arrival is limited to two doors.**
 An explicit READ is not an arrival: the reading worker deliberately addresses a
@@ -552,7 +599,6 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   own work is a fresh loop, so an inherited mid-flight loop never makes the
   branch look forever-live to the {§send-premature-terminate} gate.
 - §worker-scheme-fork-scratch **Forked scratch.** Named scratch and evidence are copied under the new name through {§machine-processes-entry-inheritance}. Parent and branch can edit either scratch namespace; their copies diverge independently.
-- §worker-delegation-inherits-policy **Fresh delegated loops inherit the sender's policy.** WORK, FORK, and SEND to an idle Worker carry the sender's complete loop policy, disposition and attendance alike. SEND into an active or parked loop leaves its immutable policy untouched. All workers share live workspace capability policy; delegation creates no capability snapshot or bound.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
 - §worker-scheme-collect **Collect** — each concluded child loop reaches its direct
@@ -1200,9 +1246,9 @@ retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
 WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact — **unless the run is unattended
-({§loop-attendance}), in which case the loop concludes on the provider's exact failure
-instead, because parking stops the execution clock and no wake would ever arrive.** Only a client cancel, the execution allowance
+next prompt or wake with its log intact — **unless the worker has no review-capable
+owner ({§worker-ownership}); then the loop concludes on the provider's exact failure
+because that park has no reviewer to wake it.** Only a client cancel, the execution allowance
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
@@ -3392,10 +3438,10 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | `target`              | canonical `{ scheme, authority, pathname }` from `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target |
 | `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
 | `attrs`               | proposed log row `attrs` object                                                                                    |
-| `policy`              | validated complete persisted loop policy                                                                           |
+| `owner`               | the worker's durable workspace-scoped approval owner ({§worker-ownership}) |
 | `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
 
-Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, loop policy, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
+Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, owner registration, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
 
 ### §client-interactions Client-owned interaction lifecycle
 
@@ -3404,7 +3450,8 @@ A scheme or executor may pause its current operation on one
 pending-only `client_interactions` row bound to one exact
 workspace/worker/loop/turn ownership chain, then publishes the same validated
 `ClientInteractionProjection` through `loop/interaction` and reconnect
-discovery. The projection contains no workspace id or private upstream
+discovery. The projection names its recipient ({§client-interaction-routing}) but
+contains no workspace id or private upstream
 continuation state; those remain respectively in the event envelope and the
 awaiting operation owner.
 
@@ -3422,112 +3469,52 @@ composes it with the existing owner signal before registering the same waiter.
 Reconnect discovery intersects durable rows with live waiters; restart
 removes ownerless rows without fabricating cancellation, payload, or replay.
 
-### Loop disposition and client YOLO
+### Server disposition and client YOLO
 
-Side-effecting operations propose ({§exec}) and pause dispatch at 202 for an
-authority decision ({§engine-rails}, {§methods}). Automatic acceptance has two
-distinct owners:
+| Mechanism | Authority path |
+| --- | --- |
+| Server disposition | `PLURNK_SERVICE_PROPOSALS` selects review, accept, or reject. Core settles automatic decisions through the normal proposal lifecycle. |
+| Client-side YOLO | The owning client accepts review requests through the same resolution path as human review. It cannot override server rejection or capability admission. |
 
-| Mechanism                                            | Authority path                                                                                                                                    | Intended use                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| §proposal-ownership-loop-auto **Loop disposition**   | `runLoop({ policy: { proposals: "accept" } })` persists a loop-owned disposition; core resolves proposals in process without a client.           | Headless automation, benchmarks, CI, fixtures, and unattended use. |
-| **Client-side YOLO** (`--yolo` / `PLURNK_YOLO`)      | A `proposals: "review"` loop emits the ordinary `loop/proposal`; the client returns an accepted proposal through its standard resolution path.  | Interactive automatic review.                                      |
-
-Core cannot distinguish client-side YOLO from a fast human acceptance and does
-not need to. Loop auto keeps authority inside the loop; client-side YOLO acts
-only after authority crosses the client boundary.
-
-§proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements policy from operation or attrs.
+§proposal-ownership-notification The notification carries the selected
+`ProposalDisposition`, not policy inputs. Clients present only `decision: "review"`
+addressed to their owner identity; they never reconstruct authority from the
+operation, message sender, or attrs.
 
 ### §proposal-disposition Settlement authority and precedence
 
-§loop-attendance **A loop says whether anyone is attending, and a wait nobody could end is
-never taken.** `LoopPolicy.attended` is the whole of it: `true` says an interactive partner is
-present, `false` declares an unattended loop. It is one field of the loop's complete policy, so
-its creator states it or leaves it to the panel ({§loop-policy-composition}); the client's
-`--auto` is exactly the statement `attended: false`. A fresh delegated loop inherits it with the
-rest of the policy ({§worker-delegation-inherits-policy}), so a child of a headless run is
-headless too.
+| First applicable condition | Disposition |
+| --- | --- |
+| Runtime bookkeeping | reject, `runtime_bookkeeping` |
+| Server `accept` | accept |
+| Server `reject` | reject, `policy_veto` |
+| Server `review`, owner implements `request_approval` | review |
+| Server `review`, owner has no reviewer | reject, `no_review_channel` |
 
-Unattended, three things follow and nothing else does:
+Core selects the disposition once for the pending gate. Its live event and
+reconnect projection use that same decision. Automatic settlement precedes
+observational notification; an observer failure cannot change authority or orphan
+a waiter. Invalid configuration is diagnosed at the proposal boundary without
+substituting authority ({§configuration-repair-path}). Client-authored
+administrative operations retain their client's owner.
 
-- **A proposal is never held for review.** `{ proposals: "review", attended: false }` is not a
-  `LoopPolicy`: the schema refuses the pair, so no loop can persist it. The panel cannot produce
-  it, because attendance picks which disposition knob answers. Only a creator's own statement
-  can ask for it, and that is refused **400 `loop-policy-invalid`** naming the way out.
-- **No interactive partner is offered.** `ClientInteractions.request` refuses **501
-  `loop-unattended`** instead of writing the request down and waiting. Every wiring funnels
-  through that one request — the `question` runtime ({§question-tool}), the execution input
-  bridge, the scheme interaction caps, and MCP elicitation — so one refusal covers them all. The
-  `question` runtime's effect is `read`, so it is never proposal-gated and a disposition does
-  nothing for it. The refusal is the asking executor's **own result**, never a thrown contract
-  violation: the model has to read why it cannot ask.
+§runtime-bookkeeping-policy Runtime bookkeeping cannot acquire new authority.
+Generated reference publication and audit narration have no reviewer and do not
+depend on interactive defaults. An unexpected bookkeeping proposal rejects through
+the ordinary lifecycle, even if the server would accept other operations.
 
-  Dispatch refuses it first, at the **loop ring** of the capability cascade: an unattended loop's
-  own layer denies the `interact` access class ({§worker-tool-admission}), and that 403 names the
-  ring, the reason and the recovery — a subtracted tool must say why it is gone and what to do
-  instead. Every other ring is operator configuration and speaks for itself; the loop ring is the
-  one the model can act on. The 501 at the interaction itself is the backstop for the paths that
-  do not cross dispatch (MCP elicitation raised inside a tool call, the execution-input bridge).
-  The ring reaches dispatch but not the reserved tree's listing, which is one artifact per
-  workspace: an unattended model still sees the question document and learns at dispatch that it
-  is refused (#770).
-- **A provider-recovery park becomes a conclusion** ({§provider-recovery}), carrying the
-  provider's own exact Problem. Never a substituted "the model gave up".
+A park requires a live obligation or a review-capable owner. Connection presence
+does not determine capability. Ordinary WAIT on streams or delegated work is
+unchanged; a provider-recovery park without a reviewer concludes on the provider
+failure ({§provider-recovery}).
 
-**A park is a promise that something will restart it.** `LoopLifecycle.park` takes the waker
-by name; `null` says nothing will. Parking an unattended loop with no waker is a contract
-violation and throws, so a park site added later fails loudly on its first unattended run
-instead of idling until some caller's clock notices. It is a tripwire, not a fallback: the
-provider-recovery path concludes before reaching it.
+The following tags describe columns in frozen released migrations only; neither
+is a current approval mechanism.
 
-Attendance never converts a legitimate wait that has a real waker — a `WAIT`, an open stream,
-a delegated child — into a termination. Those have wakers; a human question
-does not. A prompt prefix states a disposition, never an attendance: typing `?` asks for review,
-and an unattended loop refuses that statement rather than conjuring a reviewer.
-
-§loop-policy-composition **A loop's policy is what its creator stated over what the panel
-says.** A creator — a client's `loop.run`, a schedule definition, a transport module — states
-any part of a policy as a `LoopPolicyRequest`, or nothing. The request stays exactly as stated
-until a fresh loop is persisted: an omitted field is no opinion, so a fold compares only what
-was said ({§methods-loop-run-fold-consistency}). `LoopPolicies.compose` then makes it whole,
-once. `PLURNK_SERVICE_ATTENDED` answers an unstated attendance, and the attendance picks which
-knob answers an unstated disposition: `PLURNK_SERVICE_PROPOSALS` for an attended loop,
-`PLURNK_SERVICE_UNATTENDED_PROPOSALS` for an unattended one, whose vocabulary has no `review`.
-Every valid panel state is therefore lawful; an invalid knob is diagnosed at startup
-and refuses a loop that needs it ({§configuration-repair-path}). No code,
-schema or column holds a default ({§operator-config-only-home}): `loops.policy` and
-`loops.max_turns` carry none, so every insert states both. Client-authored administrative
-loops use the same composition.
-
-§runtime-bookkeeping-policy **Runtime bookkeeping has no reviewer and cannot acquire
-new authority.** Its administrative loops explicitly state
-`{ attended: false, proposals: "reject" }`; this is a runtime invariant, not an
-interactive default. Generated reference publication and audit narration therefore
-do not depend on client policy configuration. Runtime-authored proposals do not
-use effect-policy auto-admission; bookkeeping proposals settle as failures through
-the ordinary proposal lifecycle, never wait for a client or auto-accept.
-
-§loop-policy-effective-read `loops.policy` persists one complete immutable
-`LoopPolicy`; every runtime policy read validates that snapshot before use.
-Missing rows or invalid values fail with the owning loop coordinate and cause.
-Raw archival copies and forensic rendering do not interpret policy.
-
-The cascade's rings are `service`, `workspace` and, innermost, `loop`. The loop ring exists only
-for an unattended run and is purely subtractive like every other layer, so it can never widen what
-its workspace allows; a capability denial names the ring that refused. The operator's capability
-projection and the shared reserved-document materialization take no loop coordinate on purpose:
-those questions are about a workspace, not about one run.
-
-`ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The persisted loop policy determines it exactly:
-
-| `policy.proposals` | Disposition                              |
-| ------------------ | ---------------------------------------- |
-| `review`           | client                                   |
-| `accept`           | loop accept                              |
-| `reject`           | loop reject, outcome `no_review_channel` |
-
-Capability admission precedes this decision, so proposal disposition cannot grant a denied capability. Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
+| Historical tag | Current replacement |
+| --- | --- |
+| §loop-policy-composition The released loop-policy column required complete insert values. | Removed by the worker-owner migration; {§worker-owner-creation}. |
+| §loop-policy-effective-read The released loop-policy column held an immutable snapshot. | Removed by the worker-owner migration; {§worker-owner-resolution}. |
 
 ---
 
@@ -3871,7 +3858,7 @@ names the offending variable or file/entry and retains its cause.
 
 | Owner | Offline validation |
 |---|---|
-| Core | Model selection, file-creation/effect/loop policy, members definitions and controls, skill-fetch settings and root selection |
+| Core | Model selection, file-creation/effect/approval policy, members definitions and controls, skill-fetch settings and root selection |
 | MCP | Whole definitions from the environment and selected files (cwd is the project for this check), future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
 | A2A | Whole outbound definitions and controls, timeout/diagnostic bounds, configured inbound exposure |
 | Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
@@ -3907,7 +3894,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_MAX_TURNS` | Operator model-call **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The durable worker-tree budget includes descendant calls, BARE, and park/resume under {§turn-cap-counts-the-tree}; non-model chronology consumes none. |
 | `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap — every compiled op dispatches. Each resolved target statement counts once, whether authored separately or in a group ({§target-group}). Overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Lifecycle operations remain exempt ({§operator-config-workspace-max-commands-floor}). Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | Positive ms of cumulative active execution per loop ({§loop-execution-allowance}); excludes parked/queued time. Snapshotted on first execution, retained across wakes. Exhaustion aborts in-flight work and terminates `504 loop_timeout`, including a stuck provider call. |
-| `PLURNK_SERVICE_PROVIDER_RECOVERY` | ms of recovery after the first recoverable provider failure; `0` disables reissue. Expiry parks attended loops, concludes unattended loops, or returns BARE's failure under {§provider-recovery}. |
+| `PLURNK_SERVICE_PROVIDER_RECOVERY` | ms of recovery after the first recoverable provider failure; `0` disables reissue. Expiry parks workers with a reviewer, otherwise concludes their loop, or returns BARE's failure under {§provider-recovery}. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` | First recovery delay (ms); doubles per failure up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX` ({§provider-recovery}). |
 | `PLURNK_SERVICE_MAX_STRIKES` | Consecutive turn-contract strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS` | Completed provider responses allowed beneath one engine turn before frame admission is exhausted. Bounded interior operation errors are admitted without spending this budget. Exhaustion contributes one frame-contract strike under {§invalid-emission-attempts}. |
@@ -4335,7 +4322,7 @@ composition boundaries, not arbitrary exceptions:
 | Optional startup integration (hooks, hosted A2A, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
 | Invalid default model or child selector | Retain its diagnostic at startup; keep client inspection and explicit selection available. A request relying on the invalid selector fails with `daemon:configuration/configuration-invalid` (503), naming its key. Never substitute another model or silently inherit a child model. |
 | Model construction or endpoint verification fails | Reject selection/use before inference or committing the selection. Keep the client available; a later selection can retry or choose another route. |
-| Invalid effect, file-creation, or loop-default policy | Retain the startup diagnostic. Reject the affected operation or unresolved loop policy as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations and explicitly supplied valid loop policies remain usable. |
+| Invalid effect, file-creation, or server approval policy | Retain the startup diagnostic. Reject the affected operation as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations remain usable. |
 | Invalid retention configuration | Withhold collection and automatic storage conversion, including shutdown collection. Preserve stored evidence and expose the diagnostic; do not substitute a deletion policy. |
 | Invalid packet configuration or retired capacity knobs | Retain the startup diagnostic and keep client inspection available. Reject affected packet construction before inference with `daemon:configuration/configuration-invalid` (503). Never guess a capacity or projection setting. |
 | Invalid executor construction/probe configuration | Keep the installed declaration and its diagnostic, but no executable instance or output scheme. Other executors and ordinary READ/EDIT remain usable. Invoking the unavailable tag returns its exact 503 configuration Problem. |
@@ -4588,10 +4575,10 @@ Core's behavior behind them.
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
-| §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
+| §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
-| §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, policy?, openPaths?, selector?, childSelector? })` | Validates a model worker and complete loop policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Validates the recorded recipient before delivering one resolved payload or cancellation. Unknown, mismatched, and already-resolved identities fail before affecting an operation. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority; the retired `policy` field fails. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, statement, perspectiveWorkerId? })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
@@ -4603,7 +4590,11 @@ Core's behavior behind them.
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
-| §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name? })` | Creates a distinct model-origin root worker with empty history: a fresh conversation over the same world, not a fork or the stable default. |
+| §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
+| Worker ownership | `registerWorkerOwner(workspaceId, { address, tools })` | Declares or replaces an owner's supported client-tool names in that workspace; `_plurnk` is reserved. |
+| Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
+| Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
+| Clarification routing | `registerClientInteractionRoute(route) -> unsubscribe` | Registers an adapter-lifetime reply route under {§client-interaction-routing}; it confers no approval authority. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
@@ -4623,7 +4614,6 @@ already durable on the loop remains authoritative:
 |-----------------------|------------------------------------------------------|--------------------------------|--------------------------------------|
 | Provider/model        | The resolved request selection must still agree.     | Fold.                          | 409 provider conflict.               |
 | `maxTurns`            | Keep the durable ceiling.                            | Fold.                          | 409 turn-ceiling conflict.           |
-| `policy` request      | Keep the complete durable loop policy.               | Fold.                          | 409 policy conflict.                 |
 
 The conflict names both selections and directs the caller to cancel or conclude
 the loop before changing configuration. A newly enqueued loop instead persists
@@ -6097,7 +6087,7 @@ the sentence.
 | `offset-channel-required` | 400 | Recovery: Select the channel to read from the offset. |
 | `target-invalid` | 400 | Recovery: Use a scheme://path target. |
 | `proposal-not-pending` | 409 | Recovery: Refresh pending proposals before resolving one. |
-| `loop-policy-invalid` | 400 | An unattended loop cannot hold a proposal for review: nobody is present to answer. Recovery: State proposals accept or reject, or attend the loop. |
+| `loop-policy-retired` | 400 | Approval authority belongs to the worker's owner, not a submitted message. |
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
 | `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Write `<1,-1>` to trim every line of the body; `KILL (log:///…/READ)` with no scope retires the item. |
 
@@ -6109,7 +6099,7 @@ the sentence.
 | Completion deferred. Conclude with KILL alone. | a concluding KILL that carries other operations ({§kill-conclusion}) |
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
 | Context window overflow: the packet cannot fit the model's window even as receipts. | the wall ({§context-wall}) |
-| This run is unattended: nobody is present to answer. | a capability that needs a present operator in an unattended loop ({§loop-attendance}) |
+| No recipient implements the requested interaction. | No protocol recipient or worker owner advertises the required client tool ({§client-interaction-routing}). |
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | The stream was cancelled by KILL. | a stream terminal after KILL |

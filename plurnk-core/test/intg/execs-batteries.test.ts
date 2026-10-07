@@ -11,6 +11,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,6 +63,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const declaredMimetype = entry.executor.channels[channel]?.mimetype;
         const workspaceId = await insertWorkspace(db, `batt-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "batteries");
         const turnId = await insertTurn(db, loopId, 1, 102);
 

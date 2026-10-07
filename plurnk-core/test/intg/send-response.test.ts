@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§send-response-receipt} — a delivered reply names the open messages it answered.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +14,8 @@ const MISFENCED = [
     "````\nWAIT\nResearch positioning.\n````",
 ].join("\n\n");
 
-test("{§balanced-fences}: a complete nested reply reaches the client without executing its examples", async () => {
+test("{§balanced-fences}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const body = [
         "The syntax and command are examples:",
         "```text", "````OP (path)? <scope>?", "body", "````", "```",
@@ -29,7 +31,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-nested-fences" });
-            const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples.", policy: { proposals: "accept" } });
+            const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples." });
             assert.equal(finalStatus, 200);
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
@@ -44,7 +46,8 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§forgotten-tag}: operations on the line after a bare fence run; a bare executor name stays quoted text", async () => {
+test("{§forgotten-tag}: operations on the line after a bare fence run; a bare executor name stays quoted text", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
         makeMockResponse("````KILL\nthe answer\n````", 10),
@@ -53,7 +56,7 @@ test("{§forgotten-tag}: operations on the line after a bare fence run; a bare e
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
+            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
             assert.equal(finalStatus, 200, "the second turn concludes");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
@@ -71,7 +74,8 @@ test("{§forgotten-tag}: operations on the line after a bare fence run; a bare e
     });
 });
 
-test("{§send-body}: messages that start with operation names remain literal replies", async () => {
+test("{§send-body}: messages that start with operation names remain literal replies", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
         makeMockResponse("````KILL\n````", 10),
@@ -80,7 +84,7 @@ test("{§send-body}: messages that start with operation names remain literal rep
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-prose" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "explain", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "explain" });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
@@ -91,7 +95,8 @@ test("{§send-body}: messages that start with operation names remain literal rep
     });
 });
 
-test("{§send-response-receipt}: a delivered reply names the open messages it answered", async () => {
+test("{§send-response-receipt}: a delivered reply names the open messages it answered", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````KILL\nthe answer\n````", 10),
     ] });
@@ -99,7 +104,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-receipt" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "answer me", policy: { proposals: "accept" } });
+            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -119,7 +124,8 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
     });
 });
 
-test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async () => {
+test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`KILL\n\`\`\`\``, 10),
@@ -129,10 +135,10 @@ test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-preview" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Send the report.", policy: { proposals: "accept" } });
+            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Send the report." });
             assert.equal(finalStatus, 200);
             assert.equal(await lastReply(db, loopId), body, "the client receives every line");
-            const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", workerId: modelWorkerId, policy: { proposals: "accept" } });
+            const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", workerId: modelWorkerId });
             assert.equal(next.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
             const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && String(row.logPath).endsWith("/SEND"));

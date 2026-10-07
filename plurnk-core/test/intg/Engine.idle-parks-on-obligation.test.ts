@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§send-idle-turn} {§worker-optimistic-settlement}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +9,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§send-idle-turn} NOTE-only turns continue with or without a stream; only waiting parks", async () => {
+test("{§send-idle-turn} NOTE-only turns continue with or without a stream; only waiting parks", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-idle-park-"));
     const releasePath = join(releaseDir, "release");
     const priorWait = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -32,7 +34,7 @@ started
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "idle-park" });
-                const running = runLoopToTerminal(ws, 2, { prompt: "run and wait", policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
+                const running = runLoopToTerminal(ws, 2, { prompt: "run and wait" }, { timeoutMs: 20_000 });
                 let taskStatuses: number[];
                 try {
                     // The park lands the loop's status before the WAIT row's receipt is durable, so
@@ -53,7 +55,7 @@ started
                 assert.equal(parked.result.status, 200, "the loop concludes after the parked turn wakes on the stream's end");
                 const errBefore = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: parked.modelWorkerId! });
                 assert.deepEqual(errBefore, [], "valid inventory-only work and waiting produced no errors");
-                const idle = await runLoopToTerminal(ws, 3, { prompt: "sit", policy: { proposals: "accept" } });
+                const idle = await runLoopToTerminal(ws, 3, { prompt: "sit" });
                 assert.equal(idle.result.status, 200);
                 const errAfter = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: idle.modelWorkerId! });
                 assert.deepEqual(errAfter, [], "inventory-only work is also valid without a stream");

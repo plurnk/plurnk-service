@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { serverProposals } from "./_approval.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ import { makeRawMockResponse } from "./_mock.ts";
 
 for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"] as const) {
     test(`{§executor-js-spelling}: the daemon routes ${width}-backtick js through node with ${admission} admission`, async (t) => {
+        serverProposals(t, admission === "reject" ? "reject" : "accept");
         const directory = await mkdtemp(join(tmpdir(), "plurnk-js-spelling-"));
         t.after(() => rm(directory, { recursive: true, force: true }));
         const witness = join(directory, "executed.txt");
@@ -45,7 +47,6 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 }
                 const { finalStatus, turnIds } = await runLoopToTerminal(client, 2, {
                     prompt: "Run the JavaScript and observe the result.",
-                    policy: { proposals: admission === "reject" ? "reject" : "accept" },
                 });
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3);

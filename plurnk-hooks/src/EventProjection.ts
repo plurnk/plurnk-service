@@ -53,7 +53,7 @@ export default class EventProjection {
             }
             case "loop/proposal": {
                 const event = params as ProposalProjection;
-                if (event.disposition.owner !== "client") return null;
+                if (event.disposition.decision !== "review") return null;
                 return { hook_event_name: "PermissionRequest", ...shared, tool_name: event.op,
                     tool_input: { target: event.target, body: event.body, attrs: event.attrs } };
             }

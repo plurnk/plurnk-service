@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§turn-cap-counts-the-tree} — the ceiling is the worker tree's budget of model calls: BARE
 // calls and a child's turns spend it, and a batch stops opening calls at the ceiling.
 import test from "node:test";
@@ -30,12 +31,13 @@ const declaredProvider = (name: string, model: string): ProviderAlias => {
 
 const modelUnderRuntime = async (db: Db, workspaceId: number): Promise<number> => {
     const runtimeId = await RuntimeWorker.ensure(db, workspaceId);
-    const bookkeeping = await AdministrativeLoop.open(db, runtimeId, "runtime");
+    const bookkeeping = await AdministrativeLoop.open(db, runtimeId);
     await Envelope.closeClientLoop(db, bookkeeping.id, { status: 200 });
     return insertWorker(db, workspaceId, runtimeId, "model-tree", "model");
 };
 
-test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared child/grandchild ceiling", async () => {
+test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared child/grandchild ceiling", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32_768, responses: [
         makeMockResponse("````WORK (worker://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
         makeMockResponse("````WORK (worker://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
@@ -50,7 +52,7 @@ test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared
             const { id: workspaceId } = created.result as { id: number };
             const workerId = await modelUnderRuntime(db, workspaceId);
             const result = await runLoopToTerminal(ws, 2, {
-                workerId, prompt: "delegate twice", maxTurns: 4, policy: { proposals: "accept" },
+                workerId, prompt: "delegate twice", maxTurns: 4,
             }, { timeoutMs: 20_000 });
             assert.equal(result.finalStatus, 429);
             assert.equal(result.hitMaxTurns, true);
@@ -70,7 +72,8 @@ test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared
     });
 });
 
-test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects the model tree's cap", async () => {
+test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects the model tree's cap", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const childSpec = declaredProvider("runtime-bare", "runtime-bare-model");
     const parent = new Mock({ contextWindow: 32_768, responses: [
         makeMockResponse("````BARE\nOne allowed answer.\n````\n\n````BARE\nNo room for another answer.\n````\n\n````NOTE\nReview the results.\n````"),
@@ -89,7 +92,7 @@ test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects 
             const workerId = await modelUnderRuntime(db, workspaceId);
             const result = await runLoopToTerminal(ws, 2, {
                 workerId, prompt: "answer twice", childSelector: childSpec.alias,
-                maxTurns: 2, policy: { proposals: "accept" },
+                maxTurns: 2,
             });
             assert.equal(result.finalStatus, 429);
             assert.equal(result.hitMaxTurns, true);
@@ -101,7 +104,8 @@ test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects 
     });
 });
 
-test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a batch is refused past the ceiling", async () => {
+test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a batch is refused past the ceiling", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const parentSpec = declaredProvider("tree-cap-parent", "tree-cap-parent-model");
     const childSpec = declaredProvider("tree-cap-child", "tree-cap-child-model");
     const parent = new Mock({ contextWindow: 16_384, responses: [
@@ -125,7 +129,7 @@ test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a ba
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
                 maxTurns: 3,
-                policy: { proposals: "accept" },
+
             }, { timeoutMs: 20_000 });
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.finalStatus, 429, "the tree's ceiling ends the loop at 429 {§loop-terminals}");
@@ -143,7 +147,8 @@ test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a ba
     });
 });
 
-test("{§turn-cap-counts-the-tree}: a child's turns spend the parent's budget", async () => {
+test("{§turn-cap-counts-the-tree}: a child's turns spend the parent's budget", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16_384, responses: [
         makeMockResponse("````WORK (worker://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
         makeMockResponse("````NOTE\nchild working\n````", 10),
@@ -155,7 +160,7 @@ test("{§turn-cap-counts-the-tree}: a child's turns spend the parent's budget", 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `tree-cap-child-${crypto.randomUUID()}` });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "delegate", maxTurns: 4, policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "delegate", maxTurns: 4 }, { timeoutMs: 20_000 });
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.finalStatus, 429);
             const problem = (result.result as { problem?: { treeModelCalls?: number; maximumTurns?: number } }).problem;

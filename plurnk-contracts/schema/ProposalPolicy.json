@@ -1,0 +1,7 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ProposalPolicy.json",
+    "title": "ProposalPolicy",
+    "description": "Server disposition for proposals. Review requires the worker's owner; accept and reject settle within core.",
+    "enum": ["review", "accept", "reject"]
+}

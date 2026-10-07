@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Problems } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
-import LoopPolicyReader from "../../src/core/LoopPolicyReader.ts";
+import WorkerOwners from "../../src/core/WorkerOwners.ts";
+import ProposalPolicies from "../../src/core/ProposalPolicies.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import DispatchAsPlurnk from "../../src/server/dispatch-as-plurnk.ts";
@@ -25,9 +26,7 @@ function panel(t: TestContext, values: Record<string, string>): void {
 
 test("{§runtime-bookkeeping-policy}: reference publication is independent of invalid interactive policy", async (t) => {
     panel(t, {
-        PLURNK_SERVICE_ATTENDED: "invalid",
         PLURNK_SERVICE_PROPOSALS: "invalid",
-        PLURNK_SERVICE_UNATTENDED_PROPOSALS: "invalid",
     });
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "bookkeeping-documents");
@@ -38,22 +37,20 @@ test("{§runtime-bookkeeping-policy}: reference publication is independent of in
     const workerId = await RuntimeWorker.ensure(db, workspaceId);
     const loop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: workerId });
     assert.ok(loop);
-    assert.deepEqual(await LoopPolicyReader.read(db, loop.id), { attended: false, proposals: "reject" });
+    assert.deepEqual(await WorkerOwners.read(db, workerId), { address: "_plurnk", tools: [] });
 });
 
-test("{§loop-policy-composition}: client administrative loops still use configured policy and reject invalid defaults", async (t) => {
-    panel(t, { PLURNK_SERVICE_ATTENDED: "1", PLURNK_SERVICE_PROPOSALS: "accept" });
+test("{§worker-owner-resolution}: administrative loop creation does not read proposal defaults; proposal admission does", async (t) => {
+    panel(t, { PLURNK_SERVICE_PROPOSALS: "invalid" });
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "client-policy");
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await Envelope.ensureClientLoop(db, workerId);
-    assert.deepEqual(await LoopPolicyReader.read(db, loopId), { attended: true, proposals: "accept" });
     await Envelope.closeClientLoop(db, loopId, { status: 200 });
-    process.env.PLURNK_SERVICE_ATTENDED = "invalid";
-    await assert.rejects(Envelope.ensureClientLoop(db, workerId), (cause: unknown) => {
+    assert.throws(() => ProposalPolicies.disposition([], false), (cause: unknown) => {
         const problem = Problems.fromError(cause);
         assert.equal(problem?.status, 503);
-        assert.equal(problem?.key, "PLURNK_SERVICE_ATTENDED");
+        assert.equal(problem?.key, "PLURNK_SERVICE_PROPOSALS");
         return true;
     });
 });
@@ -61,9 +58,7 @@ test("{§loop-policy-composition}: client administrative loops still use configu
 test("{§runtime-bookkeeping-policy}: an unexpected proposal is refused even when ordinary effect policy auto-accepts", async (t) => {
     panel(t, {
         PLURNK_SERVICE_EFFECT_HOST: "auto",
-        PLURNK_SERVICE_ATTENDED: "1",
         PLURNK_SERVICE_PROPOSALS: "accept",
-        PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept",
     });
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "bookkeeping-rejection");
@@ -89,6 +84,6 @@ test("{§runtime-bookkeeping-policy}: an unexpected proposal is refused even whe
     assert.deepEqual(await engine.pendingProposals(workspaceId), []);
     const row = await db.test_get_log_rx_by_worker_op.get<{ rx: string }>({ worker_id: workerId, op: "EDIT" });
     assert.ok(row);
-    assert.equal(JSON.parse(row.rx).outcome, "no_review_channel");
+    assert.equal(JSON.parse(row.rx).outcome, "runtime_bookkeeping");
     assert.equal(applied, 0, "the scheme never receives authority to apply its proposal");
 });

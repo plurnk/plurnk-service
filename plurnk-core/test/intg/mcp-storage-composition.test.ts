@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§mcp-launch-directory}
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
@@ -38,13 +39,14 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
     try {
         await daemon.start();
         const { workspaceId, workerId } = await daemon.createWorkspace({ name: "placement", projectRoot: project });
+        await ownWorker(db, workspaceId, workerId);
         const source = PlurnkParser.frame("fixture (where)", "{}");
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected the tool operation");
         const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parsed.statement });
         await waitFor(() => proposals, (list) => list.length > 0, { timeoutMs: 10000 });
-        daemon.resolveProposal(proposals[0]!, { decision: "accept" });
+        await daemon.resolveProposal(proposals[0]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
         assert.equal((await pending).status, 200);
         const placed = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body", timeoutMs: 10000 }) as Placement;
         const directory = await daemon.workspaceStateDirectory(workspaceId, "@plurnk/plurnk-mcp/fixture");

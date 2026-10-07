@@ -3,12 +3,14 @@
 // execution or proposal settlement. This is the composed dispatch boundary;
 // selector algebra itself belongs to @plurnk/plurnk-contracts.
 
-import test from "node:test";
+import test, { beforeEach, type TestContext } from "node:test";
+import { serverProposals } from "./_approval.ts";
+beforeEach((t) => serverProposals(t as TestContext, "review"));
 import assert from "node:assert/strict";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { RepresentationPreparationRequest, SchemeCtx } from "@plurnk/plurnk-schemes";
-import type { CapabilityPolicy, LoopPolicy } from "@plurnk/plurnk-contracts";
+import type { CapabilityPolicy, ProposalPolicy } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
@@ -107,7 +109,7 @@ const setup = async () => {
     return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };
 
-const policies = (capabilities: CapabilityPolicy = {}, proposals: LoopPolicy["proposals"] = "review"): { capabilities: CapabilityPolicy; proposals: LoopPolicy["proposals"] } => ({
+const policies = (capabilities: CapabilityPolicy = {}, proposals: ProposalPolicy = "review"): { capabilities: CapabilityPolicy; proposals: ProposalPolicy } => ({
     capabilities,
     proposals,
 });
@@ -115,11 +117,10 @@ const policies = (capabilities: CapabilityPolicy = {}, proposals: LoopPolicy["pr
 const setPolicies = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
     workspaceId: number,
-    loopId: number,
     policy: ReturnType<typeof policies>,
 ): Promise<void> => {
     await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: policy.capabilities }) });
-    await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals, attended: true }) });
+    process.env.PLURNK_SERVICE_PROPOSALS = policy.proposals;
 };
 
 test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ policy before source preparation", async (t) => {
@@ -127,7 +128,7 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
     t.after(() => db.close());
     const source = new TraitSource("attachment-source", ["web"]);
     schemes.register("attachment-source", source);
-    await setPolicies(db, workspaceId, loopId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
+    await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
     const result = await engine.dispatch({
         workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         statement: { ...sendStmt(null, "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
@@ -138,10 +139,10 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
     assert.equal(source.preparations, 0, "denied sources are not fetched or prepared");
 });
 
-test("invalid persisted loop policy fails at its durable owner before dispatch", async () => {
+test("invalid persisted workspace policy fails at its durable owner before dispatch", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "sometimes", attended: true }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
         await assert.rejects(
             engine.dispatch({
                 statement: editStmt(urlPath("write-test", "x"), "body"),
@@ -149,7 +150,7 @@ test("invalid persisted loop policy fails at its durable owner before dispatch",
             }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
+                assert.equal(error.message, `Workspace ${workspaceId} has invalid persisted capability policy.`);
                 assert.ok(error.cause instanceof TypeError);
                 return true;
             },
@@ -160,7 +161,7 @@ test("invalid persisted loop policy fails at its durable owner before dispatch",
 test("one access selector gates every matching mutation shape while observations remain admitted", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ access: "mutate" }] }));
+        await setPolicies(db, workspaceId, policies({ deny: [{ access: "mutate" }] }));
         let sequence = 0;
         const dispatch = (statement: Parameters<typeof engine.dispatch>[0]["statement"]) =>
             engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client" });
@@ -184,7 +185,7 @@ test("one access selector gates every matching mutation shape while observations
 test("a MOVE source requires observation as well as mutation authority", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ access: "observe", scheme: "file" }] }));
+        await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", scheme: "file" }] }));
         const result = await engine.dispatch({
             statement: moveStmt(localPath("secret.txt"), urlPath("worker", "/moved.txt")),
             workspaceId,
@@ -204,14 +205,14 @@ test("a MOVE source requires observation as well as mutation authority", async (
 test("proposal disposition cannot deny or resurrect a capability", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await setPolicies(db, workspaceId, loopId, policies({}, "reject"));
+        await setPolicies(db, workspaceId, policies({}, "reject"));
         const admitted = await engine.dispatch({
             statement: editStmt(urlPath("worker", "/x"), "body"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(admitted.status, 201, "proposal settlement is downstream of admission");
 
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ operation: "EDIT" }] }, "accept"));
+        await setPolicies(db, workspaceId, policies({ deny: [{ operation: "EDIT" }] }, "accept"));
         const denied = await engine.dispatch({
             statement: editStmt(urlPath("worker", "/y"), "body"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
@@ -223,7 +224,7 @@ test("proposal disposition cannot deny or resurrect a capability", async () => {
 test("an operation with no external capability demand remains available under an empty only-set", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ only: [] }));
+        await setPolicies(db, workspaceId, policies({ only: [] }));
         const result = await engine.dispatch({
             statement: sendStmt(null),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -235,7 +236,7 @@ test("an operation with no external capability demand remains available under an
 test("unknown routes reach ordinary resolution even under matching capability denials", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [
+        await setPolicies(db, workspaceId, policies({ deny: [
             { operation: "READ" },
             { scheme: "exec" },
         ] }));
@@ -277,7 +278,7 @@ test("execution admission precedes every target acquisition shape", async () => 
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ scheme: "exec" }] }));
+        await setPolicies(db, workspaceId, policies({ deny: [{ scheme: "exec" }] }));
         const targets = [null, localPath("input.txt"), urlPath("file", "/input.txt"), urlPath("worker", "/source"), urlPath("web-source", "/source")];
         for (const [index, target] of targets.entries()) {
             const result = await engine.dispatch({
@@ -296,7 +297,7 @@ test("a resource-shaped execution target adds its own observe demand", async () 
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ traits: ["web"] }] }));
+        await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["web"] }] }));
         const result = await engine.dispatch({
             statement: execStmt("fixture-tool", "transform", urlPath("web-source", "/source")),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -313,7 +314,7 @@ test("a literal execution target is a tool identifier, never a resource route", 
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ traits: ["web"] }] }, "accept"));
+        await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["web"] }] }, "accept"));
         const result = await engine.dispatch({
             statement: execStmt("literal-tool", "{}", urlPath("web-source", "/tool")),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -340,7 +341,7 @@ test("{§manifest-capability-traits} runtime scheme traits participate in the sa
     };
     engine.registerRuntime("ask-human", registryEntry(interactive));
     try {
-        await setPolicies(db, workspaceId, loopId, policies({ deny: [{ traits: ["interaction"] }] }));
+        await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["interaction"] }] }));
         const denied = await engine.dispatch({
             statement: execStmt("ask-human", "{}", null),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",

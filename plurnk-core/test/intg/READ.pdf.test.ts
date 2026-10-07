@@ -35,7 +35,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: `pdf-${modalities.join("-") || "blind"}`, projectRoot: root });
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "what is in contract.pdf?", policy: { proposals: "accept" } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "what is in contract.pdf?" });
                 const loopId = (run.result as { loopId: number }).loopId;
                 await waitForDb(
                     () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
@@ -72,3 +72,6 @@ test("{§packet-attachment-parts} a picture-only route receives the PDF as text 
     assert.ok(last.every((message) => typeof message.content === "string"), "no part rides for a kind the route refuses");
     assert.doesNotMatch(userText(last), /tokensAttachment|has been ejected from context/);
 });
+
+// The specimen exercises results after server admission, not interactive approval.
+process.env.PLURNK_SERVICE_PROPOSALS = "accept";

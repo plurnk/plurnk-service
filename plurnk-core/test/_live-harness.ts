@@ -31,7 +31,6 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { failAfterCleanup } from "./live-failure.ts";
 import { liveTimeoutMs } from "./live-test.ts";
-import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 export interface LiveWorkspace {
     daemon: Daemon;
@@ -123,15 +122,14 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     }
 };
 
-// The single loop-driver for the live/demo tier: fire loop.run (loop auto — the
-// tier auto-accepts so an unattended model worker isn't blocked on review), await
+// The live/demo profile declares server approval; this driver only submits input, awaits
 // loop/terminated, and return the outcome + the model's final reply. modelWorkerId
 // (the worker the model's ops landed in, for worker-filtered forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; workerId?: number; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[] },
+    params: { prompt: string; workerId?: number; maxTurns?: number; openPaths?: string[] },
     opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; loopId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
@@ -141,12 +139,6 @@ export const liveLoop = async (
         term = await runLoopToTerminal(s.ws, id, {
             prompt: params.prompt,
             ...(params.workerId !== undefined ? { workerId: params.workerId } : {}),
-            policy: {
-                proposals: params.policy?.proposals ?? "accept",
-                // {§loop-attendance} — a drill has no human at the composer, but the default stays
-                // attended so a specimen must ask for the unattended run it wants to exercise.
-                ...(params.policy?.attended === undefined ? {} : { attended: params.policy.attended }),
-            },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
             ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),
         }, { timeoutMs, signal: opts?.signal });

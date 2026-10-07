@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§exec-lifetime} — the fence states how long its run may live, and nothing else. The scope slot
 // is text coordinates, which an execution has none of; an unreadable lifetime is refused by name
 // before anything spawns. Real daemon, real `sh`, no proposal review (the run is consented).
@@ -20,7 +21,7 @@ const refusal = async (fence: string, name: string): Promise<{ status: number; p
             await rpcCall(client, 1, "workspace.create", { name });
             const [workspace] = await daemon.listWorkspaces();
             const workerId = await daemon.ensureModelWorker(workspace.id);
-            await runLoopToTerminal(client, 2, { prompt: "Run it.", policy: { proposals: "accept" } });
+            await runLoopToTerminal(client, 2, { prompt: "Run it." });
             const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: workerId });
             const refused = rows.find(({ op, origin }) => op === "sh" && origin === "model");
             assert.ok(refused, `the refused execution is a row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
@@ -56,7 +57,8 @@ test("{§exec-lifetime}: a tool's opaque metadata is still its own — the servi
     assert.doesNotMatch(problem.detail, /lifetime/u);
 });
 
-test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loop-bound one at the loop's end", { timeout: 120_000 }, async () => {
+test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loop-bound one at the loop's end", { timeout: 120_000 }, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeRawMockResponse('````sh [{"lifetime": "turn"}]\nsleep 45\n````\n\n````NOTE\nBackgrounded for this turn only.\n````', 10),
         makeRawMockResponse("````NOTE\nThe next turn begins; the turn-scoped run is gone.\n````", 10),
@@ -68,7 +70,7 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
             await rpcCall(client, 1, "workspace.create", { name: "exec-lifetime-turn" });
             const [workspace] = await daemon.listWorkspaces();
             const workerId = await daemon.ensureModelWorker(workspace.id);
-            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it.", policy: { proposals: "accept" } });
+            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it." });
             assert.equal(finalStatus, 200, "the loop concluded without waiting on a stream it no longer holds");
             const open = await db.test_count_active_subscriptions.get<{ n: number }>({});
             assert.equal(open?.n, 0, "the turn-scoped stream did not survive into the subsequent turn");

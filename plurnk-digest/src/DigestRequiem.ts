@@ -77,7 +77,7 @@ const writeJsonDurably = (path: string, value: unknown): void => {
 };
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
-// policy, rx) arrive as strings, parsed on use.
+// rx) arrive as strings, parsed on use.
 export default class DigestRequiem {
     // {§digest-requiem}: one out-of-band audit per model-bearing worker, with exact
     // historical evidence and a required witness provider.

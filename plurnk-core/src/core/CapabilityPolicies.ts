@@ -4,7 +4,6 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 
 export default class CapabilityPolicies {
     static service(env: NodeJS.ProcessEnv = process.env): CapabilityPolicy {
@@ -28,37 +27,15 @@ export default class CapabilityPolicies {
         }
     }
 
-    // {§loop-attendance} — the loop is the cascade's innermost ring. An unattended run has nobody
-    // to answer, so it denies the `interact` access class outright: the reserved tool tree's FIND
-    // and READ faces drop every interaction runtime and turn 0 never surveys one, rather than the
-    // model being taught a tool and spending a turn discovering it cannot work (#770).
-    static readonly UNATTENDED: CapabilityPolicy = Object.freeze({
-        deny: Object.freeze([Object.freeze({ access: "interact" as const })]) as CapabilityPolicy["deny"],
-    });
-
-    // The loop ring exists for exactly one reason today, so its recovery lives beside it rather
-    // than being reinvented at the refusal. A denial that names a ring but not a reason tells the
-    // model a tool vanished without telling it what to do instead.
-    static readonly UNATTENDED_RECOVERY =
-        "This run is unattended: nobody is present to answer. Decide from what you already have, "
-        + "or conclude stating what you could not resolve.";
-
-    // `loopId` is omitted where the question is genuinely about the workspace and not one run —
-    // the operator's capability projection, and the shared reserved-document materialization, which
-    // is one tree per workspace. Admission for a particular loop is decided at dispatch, which has
-    // the loop coordinate, so a document a loop may not use is one it may not READ.
+    // {§workspace-capability-policy} Admission is shared; ownership does not add an access ring.
     static async layers(
         db: Db,
         workspaceId: number,
-        loopId?: number,
-    ): Promise<readonly { scope: "service" | "workspace" | "loop"; policy: CapabilityPolicy }[]> {
+    ): Promise<readonly { scope: "service" | "workspace"; policy: CapabilityPolicy }[]> {
         const workspace = await WorkspaceSettings.read(db, workspaceId);
-        const base = [
+        return [
             { scope: "service" as const, policy: CapabilityPolicies.service() },
             { scope: "workspace" as const, policy: workspace.capabilities },
         ];
-        if (loopId === undefined) return base;
-        const { attended } = await LoopPolicyReader.read(db, loopId);
-        return attended ? base : [...base, { scope: "loop" as const, policy: CapabilityPolicies.UNATTENDED }];
     }
 }

@@ -37,6 +37,7 @@ export interface HitlBatch {
 }
 
 export interface HitlDelivery {
+    readonly recipient: string;
     readonly workerId: number;
     readonly loopId: number;
     readonly batch: HitlBatch;
@@ -123,6 +124,8 @@ const comparePending = (left: PendingItem, right: PendingItem): number =>
     || left.kind.localeCompare(right.kind)
     || left.id - right.id;
 
+const recipient = (item: PendingItem): string => item.kind === "proposal" ? item.projection.owner : item.projection.recipient;
+
 const render = (item: PendingItem): HitlBatch => item.kind === "proposal"
     ? {
         events: proposalToolCall(item.projection),
@@ -181,8 +184,9 @@ export default class ProposalHitl {
             if (workspaceId === null) return;
             if (method === "loop/proposal") {
                 const item = proposalItem(params as ProposalNotification);
-                if (item.kind !== "proposal" || item.projection.disposition.owner !== "client") return;
+                if (item.kind !== "proposal" || item.projection.disposition.decision !== "review") return;
                 this.#emit(workspaceId, {
+                    recipient: recipient(item),
                     workerId: item.workerId,
                     loopId: item.loopId,
                     batch: render(item),
@@ -192,6 +196,7 @@ export default class ProposalHitl {
             if (method === "loop/interaction") {
                 const item = interactionItem(params as ClientInteractionProjection);
                 this.#emit(workspaceId, {
+                    recipient: recipient(item),
                     workerId: item.workerId,
                     loopId: item.loopId,
                     batch: render(item),
@@ -213,14 +218,14 @@ export default class ProposalHitl {
         return [
             ...proposals
                 .map(proposalItem)
-                .filter((item) => item.kind === "proposal" && item.projection.disposition.owner === "client"),
+                .filter((item) => item.kind === "proposal" && item.projection.disposition.decision === "review"),
             ...interactions.map(interactionItem),
         ]
             .sort(comparePending);
     }
 
-    async resurface(workspaceId: number): Promise<HitlDelivery[]> {
-        const pending = await this.#pending(workspaceId);
+    async resurface(workspaceId: number, address: string): Promise<HitlDelivery[]> {
+        const pending = (await this.#pending(workspaceId)).filter((item) => recipient(item) === address);
         const workerIds = [...new Set(pending.map(({ workerId }) => workerId))];
         return workerIds.map((workerId) => {
             const workerPending = pending.filter((item) => item.workerId === workerId);
@@ -230,6 +235,7 @@ export default class ProposalHitl {
                 throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
             }
             return {
+                recipient: address,
                 workerId,
                 loopId: first.loopId,
                 batch: combine(workerPending),
@@ -239,12 +245,13 @@ export default class ProposalHitl {
 
     async resolve(
         workspaceId: number,
+        address: string,
         entries: ResumeEntry[],
         beforeRelease: (
             binding: { loopId: number; workerId: number },
         ) => void | Promise<void> = () => {},
     ): Promise<{ loopId: number; workerId: number }> {
-        const allPending = await this.#pending(workspaceId);
+        const allPending = (await this.#pending(workspaceId)).filter((item) => recipient(item) === address);
         const entryKeys = entries.map(({ interruptId }) => interruptId);
         if (new Set(entryKeys).size !== entryKeys.length) {
             throw new InterruptInputError(
@@ -318,14 +325,14 @@ export default class ProposalHitl {
         await beforeRelease(binding);
         await Promise.all(resolved.map(async (resolution) => {
             if (resolution.kind === "proposal") {
-                this.#seam.resolveProposal(resolution.id, {
+                await this.#seam.resolveProposal(resolution.id, {
                     decision: resolution.decision,
                     ...(resolution.body !== undefined ? { body: resolution.body } : {}),
                     ...(resolution.outcome !== undefined ? { outcome: resolution.outcome } : {}),
-                });
+                }, { workspaceId, address });
                 return;
             }
-            await this.#seam.resolveClientInteraction(resolution.id, resolution.resolution);
+            await this.#seam.resolveClientInteraction(resolution.id, resolution.resolution, { workspaceId, address });
         }));
         return binding;
     }

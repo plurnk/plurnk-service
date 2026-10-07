@@ -11,7 +11,7 @@ const floor = {
     PLURNK_A2A_CONNECT_TIMEOUT: "30000",
     PLURNK_A2A_REQUEST_TIMEOUT: "86400000",
     PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
-    PLURNK_A2A_PROPOSALS: "reject",
+    PLURNK_A2A_PARENT_WORKER: "_plurnk",
     PLURNK_A2A_TOKEN: "",
 };
 const exposed = {

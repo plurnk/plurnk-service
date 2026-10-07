@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
 // {§question-tool} — the assembled proof: the question executor through the real
 // Exec scheme pauses on the shared client-interaction lifecycle and resumes
 // with the standard ElicitResult in its results channel.
@@ -44,6 +45,7 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
     try {
         const workspaceId = await insertWorkspace(db, `question-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "question");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
@@ -72,7 +74,7 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
         await engine.resolveClientInteraction(pending.interactionId, {
             status: "resolved",
             payload: { branch: "main" },
-        });
+        }, { workspaceId, address: TEST_OWNER });
         const result = await dispatched;
         await exec.idle();
         assert.equal(result.status, 200);
@@ -111,6 +113,7 @@ Waiting for your answer.
                 await withDaemon(provider, async (db, daemon) => {
                     const workspace = await daemon.createWorkspace({ name: `question-${timing}-${action}` });
                     const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+                    await ownWorker(db, workspace.workspaceId, workerId);
                     const run = await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId, prompt: "Ask me." });
                     const pending = await waitForDb(
                         () => daemon.pendingClientInteractions(workspace.workspaceId),
@@ -122,7 +125,7 @@ Waiting for your answer.
                     );
                     await daemon.resolveClientInteraction(pending[0]!.interactionId, action === "accept"
                         ? { status: "resolved", payload: { branch: "main" } }
-                        : { status: "cancelled" });
+                        : { status: "cancelled" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
                     await waitForDb(
                         () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
                         (row) => row?.status === 200,
@@ -159,6 +162,7 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask me." });
         await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 1);
         await daemon.cancelWorker({ workspaceId, workerId, reason: "user_escape" });
@@ -177,7 +181,8 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
     });
 });
 
-test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async () => {
+test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("````question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````NOTE\nContinue while the question is pending.\n````"),
         makeMockResponse("````KILL ($STREAM)````\n````NOTE\nCancel the question.\n````"),
@@ -186,7 +191,8 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
-        const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask, then cancel the question.", policy: { proposals: "accept" } });
+        await ownWorker(db, workspaceId, workerId);
+        const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask, then cancel the question." });
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
         assert.equal(provider.remaining, 0);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);

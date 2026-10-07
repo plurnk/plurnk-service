@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The observational boundary's span topology through the REAL loop path
 // ({§observability-boundary}). A Mock provider without pre-supplied ops drives
@@ -15,7 +16,8 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("observe: a real loop emits the loop → turn → provider → parse → dispatch topology", async () => {
+test("observe: a real loop emits the loop → turn → provider → parse → dispatch topology", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // The surveys are the initialization program; with the preview off there is none to dispatch.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -40,7 +42,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
                 assert.ok(Number.isInteger(created.id));
                 const term = await runLoopToTerminal(ws, 2, {
                     prompt: "Explain the loop topology.",
-                    policy: { proposals: "accept" },
+
                 }, { timeoutMs: 60_000 });
                 assert.equal(term.finalStatus, 200);
             });

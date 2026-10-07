@@ -2,17 +2,16 @@
 SELECT sql FROM sqlite_master WHERE name = 'loops';
 
 -- PREP: test_loops_insert
--- Every insert states its policy and turn ceiling: the columns carry no default ({§loop-policy-composition}).
-INSERT INTO loops (worker_id, sequence, prompt, policy, max_turns)
-VALUES ($worker_id, $sequence, $prompt, '{"proposals":"review","attended":true}', -1);
+INSERT INTO loops (worker_id, sequence, prompt, max_turns)
+VALUES ($worker_id, $sequence, $prompt, -1);
 
 -- PREP: test_loops_insert_with_status
-INSERT INTO loops (worker_id, sequence, status, prompt, terminal_result, policy, max_turns)
-VALUES ($worker_id, $sequence, $status, $prompt, $terminal_result, '{"proposals":"review","attended":true}', -1);
+INSERT INTO loops (worker_id, sequence, status, prompt, terminal_result, max_turns)
+VALUES ($worker_id, $sequence, $status, $prompt, $terminal_result, -1);
 
 -- PREP: test_loops_insert_with_version
-INSERT INTO loops (worker_id, sequence, version, prompt, policy, max_turns)
-VALUES ($worker_id, $sequence, $version, $prompt, '{"proposals":"review","attended":true}', -1);
+INSERT INTO loops (worker_id, sequence, version, prompt, max_turns)
+VALUES ($worker_id, $sequence, $version, $prompt, -1);
 
 -- PREP: test_loops_get_by_worker
 SELECT id, version, worker_id, sequence, status, prompt FROM loops WHERE worker_id = $worker_id LIMIT 1;
@@ -33,8 +32,4 @@ SELECT id FROM loops WHERE worker_id = $worker_id ORDER BY id;
 SELECT prompt FROM loops WHERE worker_id = $worker_id LIMIT 1;
 
 -- EXEC: test_loops_insert_no_worker_id
-INSERT INTO loops (sequence, prompt, policy, max_turns) VALUES (1, 'x', '{"proposals":"review","attended":true}', -1);
-
--- PREP: test_set_loop_policy
--- Stores the loop's complete immutable policy at creation/setup time.
-UPDATE loops SET policy = $policy WHERE id = $loop_id;
+INSERT INTO loops (sequence, prompt, max_turns) VALUES (1, 'x', -1);

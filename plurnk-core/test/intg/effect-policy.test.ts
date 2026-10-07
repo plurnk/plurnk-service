@@ -5,6 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -34,6 +35,7 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `effect-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "effect-policy");
         const turnId = await insertTurn(db, loopId, 1, 102);
 

@@ -199,7 +199,7 @@ opt-in for endpoints that emit a leading `<think>` envelope, not a reasoning swi
 | Generation deadline | One whole-call allowance across queueing, requests and retries; caller cancellation still applies. No first-content or inter-chunk cutoff. |
 | Discovery/tokenizer HTTP | Separate non-generation fetch bound; does not limit inference. |
 | Provider-directed waits | Bounded retries honor `Retry-After`; other recoverable failures return to Core. |
-| Loop recovery | Core reissues within its recovery window, then parks attended loops or concludes unattended loops on the failure. |
+| Loop recovery | Core reissues within its recovery window, then parks for a review-capable owner or concludes on the failure. |
 | Cache affinity | Stable Worker identity through documented provider controls; not a cache-hit guarantee. |
 | Explicit cache writes | Separate policy on supported routes; can affect billing. |
 | Service tier | Explicit route choice that may change price and availability. |

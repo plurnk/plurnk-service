@@ -1,7 +1,7 @@
 import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
+import WorkerOwners from "./WorkerOwners.ts";
 
 interface CancelledLoop {
     loopId: number;
@@ -84,15 +84,10 @@ export default class LoopLifecycle {
         }
     }
 
-    // {§loop-attendance} — parking stops the execution clock, so a park is a promise that something
-    // will restart it. `wakenBy` names that something; `null` says nothing will. An unattended loop
-    // has no human to supply one, so parking it with no waker is a contract violation and crashes
-    // here rather than idling until a caller's clock notices (#765). This is a tripwire, not a
-    // fallback: the provider-recovery path concludes before it reaches this, and a future park site
-    // that forgets attendance fails loudly on its first unattended run instead of silently hanging.
+    // {§worker-ownership} A provider park without another waker requires a review-capable owner.
     async park(loopId: number, { wakenBy, pollAt }: { wakenBy: string | null; pollAt?: number }): Promise<boolean> {
-        if (wakenBy === null && !(await LoopPolicyReader.read(this.#db, loopId)).attended) {
-            throw new Error(`loop ${loopId} cannot park with no waker in an unattended run; conclude instead`);
+        if (wakenBy === null && !await WorkerOwners.hasReviewer(this.#db, loopId)) {
+            throw new Error(`loop ${loopId} cannot park without a waker or review-capable owner; conclude instead`);
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,

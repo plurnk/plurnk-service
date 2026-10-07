@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§worker-optimistic-settlement} — terminal stream and child arrivals remain
 // independent durable wake edges while one bounded worker-local opportunity
 // coalesces provider dispatch over sibling obligations.
@@ -143,7 +144,8 @@ child ${index + 1} done
     }
 }
 
-test("near-simultaneous child conclusions share one parent provider turn", async () => {
+test("near-simultaneous child conclusions share one parent provider turn", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
     const provider = new ControlledWorkerProvider({
@@ -163,7 +165,7 @@ test("near-simultaneous child conclusions share one parent provider turn", async
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate two independent jobs and await both",
-                    policy: { proposals: "accept" },
+
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -208,7 +210,8 @@ test("near-simultaneous child conclusions share one parent provider turn", async
     }
 });
 
-test("a lone child conclusion resumes immediately without paying the settlement cap", async () => {
+test("a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
     const provider = new ControlledWorkerProvider({
@@ -226,7 +229,7 @@ test("a lone child conclusion resumes immediately without paying the settlement 
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate one job and await it",
-                    policy: { proposals: "accept" },
+
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -259,7 +262,8 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     }
 });
 
-test("stream conclusions coalesce across the same worker-local settlement window", async () => {
+test("stream conclusions coalesce across the same worker-local settlement window", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "200";
     const provider = new Mock({
@@ -280,7 +284,7 @@ test("stream conclusions coalesce across the same worker-local settlement window
                 await rpcCall(ws, 1, "workspace.create", { name: "optimistic-stream-fanout" });
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: "run two independent streams and await both",
-                    policy: { proposals: "accept" },
+
                 });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(provider.remaining, 0, "two stream conclusions cost one resumed provider turn");
@@ -294,7 +298,8 @@ test("stream conclusions coalesce across the same worker-local settlement window
     }
 });
 
-test("a child and stream conclusion share the same settlement window", async () => {
+test("a child and stream conclusion share the same settlement window", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "300";
     const provider = new ControlledWorkerProvider({
@@ -314,7 +319,7 @@ test("a child and stream conclusion share the same settlement window", async () 
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run one child and one stream and await both",
-                    policy: { proposals: "accept" },
+
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;
@@ -345,7 +350,8 @@ test("a child and stream conclusion share the same settlement window", async () 
     }
 });
 
-test("the settlement deadline is bounded and does not slide on later conclusions", async () => {
+test("the settlement deadline is bounded and does not slide on later conclusions", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
     const provider = new ControlledWorkerProvider({
@@ -367,7 +373,7 @@ test("the settlement deadline is bounded and does not slide on later conclusions
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const accepted = await rpcCall(ws, 2, "loop.run", {
                     prompt: "delegate three jobs and await all three",
-                    policy: { proposals: "accept" },
+
                 });
                 const parentLoopId = (accepted.result as { loopId: number }).loopId;
                 await provider.childrenStarted.promise;

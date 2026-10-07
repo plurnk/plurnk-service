@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
@@ -7,7 +8,8 @@ import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { assertContextFitEvidence, seedAttachmentFixture } from "../demo/_context-fit.ts";
 
-test("{§methods-loop-run-open-paths} {§markerless-first-page}: one oversized attachment lands as its first page, cut inside its one long line, and a range READ reaches its answer", async () => {
+test("{§methods-loop-run-open-paths} {§markerless-first-page}: one oversized attachment lands as its first page, cut inside its one long line, and a range READ reaches its answer", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const fixture = await seedAttachmentFixture();
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
@@ -23,7 +25,7 @@ ${fixture.answer}
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "oversized-attachment", projectRoot: fixture.workspace });
                 const result = await runLoopToTerminal(ws, 2, {
-                    prompt: fixture.prompt, openPaths: ["incident.txt"], policy: { proposals: "accept" },
+                    prompt: fixture.prompt, openPaths: ["incident.txt"],
                 });
                 assert.equal(result.finalStatus, 200);
                 const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: result.loopId });
@@ -49,7 +51,8 @@ ${fixture.answer}
     } finally { await fixture.cleanup(); }
 });
 
-for (const retire of [false, true]) test(`{§context-fit}: sixteen attachments land whole until the budget runs out, then as receipts, with the READ rows ${retire ? "retired" : "retained"}`, async () => {
+for (const retire of [false, true]) test(`{§context-fit}: sixteen attachments land whole until the budget runs out, then as receipts, with the READ rows ${retire ? "retired" : "retained"}`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const fixture = await seedAttachmentFixture();
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -71,7 +74,7 @@ ${fixture.answer}
                 const workspaceId = (created.result as { id: number }).id;
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: fixture.prompt, openPaths: fixture.openPaths,
-                    policy: { proposals: "accept" }, maxTurns: 6,
+                     maxTurns: 6,
                 }, { timeoutMs: 20_000 });
                 assert.equal(result.finalStatus, 200);
                 assert.ok(result.modelWorkerId);

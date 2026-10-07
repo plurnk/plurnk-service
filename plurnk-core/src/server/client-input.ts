@@ -7,10 +7,8 @@ import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "..
 import type { ProposalResolution } from "@plurnk/plurnk-contracts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 import {
-    PROPOSAL_POLICIES,
     Validator,
     type CapabilityPolicy,
-    type LoopPolicyRequest,
     type ClientInteractionResolution,
     type MessageResource,
 } from "@plurnk/plurnk-contracts";
@@ -344,21 +342,6 @@ export default class ClientInput {
                 },
             );
         }
-    }
-
-    // {§loop-policy-composition} — the stated part of a policy, exactly as stated. Nothing is filled
-    // in here: an omitted field is no opinion until a fresh loop composes it against the panel.
-    static normalizeLoopPolicy(context: string, policy: unknown): LoopPolicyRequest {
-        if (Validator.validateLoopPolicyRequest(policy).valid) return policy as LoopPolicyRequest;
-        ClientInput.#invalid(
-            context,
-            "loop-policy-invalid",
-            "policy is not a valid loop policy request.",
-            {
-                field: "policy",
-                recovery: `State proposals ${PROPOSAL_POLICIES.join(", ")} and attended true or false; omit what you leave to the daemon.`,
-            },
-        );
     }
 
     // {§operator-config} — validate and serialize the client open-context bag. filesItems is a scalar (replace);

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as a Delegation stream
 // pointer with its size and growth; at close, ONE foisted READ that is exactly a markerless READ: the
 // first page of the output ({§markerless-first-page}), the extent, the terminal status. The channel
@@ -24,7 +25,8 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
     }
 };
 
-test("a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async () => {
+test("a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
@@ -37,7 +39,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-page" });
-            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
             const turn2 = turnIds![2]!;
             const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
@@ -86,7 +88,8 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     }));
 });
 
-test("an active stream reaches the model only as a Delegation stream pointer with its size and growth", async () => {
+test("an active stream reaches the model only as a Delegation stream pointer with its size and growth", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
@@ -100,7 +103,7 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-ambient" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run" }, { timeoutMs: 20_000 });
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
@@ -135,7 +138,8 @@ for (const specimen of [
         range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         packetRange: "1 line",
     },
-]) test(`{§exec-stream-page} {§markerless-first-page}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async () => {
+]) test(`{§exec-stream-page} {§markerless-first-page}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse(`\`\`\`\`node
@@ -151,7 +155,7 @@ waiting
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "long-stream-preview" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the result.", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the result." });
             assert.equal(finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! }))!.packet);
             const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.path).endsWith("#stdout"));

@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -88,6 +89,7 @@ test("{§module-shutdown-order} command hooks receive real loop cancellation bef
 
 for (const outcome of ["success", "failure", "delegation"] as const) {
     test(`{§hooks-command-delivery} real ${outcome} events retain their full payload and owning coordinates`, { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
             "````WORK (worker://child)\nComplete the delegated work.\n````\n\n````WAIT\nAwait the child.\n````",
@@ -110,7 +112,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
             published.push(JSON.parse(JSON.stringify({ workspaceId: scope, method, params })));
             if ((params as { workerId: number }).workerId === workerId) done.resolve();
         });
-        const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Exercise lifecycle notifications.", policy: { proposals: "accept" } });
+        const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Exercise lifecycle notifications." });
         await done.promise;
         await daemon.stop();
         const projected = await hooks.events();
@@ -136,6 +138,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
 }
 
 test("{§notifications-operation-event} tool hooks bracket real dispatch, not fan-out rows or automatic observations", { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
@@ -150,7 +153,7 @@ test("{§notifications-operation-event} tool hooks bracket real dispatch, not fa
     const workerId = await daemon.ensureModelWorker(workspaceId);
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Write and inspect the entries.", policy: { proposals: "accept" } });
+    await daemon.runLoop({ workspaceId, workerId, prompt: "Write and inspect the entries." });
     await done.promise;
     await daemon.stop();
     assert.deepEqual(hooks.failures, []);
@@ -252,11 +255,13 @@ for (const decision of ["accept", "reject"] as const) {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${decision}-exec`, projectRoot: root });
         const workerId = await daemon.ensureModelWorker(workspaceId);
-        await daemon.runLoop({ workspaceId, workerId, prompt: "Execute after review.", policy: { proposals: "review", attended: true } });
+        await ownWorker(db, workspaceId, workerId);
+        await daemon.runLoop({ workspaceId, workerId, prompt: "Execute after review." });
         const proposal = await proposed.promise;
-        assert.equal(proposal.disposition.owner, "client");
+        assert.equal(proposal.owner, TEST_OWNER);
+        assert.equal(proposal.disposition.decision, "review");
         assert.deepEqual(operations.map(({ phase }) => phase), ["started"], "a proposal is not post-tool settlement");
-        daemon.resolveProposal(proposal.logEntryId, { decision });
+        await daemon.resolveProposal(proposal.logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
         const settled = await dispatched.promise;
         assert.equal(settled.result?.status, decision === "accept" ? 200 : 400);
         if (decision === "reject") assert.match(settled.result?.problem?.type ?? "", /\/rejected$/);

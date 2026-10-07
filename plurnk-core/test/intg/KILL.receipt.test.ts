@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,7 +13,8 @@ import { makeMockResponse } from "./_mock.ts";
 const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 
 for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
-    test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async () => {
+    test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const root = await mkdtemp(join(tmpdir(), "plurnk-kill-receipt-"));
         const target = scheme === "file" ? "notes.md" : "worker:///notes.md";
         try {
@@ -51,7 +53,7 @@ Continue the task.
                 try {
                     const created = await rpcCall(ws, 1, "workspace.create", { name: "kill-receipt", projectRoot: root });
                     const workspaceId = (created.result as { id: number }).id;
-                    const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines", policy: { proposals: "accept" } });
+                    const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines" });
                     assert.equal(run.finalStatus, 200);
                     const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ worker_id: run.modelWorkerId! });
                     const kill = rows.find(({ op, origin, source }) => op === "KILL" && origin === "model" && source === null);
@@ -84,7 +86,8 @@ Continue the task.
     });
 }
 
-test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async () => {
+test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````EDIT (worker:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
         makeMockResponse("````KILL (worker:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
@@ -94,7 +97,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "whole-kill" });
-            const run = await runLoopToTerminal(ws, 2, { prompt: "remove the entry", policy: { proposals: "accept" } });
+            const run = await runLoopToTerminal(ws, 2, { prompt: "remove the entry" });
             assert.equal(run.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
             const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")!.content;

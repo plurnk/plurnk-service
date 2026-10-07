@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -77,6 +78,7 @@ test("{§mcp-plugin-configuration} workspace management preserves plugin interpr
 });
 
 test("{§mcp-plugin-configuration} unsupported entries reach the model as diagnostics without blocking valid siblings or subsequent repair", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, {});
     const project = join(hostPaths.home, "project");
     const root = join(hostPaths.projectPluginsDir(project), "bundle");
@@ -96,7 +98,7 @@ test("{§mcp-plugin-configuration} unsupported entries reach the model as diagno
     const workspace = await daemon.createWorkspace({ name: "plugin-repair", projectRoot: project });
     const workerId = await insertWorker(db, workspace.workspaceId, null, "model", "model");
     const turn = async () => {
-        const started = await daemon.runLoop({ ...workspace, workerId, prompt: "Inspect configuration.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ ...workspace, workerId, prompt: "Inspect configuration." });
         await waitFor(() => ended, (ids) => ids.includes(started.loopId), { timeoutMs: 10_000 });
     };
     await turn();

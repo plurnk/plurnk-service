@@ -21,14 +21,14 @@ test("{§operator-config-offline-validation} schedule validation normalizes rule
 test("{§schedule-environment} complete declarations sort by canonical alias and default enabled", () => {
     const definitions = serviceDefinitions({
         PLURNK_SCHEDULE_heart_beat: HEARTBEAT,
-        PLURNK_SCHEDULE_nightly: '{"rule":"FREQ=DAILY;BYHOUR=2;BYMINUTE=0;BYSECOND=0","target":"worker://janitor","prompt":"Tidy.","policy":{"proposals":"accept"}}',
+        PLURNK_SCHEDULE_nightly: '{"rule":"FREQ=DAILY;BYHOUR=2;BYMINUTE=0;BYSECOND=0","target":"worker://janitor","prompt":"Tidy."}',
         PLURNK_SCHEDULE_ENABLED: "1",
         PLURNK_SCHEDULE_nightly_ENABLED: "0",
         UNRELATED: "1",
     });
     assert.deepEqual([...definitions.keys()], ["heart-beat", "nightly"]);
     assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heart_beat" } });
-    assert.deepEqual(definitions.get("nightly")?.definition.policy, { proposals: "accept" });
+    assert.equal(Object.hasOwn(definitions.get("nightly")!.definition, "policy"), false);
     assert.equal(definitions.get("nightly")?.enabled, false, "disabling retains the complete definition");
     assert.deepEqual([...serviceDefinitions({ PLURNK_SCHEDULE_ENABLED: "1" })], []);
     assert.throws(() => serviceDefinitions({}), /PLURNK_SCHEDULE_ENABLED is missing from the assembled environment floor\./u);

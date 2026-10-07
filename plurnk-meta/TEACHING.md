@@ -13,7 +13,7 @@ as a second authority.
 | Mechanism, not advice | State what happens and what a shape does. No "prefer", "reach for", "when to use", no adjective that grades an option, no imperative aimed at the model. A guard is stated as the mechanism that makes the wrong move fail or names where the right thing goes. The exceptions are the two rows below. |
 | One decision list | The `plurnk` skill's `references/extensibility.md` exists to choose an integration surface, so its "Choosing a surface" section alone says when each surface applies: one item per surface, ordered from least to most code and trust, each naming the condition that requires it. |
 | What NOTE holds | The card's NOTE line names what a worker records there: free text, facts, findings, conclusions, decisions and plans. Stated as mechanism alone, "Record free text or prose", NOTE went unused: 0.9% of model operations in the daily database on 2026-10-06. |
-| One claim, one owner | Every sentence agrees with the owning contract tag; a claim that no tag backs is deleted, or the tag is written first. Behavior that a knob or a loop policy decides is stated as policy-dependent, never as absolute. |
+| One claim, one owner | Every sentence agrees with the owning contract tag; a claim that no tag backs is deleted, or the tag is written first. Configurable behavior is stated as policy-dependent, never as absolute. |
 | Numbers by name | A value that is a knob is cited by the knob's name, never by its shipped value. |
 | Shapes, not purposes | An example shows the form. Its content implies no use the shape does not require: no reviewer, planner, scribe or builder, no fact lookup, no topology. |
 | One home | A mechanism is taught on one page; another page points with one line. |

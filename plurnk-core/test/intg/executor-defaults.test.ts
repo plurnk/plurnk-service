@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -10,6 +11,7 @@ const OPTIONAL = ["perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk", "jq"
 
 for (const enabled of [false, true]) {
     test(`{§executor-default-inventory}: optional executors are ${enabled ? "explicit opt-ins" : "absent from the default model survey"}`, async (t) => {
+    serverProposals(t, "accept");
         const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         t.after(() => {
@@ -41,7 +43,7 @@ for (const enabled of [false, true]) {
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: `executor-defaults-${enabled}` });
                 const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
-                    prompt: "Confirm readiness.", policy: { proposals: "accept" },
+                    prompt: "Confirm readiness.",
                 });
                 assert.equal(finalStatus, 200);
                 const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs ({§worker-lifecycle-total-reap}).
 // A background exec that IGNORES the polite signals (HUP/TERM) is endable ONLY by the bounded
 // housekeeping SIGKILL — so this is the positive proof that the service hands the executor
@@ -22,7 +23,8 @@ const mockTurn = (dsl: string) => ({
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
 const stubbornSpawn = "````sh\ntrap '' HUP TERM; sleep 30\n````\n\n````WAIT\nparked with a stubborn spawn\n````";
 
-test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async () => {
+test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget
     try {
@@ -32,7 +34,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-stubborn-reap" });
                 const concluded = subscribeNotifications(ws, "stream/concluded");
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park", policy: { proposals: "accept" } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park" });
                 const loopId = (run.result as { loopId: number }).loopId;
 
                 // The loop parks (202) only AFTER its execution has spawned, so a 202 status is the

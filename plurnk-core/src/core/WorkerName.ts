@@ -13,6 +13,7 @@ interface AutoWorkerOptions {
     workspaceId: number;
     parentWorkerId?: number;
     origin: WorkerOrigin;
+    owner?: string;
     forkSnapshot?: boolean;
 }
 
@@ -82,6 +83,7 @@ export default class WorkerName {
                 name: WorkerName.assert(WorkerName.short()),
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
+                owner: options.owner ?? "_plurnk",
                 default_conversation: defaultConversation ? 1 : 0,
                 fork_snapshot: forkSnapshot ? 1 : 0,
             });
@@ -106,6 +108,7 @@ export default class WorkerName {
             name: WorkerName.assert(name),
             parent_worker_id: options.parentWorkerId ?? null,
             origin: options.origin,
+            owner: options.owner ?? "_plurnk",
             default_conversation: 0,
             fork_snapshot: options.forkSnapshot ? 1 : 0,
         });

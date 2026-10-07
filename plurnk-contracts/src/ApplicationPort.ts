@@ -10,7 +10,6 @@ import type {
     ClientInteractionResolution,
     EntryReadResult,
     JsonSchema,
-    LoopPolicyRequest,
     ModelCatalogPage,
     ModelCatalogQuery,
     ModelRoute,
@@ -19,9 +18,22 @@ import type {
     ProposalProjection,
     Notice,
     Effort,
+    WorkerOwner,
 } from "./types.ts";
 
 export type ProposalDecision = "accept" | "reject" | "cancel";
+
+export interface ApplicationOwnerIdentity {
+    readonly workspaceId: number;
+    readonly address: string;
+}
+
+export type ClientInteractionRoute = (context: {
+    readonly workspaceId: number;
+    readonly workerId: number;
+    readonly loopId: number;
+    readonly toolName: string;
+}) => Promise<string | null>;
 
 export interface ProposalResolution {
     readonly decision: ProposalDecision;
@@ -64,6 +76,7 @@ export interface ApplicationWorkerProjection {
     readonly name: string;
     readonly created_at: string;
     readonly origin: ApplicationWorkerOrigin;
+    readonly owner: string;
     readonly parentWorkerId: number | null;
     readonly kind: ApplicationWorkerKind;
     readonly lifecycle: LoopLifecycle;
@@ -78,6 +91,14 @@ export interface ApplicationWorkerQuery {
 export type ApplicationWorkerIdentity =
     | { readonly id: number; readonly name?: never }
     | { readonly id?: never; readonly name: string };
+
+export type ApplicationWorkerCreation = {
+    readonly workspaceId: number;
+    readonly name?: string;
+} & (
+    | { readonly parentWorkerId: number; readonly owner?: never }
+    | { readonly parentWorkerId?: never; readonly owner?: string }
+);
 
 export interface ApplicationLoopProjection {
     readonly id: number;
@@ -159,6 +180,9 @@ export interface HttpHost {
 
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
+    registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void>;
+    registerClientInteractionRoute(route: ClientInteractionRoute): () => void;
+    claimWorkerOwner(args: { readonly workspaceId: number; readonly workerId: number; readonly owner: string }): Promise<WorkerOwner>;
     configurationNotices(): readonly Notice[];
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];
@@ -169,17 +193,19 @@ export interface ApplicationPort extends HttpHost {
     ): Promise<unknown>;
     subscribeToEvents(handler: ApplicationEventHandler): () => void;
     pendingProposals(workspaceId: number): Promise<ProposalProjection[]>;
-    resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
+    resolveProposal(logEntryId: number, resolution: ProposalResolution, owner: ApplicationOwnerIdentity): Promise<void>;
     pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]>;
     resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        respondent: ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
     readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
     ensureModelWorker(
         workspaceId: number,
     ): Promise<number>;
+    ensureRuntimeWorker(workspaceId: number): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;
         readonly workerId: number;
@@ -189,7 +215,6 @@ export interface ApplicationPort extends HttpHost {
         readonly attachments?: readonly MessageResource[];
         readonly envelope?: Readonly<Record<string, unknown>>;
         readonly maxTurns?: number;
-        readonly policy?: LoopPolicyRequest;
         readonly openPaths?: string[];
         readonly selector?: string;
         readonly childSelector?: string | null;
@@ -314,10 +339,7 @@ export interface ApplicationPort extends HttpHost {
         readonly workerName: string | null;
         readonly parentWorkerId: number;
     }>;
-    createConversationWorker(args: {
-        readonly workspaceId: number;
-        readonly name?: string;
-    }): Promise<{ readonly workerId: number; readonly workerName: string }>;
+    createConversationWorker(args: ApplicationWorkerCreation): Promise<{ readonly workerId: number; readonly workerName: string }>;
     readWorkerModel(args: {
         readonly workspaceId: number;
         readonly workerId: number;

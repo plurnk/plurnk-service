@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // SPEC {§actor-boundary} — the actor boundary (isolation by worker, two doors, self-hosting).
 // Composed coverage for structural log isolation, the environment/voice doors,
 // and ordinary runtime-owned operations through the runtime worker `_plurnk`.
@@ -101,7 +102,8 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
-test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
+test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("````KILL\nfirst done\n````", 10),
         makeMockResponse("````KILL\nwoke done\n````", 10),
@@ -112,7 +114,7 @@ test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on 
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "passive-wake" });
             // Run a loop to completion → the model worker is now IDLE (one loop).
-            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", policy: { proposals: "accept" } });
+            const ran = await runLoopToTerminal(ws, 2, { prompt: "first" });
             const { loopId } = ran as { loopId: number };
             const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
             const loopsIdle = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;

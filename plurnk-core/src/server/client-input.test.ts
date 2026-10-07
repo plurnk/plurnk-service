@@ -29,11 +29,6 @@ test("{§send-resource-attachments} message resources are validated before publi
 test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
-    // {§loop-policy-composition} — the door returns what was stated and nothing more: a field the
-    // creator left out is no opinion, and an opinion invented here would be held against a fold.
-    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", { proposals: "reject" }), { proposals: "reject" });
-    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", { attended: false }), { attended: false });
-    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {}), {});
     assert.deepEqual(JSON.parse(ClientInput.parseSettings({
         filesItems: 3,
         maxCommands: 2,
@@ -88,12 +83,6 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "project-root-not-absolute",
             context: "workspace.create",
             field: "projectRoot",
-        },
-        {
-            run: () => ClientInput.normalizeLoopPolicy("loop.run", { proposals: "sometimes" }),
-            code: "loop-policy-invalid",
-            context: "loop.run",
-            field: "policy",
         },
         {
             run: () => ClientInput.parseSettings({ maxCommands: -1 }),

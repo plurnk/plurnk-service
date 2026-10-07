@@ -116,6 +116,10 @@ export default class PlurnkTaskStore implements TaskStore {
         this.#workspace = workspace;
     }
 
+    static replyAddress(binding: PlurnkTaskBinding): string {
+        return `a2a://anonymous/contexts/${binding.context.name}/tasks/${binding.task.name}`;
+    }
+
     async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
         // This exposure only mints {§worker-name} identities. Other opaque A2A IDs
         // cannot identify one of its Tasks; they are not malformed Core calls.
@@ -131,9 +135,7 @@ export default class PlurnkTaskStore implements TaskStore {
             workspaceId,
             identity: { id: task.parentWorkerId },
         });
-        if (context === null || context.origin !== "model" || context.parentWorkerId !== null) {
-            throw new Error(`A2A Task '${taskId}' has no unique root Context worker.`);
-        }
+        if (context === null || context.origin !== "model" || context.parentWorkerId === null) return null;
         const loops = await this.#port.listWorkerLoops({
             workspaceId,
             workerId: task.id,
@@ -150,7 +152,7 @@ export default class PlurnkTaskStore implements TaskStore {
     }
 
     async ownsContext(context: ApplicationWorkerProjection): Promise<boolean> {
-        if (context.origin !== "model" || context.parentWorkerId !== null) return false;
+        if (context.origin !== "model" || context.parentWorkerId === null) return false;
         const workspaceId = await this.#workspace.existingId();
         if (workspaceId === null) return false;
         const children = await this.#port.listWorkers(workspaceId, {
@@ -217,7 +219,7 @@ export default class PlurnkTaskStore implements TaskStore {
             if (
                 contextWorker === null
                 || contextWorker.origin !== "model"
-                || contextWorker.parentWorkerId !== null
+                || contextWorker.parentWorkerId === null
             ) {
                 taskWorkers = [];
             } else {
@@ -279,7 +281,8 @@ export default class PlurnkTaskStore implements TaskStore {
             this.#port.pendingClientInteractions(workspaceId),
         ]);
         const pending = interactions.find((candidate) =>
-            candidate.workerId === task.id && candidate.loopId === loop.id) ?? null;
+            candidate.workerId === task.id && candidate.loopId === loop.id
+            && candidate.recipient === PlurnkTaskStore.replyAddress(binding)) ?? null;
         const state = PlurnkTaskStore.#state(loop.status, pending);
         const statusMessage = PlurnkTaskStore.#statusMessage(
             context.name,

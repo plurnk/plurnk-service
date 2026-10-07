@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // An execution's result surfaces in the next turn's log (the execution log row links its output
 // via stream=<runtime>:///<coord>), driven by a Mock model through the real loop via the daemon.
 
@@ -12,7 +13,8 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_SQLITE = "1";
 
-test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
+test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const runtime = "search-api2";
     const path = `log:///1/2/2/${runtime}`;
     const task = "````NOTE\nInspect the failed invocation.\n````";
@@ -27,7 +29,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "executor-receipt-identity" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an unavailable executor.", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an unavailable executor." });
             assert.equal(finalStatus, 200);
             assert.equal(turnIds?.length, 5);
             const packets = await Promise.all(turnIds!.slice(2).map(async (id) => {
@@ -53,7 +55,8 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
     });
 });
 
-test("{§log-coordinate-hierarchy}: rejected executor proposals use the same receipt identity as immediate failures", async () => {
+test("{§log-coordinate-hierarchy}: rejected executor proposals use the same receipt identity as immediate failures", async (approvalContext) => {
+    serverProposals(approvalContext, "reject");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf rejected\n````\n````NOTE\nInspect the decision.\n````", 10),
         makeMockResponse("````KILL\nThe command was not run.\n````", 10),
@@ -62,7 +65,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "executor-rejection-identity" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision.", policy: { proposals: "reject" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision." });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
             const problem = JSON.parse(rows.find((row) => isExecutionOp(row.op))!.rx).problem;
@@ -75,7 +78,8 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
     });
 });
 
-test("a model's execution result surfaces visibly in the next turn without an explicit READ", async () => {
+test("a model's execution result surfaces visibly in the next turn without an explicit READ", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\necho plurnk-index-probe\n````\n\n````WAIT\nwaiting\n````", 10),
@@ -86,7 +90,7 @@ test("a model's execution result surfaces visibly in the next turn without an ex
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command" });
             assert.equal(finalStatus, 200, "loop terminates on the turn-2 completed inventory");
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
@@ -112,7 +116,8 @@ test("a model's execution result surfaces visibly in the next turn without an ex
 
 // {§exec-stream-page} {§context-fit} — a 30-line structured result closes as a markerless READ: whole,
 // because it fits, with the extent; the channel itself stays complete and typed.
-test("a generated JSON result publishes whole with the extent through the next-turn packet", async () => {
+test("a generated JSON result publishes whole with the extent through the next-turn packet", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sqlite\n" + query + "\n````\n````WAIT\nwaiting\n````", 10),
@@ -125,7 +130,7 @@ test("a generated JSON result publishes whole with the extent through the next-t
             await rpcCall(ws, 1, "workspace.create", { name: "structured-exec-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
                 prompt: "run the query",
-                policy: { proposals: "accept" },
+
             });
             assert.equal(finalStatus, 200);
 
@@ -162,7 +167,8 @@ test("a generated JSON result publishes whole with the extent through the next-t
     });
 });
 
-test("a failed execution reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
+test("a failed execution reaches the model as the executor's exact Problem on its terminal ambient READ", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````KILL\nfailure observed\n````", 10),
@@ -174,7 +180,7 @@ test("a failed execution reaches the model as the executor's exact Problem on it
             await rpcCall(ws, 1, "workspace.create", { name: "exec-failure-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
                 prompt: "run a command",
-                policy: { proposals: "accept" },
+
             });
             assert.equal(finalStatus, 200, "the model may conclude after observing the failed execution");
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
@@ -237,7 +243,8 @@ test("a failed execution reaches the model as the executor's exact Problem on it
     });
 });
 
-test("the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async () => {
+test("the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     // A channel written in one final burst can be complete while its process is still active; the
     // close then arrives with no new content. The model must still see the stream conclude. Turn 1:
     // execution a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
@@ -252,7 +259,7 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "cursor-terminal" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it" });
             assert.equal(finalStatus, 200);
             const last = turnIds![turnIds!.length - 1];
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
@@ -271,7 +278,8 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
 });
 
 // {§exec-stream} — a silent command still concludes visibly: one bodyless row on its default channel.
-test("a command that prints nothing on any channel lands exactly one bodyless conclusion row", async () => {
+test("a command that prints nothing on any channel lands exactly one bodyless conclusion row", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\ntrue\n````\n\n````NOTE\nspawned\n````", 10),
         makeMockResponse("````NOTE\nchecking\n````", 10),
@@ -281,7 +289,7 @@ test("a command that prints nothing on any channel lands exactly one bodyless co
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "silent-command" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it" });
             assert.equal(finalStatus, 200, "completion was never blocked by an undelivered termination");
             const last = turnIds![turnIds!.length - 1];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: last }))?.packet ?? "{}");

@@ -35,7 +35,7 @@ directory the command ran in.
 
 ## Channels
 
-An execution is a host effect, admitted under the loop's policy. Output streams
+An execution is a host effect, subject to approval. Output streams
 under the receipt's `stream` address, such as `sh:///ab3d5678`: `#stdout` is
 the default channel and `#stderr` the second; both are `text/stream`. While it
 runs, the packet's `## Delegation` streams list reports each channel's size and

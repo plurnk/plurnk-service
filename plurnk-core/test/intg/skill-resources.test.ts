@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -127,6 +128,7 @@ for (const [proposals, withOptions] of [
     ["accept", false], ["accept", true], ["reject", false], ["reject", true],
 ] as const) {
     test(`{§skills-resources} native skill execution preserves siblings and cwd, options=${withOptions}, behind ${proposals} proposal policy`, async (t) => {
+        serverProposals(t, proposals);
         const root = await mkdtemp(join(tmpdir(), "plurnk-skill-exec-"));
         t.after(() => rm(root, { recursive: true, force: true }));
         const directory = join(root, ".agents", "skills", "sample");
@@ -158,7 +160,7 @@ for (const [proposals, withOptions] of [
             const ws = await connect(addr);
             t.after(() => ws.close());
             await rpcCall(ws, 1, "workspace.create", { name: `native-skill-${crypto.randomUUID()}`, projectRoot: root });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "Execute the installed skill script.", policy: { proposals } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "Execute the installed skill script." });
             assert.equal(result.finalStatus, 200);
             if (proposals === "accept") {
                 assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), {
@@ -175,6 +177,7 @@ for (const [proposals, withOptions] of [
 }
 
 test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ retains its complete native image", async (t) => {
+    serverProposals(t, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-image-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dir = join(root, ".agents", "skills", "sample");
@@ -190,7 +193,7 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
         const ws = await connect(addr);
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { name: `skill-image-${crypto.randomUUID()}`, projectRoot: root });
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the image.", policy: { proposals: "accept" } });
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the image." });
         assert.equal(result.finalStatus, 200);
     });
     const user = provider.received[1]?.at(-1);
@@ -208,6 +211,7 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
 });
 
 test("{§skills-functionality} a model discovers a skill and reads its original tree through the skill authority", async (t) => {
+    serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     t.after(() => {
@@ -232,7 +236,7 @@ test("{§skills-functionality} a model discovers a skill and reads its original 
         const ws = await connect(addr);
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { name: `skill-resources-${crypto.randomUUID()}`, projectRoot: root });
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the installed sample skill.", policy: { proposals: "accept" } });
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the installed sample skill." });
         assert.equal(result.finalStatus, 200);
         assert.match(provider.packets[0]!, /skill:\/\/sample\/SKILL\.md/, "initial discovery addresses the source skill");
         assert.match(provider.packets[0]!, /Inspect the sample fixture/, "initial discovery carries the standard description");

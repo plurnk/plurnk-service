@@ -32,7 +32,7 @@ export default class DispatchAsPlurnk {
         if (worker?.workspace_id !== workspaceId) {
             throw new Error(`_plurnk dispatch worker ${workerId} does not belong to workspace ${workspaceId}`);
         }
-        const { id: loopId } = await AdministrativeLoop.open(db, workerId, "runtime");
+        const { id: loopId } = await AdministrativeLoop.open(db, workerId);
         // kind 'maintenance' — a receipt answers an asker, and these turns
         // have none: the packet render suppresses their successful rows
         // entirely (engine_render_log), while the rows stay durable and

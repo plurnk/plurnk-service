@@ -1,12 +1,11 @@
 // WORK and FORK dispatch: the worker creation and control statements, split out of Dispatcher.
-import type { ForkStatement, LoopPolicy, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { ForkStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import WorkerName, { WorkerNameError, WorkerNameConflictError, type WorkerOrigin } from "./WorkerName.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import EnvFunctionality from "../server/EnvFunctionality.ts";
@@ -78,7 +77,6 @@ export default class WorkerControlHandler {
             return cause.result;
         }
 
-        const delegationPolicy: LoopPolicy = await LoopPolicyReader.read(this.#db, ctx.loopId);
 
         let workerId: number;
         try {
@@ -105,7 +103,6 @@ export default class WorkerControlHandler {
             workerId,
             sourceLoopId: ctx.loopId,
             prompt,
-            freshLoopPolicy: delegationPolicy,
             spawn: true,
             ...(Object.keys(environment).length === 0 ? {} : { environment }),
         });

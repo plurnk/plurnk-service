@@ -21,7 +21,7 @@ Nothing is persisted.
 ## add
 
 `add` persists the rule for this workspace and arms its next occurrence, if any.
-It is a host effect, admitted under the loop's policy.
+It is a host effect and requires approval.
 
 ```schedule (add)
 {"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://exampleWorkerName", "prompt": "Text delivered at each occurrence."}}
@@ -34,8 +34,6 @@ It is a host effect, admitted under the loop's policy.
 - `target`: the worker that receives the message, `worker://<name>`; any
   worker in this workspace, the sender included.
 - `prompt`: the message delivered at each occurrence.
-- `policy`: `{"proposals": "accept"}` sets the proposal policy of a loop the
-  delivery starts; absent, the worker's default holds.
 
 Times are read in `TZ`: the workspace's `env` family sets it for every rule
 and every command; UTC otherwise.

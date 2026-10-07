@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OutboundModule } from "@plurnk/plurnk-a2a";
@@ -13,7 +14,8 @@ const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
 const done = "````KILL\nAttachment handling verified.\n````";
 
-test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async () => {
+test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const remote = await startDemoAgent("direct-message");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -30,7 +32,7 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
         const workerId = await daemon.ensureModelWorker(workspaceId);
         // {§http-outbound-proposes} — the outbound SEND proposes; this loop states that it approves
         // its own delegation, which is what a caller that means to send is saying.
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report." });
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400), 200);
         assert.equal(remote.executor.received.length, 1, "no dispatch occurs on partial acquisition failure");

@@ -1,8 +1,8 @@
-import type { OperationResult } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, OperationResult, ProposalProjection } from "@plurnk/plurnk-contracts";
 import type { TerminatedNotification } from "../src/types.ts";
 import { loopUsage } from "./accounting-fixture.ts";
 
-const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
+const OWNER = "agui://anonymous/threads/client";
 
 export const termination = (
     overrides: Partial<TerminatedNotification> = {},
@@ -52,18 +52,19 @@ export const proposal = Object.freeze({
     target: { scheme: "file", authority: null, pathname: "/tmp/example" },
     body: "replacement",
     attrs: {},
-    policy: LOOP_POLICY,
-    disposition: { owner: "client" },
-});
+    owner: OWNER,
+    disposition: { decision: "review" },
+} satisfies ProposalProjection);
 
 export const interaction = Object.freeze({
     interactionId: 43,
     workerId: 10,
     loopId: 1,
     turnId: 1,
+    recipient: OWNER,
     request: {
         toolName: "request_user_input",
         arguments: {},
         responseSchema: { type: "object" },
     },
-});
+} satisfies ClientInteractionProjection);

@@ -8,7 +8,7 @@ import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ApplicationOwnerIdentity, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../../src/core/content-hash.ts";
 import { insertLoop } from "./_db.ts";
@@ -74,17 +74,18 @@ export const settleOutbound = async <T extends { status: number; attrs?: object 
 // the operation does the same. A dispatch that never proposes passes straight through.
 interface ProposalSettler {
     subscribeToEvents(listener: (workspaceId: number | null, method: string, params: unknown) => void): () => void;
-    resolveProposal(logEntryId: number, resolution: { decision: "accept" | "reject" }): void;
+    resolveProposal(logEntryId: number, resolution: { decision: "accept" | "reject" }, owner: ApplicationOwnerIdentity): Promise<void>;
 }
 
 export const dispatchSettled = async <T>(
     daemon: ProposalSettler,
+    owner: ApplicationOwnerIdentity,
     run: () => Promise<T>,
     decision: "accept" | "reject" = "accept",
 ): Promise<T> => {
     const proposed = Promise.withResolvers<number>();
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
-        if (method === "loop/proposal") proposed.resolve((params as { logEntryId: number }).logEntryId);
+        if (_workspaceId === owner.workspaceId && method === "loop/proposal" && (params as { owner: string }).owner === owner.address) proposed.resolve((params as { logEntryId: number }).logEntryId);
     });
     try {
         const pending = run();
@@ -92,7 +93,7 @@ export const dispatchSettled = async <T>(
         // Racing costs nothing either way — a waiting poll would spend its whole budget on every
         // operation that refuses before proposing.
         const logEntryId = await Promise.race([pending.then(() => null), proposed.promise]);
-        if (logEntryId !== null) daemon.resolveProposal(logEntryId, { decision });
+        if (logEntryId !== null) await daemon.resolveProposal(logEntryId, { decision }, owner);
         return await pending;
     } finally {
         unsubscribe();

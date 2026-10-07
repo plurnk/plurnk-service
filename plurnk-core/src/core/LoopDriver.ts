@@ -9,7 +9,7 @@ import Results, { type SchemeResult } from "./results.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
 import { Knob } from "@plurnk/plurnk-meta";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
+import WorkerOwners from "./WorkerOwners.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { unconcludedEmission } from "./unconcluded-emission.ts";
@@ -264,12 +264,10 @@ export default class LoopDriver {
                 if (turn.providerParked) {
                     // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
                     // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
-                    // {§loop-attendance} — except that parking here stops the execution clock, so an
-                    // unattended loop would wait with nothing counting and nobody coming. It concludes
-                    // instead, naming the provider rather than pretending the model gave up (#765).
-                    if (!(await LoopPolicyReader.read(this.#db, loopId)).attended) {
+                    // {§worker-ownership} Without a review-capable owner, report the provider failure.
+                    if (!await WorkerOwners.hasReviewer(this.#db, loopId)) {
                         if (turn.providerFailure === undefined) {
-                            throw new Error("a provider-recovery stop requires its exact failure to conclude unattended");
+                            throw new Error("a provider-recovery stop requires its exact failure to conclude");
                         }
                         return await ruleTerminal(turn.providerFailure, "provider_unavailable");
                     }

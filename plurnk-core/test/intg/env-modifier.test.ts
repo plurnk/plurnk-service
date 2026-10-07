@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§env-option} — the heading's environment on WORK: the child starts with the parent's copy plus the
 // names the heading gives it as its own, and its first command sees them. Through the real loop:
 // the parent's WORK proposes and is accepted, the child runs, the parent collects.
@@ -7,7 +8,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§env-option} WORK hands the child an environment of its own, seen by its first command", async () => {
+test("{§env-option} WORK hands the child an environment of its own, seen by its first command", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````WORK (worker://kid) [{\"env\": {\"KID_ONLY\": \"1\"}}]\nPrint KID_ONLY and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````sh\necho kid=[$KID_ONLY]\n````\n\n````NOTE\nprinted\n````", 10),
@@ -19,7 +21,7 @@ test("{§env-option} WORK hands the child an environment of its own, seen by its
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "env-modifier" });
             const workspaceId = 1;
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate", policy: { proposals: "accept" } }, { timeoutMs: 20_000 });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20_000 });
             assert.equal(finalStatus, 200);
 
             const kid = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "kid" });

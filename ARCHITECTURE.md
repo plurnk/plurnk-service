@@ -363,9 +363,11 @@ sequenceDiagram
 
 Core owns packet assembly at `{§packet-assembly}` and durable result handling at
 `{§operation-results}`. Provider, capability, and AG-UI details remain in their
-own specifications. A proposal or client interaction pauses its owning
-operation until an explicit client decision, while core-owned proposal policy
-may resolve only proposals automatically; client convenience and daemon
+own specifications. Approval routes through the worker's durable owner
+({§worker-ownership}), independently of messages and connections. Core's server
+policy may settle proposals automatically. Clarification is separate: a protocol
+reply route such as A2A `input-required`, or the owner's declared client tool,
+supplies the answer ({§client-interaction-routing}). Client convenience and daemon
 authority are not interchangeable.
 
 ## How an execution outcome is observed

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -19,7 +20,8 @@ import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 
-test("{§fs-namei} {§file-path-normalization} shell, native operations and client reads share filesystem addresses", async () => {
+test("{§fs-namei} {§file-path-normalization} shell, native operations and client reads share filesystem addresses", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-path-resolution-")));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -51,7 +53,7 @@ test("{§fs-namei} {§file-path-normalization} shell, native operations and clie
                 const created = await rpcCall(client, 1, "workspace.create", { name: "filesystem-paths", projectRoot: root });
                 const { id: workspaceId } = created.result as { id: number };
                 const loop = await runLoopToTerminal(client, 2, {
-                    prompt: "Exercise the filesystem addresses.", openPaths: ["source.txt", source], policy: { proposals: "accept" },
+                    prompt: "Exercise the filesystem addresses.", openPaths: ["source.txt", source],
                 });
                 assert.equal(loop.result.status, 200);
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! });

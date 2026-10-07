@@ -23,7 +23,6 @@ import {
     type ClientInteractionProjection,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
-import type { HostedProposals } from "./config.ts";
 import PlurnkTaskStore, { type PlurnkTaskBinding } from "./PlurnkTaskStore.ts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
@@ -71,22 +70,22 @@ const textOf = (message: Message): string => {
 // The port functions the executor calls.
 export type ExecutorPort = Pick<ApplicationPort,
     | "cancelWorker" | "createConversationWorker" | "forkWorker" | "pendingClientInteractions"
-    | "readWorker" | "resolveClientInteraction" | "runLoop" | "subscribeToEvents">;
+    | "readWorker" | "ensureRuntimeWorker" | "resolveClientInteraction" | "runLoop" | "subscribeToEvents">;
 
 export default class PlurnkAgentExecutor implements AgentExecutor {
     readonly #port: ExecutorPort;
     readonly #workspace: WorkspaceBinding;
     readonly #store: PlurnkTaskStore;
-    readonly #proposals: HostedProposals;
+    readonly #parentWorker: string;
     readonly #contextLocks = new Map<string, Promise<void>>();
     readonly #ownedContexts = new Set<string>();
     readonly #activeTasks = new Set<string>();
 
-    constructor(port: ExecutorPort, workspace: WorkspaceBinding, store: PlurnkTaskStore, proposals: HostedProposals) {
+    constructor(port: ExecutorPort, workspace: WorkspaceBinding, store: PlurnkTaskStore, parentWorker: string) {
         this.#port = port;
         this.#workspace = workspace;
         this.#store = store;
-        this.#proposals = proposals;
+        this.#parentWorker = parentWorker;
     }
 
     async validateMessage(message: Message | undefined): Promise<void> {
@@ -95,7 +94,8 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         const pending = binding === null ? undefined
             : (await this.#port.pendingClientInteractions(binding.workspaceId))
                 .find((interaction) => interaction.workerId === binding.task.id
-                    && interaction.loopId === binding.loop?.id);
+                    && interaction.loopId === binding.loop?.id
+                    && interaction.recipient === PlurnkTaskStore.replyAddress(binding));
         if (pending !== undefined) this.#interactionPayload(message, pending);
         else textOf(message);
     }
@@ -108,8 +108,9 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
             const snapshot = request.task ?? taskSnapshot(request);
 
             const pending = (await this.#port.pendingClientInteractions(workspaceId))
-                .find((interaction) => interaction.workerId === binding.task.id) ?? null;
-            const outcome = await this.#observe(binding.task.id, async () => {
+                .find((interaction) => interaction.workerId === binding.task.id
+                    && interaction.recipient === PlurnkTaskStore.replyAddress(binding)) ?? null;
+            const outcome = await this.#observe(binding, async () => {
                 const envelope = SendMessageRequest.toJSON({
                     ...request.request,
                     message: { ...request.userMessage, contextId: request.contextId, taskId: request.taskId },
@@ -122,6 +123,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     await this.#port.resolveClientInteraction(
                         pending.interactionId,
                         { status: "resolved", payload: this.#interactionPayload(request.userMessage, pending) },
+                        { workspaceId, address: PlurnkTaskStore.replyAddress(binding) },
                         { body, source: PlurnkAgentExecutor.#source(request), envelope },
                     );
                     return;
@@ -138,9 +140,8 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     }] : []),
                     source: PlurnkAgentExecutor.#source(request),
                     messageAddress: PlurnkAgentExecutor.#source(request),
-                    policy: { proposals: this.#proposals },
                 });
-            }, workspaceId, () => {
+            }, () => {
                 events.publish(AgentEvent.task(snapshot));
                 const working: Task = {
                     ...snapshot,
@@ -185,13 +186,13 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         if (binding === null) throw new Error(`A2A Task '${taskId}' has no Plurnk worker.`);
         const { workspaceId } = binding;
         const activeExecutorWillPublish = this.#activeTasks.has(taskId);
-        const outcome = await this.#observe(binding.task.id, async () => {
+        const outcome = await this.#observe(binding, async () => {
             await this.#port.cancelWorker({
                 workspaceId,
                 workerId: binding.task.id,
                 reason: "A2A caller cancelled the Task",
             });
-        }, workspaceId, () => {});
+        }, () => {});
         if (outcome.kind !== "terminated" || outcome.result.status !== 499) {
             throw new Error(`A2A Task '${taskId}' did not terminate as cancelled.`);
         }
@@ -240,21 +241,16 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                 const created = await this.#port.createConversationWorker({
                     workspaceId,
                     name: request.contextId,
+                    parentWorkerId: await this.#parent(workspaceId),
                 });
-                context = {
-                    id: created.workerId,
-                    name: created.workerName,
-                    created_at: "",
-                    origin: "model",
-                    kind: "conversation",
-                    lifecycle: "idle",
-                    parentWorkerId: null,
-                };
+                const projected = await this.#port.readWorker({ workspaceId, identity: { id: created.workerId } });
+                if (projected === null) throw new Error(`A2A Context '${request.contextId}' was not visible after creation.`);
+                context = projected;
                 this.#ownedContexts.add(request.contextId);
             } else {
-                if (existingContext.origin !== "model" || existingContext.parentWorkerId !== null) {
+                if (existingContext.origin !== "model" || existingContext.parentWorkerId === null) {
                     throw new RequestMalformedError(
-                        `A2A Context '${request.contextId}' is not a root model Worker.`,
+                        `A2A Context '${request.contextId}' is not a child model Worker.`,
                     );
                 }
                 if (
@@ -285,23 +281,29 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         return resolved;
     }
 
+    async #parent(workspaceId: number): Promise<number> {
+        if (this.#parentWorker === "_plurnk") return this.#port.ensureRuntimeWorker(workspaceId);
+        const parent = await this.#port.readWorker({ workspaceId, identity: { name: this.#parentWorker } });
+        if (parent === null) throw new RequestMalformedError(`Configured A2A parent Worker '${this.#parentWorker}' does not exist.`);
+        return parent.id;
+    }
+
     async #observe(
-        workerId: number,
+        binding: PlurnkTaskBinding,
         action: () => Promise<void>,
-        boundWorkspaceId: number,
         started: () => void,
     ): Promise<ExecutionOutcome> {
         const settled = Promise.withResolvers<ExecutionOutcome>();
         const unsubscribe = this.#port.subscribeToEvents((workspaceId, method, params) => {
-            if (workspaceId !== boundWorkspaceId || typeof params !== "object" || params === null) return;
+            if (workspaceId !== binding.workspaceId || typeof params !== "object" || params === null) return;
             const candidate = params as Record<string, unknown>;
-            if (candidate.workerId !== workerId) return;
+            if (candidate.workerId !== binding.task.id) return;
             if (method === "loop/terminated") {
                 settled.resolve({
                     kind: "terminated",
                     result: Validator.assertOperationResult(candidate.result as OperationResult),
                 });
-            } else if (method === "loop/interaction") {
+            } else if (method === "loop/interaction" && candidate.recipient === PlurnkTaskStore.replyAddress(binding)) {
                 settled.resolve({
                     kind: "interaction",
                     interaction: candidate as unknown as ClientInteractionProjection,

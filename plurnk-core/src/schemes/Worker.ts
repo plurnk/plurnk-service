@@ -1,5 +1,4 @@
 import type { SchemeManifest } from "../core/scheme-types.ts";
-import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -334,16 +333,13 @@ export default class Worker extends CoreSchemeAdapterBase {
                 "SEND has no message text or attachments.", {}, { retryable: false },
             );
         }
-        // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal
-        // disposition; resumed loops retain their immutable policy.
-        const freshLoopPolicy = await LoopPolicyReader.read(core.db, core.loopId);
+        // {§worker-ownership} Messages preserve the receiving worker’s owner.
         await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
             sourceLoopId: core.loopId,
             prompt,
             ...(captured.attachments.length === 0 ? {} : { attachments: captured.attachments }),
-            freshLoopPolicy,
         });
         return { status: 200, ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }

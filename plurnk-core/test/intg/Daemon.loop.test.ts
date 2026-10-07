@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -79,7 +80,8 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
     });
 });
 
-test("loop.inject speaks into an existing worker; errors when there's none", async () => {
+test("loop.inject speaks into an existing worker; errors when there's none", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````KILL\nfirst done\n````", 10),
         makeMockResponse("````KILL\ninjected done\n````", 10),
@@ -99,7 +101,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
 
             // Start a worker; completed inventory ends its loop, leaving the worker idle. Wait for the terminal
             // (loop.run does not block) so the worker is genuinely idle before we inject.
-            await runLoopToTerminal(ws, 3, { prompt: "first", policy: { proposals: "accept" } });
+            await runLoopToTerminal(ws, 3, { prompt: "first" });
 
             // Inject into the idle worker → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
@@ -391,7 +393,8 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
 });
 
 // {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
-test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async () => {
+test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\ndone\n````", 10)] });
     const logged: string[] = [];
     const realErr = console.error;
@@ -402,7 +405,7 @@ test("a throwing seam subscriber never kills the loop — the transport's failur
             daemon.subscribeToEvents(() => { throw new Error("transport socket died mid-send"); });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 1, "workspace.create", { name: "sub-throws" });
-            await rpcCall(ws, 2, "loop.run", { prompt: "go", policy: { proposals: "accept" } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "go" });
             const t = await waitFor(() => terminated() as Array<{ result: { status: number } }>, (ts) => ts.length >= 1, { timeoutMs: 8000 });
             assert.equal(t[0].result.status, 200, "the loop concluded normally through a burst of throwing broadcasts");
         } finally { ws.close(); }

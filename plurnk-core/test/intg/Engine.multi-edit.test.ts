@@ -5,7 +5,9 @@
 // program already replaced or deleted, a never-issued or foreign anchor), each refused without touching
 // its siblings. Across programs the receipts' anchors are current and the packet's old ones are stale.
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach, type TestContext } from "node:test";
+import { serverProposals } from "./_approval.ts";
+beforeEach((t) => serverProposals(t as TestContext, "accept"));
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -107,7 +109,7 @@ const anchorsFromLog = async ({ db, workerId }: Ctx): Promise<[Anchors, Anchors]
 // emits `frames` built from the anchors that READ published, then concludes.
 const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Anchors) => string[]): Promise<{ edits: EditRow[]; published: [Anchors, Anchors] }> => {
     const { db, engine, workspaceId, workerId } = ctx;
-    const loopId = await insertLoop(db, workerId, sequence, "Apply the fix.", { proposals: "accept", attended: false });
+    const loopId = await insertLoop(db, workerId, sequence, "Apply the fix.");
     const reads = [DEBUG, HELPERS].map((file) => PlurnkParser.frame(`READ (${file}) <1,-1>`, null)).join("\n\n");
     const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
         await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);

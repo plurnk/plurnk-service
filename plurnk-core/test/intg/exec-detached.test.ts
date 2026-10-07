@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§exec-lifetime} — `[{"lifetime":"detached"}]` outlives the loop (#494): the spawn survives its loop's own 200,
 // is no obligation for that completion, and still ends with the daemon.
 
@@ -27,7 +28,8 @@ const beating = async (file: string, ms: number): Promise<boolean> => {
     return before !== await beat(file);
 };
 
-test("{§exec-lifetime} a detached spawn is observed once, then outlives its loop and ends with the daemon", async () => {
+test("{§exec-lifetime} a detached spawn is observed once, then outlives its loop and ends with the daemon", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const dir = await mkdtemp(join(tmpdir(), "exec-detached-"));
     const file = join(dir, "beat");
     try {
@@ -48,7 +50,7 @@ the server stays up
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-detached" });
                 const concluded = subscribeNotifications(ws, "stream/concluded");
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "leave a server running", policy: { proposals: "accept" } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "leave a server running" });
                 const loopId = (run.result as { loopId: number }).loopId;
 
                 // The detached stream remains live after its invocation is observed.

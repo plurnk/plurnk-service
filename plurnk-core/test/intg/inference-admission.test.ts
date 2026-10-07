@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -9,6 +10,7 @@ import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
 for (const delegated of ["WORK", "BARE"] as const) {
     test(`{§provider-inference-admission} a single inference slot completes ${delegated} through the daemon lifecycle`, { timeout: 20000 }, async (t) => {
+    serverProposals(t, "accept");
         const parentModel = "gpt-4.1-mini";
         const childModel = "gpt-4.1-nano";
         const requests: string[] = [];
@@ -78,7 +80,7 @@ for (const delegated of ["WORK", "BARE"] as const) {
                     prompt: "Complete the delegated work and report the result.",
                     selector: routes[0]!.alias,
                     childSelector: routes[1]!.alias,
-                    policy: { proposals: "accept" },
+
                 }, { timeoutMs: 12000 });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(peak, 1, "separate parent and child provider handles share the physical slot");

@@ -12,6 +12,7 @@ import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalPendingEvent } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { ownWorker } from "./_approval.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
@@ -35,6 +36,7 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
         const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "cpmv");
         const turnId = await insertTurn(db, loopId, 1, 102);
         await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });
@@ -158,7 +160,7 @@ test("{§notifications-loop-proposal} live and reconnect use one COPY destinatio
         assert.deepEqual(reconnect, [liveProjection], "live delivery and durable rediscovery are byte-for-byte the same domain projection");
         assert.deepEqual(live.target, { scheme: null, authority: "", pathname: "parity.txt" }, "COPY review addresses the applied destination, not its source");
         assert.match(live.body, /copied content/, "review body comes from the proposed result rather than serialized statement JSON");
-        assert.deepEqual(live.disposition, { owner: "client" });
+        assert.deepEqual(live.disposition, { decision: "review" });
 
         ctx.engine.resolveProposal(live.logEntryId, { decision: "reject" });
         await dispatched;

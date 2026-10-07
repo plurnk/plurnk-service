@@ -3,9 +3,11 @@ import {
     type ClientInteractionProjection,
     type ClientInteractionRequest,
     type ClientInteractionResolution,
+    type ClientInteractionRoute,
+    type ApplicationOwnerIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
+import WorkerOwners from "./WorkerOwners.ts";
 import Results, { OperationFailureError } from "./results.ts";
 
 export interface ClientInteractionPendingEvent extends ClientInteractionProjection {
@@ -18,6 +20,7 @@ interface InteractionRow {
     readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
+    readonly recipient: string;
     readonly request: string;
 }
 
@@ -47,21 +50,17 @@ const pendingFailure = (interactionId: number): OperationFailureError =>
         },
     ));
 
-// {§loop-attendance} — an unattended run has no interactive partner, so a request for one is
-// refused at the point of use rather than written down and waited on. Without this the wait is
-// bounded only by the loop's 24 h abort, and the model spends a turn asking a question nobody
-// will ever see (#765).
-const unattendedRefusal = (loopId: number): OperationFailureError =>
+const unsupportedInteraction = (loopId: number, toolName: string): OperationFailureError =>
     new OperationFailureError(Results.failure(
         "interaction:request",
-        "loop-unattended",
+        "interaction-unsupported",
         501,
-        "This run is unattended: nobody is present to answer.",
+        `No recipient implements '${toolName}' for this conversation.`,
         {},
         {
             loopId,
+            toolName,
             stage: "interaction-request",
-            recovery: "Decide from what you already have, or conclude stating what you could not resolve.",
             retryable: false,
         },
     ));
@@ -70,6 +69,7 @@ export default class ClientInteractions {
     readonly #db: Db;
     readonly #pending = new Map<number, InteractionWaiter>();
     readonly #listeners: Array<(event: ClientInteractionPendingEvent) => void> = [];
+    readonly #routes = new Set<ClientInteractionRoute>();
 
     constructor(db: Db) {
         this.#db = db;
@@ -79,6 +79,25 @@ export default class ClientInteractions {
         this.#listeners.push(listener);
     }
 
+    registerRoute(route: ClientInteractionRoute): () => void {
+        this.#routes.add(route);
+        return () => { this.#routes.delete(route); };
+    }
+
+    // {§client-interaction-routing} Protocol clarification and local approval have distinct recipients.
+    async recipient(context: Parameters<ClientInteractionRoute>[0]): Promise<string | null> {
+        const matches = [...new Set((await Promise.all([...this.#routes].map((route) => route(context))))
+            .filter((address): address is string => address !== null))];
+        if (matches.length > 1) throw new Error(`Multiple interaction routes claim worker ${context.workerId}.`);
+        if (matches.length === 1) {
+            const address = matches[0]!;
+            if (address.length === 0) throw new Error("An interaction route returned an empty recipient.");
+            return address;
+        }
+        const owner = await WorkerOwners.read(this.#db, context.workerId);
+        return owner.tools.includes(context.toolName) ? owner.address : null;
+    }
+
     async request(
         request: ClientInteractionRequest,
         ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
@@ -86,14 +105,14 @@ export default class ClientInteractions {
     ): Promise<ClientInteractionResolution> {
         const exact = structuredClone(Validator.assertClientInteractionRequest(request));
         signal?.throwIfAborted();
-        // {§loop-attendance} — every interaction wiring funnels here (the question tool, the exec
-        // bridge, the scheme caps and MCP elicitation), so one refusal covers them all.
-        if (!(await LoopPolicyReader.read(this.#db, ids.loopId)).attended) throw unattendedRefusal(ids.loopId);
+        const recipient = await this.recipient({ ...ids, toolName: exact.toolName });
+        if (recipient === null) throw unsupportedInteraction(ids.loopId, exact.toolName);
         const inserted = await this.#db.client_interaction_insert.get<{ id: number }>({
             workspace_id: ids.workspaceId,
             worker_id: ids.workerId,
             loop_id: ids.loopId,
             turn_id: ids.turnId,
+            recipient,
             request: JSON.stringify(exact),
         });
         if (inserted === undefined) {
@@ -150,6 +169,7 @@ export default class ClientInteractions {
                 workerId: ids.workerId,
                 loopId: ids.loopId,
                 turnId: ids.turnId,
+                recipient,
                 request: exact,
             }),
             workspaceId: ids.workspaceId,
@@ -165,9 +185,15 @@ export default class ClientInteractions {
         return deferred.promise;
     }
 
-    async resolve(interactionId: number, resolution: ClientInteractionResolution, message?: Settlement["message"]): Promise<void> {
+    async resolve(interactionId: number, resolution: ClientInteractionResolution, respondent: ApplicationOwnerIdentity, message?: Settlement["message"]): Promise<void> {
         const waiter = this.#pending.get(interactionId);
         if (waiter === undefined) throw pendingFailure(interactionId);
+        const pending = await this.#db.client_interaction_recipient.get<{ recipient: string; workspaceId: number }>({ interaction_id: interactionId });
+        if (pending === undefined) throw pendingFailure(interactionId);
+        if (pending.workspaceId !== respondent.workspaceId || pending.recipient !== respondent.address) {
+            throw new OperationFailureError(Results.failure("interaction:resolution", "recipient-mismatch", 403,
+                "Only the interaction's recipient may answer it.", {}, { interactionId }));
+        }
         const exact = structuredClone(Validator.assertClientInteractionResolution(resolution));
         if (exact.status === "resolved") {
             const validation = Validator.validateJsonSchemaInstance(waiter.request.responseSchema, exact.payload);
@@ -203,6 +229,7 @@ export default class ClientInteractions {
             workerId: row.workerId,
             loopId: row.loopId,
             turnId: row.turnId,
+            recipient: row.recipient,
             request: Validator.assertClientInteractionRequest(request as ClientInteractionRequest),
         });
     }

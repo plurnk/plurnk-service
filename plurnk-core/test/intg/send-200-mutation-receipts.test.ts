@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { lastReply } from "./_packet.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +7,8 @@ import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 for (const curate of [false, true]) {
-    test(`{§completion-defers-to-results}: mutation receipts require observation, including when curated=${curate}`, async () => {
+    test(`{§completion-defers-to-results}: mutation receipts require observation, including when curated=${curate}`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const extra = curate ? "````READ (worker:///notes.md)\n````\n````READ (worker:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("````EDIT (worker:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
@@ -16,7 +18,7 @@ for (const curate of [false, true]) {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "mutation-gate" });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, result.loopId), "Written.");

@@ -87,6 +87,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-owners" });
     const alice = await insertWorker(db, workspaceId, null, "alice", "model");
+    await ownWorker(db, workspaceId, alice);
     const bob = await insertWorker(db, workspaceId, null, "bob", "model");
     const carol = await insertWorker(db, workspaceId, null, "carol", "model");
     const client = await insertWorker(db, workspaceId, null, "reader", "client");
@@ -260,7 +261,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
     assert.match(JSON.stringify(interaction), /Read bob's resource/);
     await f.daemon.resolveClientInteraction(interaction.interactionId, {
         status: "resolved", payload: { read: { action: "accept", content: { confirm: true } } },
-    });
+    }, { workspaceId: f.workspaceId, address: TEST_OWNER });
     const lifecycle = new LoopLifecycle(f.db);
     await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200);
     assert.equal(f.provider.received.length, 2, "the owner model never starts");
@@ -287,3 +288,4 @@ test("{§runtime-resource-binding}: cancelling the requester settles its MCP int
     await f.cool();
     assert.equal(f.provider.received.length, 1);
 });
+import { ownWorker, TEST_OWNER } from "./_approval.ts";

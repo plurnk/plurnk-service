@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
@@ -35,12 +36,13 @@ const directedSend = (body: string): SendStatement => ({
 });
 
 test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and settles the local subscription", { timeout: 10_000 }, async (t) => {
+    serverProposals(t, "accept");
     const agent = await startDemoAgent("wait-for-cancel");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
     const db = await openMigrated();
     t.after(() => db.close());
-    const envelope = await seedEnvelope(db, `a2a-cancel-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
+    const envelope = await seedEnvelope(db, `a2a-cancel-${crypto.randomUUID()}`, {  });
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES,
@@ -70,12 +72,13 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
 });
 
 test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path", async (t) => {
+    serverProposals(t, "accept");
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
     const db = await openMigrated();
     t.after(() => db.close());
-    const envelope = await seedEnvelope(db, `a2a-outbound-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
+    const envelope = await seedEnvelope(db, `a2a-outbound-${crypto.randomUUID()}`, {  });
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
     const engine = new Engine({

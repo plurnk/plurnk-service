@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -109,6 +110,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
 });
 
 test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defaults to the next packet", async (t) => {
+    serverProposals(t, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-packet-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     class CapturingMock extends Mock {
@@ -126,7 +128,7 @@ test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defa
         const ws = await connect(addr);
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { projectRoot: root, settings: { filesItems: -1 } });
-        assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Inspect configuration.", policy: { proposals: "accept" } })).finalStatus, 200);
+        assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Inspect configuration." })).finalStatus, 200);
         assert.equal(provider.requests.length, 2);
         assert.match(provider.requests[0]!, /skill:\/\/plurnk\/SKILL\.md/);
         assert.doesNotMatch(provider.requests[0]!, /# Plurnk installed configuration defaults/);

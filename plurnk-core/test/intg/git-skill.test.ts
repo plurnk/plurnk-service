@@ -36,7 +36,7 @@ const runLoop = async (root: string) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `git-skill-${Date.now()}`, projectRoot: root });
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "look around", policy: { proposals: "accept" } });
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "look around" });
             const loopId = (run.result as { loopId: number }).loopId;
             await waitForDb(
                 () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),

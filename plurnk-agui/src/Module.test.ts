@@ -12,6 +12,7 @@ import type {
     LogEntryWire,
     ProposalProjection,
     ProposalResolution,
+    WorkerOwner,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 
@@ -26,7 +27,7 @@ import { HttpAgent } from "@ag-ui/client";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
 
-const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
+
 
 const MODULE_INPUT_SCHEMA = Object.freeze({
     type: "object",
@@ -53,6 +54,7 @@ const workerRow = (
     name,
     created_at: "2026-01-01T00:00:00.000Z",
     origin,
+    owner: "_plurnk",
     parentWorkerId,
     kind: (parentWorkerId === null ? "conversation" : "work") as "conversation" | "fork" | "work",
     lifecycle: "idle" as const,
@@ -63,14 +65,22 @@ const mockSeam = () => {
     const loopRuns: Array<{
         selector?: string;
         childSelector?: string | null;
-        policy?: Parameters<ApplicationPort["runLoop"]>[0]["policy"];
         prompt: string;
     }> = [];
     const modelSets: Array<{ selector?: string; childSelector?: string | null }> = [];
     const modelQueries: unknown[] = [];
     const effortSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
+    const owners = new Map<string, WorkerOwner>();
     const seam: ApplicationPort = {
+        registerWorkerOwner: async (_workspaceId, owner) => { owners.set(owner.address, owner); },
+        claimWorkerOwner: async ({ owner }) => {
+            const registered = owners.get(owner);
+            assert.ok(registered, "the adapter registers the owner before claiming a worker");
+            return registered;
+        },
+        registerClientInteractionRoute: () => () => {},
+        ensureRuntimeWorker: async () => 1,
         configurationNotices: () => [],
         // {§http-host} — the test host (../test/host.ts) mounts the module's routes on its own socket.
         registerHttpRoute: () => {},
@@ -81,7 +91,7 @@ const mockSeam = () => {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => [],
         pendingClientInteractions: async () => [],
-        resolveProposal: (logEntryId, resolution) => {
+        resolveProposal: async (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             // The engine's continued loop terminating — closes the resume stream.
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", termination({
@@ -91,7 +101,7 @@ const mockSeam = () => {
             }))));
         },
         resolveClientInteraction: async () => {},
-        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
+        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         cancelWorker: async () => {},
         executorTags: () => ["sh"],
@@ -1432,8 +1442,8 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             op: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
-            policy: LOOP_POLICY,
-            disposition: { owner: "client" },
+            owner: "agui://anonymous/threads/interrupt-ownership",
+            disposition: { decision: "review" },
         });
         releaseInjection.resolve();
 
@@ -1590,14 +1600,14 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
         attrs: {},
-        policy: LOOP_POLICY,
-        disposition: { owner: "client" },
+        owner: "agui://anonymous/threads/t2",
+        disposition: { decision: "review" },
     }];
     seam.pendingProposals = async () => pending;
     const resolveProposal = seam.resolveProposal;
-    seam.resolveProposal = (logEntryId, resolution) => {
+    seam.resolveProposal = async (logEntryId, resolution, owner) => {
         pending = [];
-        resolveProposal(logEntryId, resolution);
+        await resolveProposal(logEntryId, resolution, owner);
     };
     const mod = await host(seam);
     try {
@@ -1617,7 +1627,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
         const { seam, emit, loopRuns } = mockSeam();
         let resolutions = 0;
         let pending = [{
-            interactionId: 88, workerId: 77, loopId: 9, turnId: 1,
+            interactionId: 88, recipient: "agui://anonymous/threads/resume-race", workerId: 77, loopId: 9, turnId: 1,
             request: { toolName: "review", arguments: {}, responseSchema: { type: "object" } },
         }];
         seam.pendingClientInteractions = async () => pending;
@@ -1675,6 +1685,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{
         interactionId: 88,
+        recipient: "agui://anonymous/threads/interaction-thread",
         workerId: 88,
         loopId: 6,
         turnId: 9,
@@ -1780,8 +1791,8 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        policy: LOOP_POLICY,
-        disposition: { owner: "client" },
+        owner: "agui://anonymous/threads/verified-interrupt",
+        disposition: { decision: "review" },
     };
     let pending: ProposalProjection[] = [];
     seam.pendingProposals = async () => pending;
@@ -1816,7 +1827,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         });
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
-    seam.resolveProposal = () => {
+    seam.resolveProposal = async () => {
         pending = [];
         setImmediate(() => {
             emit(3, "log/entry", {
@@ -1994,8 +2005,8 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        policy: LOOP_POLICY,
-        disposition: { owner: "client" },
+        owner: "agui://anonymous/threads/sync-interrupt",
+        disposition: { decision: "review" },
     };
     seam.pendingProposals = async () => [proposal];
     seam.listWorkspaces = async () => [workspaceRow(3, "sync-interrupt")];
@@ -2016,7 +2027,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         const events = await post(mod.address().port, {
             threadId: "sync-interrupt",
             runId: "sync-interrupt-run",
-            forwardedProps: { plurnk: { workspace: "sync-interrupt", mode: "sync" } },
+            forwardedProps: { plurnk: { workspace: "sync-interrupt", mode: "sync", control: true } },
         });
         assert.deepEqual(events.slice(0, 3).map(({ type }) => type), [
             "RUN_STARTED",
@@ -2819,11 +2830,11 @@ test("{§agui-run-endpoint} the prompt is the last textual user message, and a n
     } finally { await mod.close(); }
 });
 
-test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection and general loop policy into runLoop", async () => {
+test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection without per-loop authority", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
-    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}), ...(a.policy !== undefined ? { policy: a.policy } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await host(seam);
     try {
         await post(mod.address().port, {
@@ -2832,18 +2843,13 @@ test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model sel
                 workspace: "t-model",
                 selector: "fireslow",
                 childSelector: "firefast",
-                policy: {
-                    proposals: "review",
-                },
             } },
             messages: [{ role: "user", content: "hello" }],
         });
         assert.equal(loopRuns.length, 1, "the message drove one runLoop");
         assert.equal(loopRuns[0].selector, "fireslow", "the parent selector forwards off forwardedProps.plurnk");
         assert.equal(loopRuns[0].childSelector, "firefast", "the child selector rides the same per-loop wire");
-        assert.deepEqual(loopRuns[0].policy, {
-            proposals: "review",
-        }, "the adapter forwards the general loop policy without inventing a named mode");
+        assert.equal(Object.hasOwn(loopRuns[0], "policy"), false, "input does not carry permission authority");
     } finally { await mod.close(); }
 });
 

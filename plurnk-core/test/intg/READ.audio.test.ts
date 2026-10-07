@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -16,7 +17,8 @@ const next = "````NOTE\nInspect the audio.\n````";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 for (const modalities of [["audio"], []] as InputModality[][]) {
-    test(`{§packet-attachment-parts} audio READ, log READ, retention and scoped KILL on ${modalities.length ? "audio" : "text-only"} routes`, async () => {
+    test(`{§packet-attachment-parts} audio READ, log READ, retention and scoped KILL on ${modalities.length ? "audio" : "text-only"} routes`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const root = await mkdtemp(join(tmpdir(), "plurnk-audio-"));
         const bytes = wav();
         await writeFile(join(root, "clip.wav"), bytes);
@@ -32,7 +34,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                 const client = await connect(addr);
                 try {
                     await rpcCall(client, 1, "workspace.create", { name: "audio-read", projectRoot: root });
-                    const run = await rpcCall(client, 2, "loop.run", { prompt: "Inspect clip.wav.", policy: { proposals: "accept" } });
+                    const run = await rpcCall(client, 2, "loop.run", { prompt: "Inspect clip.wav." });
                     const loopId = (run.result as { loopId: number }).loopId;
                     await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20_000 });
                     await assert.rejects(readFile(join(root, "clip.wav")), { code: "ENOENT" });

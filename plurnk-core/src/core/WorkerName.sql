@@ -6,11 +6,11 @@
 -- ensureDefaultConversation; ordinary allocation passes 0 and competes solely
 -- on the generated literal.
 INSERT INTO workers (
-    workspace_id, name, parent_worker_id, origin, default_conversation,
+    workspace_id, name, parent_worker_id, origin, owner, default_conversation,
     ambient_event_cursor, fork_event_boundary,
     model_route_id, spawn_model_route_id, effort
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation,
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner, $default_conversation,
        CASE WHEN $fork_snapshot = 1 THEN (
            SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
        ) ELSE NULL END,

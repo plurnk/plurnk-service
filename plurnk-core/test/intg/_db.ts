@@ -9,7 +9,6 @@ import type { Db } from "../../src/core/Db.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
-import { type LoopPolicy } from "@plurnk/plurnk-contracts";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -75,9 +74,9 @@ export const insertWorker = async (
 };
 
 // {§message-arrival} — a loop's nonempty initial prompt is ordinal 1 of its inbox, published on turn 1.
-export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = "", policy?: LoopPolicy): Promise<number> => {
+export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
     const row = await db.test_insert_loop.get<{ id: number }>({
-        worker_id: workerId, sequence, prompt, policy: policy === undefined ? null : JSON.stringify(policy),
+        worker_id: workerId, sequence, prompt,
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
@@ -155,15 +154,13 @@ export const insertOperationTurn = async (
 export const seedEnvelope = async (
     db: Db,
     label: string,
-    // `policy` states the seeded loop's disposition: a fixture that dispatches an operation which
-    // proposes ({§http-outbound-proposes}) has no client to answer, so it says what it would say.
-    options: { producer?: "model" | "client" | "_plurnk"; policy?: LoopPolicy } = {},
+    options: { producer?: "model" | "client" | "_plurnk" } = {},
 ): Promise<{
     workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const workspaceId = await insertWorkspace(db, label);
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "", options.policy);
+    const loopId = await insertLoop(db, workerId, 1);
     const producer = options.producer ?? "model";
     const { id: turnId } = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
     return { workspaceId, workerId, loopId, turnId };

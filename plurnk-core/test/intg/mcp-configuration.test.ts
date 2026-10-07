@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§mcp-configuration} {§functionality-hotload}
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -97,6 +98,7 @@ test("{§mcp-file-configuration} workspace and environment overrides restore the
 });
 
 test("{§mcp-file-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, {});
     const directory = join(hostPaths.home, ".agents");
     await mkdir(directory, { recursive: true });
@@ -114,7 +116,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     t.after(unsubscribe);
     await daemon.start();
     const turn = async () => {
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "Inspect configuration.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "Inspect configuration." });
         await waitFor(() => ended, (ids) => ids.includes(started.loopId), { timeoutMs: 10_000 });
     };
     const list = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
@@ -149,6 +151,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
 });
 
 test("{§configuration-repair-path} a model's EDIT and same-turn list observe the repair before the next turn activates its tool", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, {});
     const project = join(hostPaths.home, "project");
     const file = join(project, ".agents", "mcp.json");
@@ -175,7 +178,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
         if (method === "loop/terminated") finalStatuses.push((params as { result: { status: number } }).result.status);
     });
     t.after(unsubscribe);
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Repair the MCP file and verify its tool.", policy: { proposals: "accept" } });
+    await daemon.runLoop({ workspaceId, workerId, prompt: "Repair the MCP file and verify its tool." });
     await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
     assert.deepEqual(finalStatuses, [200]);
     const log = await daemon.readLog({ workspaceId, workerId, limit: 100 });
@@ -242,6 +245,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
 });
 
 test("{§functionality-hotload} {§functionality-inspection} changed baseline definitions publish at the next turn, even after list saw them first", { timeout: 60_000 }, async (t) => {
+    serverProposals(t, "accept");
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-hotload-${crypto.randomUUID()}`);
@@ -256,7 +260,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     type Listed = { alias: string; state: string };
     const states = async (): Promise<Listed[]> => ((await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId })) as { definitions: Listed[] }).definitions.map(({ alias, state }) => ({ alias, state }));
     const turn = async (): Promise<void> => {
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "hotload", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "hotload" });
         await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (list) => list.length > 0, { timeoutMs: 20_000 });
     };
 

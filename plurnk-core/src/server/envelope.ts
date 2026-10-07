@@ -35,6 +35,7 @@ export interface WorkerRow {
     name: string;
     created_at: string;
     origin: "model" | "client" | "_plurnk";
+    owner: string;
     parentWorkerId: number | null;
     // {§application-worker-observation}
     kind: ApplicationWorkerKind;
@@ -179,7 +180,7 @@ export default class Envelope {
     // Client action loop allocator. One action allocates one administrative
     // loop; its statements become ordered turns and settlement closes the loop.
     static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
-        return (await AdministrativeLoop.open(db, workerId, "client")).id;
+        return (await AdministrativeLoop.open(db, workerId)).id;
     }
 
     // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).
@@ -187,21 +188,12 @@ export default class Envelope {
     // client worker, so the packet — rendered from the model worker — never carries
     // the client's dispatched actions. The module resolves and retains the binding.
     // {§methods-conversation-worker}: a fresh conversation is a named, empty-log,
-    // model-origin root, distinct from the stable default and from a history-copying fork.
-    static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
-        if (name === undefined) {
-            return await WorkerName.claimAuto(db, {
-                workspaceId,
-                origin: "model",
-            });
-        }
-        const worker = await db.envelope_insert_worker.get<{ id: number; name: string }>({
-            workspace_id: workspaceId,
-            name: WorkerName.assert(name),
-            origin: "model",
-        });
-        if (worker === undefined) throw new Error("createModelWorker: worker insert returned no row");
-        return worker;
+    // model-origin worker, distinct from the stable default and from a history-copying fork.
+    static async createModelWorker(db: Db, workspaceId: number, name?: string, parentWorkerId?: number, owner?: string): Promise<{ id: number; name: string }> {
+        const options = { workspaceId, parentWorkerId, owner, origin: "model" as const };
+        return name === undefined
+            ? WorkerName.claimAuto(db, options)
+            : WorkerName.claimNamed(db, name, options);
     }
 
     static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {

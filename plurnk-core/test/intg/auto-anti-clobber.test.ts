@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // Hash-anchored stale-read anti-clobber. The model READs V1, the file changes to V2
 // outside Plurnk, and its V1 anchor must reject the later EDIT before proposal.
 
@@ -16,7 +17,8 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("a stale hash anchor rejects an EDIT before proposal — no silent clobber", async () => {
+test("a stale hash anchor rejects an EDIT before proposal — no silent clobber", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -46,14 +48,14 @@ done
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
                 // Loop 1 publishes the exact V1 anchor into the model's log.
-                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200, "the V1 READ completed before the anti-clobber exercise");
 
                 // The file changes out-of-band between turns.
                 await writeFile(join(root, "doc.md"), "V2 ambient change\n");
 
                 // Loop 2 reconciles V2 before the model attempts its V1-anchored edit.
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit it", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit it" });
                 assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
                 assert.equal(second.modelWorkerId, first.modelWorkerId, "both loops use the same worker memory");
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({

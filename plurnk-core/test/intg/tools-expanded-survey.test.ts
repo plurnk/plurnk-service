@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { join } from "node:path";
@@ -48,6 +49,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
 });
 
 test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nsurveyed\n````")] });
@@ -60,7 +62,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
         const ws = await connect({ daemon });
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "tools-expanded-survey" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around" });
             assert.equal(finalStatus, 200);
             const first = turnIds![1]!;
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });

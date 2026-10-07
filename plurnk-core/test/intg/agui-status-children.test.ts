@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§agui-status-children} — the bound Worker's alive direct children ride the status gauge as one
 // integer the daemon computes: 0 in the Run's opening snapshot, 1 once the model's WORK spawned a
 // child, 0 again when that child concluded. The client reads the number; it never polls the directory.
@@ -17,7 +18,8 @@ const parseEvents = (body: string): Event[] => body
     .filter((frame) => frame.startsWith("data: "))
     .map((frame) => JSON.parse(frame.slice(6)) as Event);
 
-test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 when the child concludes", { timeout: 30_000 }, async () => {
+test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 when the child concludes", { timeout: 30_000 }, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 1_000_000,
         responses: [
@@ -39,7 +41,7 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
             body: JSON.stringify({
                 threadId: workspace, runId: "spawn", state: {}, tools: [], context: [],
                 messages: [{ id: "prompt", role: "user", content: "delegate the count" }],
-                forwardedProps: { plurnk: { workspace, policy: { proposals: "accept" } } },
+                forwardedProps: { plurnk: { workspace } },
             }),
         });
         assert.equal(response.status, 200);

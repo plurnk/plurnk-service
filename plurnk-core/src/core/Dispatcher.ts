@@ -18,8 +18,6 @@ import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -745,8 +743,10 @@ export default class Dispatcher {
             try {
                 resolutionPromise = this.#proposals.awaitResolution(logEntryId, this.#loopSignal(loopId));
                 const event = await this.#proposals.pending(logEntryId);
-                this.#proposals.settleOwned(event);
-                this.#proposals.notifyPending(event);
+                if (event !== null) {
+                    this.#proposals.settleOwned(event);
+                    this.#proposals.notifyPending(event);
+                }
             } catch (cause) {
                 await this.#proposals.failPreparation(logEntryId, cause);
                 await this.#notifySettled(context, logEntryId);
@@ -1174,13 +1174,11 @@ export default class Dispatcher {
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult | null> {
-        await LoopPolicyReader.read(this.#db, ctx.loopId);
         const denied = await this.#capabilities.denial(
             statement,
             ctx.workspaceId,
             ctx.writer,
             async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
-            ctx.loopId,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;
@@ -1198,10 +1196,6 @@ export default class Dispatcher {
             {
                 ...descriptor,
                 policyScope: scope,
-                // {§loop-attendance} — the innermost ring subtracts for a reason the model can act
-                // on, so it says it. Every other scope is the operator's configuration and speaks
-                // for itself.
-                ...(scope === "loop" ? { recovery: CapabilityPolicies.UNATTENDED_RECOVERY } : {}),
                 retryable: false,
             },
         );

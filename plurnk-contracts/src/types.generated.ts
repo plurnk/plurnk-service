@@ -659,6 +659,7 @@ interactionId: number
 workerId: number
 loopId: number
 turnId: number
+recipient: string
 request: ClientInteractionRequest
 }
 /**
@@ -843,28 +844,6 @@ family: string
 alias: (string | null)
 phase: ("preparing" | "publishing")
 since: string
-}
-
-export interface LoopPolicy {
-/**
- * review holds a proposal for a client's answer; accept applies it and reject refuses it inside the loop.
- */
-proposals: ("review" | "accept" | "reject")
-/**
- * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a provider-recovery park concludes rather than waiting for an operator. An authored WAIT is not converted: nothing concludes a loop but the model's own completion request.
- */
-attended: boolean
-}
-
-export interface LoopPolicyRequest {
-/**
- * review holds a proposal for a client's answer; accept applies it and reject refuses it inside the loop.
- */
-proposals?: ("review" | "accept" | "reject")
-/**
- * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a provider-recovery park concludes rather than waiting for an operator. An authored WAIT is not converted: nothing concludes a loop but the model's own completion request.
- */
-attended?: boolean
 }
 
 export type McpOAuth = ({
@@ -1141,12 +1120,13 @@ instance?: never
 }
 
 export type ProposalDisposition = ({
-owner: "client"
+decision: "review"
 } | {
-owner: "loop"
 decision: ("accept" | "reject")
 outcome?: string
 })
+
+export type ProposalPolicy = ("review" | "accept" | "reject")
 
 export interface ProposalProjection {
 logEntryId: number
@@ -1166,12 +1146,9 @@ body: string
 attrs: {
 [k: string]: unknown
 }
-policy: LoopPolicy
+owner: string
 disposition: ProposalDisposition
 }
-/**
- * One loop's complete, immutable policy: how its proposals are settled, and whether anyone is attending who could answer. A creator states any part of it as a LoopPolicyRequest and the daemon's panel supplies the rest before the loop is persisted. Workspace capability admission precedes both.
- */
 
 export type ProviderCost = ({
 kind: "charged"
@@ -1268,4 +1245,9 @@ startLine: number
 startColumn: number
 endLine: number
 endColumn: number
+}
+
+export interface WorkerOwner {
+address: string
+tools: string[]
 }

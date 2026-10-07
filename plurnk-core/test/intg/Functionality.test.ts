@@ -1,3 +1,5 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { serverProposals } from "./_approval.ts";
 // {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
 // through a fixture adapter: one client projection, one generated runtime,
 // one durable workspace-owned state, one atomic publication.
@@ -164,6 +166,7 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
 
 test("{§module-workspace-quiescence} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```KILL\nReady.\n```")] });
     const daemon = new Daemon({ db, provider });
@@ -188,7 +191,7 @@ test("{§module-workspace-quiescence} a model turn and concurrent catalog refres
     const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
     await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
     const before = log.filter((event) => event.startsWith("commit:")).length;
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Confirm readiness.", policy: { proposals: "accept" } });
+    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Confirm readiness." });
     await entered.promise;
     const request = WorkspaceGate.prototype.requestExclusive;
     t.mock.method(WorkspaceGate.prototype, "requestExclusive", function (this: WorkspaceGate, id: number) {
@@ -629,6 +632,7 @@ test("{§module-workspace-sharing} {§functionality-coordinator} registration, c
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+    await ownWorker(db, workspaceId, client);
     let daemon = await boot(db, log);
     const model = await daemon.ensureModelWorker(workspaceId);
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
@@ -766,6 +770,7 @@ test("{§functionality-publication} a management stream reports publication refu
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-result-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId, null, "client", "client");
+    await ownWorker(db, workspaceId, workerId);
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -780,7 +785,7 @@ test("{§functionality-publication} a management stream reports publication refu
     });
     t.after(unsubscribe);
     const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````") });
-    await daemon.resolveProposal(await proposal.promise, { decision: "accept" });
+    await daemon.resolveProposal(await proposal.promise, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
     await pending;
     assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "fx" }), refused,
         "the invoking stream carries the exact refused publication, not an active definition");
@@ -793,7 +798,8 @@ test("{§functionality-publication} a management stream reports publication refu
 });
 
 for (const hold of ["", "fx:host"]) {
-    test(`{§functionality-model-mutation} a model uses its published tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async () => {
+    test(`{§functionality-model-mutation} a model uses its published tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
         process.env.PLURNK_SERVICE_EXEC_HOLD = hold;
         const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Tool result inspected.");
@@ -810,7 +816,7 @@ for (const hold of ["", "fx:host"]) {
         try {
             await daemon.start();
             await rpcCall(ws, 1, "workspace.create", { name: `model-publication-${crypto.randomUUID()}` });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "Add and use the candidate fixture tool.", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "Add and use the candidate fixture tool." });
             assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
             assert.equal(log.filter((line) => line === "run:candidate").length, 1,
                 "the next model turn executes the newly published tool, including under hold-until-concluded");
@@ -825,6 +831,7 @@ for (const hold of ["", "fx:host"]) {
 }
 
 test("{§functionality-model-mutation} authorization-required reaches the model as a finished stream, not a live obligation", { timeout: 15_000 }, async (t) => {
+    serverProposals(t, "accept");
     const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "fx:host";
     t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
@@ -840,7 +847,7 @@ test("{§functionality-model-mutation} authorization-required reaches the model 
         await daemon.start();
         const created = await rpcCall(ws, 1, "workspace.create", { name: `authorization-result-${crypto.randomUUID()}` });
         const workspaceId = (created.result as { id: number }).id;
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Add the candidate fixture.", policy: { proposals: "accept" } }, { timeoutMs: 8_000 });
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Add the candidate fixture." }, { timeoutMs: 8_000 });
         assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
         assert.ok(result.modelWorkerId !== undefined, "the loop identifies its model worker");
         const rows = await daemon.readLog({ workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
@@ -857,6 +864,7 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-exec-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+    await ownWorker(db, workspaceId, client);
     const daemon = await boot(db, log);
     const states = async () =>
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
@@ -872,7 +880,7 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         const seen = proposals.length;
         const pending = operate(program);
         while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
-        await daemon.resolveProposal(proposals[seen]!, { decision });
+        await daemon.resolveProposal(proposals[seen]!, { decision }, { workspaceId, address: TEST_OWNER });
         return pending;
     };
     try {
@@ -924,6 +932,7 @@ test("{§schemes-directory} {§capability-admission}: a denied family has no pag
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+    await ownWorker(db, workspaceId, client);
     const daemon = await boot(db, log);
     const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(program) });
     try {

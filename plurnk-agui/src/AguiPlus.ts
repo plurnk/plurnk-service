@@ -42,7 +42,7 @@ export const proposalToolCall = (p: ProposalNotification): AguiEvent[] => {
     const toolCallId = proposalToolCallId(p.logEntryId);
     return [
         { type: EventType.TOOL_CALL_START, toolCallId, toolCallName: proposalToolName(p.op) },
-        { type: EventType.TOOL_CALL_ARGS, toolCallId, delta: JSON.stringify({ op: p.op, target: p.target, body: p.body, attrs: p.attrs, policy: p.policy }) },
+        { type: EventType.TOOL_CALL_ARGS, toolCallId, delta: JSON.stringify({ op: p.op, target: p.target, body: p.body, attrs: p.attrs, owner: p.owner }) },
         { type: EventType.TOOL_CALL_END, toolCallId },
     ];
 };

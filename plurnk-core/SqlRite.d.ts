@@ -130,6 +130,7 @@ export class SqlRiteSync {
 	find_exec_runtimes_at_pathname: SqlRiteSyncPreparedStatements;
 	client_interaction_insert: SqlRiteSyncPreparedStatements;
 	client_interaction_list: SqlRiteSyncPreparedStatements;
+	client_interaction_recipient: SqlRiteSyncPreparedStatements;
 	client_interaction_delete: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
@@ -257,7 +258,6 @@ export class SqlRiteSync {
 	loop_resource_identity: SqlRiteSyncPreparedStatements;
 	loop_live_obligations: SqlRiteSyncPreparedStatements;
 	lifecycle_tree_budget: SqlRiteSyncPreparedStatements;
-	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	message_history: SqlRiteSyncPreparedStatements;
 	message_source_resources: SqlRiteSyncPreparedStatements;
@@ -328,6 +328,12 @@ export class SqlRiteSync {
 	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	worker_owner_register: SqlRiteSyncPreparedStatements;
+	worker_owner_registered: SqlRiteSyncPreparedStatements;
+	worker_owner_read: SqlRiteSyncPreparedStatements;
+	worker_owner_for_loop: SqlRiteSyncPreparedStatements;
+	worker_owner_for_proposal: SqlRiteSyncPreparedStatements;
+	worker_owner_claim: SqlRiteSyncPreparedStatements;
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
 	workspace_module_state_put: SqlRiteSyncPreparedStatements;
 	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
@@ -419,6 +425,7 @@ export default class SqlRite {
 	find_exec_runtimes_at_pathname: SqlRitePreparedStatements;
 	client_interaction_insert: SqlRitePreparedStatements;
 	client_interaction_list: SqlRitePreparedStatements;
+	client_interaction_recipient: SqlRitePreparedStatements;
 	client_interaction_delete: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
@@ -546,7 +553,6 @@ export default class SqlRite {
 	loop_resource_identity: SqlRitePreparedStatements;
 	loop_live_obligations: SqlRitePreparedStatements;
 	lifecycle_tree_budget: SqlRitePreparedStatements;
-	engine_get_loop_policy: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
 	message_history: SqlRitePreparedStatements;
 	message_source_resources: SqlRitePreparedStatements;
@@ -617,6 +623,12 @@ export default class SqlRite {
 	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	worker_owner_register: SqlRitePreparedStatements;
+	worker_owner_registered: SqlRitePreparedStatements;
+	worker_owner_read: SqlRitePreparedStatements;
+	worker_owner_for_loop: SqlRitePreparedStatements;
+	worker_owner_for_proposal: SqlRitePreparedStatements;
+	worker_owner_claim: SqlRitePreparedStatements;
 	workspace_module_state_get: SqlRitePreparedStatements;
 	workspace_module_state_put: SqlRitePreparedStatements;
 	workspace_module_state_delete: SqlRitePreparedStatements;

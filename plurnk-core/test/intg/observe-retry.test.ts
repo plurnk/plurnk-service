@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // Retried child failures must not falsely fail the parent
 // ({§observability-boundary}): the engine retries an invalid emission under
 // the same turn; the failed first attempt and the successful second both
@@ -12,7 +13,8 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("observe: an invalid first emission retries under the turn without failing the successful parent", async () => {
+test("observe: an invalid first emission retries under the turn without failing the successful parent", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const memory = await mountMemoryTracing();
     try {
         const provider = new Mock({
@@ -41,7 +43,7 @@ test("observe: an invalid first emission retries under the turn without failing 
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: "Recover from a bad emission.",
-                policy: { proposals: "accept" },
+
             }, { timeoutMs: 60_000 });
             assert.equal(term.finalStatus, 200);
         });

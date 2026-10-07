@@ -13,7 +13,7 @@
         "target",
         "body",
         "attrs",
-        "policy",
+        "owner",
         "disposition"
     ],
     "additionalProperties": false,
@@ -42,7 +42,7 @@
         },
         "body": { "type": "string" },
         "attrs": { "type": "object", "additionalProperties": true },
-        "policy": { "$ref": "https://schemas.plurnk.xyz/v0/LoopPolicy.json" },
+        "owner": { "type": "string", "minLength": 1 },
         "disposition": { "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json" }
     }
 }

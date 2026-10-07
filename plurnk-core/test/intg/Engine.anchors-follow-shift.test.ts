@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§line-anchors} {§line-anchor-disambiguation} {§edit-anchor-continuity}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +20,8 @@ const suffix = Array.from({ length: 10 }, (_, index) => `suffix-${index}\n`).joi
 for (const fixture of [
     { name: "unique", source: V1, first: 3, expected: "one\ntwo\nTHREE-FOUR\nFIVE\nsix\n" },
     { name: "repeated", source: `${prefix}${V1}${V1}${suffix}`, first: 13, expected: `${prefix}one\ntwo\nTHREE-FOUR\nFIVE\nsix\n${V1}${suffix}` },
-]) test(`{§line-anchors}: ${fixture.name} file anchors survive a shift between loops and successive same-program edits`, async () => {
+]) test(`{§line-anchors}: ${fixture.name} file anchors survive a shift between loops and successive same-program edits`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-shift-"));
     try {
         const env = hermeticGitEnv();
@@ -51,7 +53,7 @@ editing
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "anchors-shift", projectRoot: root });
-                const first = await runLoopToTerminal(ws, 2, { prompt: "look", policy: { proposals: "accept" } });
+                const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
                     .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
@@ -67,7 +69,7 @@ THREE-FOUR
 FIVE
 \`\`\`\``,
                 ].join("\n\n");
-                const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
+                const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
                 const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! }))
                     .filter(({ op }) => op === "EDIT");

@@ -26,7 +26,7 @@ import type { ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
 import { JSONPatchError } from "json-p3";
 
-const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
+const OWNER = "agui://anonymous/threads/tui";
 
 test("{§agui-state-patches}: the replay witness refuses non-replace or undefined state paths", () => {
     const snapshot = stateSnapshot({ status: statusState(null, null) });
@@ -45,13 +45,14 @@ test("{§agui-state-patches}: the replay witness refuses non-replace or undefine
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
     logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
     op: "EDIT", target: { scheme: "file", authority: null, pathname: "README.md" },
-    body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, policy: LOOP_POLICY,
-    disposition: { owner: "client" },
+    body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, owner: OWNER,
+    disposition: { decision: "review" },
     ...over,
 });
 
 const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInteractionProjection => ({
     interactionId: 8,
+    recipient: OWNER,
     workerId: 2,
     loopId: 3,
     turnId: 4,
@@ -77,7 +78,7 @@ test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in
     assert.equal(args.op, "EDIT");
     assert.equal(args.target.pathname, "README.md");
     assert.equal(args.body, "@@ -1 +1 @@\n-old\n+new");
-    assert.deepEqual(args.policy, LOOP_POLICY, "the core-owned proposal policy reaches the AG-UI tool call unchanged");
+    assert.equal(args.owner, OWNER, "the durable approval owner reaches the AG-UI tool call unchanged");
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 

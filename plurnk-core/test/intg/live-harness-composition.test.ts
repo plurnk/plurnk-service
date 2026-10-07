@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { readFile, rm } from "node:fs/promises";
 import { parseEnv } from "node:util";
@@ -47,6 +48,7 @@ test("{§service-worker-composition} live workspaces expose the default worker r
 });
 
 test("{§service-worker-composition} specimen schedules deliver and shut down without activating operator rules", async (t) => {
+    serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [makeMockResponse("````KILL\nScheduled message received.\n````", 10)],
@@ -98,7 +100,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
             ...discovered.candidates[0]!.definition,
             target: `worker://${worker.name}`,
             prompt: "Take the scheduled message.",
-            policy: { proposals: "accept" },
+
         };
         const completed: Array<{ loopId: number; result: OperationResult }> = [];
         const unsubscribe = workspace.daemon.subscribeToEvents((workspaceId, method, params) => {

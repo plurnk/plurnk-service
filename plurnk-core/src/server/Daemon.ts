@@ -50,15 +50,17 @@ import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
-import LoopPolicies from "../core/LoopPolicies.ts";
-import LoopPolicyReader from "../core/LoopPolicyReader.ts";
+import ProposalPolicies from "../core/ProposalPolicies.ts";
+import WorkerOwners from "../core/WorkerOwners.ts";
+import RuntimeWorker from "../core/RuntimeWorker.ts";
+import type { ApplicationOwnerIdentity, ApplicationWorkerCreation, ClientInteractionRoute } from "@plurnk/plurnk-contracts";
+import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
 import type { ApplicationMessage, MessageResource, MessageEvidence } from "@plurnk/plurnk-contracts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import type { CapabilityPolicy, ClientEnvelope, FunctionalityFamilyHandle, ProposalResolution } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
@@ -118,7 +120,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
-        LoopPolicies.validateConfiguration();
+        ProposalPolicies.read();
         TurnDispositionHandler.configuredWaitSeconds();
         retentionPolicy();
         PacketBuilder.validateConfiguration();
@@ -260,7 +262,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, environment, attachments }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -315,8 +317,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     providerSpec,
                     effort,
                     childProviderSpec,
-                    systemPrompt,
-                    ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
+                    systemPrompt });
                 return { action, loopId };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
@@ -345,9 +346,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 providerSpecExplicit,
                 effort,
                 childProviderSpec,
-                turnCeiling,
-                policy }) => {
-                await this.#assertFoldPosture(workerId, policy, loopId);
+                turnCeiling }) => {
                 // An omitted selector keeps the loop's durable provider; only an
                 // explicit selection is checked against it (a deliberate switch).
                 if (providerSpecExplicit !== false) {
@@ -436,6 +435,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return () => { this.#eventSubscribers.delete(handler); };
     }
 
+    async registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void> {
+        const id = ClientInput.assertId("registerWorkerOwner", "workspaceId", workspaceId);
+        await WorkerOwners.register(this.#db, id, owner);
+    }
+
+    async claimWorkerOwner(args: { workspaceId: number; workerId: number; owner: string }): Promise<WorkerOwner> {
+        const workspaceId = ClientInput.assertId("claimWorkerOwner", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("claimWorkerOwner", "workerId", args.workerId);
+        const worker = await this.readWorker({ workspaceId, identity: { id: workerId } });
+        if (worker === null) throw daemonFailure("worker:owner", "worker-not-found", 404,
+            `Worker ${workerId} does not belong to workspace ${workspaceId}.`, { workspaceId, workerId });
+        return WorkerOwners.claim(this.#db, workspaceId, workerId, args.owner);
+    }
+
     // {§methods-proposal-resolve} — proposal HITL. A transport module reads the stopped-world
     // proposals for a workspace (rendering each as a TOOL_CALL) and feeds back the human's decision. The
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
@@ -445,9 +458,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.pendingProposals(checkedWorkspaceId);
     }
 
-    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
+    async resolveProposal(logEntryId: number, resolution: ProposalResolution, owner: ApplicationOwnerIdentity): Promise<void> {
         const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
         const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
+        const workspaceId = ClientInput.assertId("resolveProposal", "workspaceId", owner.workspaceId);
+        const pending = await this.#db.worker_owner_for_proposal.get<{ workspaceId: number; owner: string }>({ log_entry_id: checkedLogEntryId });
+        if (pending !== undefined && (pending.workspaceId !== workspaceId || pending.owner !== owner.address)) {
+            throw daemonFailure("proposal:resolution", "owner-mismatch", 403,
+                "Only the worker's owner may resolve this proposal.", { logEntryId: checkedLogEntryId });
+        }
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
     }
 
@@ -460,9 +479,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.pendingClientInteractions(checkedWorkspaceId);
     }
 
+    registerClientInteractionRoute(route: ClientInteractionRoute): () => void {
+        return this.#engine.registerClientInteractionRoute(route);
+    }
+
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        respondent: ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
         const checkedInteractionId = ClientInput.assertId(
@@ -478,7 +502,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             ClientInput.assertPrompt("resolveClientInteraction", message.body);
             ClientInput.assertOptionalSource("resolveClientInteraction", message.source);
         }
-        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution, message);
+        ClientInput.assertId("resolveClientInteraction", "workspaceId", respondent.workspaceId);
+        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution, respondent, message);
     }
 
     async #prepareMessage(workspaceId: number, workerId: number, body: string, attachments: readonly MessageResource[] = [], envelope?: Readonly<Record<string, unknown>>): Promise<{ body: string; evidence: MessageEvidence }> {
@@ -501,7 +526,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: LoopPolicyRequest; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
@@ -513,9 +538,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
-        const policy = args.policy === undefined
-            ? undefined
-            : ClientInput.normalizeLoopPolicy("runLoop", args.policy);
+        if (Object.hasOwn(args, "policy")) throw daemonFailure("daemon:input", "loop-policy-retired", 400,
+            "Loop policy is retired; the worker's owner handles approval.");
         // {§worker-model-selection} — the worker owns the model. An explicit selector
         // persists onto the worker; an omitted selector resolves the worker's durable model
         // (seeded once from the daemon default). The loop then snapshots the resolved route.
@@ -555,7 +579,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             evidence: delivered.evidence,
             ...(messageAddress === undefined ? {} : { messageAddress }),
             ...(source === undefined ? {} : { source }),
-            ...(policy !== undefined ? { policy } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),
             turnCeiling,
             providerSpec: selection,
@@ -685,6 +708,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async ensureModelWorker(workspaceId: number): Promise<number> {
         const checked = ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId);
         return await Envelope.ensureModelWorker(this.#db, checked);
+    }
+
+    async ensureRuntimeWorker(workspaceId: number): Promise<number> {
+        const checked = ClientInput.assertId("worker.ensure-runtime", "workspaceId", workspaceId);
+        if (await this.#db.envelope_get_workspace.get({ id: checked }) === undefined) {
+            throw daemonFailure("worker:owner", "workspace-not-found", 404, `Workspace ${checked} does not exist.`);
+        }
+        return RuntimeWorker.ensure(this.#db, checked);
     }
 
     async readWorkspaceCapabilities(args: { workspaceId: number }): Promise<CapabilityProjection> {
@@ -1294,9 +1325,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
     }
 
-    // {§methods-conversation-worker}: a fresh conversation is a model-origin root worker with an empty private log.
+    // {§methods-conversation-worker}: a fresh conversation is a model-origin worker with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
-    async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
+    async createConversationWorker(args: ApplicationWorkerCreation): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
@@ -1308,6 +1339,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 `Workspace ${workspaceId} does not exist.`,
                 { workspaceId },
             );
+        }
+        const parentWorkerId = args.parentWorkerId === undefined ? undefined : ClientInput.assertId("worker.create", "parentWorkerId", args.parentWorkerId);
+        if (parentWorkerId !== undefined) {
+            if (args.owner !== undefined) throw daemonFailure("worker:owner", "child-owner-inherited", 400,
+                "A child inherits its parent's owner.", { workspaceId, parentWorkerId });
+            const parent = await this.readWorker({ workspaceId, identity: { id: parentWorkerId } });
+            if (parent === null) throw daemonFailure("worker:owner", "worker-not-found", 404,
+                `Parent worker ${parentWorkerId} does not belong to workspace ${workspaceId}.`, { workspaceId, parentWorkerId });
+        } else if (args.owner !== undefined) {
+            await WorkerOwners.registered(this.#db, workspaceId, args.owner);
         }
         if (name !== undefined) {
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
@@ -1321,7 +1362,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 );
             }
         }
-        const worker = await Envelope.createModelWorker(this.#db, workspaceId, name);
+        const worker = await Envelope.createModelWorker(this.#db, workspaceId, name, parentWorkerId, args.owner);
         return { workerId: worker.id, workerName: worker.name };
     }
 
@@ -1599,7 +1640,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#storage.upgrade();
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
-        await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());
+        await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         await this.#configuration.capture("packet", () => PacketBuilder.validateConfiguration());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration());
@@ -1918,34 +1959,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 
-    // {§methods-loop-run-fold-consistency} — a folded prompt cannot reconfigure its loop.
-    async #assertFoldPosture(workerId: number, policy: LoopPolicyRequest | undefined, loopId: number): Promise<void> {
-        if (policy === undefined || Object.keys(policy).length === 0) return;
-        const effective = await LoopPolicyReader.read(this.#db, loopId);
-        const requested = Object.entries(policy) as Array<[keyof LoopPolicy, LoopPolicy[keyof LoopPolicy] | undefined]>;
-        const conflicts = requested
-            .filter(([key, value]) => {
-                if (value === undefined) return false;
-                return effective[key] !== value;
-            })
-            .map(([key, value]) => `${key}: ${JSON.stringify(effective[key])} -> ${JSON.stringify(value)}`);
-        if (conflicts.length > 0) {
-            throw daemonFailure(
-                "daemon:loop",
-                "loop-policy-conflict",
-                409,
-                "The requested loop policy differs from the active loop policy.",
-                {
-                    workerId,
-                    loopId,
-                    conflicts,
-                    stage: "loop-injection",
-                    recovery: "Cancel the active loop before changing policy, or omit policy to keep its current posture.",
-                    retryable: false },
-            );
-        }
-    }
-
     inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
         return this.#drains.inject(args);
     }
@@ -1956,7 +1969,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const messages = await this.#db.drain_orphaned_messages_for_loop.all<{
             body: string;
             source: string | null;
-            policy: string;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
             effort: Effort | null;
@@ -1972,7 +1984,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             worker_id: workerId,
             prompt: first.body,
             prompt_source: first.source,
-            policy: first.policy,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
             effort: first.effort,

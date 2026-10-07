@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
@@ -149,7 +150,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         if (scope === workspaceId && method === "loop/terminated") terminated.resolve();
     });
     t.after(unsubscribe);
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool.", policy: { proposals: "accept" } });
+    serverProposals(t, "accept");
+    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool." });
     const lifecycle = new LoopLifecycle(db);
     // {§module-workspace-quiescence}: the stored result precedes turn-gate release.
     await terminated.promise;

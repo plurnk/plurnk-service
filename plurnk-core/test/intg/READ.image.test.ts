@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§packet-attachment-parts}: a native READ remains ordinary curatable context.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -80,7 +81,7 @@ keep looking
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: `image-${modalities.join("-") || "blind"}`, projectRoot: root });
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "what is in logo.png?", policy: { proposals: "accept" } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "what is in logo.png?" });
                 const loopId = (run.result as { loopId: number }).loopId;
                 await waitForDb(
                     () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
@@ -113,7 +114,8 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
 
-test("{§context-fit}: a READ that does not fit is a bodiless receipt; native output that fits attaches, and another READ attaches it again", async () => {
+test("{§context-fit}: a READ that does not fit is a bodiless receipt; native output that fits attaches, and another READ attaches it again", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-image-fit-"));
     try {
         await writeFile(join(root, "logo.png"), PNG);
@@ -129,7 +131,7 @@ test("{§context-fit}: a READ that does not fit is a bodiless receipt; native ou
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "native-context-fit", projectRoot: root });
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "Review logo.png and large.txt.", policy: { proposals: "accept" } });
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "Review logo.png and large.txt." });
                 const loopId = (run.result as { loopId: number }).loopId;
                 await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20_000 });
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -323,3 +325,6 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });
+
+// The specimen exercises results after server admission, not interactive approval.
+process.env.PLURNK_SERVICE_PROPOSALS = "accept";

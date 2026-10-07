@@ -1,5 +1,6 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
+import { serverProposals } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import { resolve } from "node:path";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
@@ -28,6 +29,7 @@ const setup = async (
     servers: Readonly<Record<string, object>> = { fixture: stdioEntry("interaction-server.mjs") },
     env: Readonly<Record<string, string>> = {},
 ) => {
+    serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
         makeMockResponse(PlurnkParser.frame("KILL", "MCP result observed.")),
@@ -56,8 +58,10 @@ const setup = async (
             body: JSON.stringify({
                 threadId: workspace,
                 runId: crypto.randomUUID(),
-                state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { workspace, projectRoot: null } },
+                state: {}, messages: [],
+                tools: [{ name: "mcp_input_required", description: "Answer MCP requests.", parameters: { type: "object" } }],
+                context: [],
+                forwardedProps: { plurnk: { workspace, projectRoot: null, control: true } },
                 ...additions,
             }),
             signal: AbortSignal.timeout(10_000),
@@ -70,13 +74,13 @@ const setup = async (
             .map((frame) => JSON.parse(frame.slice(6)) as Event);
     };
     // The Task fixtures' tools carry no readOnlyHint, so they are host effects ({§mcp-model-projection});
-    // the Run accepts its proposals, leaving each MCP input as the only client decision.
+    // server auto-approval leaves each MCP input as the only client decision.
     const start = (): Promise<Event[]> => post({
         messages: [{ id: "prompt", role: "user", content: "Perform the MCP operation and report its result." }],
-        forwardedProps: { plurnk: { workspace, projectRoot: null, policy: { proposals: "accept" } } },
+        forwardedProps: { plurnk: { workspace, projectRoot: null } },
     });
     const reconnect = (): Promise<Event[]> => post({
-        forwardedProps: { plurnk: { workspace, projectRoot: null, mode: "sync" } },
+        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, mode: "sync" } },
     });
     return { provider, post, start, reconnect, daemon, db };
 };

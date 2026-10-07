@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -14,7 +15,8 @@ const execution = (target: string | null, body = ""): ScriptReceipt => ({
     attrs: JSON.stringify({ stream }), status_rx: 200, origin: "model",
 });
 
-test("script oracle recognizes actual shell terminal receipts through the daemon", async () => {
+test("script oracle recognizes actual shell terminal receipts through the daemon", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-script-oracle-"));
     try {
         await writeFile(join(workspace, "greet.sh"), "#!/bin/sh\nprintf 'GREETING\\n'\n");
@@ -26,7 +28,7 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "script-oracle", projectRoot: workspace });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "run greet.sh", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "run greet.sh" });
                 assert.equal(result.finalStatus, 200);
                 assert.ok(result.modelWorkerId);
                 const execs = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "sh" });

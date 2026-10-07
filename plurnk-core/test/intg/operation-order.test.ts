@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { TurnDisposition, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -82,7 +83,8 @@ FOUR
     },
 ];
 
-for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, async () => {
+for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse(`\`\`\`\`EDIT (${target})
 ${content}
@@ -100,7 +102,7 @@ verify
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "ordered" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "run" });
             assert.equal(result.finalStatus, 200);
             const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; tx: string }>({ loop_id: result.loopId }))
                 .filter(({ origin, op, tx }) => origin === "model" && op !== "SEND" && op !== "NOTE"

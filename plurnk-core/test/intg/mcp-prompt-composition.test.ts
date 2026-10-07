@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -37,6 +38,7 @@ for (const media of [
 ] as const) {
 for (const modalities of [[media.kind], []] as InputModality[][]) {
     test(`MCP prompt ${media.kind} READ reaches ${modalities.length ? "native provider input" : "text-only fallback"} without injecting prompt roles`, { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
         let promptGets = 0;
         const served = await serveMcpHttp(t, createMcpHandler(() => {
             const server = new McpServer({ name: "prompt-media", version: "1" });
@@ -66,7 +68,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-prompt-media" });
             identity = { workspaceId, workerId: await daemon.ensureModelWorker(workspaceId) };
-            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP prompt media.", policy: { proposals: "accept" } });
+            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP prompt media." });
             const lifecycle = new LoopLifecycle(db);
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200, { timeoutMs: 10_000 });
             assert.equal(provider.received.length, 4);

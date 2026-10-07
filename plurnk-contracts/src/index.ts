@@ -4,7 +4,7 @@ export {
     default as Validator,
     InvalidCapabilityDescriptorError,
     InvalidCapabilityPolicyError,
-    InvalidLoopPolicyError,
+    InvalidWorkerOwnerError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidEntryReadResultError,

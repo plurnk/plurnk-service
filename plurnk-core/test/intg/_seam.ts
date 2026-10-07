@@ -18,6 +18,13 @@ export default class SeamSocket {
     #workspace: ClientEnvelope | null = null;
     #modelWorkerId: number | null = null;
     #closed = false;
+    static readonly owner = "test://primary";
+
+    async #claim(workerId: number): Promise<void> {
+        const { workspaceId } = this.#attached();
+        await this.#daemon.registerWorkerOwner(workspaceId, { address: SeamSocket.owner, tools: ["request_approval", "question", "mcp_input_required"] });
+        await this.#daemon.claimWorkerOwner({ workspaceId, workerId, owner: SeamSocket.owner });
+    }
 
     constructor(daemon: Daemon) {
         this.#daemon = daemon;
@@ -88,22 +95,25 @@ export default class SeamSocket {
                 });
                 this.#workspace = envelope;
                 this.#modelWorkerId = null;
+                await this.#claim(envelope.workerId);
                 return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
             case "workspace.attach": {
                 const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number, workerId: p.workerId as number | undefined, workerName: p.workerName as string | undefined });
                 this.#workspace = envelope;
                 this.#modelWorkerId = null;
+                await this.#claim(envelope.workerId);
                 return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
             case "loop.run": {
                 const s = this.#attached();
                 const modelWorkerId = p.workerId as number | undefined ?? this.#modelWorkerId ?? await daemon.ensureModelWorker(s.workspaceId);
                 this.#modelWorkerId = modelWorkerId;
+                await this.#claim(modelWorkerId);
                 const loop = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...(p.policy !== undefined ? { policy: p.policy as Parameters<Daemon["runLoop"]>[0]["policy"] } : {}),
+                    ...("policy" in p ? { policy: p.policy } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
@@ -133,7 +143,7 @@ export default class SeamSocket {
                 const result = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...(p.policy !== undefined ? { policy: p.policy as Parameters<Daemon["runLoop"]>[0]["policy"] } : {}),
+                    ...("policy" in p ? { policy: p.policy } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });
@@ -147,11 +157,11 @@ export default class SeamSocket {
                 return { cancelled, workerId: modelWorkerId, reason };
             }
             case "loop.resolve": {
-                daemon.resolveProposal(p.logEntryId as number, {
+                await daemon.resolveProposal(p.logEntryId as number, {
                     decision: p.decision as "accept" | "reject",
                     ...(p.body !== undefined ? { body: p.body as string } : {}),
                     ...(p.outcome !== undefined ? { outcome: p.outcome as string } : {}),
-                });
+                }, { workspaceId: this.#attached().workspaceId, address: SeamSocket.owner });
                 return { resolved: true };
             }
             case "proposal.list": {

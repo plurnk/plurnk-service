@@ -17,9 +17,9 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns, policy)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns)
 VALUES ($worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns, $policy)
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns)
 RETURNING id;
 
 -- PREP: drain_ready_loop
@@ -36,7 +36,7 @@ WHERE id = (
     ORDER BY sequence ASC
     LIMIT 1
 )
-RETURNING id, sequence, prompt, policy, max_turns;
+RETURNING id, sequence, prompt, max_turns;
 
 -- PREP: drain_get_loop_max_turns
 SELECT max_turns FROM loops WHERE id = $loop_id;
@@ -105,7 +105,7 @@ RETURNING id;
 -- cardinality and order ({§message-loop-containment}). Ordinal 1 is the loop's own assignment:
 -- its fate is the loop's, never replayed into fresh work.
 SELECT m.body AS body, m.source AS source, m.open_paths AS open_paths,
-       l.policy AS policy, l.model_route_id AS model_route_id,
+       l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
        l.effort AS effort,
        l.max_turns AS max_turns
@@ -122,12 +122,12 @@ ORDER BY m.ordinal ASC;
 -- {§message-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, prompt_source, policy, model_route_id, spawn_model_route_id, effort, max_turns,
+    worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns,
     orphan_source_loop_id
 )
 VALUES (
     $worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id),
-    100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $effort, $max_turns,
+    100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns,
     $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE

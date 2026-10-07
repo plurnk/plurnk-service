@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§functionality-coordinator} — lifecycle parity across the three real
 // families. One family-neutral matrix runs against Agent Skills, MCP, and
 // outbound A2A agents with their representative standards peers beneath: the
@@ -220,7 +221,7 @@ const agentsFamily = async (): Promise<Family> => {
     // is live, so it accepts its own proposal the way the dispatching client would; an alias that is
     // not configured refuses before any proposal and passes straight through.
     const send = (alias: string) => async (context: Context) =>
-        (await dispatchSettled(context.daemon, () => dispatch(context, sendStmt(a2aTarget(alias), "parity")))).status;
+        (await dispatchSettled(context.daemon, { workspaceId: context.workspaceId, address: TEST_OWNER }, () => dispatch(context, sendStmt(a2aTarget(alias), "parity")))).status;
     return {
         family: "a2a",
         documentOf: (alias) => `/_plurnk/a2a/${alias}.md`,
@@ -253,6 +254,7 @@ const matrix = async (family: Family): Promise<void> => {
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
     const clientA = await insertWorker(db, workspaceId, null, "client-a", "client");
     const clientB = await insertWorker(db, workspaceId, null, "client-b", "client");
+    for (const workerId of [model, peer, clientA, clientB]) await ownWorker(db, workspaceId, workerId);
     let provider = mockProvider();
     let { daemon } = await family.boot(db, provider);
     await daemon.start();
@@ -299,7 +301,7 @@ const matrix = async (family: Family): Promise<void> => {
         const outputsBefore = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" })).length;
         const pending = exec(program);
         await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
-        await daemon.resolveProposal(proposals[seen]!, { decision });
+        await daemon.resolveProposal(proposals[seen]!, { decision }, { workspaceId, address: TEST_OWNER });
         const result = await pending;
         if (decision === "accept") {
             await waitForDb(async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" })).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
@@ -311,7 +313,7 @@ const matrix = async (family: Family): Promise<void> => {
     // A model loop: the next packet is what the model actually sees.
     const nextPacket = async (): Promise<string> => {
         const before = provider.requests.length;
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: `parity ${provider.requests.length}`, policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: `parity ${provider.requests.length}` });
         await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (t) => t.length > 0, { timeoutMs: 20_000 });
         const packet = provider.requests[before];
         assert.ok(packet !== undefined, `${family.family}: the loop produced no packet`);

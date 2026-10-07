@@ -15,13 +15,12 @@ VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
 
 -- PREP: test_insert_loop
--- A NULL $policy takes this fixture's attended review policy; the column itself carries no default.
-INSERT INTO loops (worker_id, sequence, prompt, policy, max_turns)
-VALUES ($worker_id, $sequence, $prompt, COALESCE($policy, '{"proposals":"review","attended":true}'), -1) RETURNING id;
+INSERT INTO loops (worker_id, sequence, prompt, max_turns)
+VALUES ($worker_id, $sequence, $prompt, -1) RETURNING id;
 
 -- PREP: test_insert_queued_loop
-INSERT INTO loops (worker_id, sequence, prompt, status, policy, max_turns)
-VALUES ($worker_id, $sequence, $prompt, 100, '{"proposals":"review","attended":true}', -1) RETURNING id;
+INSERT INTO loops (worker_id, sequence, prompt, status, max_turns)
+VALUES ($worker_id, $sequence, $prompt, 100, -1) RETURNING id;
 
 -- PREP: test_get_loop_claimed_at
 SELECT claimed_at FROM loops WHERE id = $id;
@@ -104,7 +103,7 @@ SELECT status FROM loops WHERE id = $id;
 SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
 
 -- PREP: test_get_loop_posture
-SELECT policy, model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
+SELECT model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
 -- PREP: test_messages_by_loop
@@ -497,8 +496,7 @@ ORDER BY e.pathname;
 
 
 -- PREP: test_all_loops
--- {§worker-delegation-inherits-policy} — every loop's persisted policy, delegation-tree-wide.
-SELECT id, worker_id, policy, model_route_id, spawn_model_route_id, effort, status FROM loops ORDER BY id;
+SELECT id, worker_id, model_route_id, spawn_model_route_id, effort, status FROM loops ORDER BY id;
 
 -- PREP: test_workers_with_parent
 -- Deterministic topology identity: real child workers, their names, and their parent edge.
@@ -509,8 +507,7 @@ SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
 SELECT id, name, model_route_id, spawn_model_route_id, effort FROM workers ORDER BY id;
 
 -- PREP: test_edit_states
--- {§worker-delegation-inherits-policy} — EDIT rows' proposal states: a delegated child's EDIT
--- must land resolved (inherited acceptance), never proposed/cancelled into the void.
+-- {§worker-ownership} — a delegated child's EDIT settles through its inherited owner.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
@@ -772,7 +769,7 @@ SELECT id, name FROM workers WHERE parent_worker_id = $worker_id ORDER BY id;
 
 -- PREP: test_fork_loops
 -- A worker's loops as a fork copies them ({§worker-fork-trigger}).
-SELECT id, sequence, status, prompt, policy, model_route_id, spawn_model_route_id,
+SELECT id, sequence, status, prompt, model_route_id, spawn_model_route_id,
        effort, max_turns, terminal_result
 FROM loops WHERE worker_id = $worker_id ORDER BY id;
 

@@ -12,7 +12,6 @@ import {
 import type { HttpHost } from "@plurnk/plurnk-contracts";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import type { HostedProposals } from "./config.ts";
 import PlurnkAgentExecutor, { type ExecutorPort } from "./PlurnkAgentExecutor.ts";
 import PlurnkRequestHandler from "./PlurnkRequestHandler.ts";
 import PlurnkTaskStore, { type TaskStorePort } from "./PlurnkTaskStore.ts";
@@ -21,7 +20,7 @@ import WorkspaceBinding, { type A2aWorkspaceConfiguration, type WorkspacePort } 
 export interface A2aExposureOptions {
     readonly workspace: A2aWorkspaceConfiguration;
     readonly card: AgentCard;
-    readonly proposals: HostedProposals;
+    readonly parentWorker: string;
     /** The bearer the endpoint requires and the card declares; empty = an unauthenticated exposure. */
     readonly token: string;
     readonly endpointPath: string;
@@ -30,7 +29,8 @@ export interface A2aExposureOptions {
 }
 
 // {§a2a-inbound-exposure} The start seam: the port functions the exposure calls, and the listener it mounts on.
-export type ExposurePort = WorkspacePort & TaskStorePort & ExecutorPort & HttpHost;
+export type ExposurePort = WorkspacePort & TaskStorePort & ExecutorPort & HttpHost
+    & Pick<import("@plurnk/plurnk-contracts").ApplicationPort, "registerClientInteractionRoute">;
 
 export interface A2aExposureRegistration extends DaemonModule<ModuleSetupSeam, ExposurePort> {
     readonly mounts: readonly string[];
@@ -58,6 +58,7 @@ export default class Exposure {
     readonly #card: AgentCard;
     readonly #endpointPath: string;
     readonly #endpointUrl: string | undefined;
+    readonly #unregisterInteractionRoute: () => void;
     #closed = false;
 
     private constructor(application: ExposurePort, options: A2aExposureOptions) {
@@ -97,7 +98,7 @@ export default class Exposure {
 
         const workspace = new WorkspaceBinding(application, options.workspace);
         const store = new PlurnkTaskStore(application, workspace);
-        const executor = new PlurnkAgentExecutor(application, workspace, store, options.proposals);
+        const executor = new PlurnkAgentExecutor(application, workspace, store, options.parentWorker);
         const handler = new PlurnkRequestHandler(this.#card, store, executor);
         const app = express();
         // {§module-lifecycle} — stop() refuses new external work; the routes stay mounted on the
@@ -120,6 +121,12 @@ export default class Exposure {
         if (token.length === 0) app.use(this.#endpointPath, endpoint);
         else app.use(this.#endpointPath, Exposure.#bearerGate(token), endpoint);
         this.#app = app;
+        this.#unregisterInteractionRoute = application.registerClientInteractionRoute(async ({ workspaceId, workerId, loopId }) => {
+            if (await workspace.existingId() !== workspaceId) return null;
+            const worker = await application.readWorker({ workspaceId, identity: { id: workerId } });
+            const binding = worker === null ? null : await store.binding(worker.name);
+            return binding?.loop?.id === loopId ? PlurnkTaskStore.replyAddress(binding) : null;
+        });
     }
 
     static init(options: A2aExposureOptions): A2aExposureRegistration {
@@ -162,5 +169,9 @@ export default class Exposure {
 
     stop(): void {
         this.#closed = true;
+    }
+
+    close(): void {
+        this.#unregisterInteractionRoute();
     }
 }

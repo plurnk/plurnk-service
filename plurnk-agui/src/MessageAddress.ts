@@ -3,6 +3,10 @@ import type { RunAgentInput, UserMessage } from "./types.ts";
 
 /** {§agui-run-source}: message identity belongs to the conversation, not its transport run. */
 export default class MessageAddress {
+    static owner(threadId: string): string {
+        return `agui://anonymous/threads/${encodeURIComponent(threadId)}`;
+    }
+
     static submission(
         { threadId, runId }: Pick<RunAgentInput, "threadId" | "runId">,
         message: UserMessage,
@@ -12,7 +16,7 @@ export default class MessageAddress {
     }
 
     static render(threadId: string, messageId: string): string {
-        return `agui://anonymous/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}`;
+        return `${MessageAddress.owner(threadId)}/messages/${encodeURIComponent(messageId)}`;
     }
 
     static messageId(address: unknown, threadId: string): string | null {

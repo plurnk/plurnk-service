@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§mimetype-query} {§find-source-agnostic} — the pattern feature end to end, as the model
 // drives it: one seeded corpus (markdown, JSON, XML, text), then one FIND per dialect and
 // per cross-mapping, every answer read back from the dispatched rows. Regex carries its
@@ -92,7 +93,8 @@ const PROBES: Probe[] = [
     } },
 ];
 
-test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async () => {
+test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const seed = [
         `\`\`\`\`EDIT (worker:///docs/guide.md)
 ${GUIDE}
@@ -125,7 +127,7 @@ searched
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "pattern-dialects" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
             const edits = rows.filter((r) => r.op === "EDIT" && r.origin === "model");

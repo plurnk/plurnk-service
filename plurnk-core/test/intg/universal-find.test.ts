@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -297,7 +298,8 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
     }
 });
 
-test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async () => {
+test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async (t) => {
+    serverProposals(t, "accept");
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const http = new Http();
@@ -324,8 +326,8 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
         const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         // {§http-outbound-proposes} — the SEND below is an outbound mutation, so it proposes. This
-        // test is about method provenance, not consent: the loop states that it accepts its own.
-        const loopId = await insertLoop(db, workerId, 1, "", { proposals: "accept", attended: true });
+        // test is about method provenance, not consent: the test configures server acceptance.
+        const loopId = await insertLoop(db, workerId, 1, "");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (statement: FindStatement | ReadStatement | SendStatement, sequence: number) => engine.dispatch({
             statement,

@@ -18,6 +18,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
 // Named by the source only to be refused: a retired key is declared nowhere, by design.
 const RETIRED = new Set([
+    "PLURNK_SERVICE_ATTENDED", "PLURNK_SERVICE_UNATTENDED_PROPOSALS",
     "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_EFFECT_POLICY",
     // {§context-fit} {§context-gauge} — the projection and pressure knobs; the page's two knobs stand ({§markerless-first-page}).
     "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE",

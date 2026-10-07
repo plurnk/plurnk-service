@@ -1,3 +1,4 @@
+import { ownWorker, serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -52,6 +53,7 @@ const fixture = async (executor: Executor, workspaceScoped = false) => {
     schemes.registerRuntimeSchemes(registry);
     const workspaceId = await insertWorkspace(db, `input-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
+    await ownWorker(db, workspaceId, workerId);
     const loopId = await insertLoop(db, workerId, 1);
     const turnId = await insertTurn(db, loopId, 1, 102);
     if (workspaceScoped) {
@@ -196,10 +198,10 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
     } finally { executor.finished.resolve(); await f.close(); }
 });
 
-test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the dispatcher", async () => {
+test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the dispatcher", async (t) => {
+    serverProposals(t, "accept");
     const f = await fixture(new Common({ runtime: "node", glyph: "n" }));
     try {
-        await f.db.test_set_loop_policy.run({ loop_id: f.loopId, policy: JSON.stringify({ proposals: "accept", attended: true }) });
         const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
         const sent = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"eof": true}]\nexact α\n\n\`\`\`\``);

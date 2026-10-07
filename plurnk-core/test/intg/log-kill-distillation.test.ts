@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§log-kill-distillation}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,7 +15,8 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
 
 const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
 
-test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async () => {
+test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
         `\`\`\`\`KILL (log:///1/**/{READ,NOTE}) <!-- retire the read and the note; keep what they taught -->\n${distillation}\n\`\`\`\`\n\`\`\`\`KILL (log:///1/**/EDIT)\n   \n\`\`\`\`\n\`\`\`\`NOTE\ncurated\n\`\`\`\``,
@@ -25,7 +27,7 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-kill-distillation" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
@@ -58,7 +60,8 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
     });
 });
 
-test("{§log-kill-distillation} a failed log KILL still keeps its body as the model's NOTE, named by the target as written; the miss is the receipt beside it", async () => {
+test("{§log-kill-distillation} a failed log KILL still keeps its body as the model's NOTE, named by the target as written; the miss is the receipt beside it", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````NOTE\nwrote\n````",
         "````KILL (log:///9/9/9)\nnothing here\n````\n````NOTE\nchecked\n````",
@@ -68,7 +71,7 @@ test("{§log-kill-distillation} a failed log KILL still keeps its body as the mo
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-kill-distillation-miss" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             const history = await db.test_log_entries_by_loop.all<{

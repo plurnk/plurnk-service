@@ -10,7 +10,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | AST, validators, Problems, results, Notices, text regions and extents          | `@plurnk/plurnk-contracts`                          |
-| Capability and loop policies                                                    | `CapabilityPolicy`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
+| Capability admission and approval ownership | `CapabilityPolicy`, `WorkerOwner`, `ProposalPolicy`, `PROPOSAL_POLICIES` |
 | Durable effort                                                                  | `Effort`, `EFFORTS`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
@@ -137,9 +137,10 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
 | `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service and workspace layers |
 | `CapabilityProjection`    | Exact service, workspace, and normalized effective policies | Expose the resolver's workspace cascade without claiming one layer is effective authority |
-| `LoopPolicy`              | One `review`, `accept`, or `reject` proposal disposition | Snapshot once when the loop is created |
-| `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
-| `ProposalProjection`      | Identity, `{ scheme, authority, pathname }` review target, body/attrs, effective policy, stale signal, disposition | Derive one validated projection for live delivery and durable reconnect discovery |
+| `WorkerOwner` | Nonempty address and unique client-tool names | Persist by workspace; inherit through worker creation |
+| `ProposalPolicy` | `review`, `accept`, or `reject` | Read the server's disposition knob at the proposal boundary |
+| `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
+| `ProposalProjection` | Identity, review target, body/attrs, owner, stale signal, disposition | One validated projection for live delivery and reconnect |
 | `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
 | `ProviderCost`            | Exact charged, estimated, or unknown monetary evidence                           | Normalize one monetary disposition for each physical provider request                    |
 | `ProviderRequestAccounting` | Usage and cost evidence for one physical provider request                      | Preserve request order across retries, failover, success, and failure                    |
@@ -167,15 +168,11 @@ workspace layer and their normalized intersection: `service`, `workspace`, and
 capability policy or inherited bound; every actor uses the same live workspace
 policy. A client never derives effective authority from the mutable layer alone.
 
-§loop-policy A `LoopPolicy` is complete and immutable after creation:
-`proposals` chooses one downstream settlement posture and `attended` says
-whether anyone can answer, independently of workspace capability policy. An
-unattended loop cannot hold a proposal for review, so the schema refuses that
-pair. A `LoopPolicyRequest` is the part of a policy its creator chose to state.
-Contracts hold no default for the rest: the daemon's panel supplies it
-({§loop-policy-composition}). `PROPOSAL_POLICIES` is the schema-owned
-vocabulary of `proposals`. Capability admission precedes effect
-classification and proposal settlement.
+§proposal-policy `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES`
+is its schema-owned vocabulary. `WorkerOwner` carries an address and the client-tool
+names that recipient implements. Neither contains resource permissions or
+message-carried authority. Core owns persistence, inheritance and settlement
+({§worker-ownership}, {§proposal-disposition}); capability admission precedes approval.
 
 §effort-wire `Effort` is exactly `off | adaptive | low |
 medium | high | xhigh | max`. The schema owns this shared wire vocabulary. Providers own the
@@ -1459,7 +1456,7 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 | `TurnDisposition`                                   | The one turn disposition and its recognition                        | {§turn-disposition}                       |
 | `CapabilityAdmission`                               | Admission of a capability descriptor against policy layers          | {§capability-admission}                   |
 | `PLURNK_OPS`, `INTERNAL_ROW_OPS`, `PLURNK_FENCE`    | The closed operation alphabet and the language's fence              | {§canonical-statement}                    |
-| `PROPOSAL_POLICIES`                                 | The vocabulary a loop policy chooses from                           | {§loop-policy}                            |
+| `PROPOSAL_POLICIES` | Server proposal disposition vocabulary | {§proposal-policy} |
 | `WORKER_NAME`                                       | Authority minting predicate                                         | {§worker-name}                            |
 | `UNKNOWN_POSITION`                                  | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                        |
 

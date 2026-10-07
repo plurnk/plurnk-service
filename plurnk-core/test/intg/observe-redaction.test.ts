@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // Redaction-by-default at the observational boundary ({§observability-boundary}):
 // a loop whose prompt and workspace carry recognizable content — a secret
 // sentinel, a fixture fact, a hostname, and a .example URL — must never leak any
@@ -31,7 +32,8 @@ const serialized = (spans: ReturnType<{ spans(): unknown[] }["spans"]>): string 
     return parts.join("\n");
 };
 
-test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundary", async () => {
+test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundary", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const memory = await mountMemoryTracing();
     try {
         const provider = new Mock({
@@ -51,7 +53,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
             assert.ok(Number.isInteger(created.id));
             const term = await runLoopToTerminal(ws, 2, {
                 prompt: `The codename is ${FACT}, the host is ${HOST}, and the vault secret is ${SECRET}. Read ${URL} to confirm.`,
-                policy: { proposals: "accept" },
+
             }, { timeoutMs: 60_000 });
             assert.equal(term.finalStatus, 200);
         });

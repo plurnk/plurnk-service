@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§worker-wait-timing} Real subprocesses exercise wait expiry independently of their lifetime.
 
 import test from "node:test";
@@ -12,6 +13,7 @@ import NoticeChannel from "../../src/core/NoticeChannel.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered feedback", async (t) => {
+    serverProposals(t, "accept");
     const pushed = t.mock.method(NoticeChannel.prototype, "push");
     const deleted = t.mock.method(NoticeChannel.prototype, "delete");
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -23,7 +25,7 @@ test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered
             await rpcCall(ws, 1, "workspace.create", { name: "cancel-wait-feedback" });
             const notices = subscribeNotifications(ws, "notice/event");
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "go", policy: { proposals: "accept" } });
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
             const { loopId } = response.result as { loopId: number };
             await waitFor(() => notices() as Array<{ loopId: number; notice: { kind: string; status?: number } }>,
                 (items) => items.some((item) => item.loopId === loopId && item.notice.kind === "loop_status" && item.notice.status === 202));
@@ -43,6 +45,7 @@ test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered
 
 for (const header of ["WAIT", "WAIT <0>"]) {
     test(`{§worker-lifecycle-poll-matrix} ${header} resumes a loop without closing its open stream`, async (t) => {
+    serverProposals(t, "accept");
         const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
         process.env.PLURNK_SERVICE_WAIT_SEC = "1";
         const mock = new Mock({ contextWindow: 16384, responses: [
@@ -69,7 +72,7 @@ for (const header of ["WAIT", "WAIT <0>"]) {
                         return generate(args);
                     });
                     const started = Date.now();
-                    const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", workerId, policy: { proposals: "accept" } });
+                    const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", workerId });
                     assert.equal(finalStatus, 499);
                     assert.ok(Date.now() - started < 10_000, "the wait expired before the 30-second stream conclusion");
                     assert.equal(mock.remaining, 0);
@@ -86,7 +89,8 @@ for (const header of ["WAIT", "WAIT <0>"]) {
     });
 }
 
-test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly once before its wait expires", async () => {
+test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly once before its wait expires", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
     // The duration is far longer than the spawn: the only wake that can arrive is closure.
     process.env.PLURNK_SERVICE_WAIT_SEC = "600";
@@ -99,7 +103,7 @@ test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly onc
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "wait-closure" });
-                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3, "initialization plus two model turns; no pre-closure wake consumed the terminal response");
                 assert.equal(mock.remaining, 0, "closure produced the only continuation");

@@ -1,13 +1,13 @@
-// {§loop-policy} — loop.run persists one complete immutable proposal policy;
-// proposal review, acceptance, and rejection all use one lifecycle.
+// {§worker-owner-resolution} Server disposition and worker owners use one proposal lifecycle.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { EditStatement, LoopPolicy } from "@plurnk/plurnk-contracts";
+import type { EditStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { viableWindow } from "./_provider.ts";
 import { rpcCall, rpcProblem, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor, flush } from "./_rpc.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 class ProposingTest {
@@ -67,43 +67,8 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
     });
 });
 
-test("loop.run persists a complete canonical policy and omission uses the complete default", async () => {
-    const response = "````SEND\ndone\n````";
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse(response, 0),
-        makeMockResponse(response, 0),
-    ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "policy-persist" });
-            const selected = await runLoopToTerminal(ws, 2, {
-                prompt: "selected",
-                policy: {
-                    proposals: "accept",
-                    attended: false,
-                },
-            });
-            const selectedId = selected.loopId;
-            const selectedRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: selectedId });
-            assert.deepEqual(JSON.parse(selectedRow!.policy) as LoopPolicy, {
-                proposals: "accept",
-                attended: false,
-            });
-
-            const ordinary = await runLoopToTerminal(ws, 3, { prompt: "ordinary" });
-            const ordinaryId = ordinary.loopId;
-            const ordinaryRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: ordinaryId });
-            // {§loop-attendance} — an omitted policy is the complete default, attendance included.
-            assert.deepEqual(JSON.parse(ordinaryRow!.policy) as LoopPolicy, {
-                proposals: "review",
-                attended: true,
-            });
-        } finally { ws.close(); }
-    });
-});
-
-test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core without a client resolver", async () => {
+test("{§worker-owner-resolution} server acceptance resolves through Core without a client resolver", async (t) => {
+    serverProposals(t, "accept");
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
@@ -116,7 +81,6 @@ test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core wi
             await rpcCall(ws, 1, "workspace.create", { name: "proposal-accept" });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal",
-                policy: { proposals: "accept" },
             });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
@@ -127,7 +91,8 @@ test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core wi
     });
 });
 
-test("{§proposal-ownership-notification} proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
+test("{§proposal-ownership-notification} server rejection settles the same admitted proposal without becoming a capability denial", async (t) => {
+    serverProposals(t, "reject");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
         makeMockResponse("````KILL\nthe edit was declined; concluding\n````", 50),
@@ -140,36 +105,24 @@ test("{§proposal-ownership-notification} proposals=reject settles the same admi
             await rpcCall(ws, 1, "workspace.create", { name: "proposal-reject" });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal",
-                policy: { proposals: "reject" },
             });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string; rx: string }>({ loop_id: result.loopId });
             const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edit?.status_rx, 400, "the admitted action was declined, not denied at capability admission");
-            // {§proposal-harness-settlement} — the harness decided this rejection, so it owes the reason
-            // and an exit, not an outcome token alone (#789).
-            const refusal = JSON.parse(edit!.rx) as { outcome?: string; problem?: { detail?: string; recovery?: string } };
-            const detail = refusal.problem?.detail ?? "";
-            const recovery = refusal.problem?.recovery ?? "";
-            assert.equal(refusal.outcome, "no_review_channel", "the forensic token is unchanged");
-            assert.match(detail, /unattended/u, `detail names the condition: ${detail}`);
-            assert.match(detail, /nobody is present to answer/u, `detail says why: ${detail}`);
-            assert.match(recovery, /State proposals accept or reject/u, `recovery names an exit: ${recovery}`);
+            const refusal = JSON.parse(edit!.rx) as { outcome?: string };
+            assert.equal(refusal.outcome, "policy_veto");
             const [proposal] = await waitFor(
-                () => proposals() as Array<{ disposition?: unknown; policy?: unknown }>,
+                () => proposals() as Array<{ disposition?: unknown; owner?: string }>,
                 (items) => items.length > 0,
             );
-            assert.deepEqual(proposal.disposition, {
-                owner: "loop",
-                decision: "reject",
-                outcome: "no_review_channel",
-            });
-            assert.deepEqual(proposal.policy, { proposals: "reject", attended: true });
+            assert.deepEqual(proposal.disposition, { decision: "reject", outcome: "policy_veto" });
+            assert.equal(proposal.owner, TEST_OWNER);
         } finally { ws.close(); }
     });
 });
 
-test("{§notifications-loop-proposal} proposal notification projects the same durable policy and its derived disposition", async () => {
+test("{§notifications-loop-proposal} proposal notification projects the durable owner and selected disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
     ] });
@@ -181,32 +134,27 @@ test("{§notifications-loop-proposal} proposal notification projects the same du
             await rpcCall(ws, 1, "workspace.create", { name: "proposal-review" });
             const run = rpcCall(ws, 2, "loop.run", {
                 prompt: "trigger",
-                policy: { proposals: "review" },
             });
             const [proposal] = await waitFor(
-                () => proposals() as Array<{ logEntryId: number; workerId?: number; policy?: unknown; disposition?: unknown }>,
+                () => proposals() as Array<{ logEntryId: number; workerId?: number; owner?: string; disposition?: unknown }>,
                 (items) => items.length > 0,
             );
             assert.equal(typeof proposal.workerId, "number");
-            // The projection is the durable policy verbatim, attendance included: the client
-            // deciding this proposal sees exactly what the loop is running under.
-            assert.deepEqual(proposal.policy, {
-                proposals: "review",
-                attended: true,
-            });
-            assert.deepEqual(proposal.disposition, { owner: "client" });
+            assert.equal(proposal.owner, TEST_OWNER);
+            assert.deepEqual(proposal.disposition, { decision: "review" });
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: proposal.logEntryId, decision: "accept" });
             await run;
         } finally { ws.close(); }
     });
 });
 
-test("loop.run rejects every malformed policy at the public boundary", async () => {
+test("{§worker-owner-resolution}: loop.run rejects retired policy parameters before admitting input", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "bad-policy" });
             for (const policy of [
+                { proposals: "accept" },
                 { proposals: "sometimes" },
                 { capabilities: { deny: [{}] } },
                 { automatic: true },
@@ -214,9 +162,7 @@ test("loop.run rejects every malformed policy at the public boundary", async () 
             ]) {
                 const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", policy });
                 const problem = rpcProblem(response);
-                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-policy-invalid");
-                assert.equal(problem.field, "policy");
-                assert.equal(problem.retryable, false);
+                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-policy-retired");
             }
         } finally { ws.close(); }
     });

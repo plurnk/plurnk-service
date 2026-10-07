@@ -3,7 +3,9 @@
 // `<795,1,795,1>` (or its anchored `<@h,1,@h,1>`) must insert whole lines from a fenced body that ends
 // without a newline, while a region off column 1 stays byte-exact and an empty body inserts nothing.
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach, type TestContext } from "node:test";
+import { serverProposals } from "./_approval.ts";
+beforeEach((t) => serverProposals(t as TestContext, "accept"));
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -40,7 +42,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const workspaceId = await insertWorkspace(db, `whole-line-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Add the test.", { proposals: "accept", attended: false });
+        const loopId = await insertLoop(db, workerId, 1, "Add the test.");
         const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
             await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         let calls = 0;

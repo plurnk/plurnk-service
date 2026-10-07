@@ -27,7 +27,7 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
             definition = readDefinition(parseJson(key, value));
         } catch (cause) {
             if (!(cause instanceof DefinitionError)) throw cause;
-            throw new ConfigurationError(key, `${key} must be a schedule definition: {"rule", "target", "prompt", "policy"?}.`, { cause });
+            throw new ConfigurationError(key, `${key} must be a schedule definition: {"rule", "target", "prompt"}.`, { cause });
         }
         definitions.set(alias, { definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } });
     }

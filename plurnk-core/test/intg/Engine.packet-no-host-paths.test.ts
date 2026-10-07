@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§fs-answer-in-canon} Execution receipts do not repeat the default working directory.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,7 +15,8 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const execFileP = promisify(execFile);
 
-test("{§fs-answer-in-canon} execution receipts and failed targets do not expose a redundant absolute working directory", async () => {
+test("{§fs-answer-in-canon} execution receipts and failed targets do not expose a redundant absolute working directory", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-namespace-")));
     try {
         const env = hermeticGitEnv();
@@ -35,7 +37,7 @@ test("{§fs-answer-in-canon} execution receipts and failed targets do not expose
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "namespace", projectRoot: root });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "run" });
                 assert.equal(result.result.status, 200);
                 const texts: string[] = [];
                 for (const id of result.turnIds ?? []) {

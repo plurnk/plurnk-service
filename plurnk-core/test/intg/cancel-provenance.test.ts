@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§loop-terminal-authorship}, {§methods-loop-cancel}: external cancellation is durable and explicit.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,6 +24,7 @@ const terminalResult = (row: LoopRow): {
 };
 
 test("{§turn-record}: cancellation during packet preparation completes the turn without inventing a provider failure", async (t) => {
+    serverProposals(t, "accept");
     const preparing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const build = PacketBuilder.prototype.buildRequestPacket;
@@ -39,7 +41,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "cancel-preparation" });
-            const running = rpcCall(ws, 2, "loop.run", { prompt: "prepare a packet", policy: { proposals: "accept" } });
+            const running = rpcCall(ws, 2, "loop.run", { prompt: "prepare a packet" });
             await preparing.promise;
             const cancelled = rpcCall(ws, 3, "loop.cancel", { reason: "cancel during preparation" });
             const loop = await waitForDb(
@@ -62,7 +64,8 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
     });
 });
 
-test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
+test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
         makeMockResponse("````KILL\ndone\n````"),
@@ -73,7 +76,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-live" });
             const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", policy: { proposals: "accept" } });
+            void rpcCall(ws, 2, "loop.run", { prompt: "slow job" });
             await flush();
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
@@ -115,6 +118,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
 });
 
 test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async (t) => {
+    serverProposals(t, "accept");
     // A worker parked on a live obligation has no active drain, so cancellation
     // terminalizes the durable 202 row directly.
     const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
@@ -132,7 +136,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-parked" });
             const workspaceId = (created.result as { id: number }).id;
-            void rpcCall(ws, 2, "loop.run", { prompt: "slow job", policy: { proposals: "accept" } });
+            void rpcCall(ws, 2, "loop.run", { prompt: "slow job" });
             await flush();
             // Parked: the loop row reaches 202 (the drain has exited by then).
             const parked = await waitForDb(

@@ -5,6 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,6 +71,7 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
         const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "file edit test");
         const turnId = await insertTurn(db, loopId, 1, 102);
         return await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });

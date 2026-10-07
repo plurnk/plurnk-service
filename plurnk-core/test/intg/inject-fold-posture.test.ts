@@ -1,9 +1,9 @@
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§methods-loop-run-fold-consistency} — folded prompts preserve durable loop configuration.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
@@ -13,82 +13,23 @@ const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     makeMockResponse("````KILL\ndone again\n````", 10),
 ] });
 
-test("{§methods-loop-run-fold-consistency}: conflicting policy cannot re-posture a live loop", async () => {
-    await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
+test("{§worker-ownership}: injecting a message preserves the owner's pending review", async () => {
+    await withDaemon(heldLoopMock(), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "posture-conflict" });
-            const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", {
-                prompt: "start working",
-                policy: { proposals: "review" },
-            });
-            await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            const conflicted = await rpcCall(ws, 3, "loop.run", {
-                prompt: "use another proposal posture",
-                policy: { proposals: "accept" },
-            });
-            const problem = rpcProblem(conflicted);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/loop/loop-policy-conflict");
-            assert.deepEqual(problem.conflicts, [
-                'proposals: "review" -> "accept"',
-            ]);
-            assert.match(problem.recovery ?? "", /Cancel.*or omit policy/);
-        } finally { ws.close(); }
-    });
-});
-
-test("{§methods-loop-run-fold-consistency}: matching or absent policy folds without changing posture", async () => {
-    await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "posture-match" });
-            const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", policy: { proposals: "review" } });
-            await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "also do this", policy: { proposals: "review" } });
-            assert.equal((matching.result as { action: string }).action, "injected_next_turn", "identical policy folds clean");
-            const bare = await rpcCall(ws, 4, "loop.run", { prompt: "and this" });
-            assert.equal((bare.result as { action: string }).action, "injected_next_turn", "absent policy adopts the loop's posture");
-            // Release the held proposal so teardown reaps a settled world.
-            const pending = proposals() as Array<{ logEntryId: number }>;
-            await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            await runLoopToTerminal(ws, 6, { prompt: "wrap up", policy: { proposals: "review" } }).catch(() => {});
-        } finally { ws.close(); }
-    });
-});
-
-test("inject surfaces contract-invalid durable posture before comparing it (#169)", async () => {
-    await withDaemon(heldLoopMock(), async (db, daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const created = await rpcCall(ws, 1, "workspace.create", { name: "posture-invalid" });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "owned-injection" });
             const workspaceId = (created.result as { id: number }).id;
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working", policy: { proposals: "review" } });
-            const { loopId, modelWorkerId } = started.result as { loopId: number; modelWorkerId: number };
-            await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            await db.test_set_loop_policy.run({
-                loop_id: loopId,
-                policy: JSON.stringify({ proposals: "sometimes", attended: true }),
-            });
-
-            await assert.rejects(
-                daemon.runLoop({ workspaceId, workerId: modelWorkerId, prompt: "fold this", policy: { proposals: "review" } }),
-                (error: unknown) => {
-                    assert.ok(error instanceof Error);
-                    assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
-                    assert.ok(error.cause instanceof InvalidLoopPolicyError);
-                    return true;
-                },
-            );
-
-            await db.test_set_loop_policy.run({
-                loop_id: loopId,
-                policy: JSON.stringify({ proposals: "review", attended: true }),
-            });
-            const pending = proposals() as Array<{ logEntryId: number }>;
-            await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
+            const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working" });
+            const { modelWorkerId } = started.result as { modelWorkerId: number };
+            const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (items) => items.length === 1);
+            const folded = await rpcCall(ws, 3, "loop.run", { prompt: "also do this" });
+            assert.equal((folded.result as { action: string }).action, "injected_next_turn");
+            assert.equal((await daemon.readWorker({ workspaceId, identity: { id: modelWorkerId } }))?.owner, TEST_OWNER);
+            const refused = await rpcCall(ws, 4, "loop.run", { prompt: "change authority", policy: { proposals: "accept" } });
+            assert.equal(rpcProblem(refused).type, "https://problems.plurnk.xyz/daemon/input/loop-policy-retired");
+            assert.equal((await daemon.pendingProposals(workspaceId)).length, 1);
+            await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0]!.logEntryId, decision: "reject" });
         } finally { ws.close(); }
     });
 });
@@ -126,7 +67,8 @@ test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the 
     });
 });
 
-test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked loop unchanged", async () => {
+test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked loop unchanged", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -141,7 +83,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
             await rpcCall(ws, 1, "workspace.create", { name: "parked-max-turns" });
             const started = await rpcCall(ws, 2, "loop.run", {
                 prompt: "start and park",
-                policy: { proposals: "accept" },
+
                 maxTurns: 5,
             });
             const loopId = (started.result as { loopId: number }).loopId;

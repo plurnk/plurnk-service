@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -16,6 +17,7 @@ class PacketCapturingMock extends Mock {
 }
 
 test("{§skills-hotload} retargeting an installed symlink refreshes its source base even with identical frontmatter", async (t) => {
+    serverProposals(t, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-retarget-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     for (const version of ["first", "second"]) {
@@ -36,16 +38,17 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
         const ws = await connect(addr);
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { name: `skills-retarget-${crypto.randomUUID()}`, projectRoot: root });
-        assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Read the skill guide.", policy: { proposals: "accept" } })).finalStatus, 200);
+        assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Read the skill guide." })).finalStatus, 200);
         assert.match(provider.requests[1]!, /FIRST_SOURCE_SENTINEL/);
         await rm(installed);
         await symlink(join(root, "versions", "second"), installed);
-        assert.equal((await runLoopToTerminal(ws, 3, { prompt: "Read the skill guide again.", policy: { proposals: "accept" } })).finalStatus, 200);
+        assert.equal((await runLoopToTerminal(ws, 3, { prompt: "Read the skill guide again." })).finalStatus, 200);
         assert.match(provider.requests[3]!, /SECOND_SOURCE_SENTINEL/);
     });
 });
 
 for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload} turn admission refreshes ${source} skills mutated between loops`, async (t) => {
+    serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     t.after(() => {
@@ -88,14 +91,14 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
                 assert.equal(await entry("grep"), undefined, "passive workspace creation does not publish capability docs");
                 assert.equal(await entry("review"), undefined);
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", policy: { proposals: "accept" } })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first" })).finalStatus, 200);
                 assert.notEqual(await entry("grep"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
                 await mkdir(join(skills, "review"), { recursive: true });
                 await writeFile(join(skills, "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", policy: { proposals: "accept" } })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second" })).finalStatus, 200);
                 assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);
 
                 assert.notEqual(await entry("review"), undefined, "turn admission republished the added skill");

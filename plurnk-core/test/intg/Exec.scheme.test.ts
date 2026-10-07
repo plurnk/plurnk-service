@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -56,6 +57,7 @@ const withWorkspace = async <T>(fn: (ctx: {
         schemes.registerRuntimeSchemes(executors);
         const workspaceId = await insertWorkspace(db, `exec-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "exec test");
         const turnId = await insertTurn(db, loopId, 1, 102);
         return await fn({ engine, exec, db, workspaceId, workerId, loopId, turnId });

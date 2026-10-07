@@ -16,7 +16,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { InvalidLoopPolicyError, Validator } from "@plurnk/plurnk-contracts";
+import { InvalidCapabilityPolicyError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -143,16 +143,13 @@ test("assembled packet: landed EDIT receipts expose causal parser-recovery evide
     } finally { await db.close(); }
 });
 
-test("packet assembly surfaces contract-invalid persisted loop policy at the same owner (#169)", async () => {
+test("{§workspace-capability-policy}: packet assembly surfaces invalid workspace policy", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await db.test_set_loop_policy.run({
-            loop_id: loopId,
-            policy: JSON.stringify({ proposals: "sometimes", attended: true }),
-        });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
@@ -163,8 +160,8 @@ test("packet assembly surfaces contract-invalid persisted loop policy at the sam
             engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
-                assert.ok(error.cause instanceof InvalidLoopPolicyError);
+                assert.equal(error.message, `Workspace ${workspaceId} has invalid persisted capability policy.`);
+                assert.ok(error.cause instanceof InvalidCapabilityPolicyError);
                 return true;
             },
         );

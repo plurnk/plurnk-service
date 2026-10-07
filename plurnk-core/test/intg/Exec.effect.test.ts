@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
@@ -48,6 +49,7 @@ const wire = async () => {
     schemes.registerRuntimeSchemes(executors); // {§executor-scheme-output} Register per-tag READ faces as daemon boot does.
     const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
+    await ownWorker(db, workspaceId, workerId);
     const loopId = await insertLoop(db, workerId, 1, "effect test");
     const turnId = await insertTurn(db, loopId, 1, 102);
     return { db, engine, exec, workspaceId, workerId, loopId, turnId };

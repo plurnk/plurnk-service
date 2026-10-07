@@ -9,7 +9,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import WorkerOwners from "../../src/core/WorkerOwners.ts";
 import type {
     ParsedPath,
     PlurnkStatement,
@@ -169,9 +170,8 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
-        const { freshLoopPolicy: spawnPolicy, ...spawnRest } = calls[0];
+        const spawnRest = calls[0];
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true }, "the new worker is started with its delegator's causal identity");
-        assert.deepEqual(spawnPolicy, { proposals: "review", attended: true }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
 
@@ -261,7 +261,7 @@ for (const op of ["WORK", "FORK"] as const) {
                 assert.equal(lineage?.parent_worker_id, parentId);
                 assert.equal(call.workspaceId, workspaceId);
                 assert.equal(call.prompt, "Inspect the project.");
-                assert.deepEqual(call.freshLoopPolicy, { proposals: "review", attended: true });
+                assert.deepEqual(await WorkerOwners.read(db, call.workerId), await WorkerOwners.read(db, parentId));
                 const inherited = await db.test_fork_loops.all({ worker_id: call.workerId });
                 assert.equal(inherited.length, op === "FORK" ? 1 : 0, "FORK copies history; WORK starts fresh");
                 const addressed = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: child.name });
@@ -273,7 +273,7 @@ for (const op of ["WORK", "FORK"] as const) {
     });
 }
 
-for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy}: ${op} shares live workspace policy and inherits only proposal disposition`, async () => {
+for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -282,7 +282,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
         const parentId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, parentId, 1, "delegate");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "accept", attended: true }) });
+        await ownWorker(db, workspaceId, parentId);
         const seed = await engine.dispatch({
             statement: editStmt(workerEntry("", "note.md"), "shared source"),
             workspaceId, workerId: parentId, loopId, turnId, sequence: 1, origin: "model",
@@ -296,7 +296,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
             workspaceId, workerId: parentId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(spawned.status, 200);
-        assert.deepEqual(calls[0]?.freshLoopPolicy, { proposals: "accept", attended: true });
+        assert.equal((await WorkerOwners.read(db, calls[0]!.workerId)).address, TEST_OWNER);
         const childId = calls[0]!.workerId;
         const childLoop = await insertLoop(db, childId, op === "FORK" ? 2 : 1, "continue");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
@@ -716,9 +716,8 @@ test("{§worker-scheme-irc} SEND(worker://name):msg delivers to a sister; a miss
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
-        const { freshLoopPolicy: ircPolicy, ...ircRest } = calls.at(-1)!;
+        const ircRest = calls.at(-1)!;
         assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
-        assert.deepEqual(ircPolicy, { proposals: "review", attended: true }, "the sender's policy rides the irc ({§worker-delegation-inherits-policy})");
 
         const missing = await engine.dispatch({
             statement: sendStmt(workerPath("ghost"), "anyone there?"),
@@ -761,69 +760,24 @@ test("{§worker-scheme-irc}: empty and whitespace-only messages never reach work
     } finally { await db.close(); }
 });
 
-test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sender's proposal disposition", async () => {
-    const db = await openMigrated();
-    try {
-        const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
-        const workspaceId = await insertWorkspace(db, `worker-irc-bound-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await db.test_set_workspace_settings.run({
-            id: workspaceId,
-            settings: JSON.stringify({ capabilities: { deny: [{ scheme: "exec" }] } }),
-        });
-        const loopId = await insertLoop(db, workerId, 1, "delegate");
-        await db.test_set_loop_policy.run({
-            loop_id: loopId,
-            policy: JSON.stringify({ proposals: "accept", attended: true }),
-        });
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await insertWorker(db, workspaceId, null, "sister");
-
-        const result = await engine.dispatch({
-            statement: sendStmt(workerPath("sister"), "continue this work"),
-            workspaceId,
-            workerId,
-            loopId,
-            turnId,
-            sequence: 1,
-            origin: "model",
-        });
-
-        assert.equal(result.status, 200);
-        // The whole snapshot is inherited, attendance included: a child of a headless run is headless.
-        assert.deepEqual(calls[0]?.freshLoopPolicy, { proposals: "accept", attended: true });
-    } finally { await db.close(); }
-});
-
-test("worker IRC rejects contract-invalid delegator policy before inheritance (#169)", async () => {
-    const db = await openMigrated();
-    try {
-        const { calls, injectWorker } = recordingInjectWorker();
-        const workspaceId = await insertWorkspace(db, `worker-irc-policy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        await insertWorker(db, workspaceId, null, "worker");
-        await db.test_set_loop_policy.run({
-            loop_id: loopId,
-            policy: JSON.stringify({ proposals: "sometimes", attended: true }),
-        });
-
-        await assert.rejects(
-            new Worker().send(
-                sendStmt(workerPath("worker"), "what's your status?"),
-                makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, injectWorker }),
-            ),
-            (error: unknown) => {
-                assert.ok(error instanceof Error);
-                assert.equal(error.message, `Loop ${loopId} has invalid persisted policy.`);
-                assert.ok(error.cause instanceof InvalidLoopPolicyError);
-                return true;
-            },
-        );
-        assert.equal(calls.length, 0);
-    } finally { await db.close(); }
+test("{§worker-ownership}: SEND between unrelated workers cannot transfer approval authority", async () => {
+    await using db = await openMigrated();
+    const { calls, injectWorker } = recordingInjectWorker();
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+    const workspaceId = await insertWorkspace(db, "message-owner-separation");
+    const workerId = await insertWorker(db, workspaceId);
+    await ownWorker(db, workspaceId, workerId);
+    const sisterId = await insertWorker(db, workspaceId, null, "sister");
+    const loopId = await insertLoop(db, workerId, 1, "delegate");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    const result = await engine.dispatch({
+        statement: sendStmt(workerPath("sister"), "continue this work"),
+        workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+    });
+    assert.equal(result.status, 200);
+    assert.deepEqual(calls, [{ workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "continue this work" }]);
+    assert.equal((await WorkerOwners.read(db, sisterId)).address, "_plurnk");
+    assert.equal((await WorkerOwners.read(db, workerId)).address, TEST_OWNER);
 });
 
 test("{§worker-write-scoping}: entry KILL works upward, downward and on self without cancelling actors", async () => {
@@ -871,9 +825,8 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
-        const { freshLoopPolicy: forkPolicy, ...forkRest } = calls.at(-1)!;
+        const forkRest = calls.at(-1)!;
         assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true }, "the branch is continued with its delegator's causal identity");
-        assert.deepEqual(forkPolicy, { proposals: "review", attended: true }, "the forking loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
 

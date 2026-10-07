@@ -156,7 +156,7 @@ try {
             PLURNK_PORT: "0",
             PLURNK_MODEL: model,
             // Nobody is watching this drill, and it exists to see the work actually happen.
-            PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept",
+            PLURNK_SERVICE_PROPOSALS: "accept",
         },
         stdio: ["ignore", "pipe", "pipe"],
     });

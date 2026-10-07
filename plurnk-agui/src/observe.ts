@@ -11,7 +11,7 @@ const TRACER_NAME = "plurnk.agui";
 
 const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
 
-export type AguiRouteTemplate = "/agui" | "preflight" | "unmatched";
+export type AguiRouteTemplate = "/agui" | "/agui/connect" | "preflight" | "unmatched";
 
 export const aguiRouteTemplate = (
     method: string | undefined,
@@ -19,6 +19,7 @@ export const aguiRouteTemplate = (
 ): AguiRouteTemplate => {
     if (method === "OPTIONS") return "preflight";
     if (method === "POST" && url === "/agui") return "/agui";
+    if (method === "POST" && url === "/agui/connect") return "/agui/connect";
     return "unmatched";
 };
 

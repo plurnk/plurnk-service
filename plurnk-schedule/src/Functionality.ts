@@ -216,7 +216,6 @@ export default class ScheduleFunctionality {
                     next: next === null ? null : isoString(next),
                     exhausted: next === null,
                     target: definition.target,
-                    ...(definition.policy === undefined ? {} : { policy: definition.policy }),
                 },
             });
         }

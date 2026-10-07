@@ -16,7 +16,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "cancelDrain" | "configurationNotices" | "listProviders" | "readLog">;
+export type RunPort = Pick<ApplicationPort, "cancelDrain" | "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -51,7 +51,7 @@ export default class RunHandler {
         this.#action = action;
     }
 
-    async run(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    async run(req: IncomingMessage, res: ServerResponse, connect = false): Promise<void> {
         let decoded: unknown;
         try {
             decoded = JSON.parse(await RunHandler.#body(req));
@@ -78,6 +78,15 @@ export default class RunHandler {
         }
         const input: RunAgentInput = parsed.data;
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        if (forwarded !== undefined && Object.hasOwn(forwarded, "policy")) {
+            throw new HttpProblemError(httpProblem("loop-policy-retired", 400,
+                "Loop policy is retired; advertise client tools and let the worker's owner handle approvals.",
+                { stage: "request-validation", retryable: false }));
+        }
+        if (forwarded?.control !== undefined && typeof forwarded.control !== "boolean") {
+            throw new HttpProblemError(httpProblem("control-invalid", 400, "control must be a boolean.",
+                { stage: "request-validation", retryable: false }));
+        }
         const mode = forwarded?.mode;
         if (mode !== undefined && mode !== "sync") {
             throw new HttpProblemError(httpProblem(
@@ -87,7 +96,7 @@ export default class RunHandler {
                 { stage: "request-validation", retryable: false },
             ));
         }
-        const synchronize = mode === "sync";
+        const synchronize = connect || mode === "sync";
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
         // unknown kind, which is no worker at all) answers without binding — or forging — a
@@ -134,6 +143,15 @@ export default class RunHandler {
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
         const workerId = await this.#conversationWorker(input.threadId, env);
+        const control = forwarded?.control === true || (!synchronize && action === null)
+            || action?.kind === "op.exec" || action?.kind === "op.parse";
+        const owner = control ? MessageAddress.owner(input.threadId) : undefined;
+        if (owner !== undefined) {
+            await this.#seam().registerWorkerOwner(workspaceId, { address: owner, tools: [...new Set(input.tools.map(({ name }) => name))] });
+            for (const claim of [workerId, env.workerId]) {
+                await this.#seam().claimWorkerOwner({ workspaceId, workerId: claim, owner });
+            }
+        }
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -186,6 +204,7 @@ export default class RunHandler {
             workerId: lifecycleWorkerId,
             threadId: input.threadId,
             notificationScope,
+            ...(owner === undefined ? {} : { owner }),
             descendants,
             emit,
             modelWorkerId: workerId,
@@ -218,7 +237,7 @@ export default class RunHandler {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
             emit(this.#portal().replay(boundRun, history));
             if (finished) return;
-            const observing = await this.#portal().synchronize(workspaceId, boundRun);
+            const observing = await this.#portal().synchronize(workspaceId, boundRun, connect);
             if (observing) {
                 // This Run observes work it did not start. Disconnect detaches the
                 // observer; it must not cancel the independently-owned Loop.
@@ -288,9 +307,6 @@ export default class RunHandler {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "policy")
-                ? { policy: forwarded.policy as Parameters<ApplicationPort["runLoop"]>[0]["policy"] }
-                : {}),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
                 ? { openPaths: forwarded.openPaths as string[] }
                 : {}),

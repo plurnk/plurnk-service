@@ -592,12 +592,17 @@ export default class Engine {
         return this.#interactions.list(workspaceId);
     }
 
+    registerClientInteractionRoute(route: import("@plurnk/plurnk-contracts").ClientInteractionRoute): () => void {
+        return this.#interactions.registerRoute(route);
+    }
+
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        respondent: import("@plurnk/plurnk-contracts").ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
-        await this.#interactions.resolve(interactionId, resolution, message);
+        await this.#interactions.resolve(interactionId, resolution, respondent, message);
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this

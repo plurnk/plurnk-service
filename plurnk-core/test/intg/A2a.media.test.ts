@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OutboundModule } from "@plurnk/plurnk-a2a";
@@ -24,7 +25,8 @@ for (const media of [
 ] as const) {
 for (const mode of ["complete", "direct-message"] as const) {
 for (const supported of [true, false]) {
-test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" : "text"} survives remote retirement and log curation`, { timeout: 15_000 }, async () => {
+test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" : "text"} survives remote retirement and log curation`, { timeout: 15_000 }, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const agent = await startDemoAgent(mode, [
         { content: { $case: "text", value: "Inspect the attached evidence." }, mediaType: "text/plain", filename: "", metadata: {} },
         { content: { $case: "raw", value: media.bytes }, mediaType: media.mimetype, filename: media.filename, metadata: {} },
@@ -81,7 +83,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "a2a-media", projectRoot: null });
         const workerId = await daemon.ensureModelWorker(workspaceId);
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the remote evidence.", policy: { proposals: "accept" } });
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the remote evidence." });
         const lifecycle = new LoopLifecycle(db);
         const result = await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400, { timeoutMs: 10_000 });
         assert.equal(result, 200, "ordinary A2A/READ/KILL operations complete");

@@ -2,8 +2,8 @@
 
 -- PREP: client_interaction_insert
 -- Insert only when all supplied coordinates describe one existing operation.
-INSERT INTO client_interactions (worker_id, loop_id, turn_id, request)
-SELECT $worker_id, $loop_id, $turn_id, $request
+INSERT INTO client_interactions (worker_id, loop_id, turn_id, recipient, request)
+SELECT $worker_id, $loop_id, $turn_id, $recipient, $request
 WHERE EXISTS (
     SELECT 1
     FROM turns t
@@ -22,11 +22,17 @@ SELECT i.id AS interactionId,
        i.worker_id AS workerId,
        i.loop_id AS loopId,
        i.turn_id AS turnId,
+       i.recipient,
        i.request
 FROM client_interactions i
 JOIN workers w ON w.id = i.worker_id
 WHERE w.workspace_id = $workspace_id
 ORDER BY i.id;
+
+-- PREP: client_interaction_recipient
+SELECT i.recipient, w.workspace_id AS workspaceId
+FROM client_interactions i JOIN workers w ON w.id = i.worker_id
+WHERE i.id = $interaction_id;
 
 -- PREP: client_interaction_delete
 DELETE FROM client_interactions

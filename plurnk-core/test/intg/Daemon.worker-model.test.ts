@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
@@ -549,7 +550,8 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
     });
 });
 
-test("{§worker-model-selection}: an absent spawn override inherits the worker's own model by value", async () => {
+test("{§worker-model-selection}: an absent spawn override inherits the worker's own model by value", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const spec = declaredProvider("inherit-worker", "same-through-tree");
     const mock = new Mock({
         contextWindow: 16_384,
@@ -568,7 +570,7 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "spawn one kid",
                 selector: spec.alias,
-                policy: { proposals: "accept" },
+
             });
             assert.equal(result.finalStatus, 200);
             assert.equal(mock.remaining, 0);
@@ -631,7 +633,8 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
     }
 });
 
-test("{§worker-model-selection}: the worker's durable model and spawn override survive daemon restart", async () => {
+test("{§worker-model-selection}: the worker's durable model and spawn override survive daemon restart", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const spec = declaredProvider("restart-durable", "restart-durable-model");
     const childSpec = declaredProvider("restart-child", "restart-child-model");
     const mock = new Mock({
@@ -656,7 +659,7 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         const workerId = await first.ensureModelWorker(envelope.workspaceId);
         await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, selector: spec.alias });
         await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, selector: childSpec.alias });
-        const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart", policy: { proposals: "accept" } });
+        const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart" });
         assert.equal(before.status, 100);
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];
         first.subscribeToEvents((_workspaceId, method, params) => {
@@ -794,7 +797,8 @@ test("{§worker-model-selection}: work admitted during provider validation preve
     });
 });
 
-test("{§worker-model-selection}: a selection while the worker holds a parked loop is a precise 409", async () => {
+test("{§worker-model-selection}: a selection while the worker holds a parked loop is a precise 409", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const spec = declaredProvider("parked", "parked-model");
     const otherSpec = declaredProvider("switcheroo", "other-model");
     const mock = new Mock({
@@ -821,7 +825,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
                 workerId,
                 prompt: "park",
                 selector: spec.alias,
-                policy: { proposals: "accept" },
+
             });
             // The execution stream keeps the loop parked (202); wait for that state.
             for (let i = 0; i < 100; i++) {

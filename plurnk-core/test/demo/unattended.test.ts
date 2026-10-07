@@ -1,4 +1,4 @@
-// {§loop-attendance} — the conversational half of the unattended contract. A unit test can prove
+// {§client-interaction-routing} — the conversational half of the unattended contract. A unit test can prove
 // the daemon refuses to ask; only a live model can answer the question that actually matters:
 // having been told nobody is there, does the model RECOVER — conclude on what it has and say what
 // it could not resolve — or does it re-ask, spiral, and burn its strikes?
@@ -34,7 +34,6 @@ test("conversation: told nobody is there, plurnk decides and says what it could 
         const loop = await liveLoop(s, 2, {
             prompt: AMBIGUOUS,
             maxTurns: 8,
-            policy: { proposals: "accept", attended: false },
         }, { signal: t.signal });
 
         const rows = await s.db.test_log_entries_by_worker.all<{ op: string | null; origin: string; status_rx: number }>({ worker_id: loop.modelWorkerId });

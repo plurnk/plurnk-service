@@ -9,7 +9,7 @@ import Validator, {
     InvalidCapabilityDescriptorError,
     InvalidCapabilityPolicyError,
     InvalidFunctionalityListResultError,
-    InvalidLoopPolicyError,
+    InvalidWorkerOwnerError,
     InvalidMcpServerDefinitionError,
     InvalidMcpOAuthError,
     InvalidModelCatalogPageError,
@@ -228,6 +228,7 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
     };
     const projection = {
         interactionId: 1,
+        recipient: "test://primary",
         workerId: 2,
         loopId: 3,
         turnId: 4,
@@ -636,7 +637,7 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
     );
 });
 
-test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", () => {
+test("CapabilityPolicy accepts only its canonical wire shape", () => {
     const descriptor = {
         operation: "sh" as const,
         scheme: "exec",
@@ -649,10 +650,8 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
         only: [{ operation: "READ" as const }, { runtime: "brave" }],
         deny: [{ traits: ["interaction"] }],
     };
-    const policy = { proposals: "review" as const, attended: true };
     assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
     assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
-    assert.equal(Validator.assertLoopPolicy(policy), policy);
 
     for (const invalid of [{}, { operation: "READ", extra: true }, { traits: ["WEB"] }]) {
         assert.equal(Validator.validateCapabilityDescriptor(invalid).valid, false);
@@ -667,41 +666,16 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
         assert.equal(Validator.validateCapabilityPolicy(invalid).valid, false);
         assert.throws(() => Validator.assertCapabilityPolicy(invalid as never), InvalidCapabilityPolicyError);
     }
-    for (const invalid of [
-        { ...policy, proposals: "auto" },
-        { ...policy, capabilities: { deny: [{}] } },
-        { ...policy, capabilities: {} },
-        {},
-        { ...policy, extra: false },
-        null,
-        [],
-    ]) {
-        assert.equal(Validator.validateLoopPolicy(invalid).valid, false);
-        assert.throws(() => Validator.assertLoopPolicy(invalid as never), InvalidLoopPolicyError);
-    }
 });
 
-test("{§loop-policy}: a loop has a complete policy, and its creator states any part of one", () => {
-    // Complete means nothing is left for a reader to assume.
-    for (const partial of [{ proposals: "accept" }, { attended: false }]) {
-        assert.equal(Validator.validateLoopPolicy(partial).valid, false);
-        assert.equal(Validator.assertLoopPolicyRequest(partial as never), partial);
+test("{§worker-ownership}: owner declarations require an address and explicit supported tools", () => {
+    for (const tools of [[], ["request_approval"], ["question", "mcp_input_required"]]) {
+        const owner = { address: "agui://anonymous/threads/main", tools };
+        assert.equal(Validator.assertWorkerOwner(owner), owner);
     }
-    assert.equal(Validator.validateLoopPolicyRequest({}).valid, true);
-    for (const lawful of [
-        { proposals: "review", attended: true },
-        { proposals: "accept", attended: true },
-        { proposals: "reject", attended: true },
-        { proposals: "accept", attended: false },
-        { proposals: "reject", attended: false },
-    ]) assert.equal(Validator.validateLoopPolicy(lawful).valid, true, JSON.stringify(lawful));
-    // Nobody is present to answer, so review is a wait nothing could end.
-    assert.equal(Validator.validateLoopPolicy({ proposals: "review", attended: false }).valid, false);
-    // A request is only part of a policy, so it cannot be held to the law until it is composed.
-    assert.equal(Validator.validateLoopPolicyRequest({ proposals: "review", attended: false }).valid, true);
-    for (const invalid of [{ proposals: "auto" }, { attended: "no" }, { capabilities: {} }, null, []]) {
-        assert.equal(Validator.validateLoopPolicyRequest(invalid).valid, false);
-        assert.throws(() => Validator.assertLoopPolicyRequest(invalid as never), InvalidLoopPolicyError);
+    for (const invalid of [{}, { address: "" , tools: [] }, { address: "owner" }, { address: "owner", tools: ["question", "question"] }, { address: "owner", tools: [42] }, { address: "owner", tools: [], attended: true }, null, []]) {
+        assert.equal(Validator.validateWorkerOwner(invalid).valid, false);
+        assert.throws(() => Validator.assertWorkerOwner(invalid as never), InvalidWorkerOwnerError);
     }
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
@@ -716,14 +690,14 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
         target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { proposals: "review" as const, attended: true },
-        disposition: { owner: "client" as const },
+        owner: "test://primary",
+        disposition: { decision: "review" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);
 
     for (const invalid of [
         { ...proposal, disposition: { owner: "loop" } },
-        { ...proposal, policy: { ...proposal.policy, proposals: "auto" } },
+        { ...proposal, owner: "" },
         { ...proposal, target: { scheme: null, pathname: null } },
         { ...proposal, workspaceId: 9 },
     ]) {

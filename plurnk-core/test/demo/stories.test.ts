@@ -30,14 +30,12 @@ import { latestStableNodeVersion, versionsNamed } from "./_web-oracle.ts";
 import { hasAuditOutcome } from "./_audit-oracle.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
-import type { LoopPolicy } from "@plurnk/plurnk-contracts";
 
 interface StoryOpts {
     signal: AbortSignal;
     label: string;
     prompt: string;
     maxTurns?: number;
-    policy?: Partial<LoopPolicy>;
     capabilities?: import("@plurnk/plurnk-contracts").CapabilityPolicy;
     setup?: (workspace: LiveWorkspace) => Promise<void>;
 }
@@ -65,7 +63,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         await opts.setup?.(s);
         const loop = await liveLoop(
             s, 2,
-            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.policy !== undefined ? { policy: opts.policy } : {}) },
+            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
             { signal: opts.signal },
         );
         const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -53,8 +54,9 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
 
 for (const protocol of ["https", "http"]) {
     test(`{§http-kill}: dispatched ${protocol} KILL separates local deletion from explicit remote DELETE`, async (t) => {
+    serverProposals(t, "accept");
         const db = await openMigrated();
-        const env = await seedEnvelope(db, `http-kill-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
+        const env = await seedEnvelope(db, `http-kill-${crypto.randomUUID()}`, {  });
         const schemes = new SchemeRegistry();
         schemes.register("https", new Http());
         const engine = new Engine({ db, schemes });

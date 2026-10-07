@@ -87,9 +87,7 @@ export default class QuestionTool extends BaseExecutor {
             message: r.message,
             responseSchema: r.requestedSchema as Record<string, unknown>,
         });
-        // {§loop-attendance} — an unattended run has no partner to ask. That refusal is this
-        // executor's own result, not a thrown contract violation: the model must read why it cannot
-        // ask, and "the executor failed outside its operation result contract" teaches it nothing.
+        // {§client-interaction-routing} An unsupported request is this operation's result.
         let resolution;
         try {
             resolution = await interact(request);

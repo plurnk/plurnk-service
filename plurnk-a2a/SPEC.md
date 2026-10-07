@@ -22,6 +22,7 @@ cards are protocol projections, not configuration files.
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound exposure | `PLURNK_A2A_EXPOSE`, `_TOKEN`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. `_TOKEN` is the bearer the endpoint requires and the card declares ({§a2a-hosted-bearer}); empty is an unauthenticated exposure. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
+| Inbound parent | `PLURNK_A2A_PARENT_WORKER` | Existing parent for new Context workers; `_plurnk` uses the workspace runtime actor. Ownership follows {§worker-ownership}. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
 
 Definitions use {§resource-environment}, including nonempty values and distinct
@@ -74,7 +75,8 @@ state, not an independent Task database.
 
 ```mermaid
 flowchart LR
-    Caller["A2A caller"] --> Context["Context root Worker\nname = contextId"]
+    Parent["Configured parent Worker"] --> Context["Context child Worker\nname = contextId"]
+    Caller["A2A caller"] --> Context
     Context --> Task1["Task child Worker\nname = taskId"]
     Context --> Task2["Task child Worker\nname = taskId"]
     Task1 --> Loop1["one live Task Loop"]
@@ -83,13 +85,13 @@ flowchart LR
 
 The SDK generates new Context and Task UUIDs before execution. Those UUIDs
 already satisfy Plurnk's worker-name contract ({§worker-name}), so their exact values name the
-root Context Worker and its Task child. No adapter binding table, synthetic
-actor, or second scheduler exists. Later Tasks fork the Context root and
+Context Worker and its Task child. No adapter binding table, synthetic
+actor, or second scheduler exists. Later Tasks fork the Context Worker and
 therefore receive the parent-visible prior Task evidence under Core's ordinary
 topology contract.
 
 Only a child Worker with a durable message source matching its exact A2A Context,
-Task, and Message identities projects as a Task. A root is reusable as an A2A
+Task, and Message identities projects as a Task. A Worker is reusable as an A2A
 Context only after this adapter created it in the running exposure or one such
 Task proves its durable ownership after restart. Ordinary model Workers in the
 same workspace are neither discoverable nor adoptable through A2A. Foreign
@@ -137,11 +139,21 @@ reads anything. The card at the well-known path is never behind the bearer, so a
 caller can discover the scheme. Empty is an unauthenticated exposure: the panel
 states it, the adapter never infers it.
 
-§a2a-hosted-proposals A2A carries no review channel, so an inbound Task's loop
-settles its own proposals: `PLURNK_A2A_PROPOSALS` states `accept` or `reject`,
-and `review` is outside its vocabulary. That one field is all the adapter states
-about the loop's policy; attendance is the daemon's to supply, because a remote
-agent can answer an interaction through `input-required`.
+§a2a-worker-ownership New Context workers are fresh model children of the configured
+existing parent; Task workers inherit that owner's approval identity through ordinary
+delegation. The default `_plurnk` parent is runtime-owned and cannot review. A missing
+configured parent refuses admission, without creating a substitute. Existing contexts
+retain their parent and owner when configuration changes. Released root contexts are
+attached to the runtime actor during migration; their task identities and evidence remain.
+
+| Boundary | Recipient |
+|---|---|
+| Operation approval | Worker owner; ordinary server disposition applies ({§worker-owner-resolution}). |
+| Task clarification | A2A caller through `INPUT_REQUIRED` and the same Task's continuation. The adapter registers this durable task route through {§client-interaction-routing}. |
+| Incoming message or clarification answer | Task input only; never approval authority or an ownership transfer. |
+
+Only interactions addressed to this Task's A2A reply route project as `INPUT_REQUIRED`.
+`PLURNK_A2A_PROPOSALS` is retired; the adapter defines no parallel approval policy.
 
 §a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,

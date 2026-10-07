@@ -14,7 +14,7 @@ import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import HttpListener from "../../src/server/HttpListener.ts";
 
 // The exposure a test mounts, stated whole: the module holds no default of its own.
-export const A2A_EXPOSURE = Object.freeze({ endpointPath: "/a2a", proposals: "reject", token: "" } as const);
+export const A2A_EXPOSURE = Object.freeze({ endpointPath: "/a2a", parentWorker: "_plurnk", token: "" } as const);
 
 // {§module-http-mounts} — what a hosted exposure under test claims: the well-known card and its endpoint.
 export const A2A_MOUNTS: readonly string[] = Object.freeze([`/${AGENT_CARD_PATH}`, A2A_EXPOSURE.endpointPath]);

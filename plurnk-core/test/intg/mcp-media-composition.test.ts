@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -44,6 +45,7 @@ for (const media of [
 for (const form of ["inline", "embedded", "link", "multipart"] as const) {
 for (const modalities of [[media.kind], []] as InputModality[][]) {
     test(`{§mcp-result-content} {§packet-attachment-parts} ${media.kind}/${form}: MCP completion wakes; resource READ delivers ${modalities.length ? "native bytes" : "text only"}`, { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
         const release = Promise.withResolvers<void>();
         const called = Promise.withResolvers<void>();
         const uri = `fixture://media/${media.name}`;
@@ -93,7 +95,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-media-composition" });
             identity = { workspaceId, workerId: await daemon.ensureModelWorker(workspaceId) };
-            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP media.", policy: { proposals: "accept" } });
+            const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP media." });
             const lifecycle = new LoopLifecycle(db);
             await called.promise;
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 202, { timeoutMs: 5000 });

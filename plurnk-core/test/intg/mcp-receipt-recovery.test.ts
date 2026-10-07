@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
@@ -16,6 +17,7 @@ import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 // execution → invocation receipt → automatic observation → explicit recovery path.
 for (const body of [null, '{"query":"fixture"}']) {
     test(`MCP ${body === null ? "bodyless" : "one-line JSON"} invocation and output retain distinct readable extents`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
         const output = Array.from({ length: 40 }, (_, index) => `result ${index + 1}`).join("\n");
         let calls = 0;
         const served = await serveMcpHttp(t, createMcpHandler(() => {
@@ -48,7 +50,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         const ws = await connect({ daemon });
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { name: "mcp-receipt-recovery" });
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the tool result.", policy: { proposals: "accept" } });
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the tool result." });
         assert.equal(result.finalStatus, 200);
         assert.equal(calls, 1, "READs retrieve retained output without repeating the MCP tool call");
         const packet = async (index: number) => {

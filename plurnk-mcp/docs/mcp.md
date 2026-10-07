@@ -34,7 +34,7 @@ enables anything.
 ```
 
 `add` saves and enables a workspace definition, then reports its connection
-state. It is a host effect, admitted under the loop's policy. Inspect that state:
+state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
 ```mcp (add)

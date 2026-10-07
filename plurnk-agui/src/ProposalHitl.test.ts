@@ -13,7 +13,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 
-const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
+const OWNER = "agui://anonymous/threads/tui";
 
 const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
@@ -24,13 +24,14 @@ const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection =>
     target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
-    policy: LOOP_POLICY,
-    disposition: { owner: "client" },
+    owner: OWNER,
+    disposition: { decision: "review" },
     ...over,
 });
 
 const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInteractionProjection => ({
     interactionId: 12,
+    recipient: OWNER,
     workerId: 1,
     loopId: 1,
     turnId: 1,
@@ -61,8 +62,10 @@ const mockSeam = (
         subscribeToEvents: (h) => { handler = h; return () => { handler = null; }; },
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
-        resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
-        resolveClientInteraction: async (interactionId, resolution) => {
+        resolveProposal: async (logEntryId, resolution, owner) => {
+            assert.equal(owner.address, OWNER); resolves.push({ logEntryId, resolution }); },
+        resolveClientInteraction: async (interactionId, resolution, owner) => {
+            assert.equal(owner.address, OWNER);
             interactionResolves.push({ interactionId, resolution });
         },
     };
@@ -127,10 +130,10 @@ test("start(): a generic loop/interaction uses the requested tool name and schem
 test("resolve(): a complete standard resume resolves the exact worker proposal", async () => {
     const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const hitl = new ProposalHitl(m.seam, collect());
-    assert.deepEqual(await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
+    assert.deepEqual(await hitl.resolve(3, OWNER, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } });
     await assert.rejects(
-        hitl.resolve(3, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]),
+        hitl.resolve(3, OWNER, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; recovery?: string } }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-invalid");
@@ -145,13 +148,13 @@ test("{§agui-proposal-resolve} valid outcomes reach the owner and invalid outco
     const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const hitl = new ProposalHitl(m.seam, collect());
     for (const decision of ["accept", "reject", "cancel"] as const) {
-        await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision, outcome: "client_reason" } }]);
+        await hitl.resolve(3, OWNER, [{ interruptId: "prop:42", status: "resolved", payload: { decision, outcome: "client_reason" } }]);
         assert.deepEqual(m.resolves.at(-1), { logEntryId: 42, resolution: { decision, outcome: "client_reason" } });
     }
-    await hitl.resolve(3, [{ interruptId: "prop:42", status: "cancelled", payload: { outcome: "client_cancelled" } }]);
+    await hitl.resolve(3, OWNER, [{ interruptId: "prop:42", status: "cancelled", payload: { outcome: "client_cancelled" } }]);
     assert.deepEqual(m.resolves.at(-1), { logEntryId: 42, resolution: { decision: "cancel", outcome: "client_cancelled" } });
     let released = false;
-    await assert.rejects(hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", outcome: 42 } }], () => { released = true; }),
+    await assert.rejects(hitl.resolve(3, OWNER, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", outcome: 42 } }], () => { released = true; }),
         (error: unknown) => (error as { problem?: { type?: string } }).problem?.type === "https://problems.plurnk.xyz/agui/interrupt/interrupt-invalid");
     assert.equal(released, false);
     assert.equal(m.resolves.length, 4);
@@ -160,10 +163,10 @@ test("{§agui-proposal-resolve} valid outcomes reach the owner and invalid outco
 test("{§agui-proposal-disposition} resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
-        proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
+        proposal({ logEntryId: 10, disposition: { decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
-    const [delivery] = await hitl.resurface(1);
+    const [delivery] = await hitl.resurface(1, OWNER);
     assert.ok(delivery !== undefined);
     const { events } = delivery.batch;
     const starts = events.filter((e) => e.type === "TOOL_CALL_START") as Array<{ toolCallId: string; toolCallName: string }>;
@@ -177,7 +180,7 @@ test("resolve(): proposals and interactions share one complete worker-scoped res
         [interaction({ interactionId: 12, loopId: 7 })],
     );
     const hitl = new ProposalHitl(m.seam, collect());
-    assert.deepEqual(await hitl.resolve(3, [
+    assert.deepEqual(await hitl.resolve(3, OWNER, [
         { interruptId: "prop:42", status: "resolved", payload: { decision: "accept" } },
         { interruptId: "int:12", status: "resolved", payload: { repository: "plurnk-service" } },
     ]), { loopId: 7, workerId: 1 });
@@ -194,11 +197,11 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, loopId: 7 }),
         proposal({ logEntryId: 6, loopId: 7, target: { scheme: "file", authority: null, pathname: "b" } }),
-        proposal({ logEntryId: 7, loopId: 7, disposition: { owner: "loop", decision: "accept" } }),
+        proposal({ logEntryId: 7, loopId: 7, disposition: { decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
     await assert.rejects(
-        hitl.resolve(3, [{ interruptId: "prop:5", status: "resolved", payload: { decision: "accept" } }]),
+        hitl.resolve(3, OWNER, [{ interruptId: "prop:5", status: "resolved", payload: { decision: "accept" } }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; pendingInterruptIds?: string[]; receivedInterruptIds?: string[] } }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-set-incomplete");
@@ -208,7 +211,7 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
         },
     );
     await assert.rejects(
-        hitl.resolve(3, [{ interruptId: "prop:99", status: "resolved", payload: { decision: "accept" } }]),
+        hitl.resolve(3, OWNER, [{ interruptId: "prop:99", status: "resolved", payload: { decision: "accept" } }]),
         (error: unknown) => {
             const problem = (error as { problem?: { type?: string; pendingInterruptIds?: string[] } }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-not-pending");
@@ -218,19 +221,19 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
     );
 });
 
-test("{§agui-proposal-disposition} {§proposal-ownership-notification} proposal disposition, not loop policy, owns live tool-call presentation", () => {
+test("{§agui-proposal-disposition} {§proposal-ownership-notification} proposal disposition owns live tool-call presentation", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 50,
-        policy: { proposals: "accept", attended: true },
-        disposition: { owner: "loop", decision: "accept" },
+
+        disposition: { decision: "accept" },
     }));
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 51,
-        op: "sh", policy: { proposals: "reject", attended: true },
-        disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
+        op: "sh",
+        disposition: { decision: "reject", outcome: "no_review_channel" },
     }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
     m.fire(7, "loop/proposal", proposal({
@@ -238,8 +241,8 @@ test("{§agui-proposal-disposition} {§proposal-ownership-notification} proposal
         op: "SEND",
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { proposals: "accept", attended: true },
-        disposition: { owner: "client" },
+
+        disposition: { decision: "review" },
     }));
     assert.equal(emitted.length, 1, "the validated client disposition remains authoritative");
     hitl.stop();

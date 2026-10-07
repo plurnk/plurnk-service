@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§problem-details} — a refusal carries the next step its producer knows (#1005).
 // {§membership-read-refusal} {§log-near-miss} {§exec-near-miss} {§unregistered-scheme-recovery} {§fts-word-phrase} {§exec-lifetime}
 import test, { type TestContext } from "node:test";
@@ -23,6 +24,7 @@ type Problem = { type?: string; detail?: string; recovery?: string };
 type Row = { status_rx: number; rx: string };
 
 const runtime = async (t: TestContext) => {
+    serverProposals(t, "accept");
     const env = { PLURNK_SERVICE_GIT_ALLOWED: process.env.PLURNK_SERVICE_GIT_ALLOWED, PLURNK_SERVICE_GIT_AUTO: process.env.PLURNK_SERVICE_GIT_AUTO };
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
@@ -36,7 +38,7 @@ const runtime = async (t: TestContext) => {
     await writeFile(join(root, "generated.log"), "built\n");
     await writeFile(join(root, "loose.md"), "loose\n");
     const db = await openMigrated();
-    const ids = await seedEnvelope(db, `refusal-recovery-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: false } });
+    const ids = await seedEnvelope(db, `refusal-recovery-${crypto.randomUUID()}`);
     await rootWorkspace(db, ids.workspaceId, root);
     const schemes = new SchemeRegistry();
     const executors = await testExecutors();

@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§engine-rails} #425 F1 — a red test suite is evidence, never a strike. Every turn runs a command that exits 1; the engine materializes each failure as a
 // completion READ[500] carrying executor identity. Under the shipped MAX_STRIKES the
 // loop must run through all of them and conclude on the model's own completed inventory.
@@ -9,7 +10,8 @@ import { makeMockResponse } from "./_mock.ts";
 
 const maxStrikes = Number(process.env.PLURNK_SERVICE_MAX_STRIKES);
 
-test("{§engine-rails} consecutive failed commands never strike the loop out", async () => {
+test("{§engine-rails} consecutive failed commands never strike the loop out", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     assert.ok(Number.isInteger(maxStrikes) && maxStrikes > 0, "PLURNK_SERVICE_MAX_STRIKES must be set for the witness");
     const failing = maxStrikes + 2;
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -26,7 +28,7 @@ fixing the tests
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "strike-evidence" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "make the tests pass", policy: { proposals: "accept" } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "make the tests pass" });
             assert.equal(finalStatus, 200, `the loop concludes on the model's completed inventory after ${failing} red runs, never the engine's 500`);
             assert.equal(turnIds?.length, failing + 2, "initialization + every failing turn + the concluding turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ loop_id: 1 });

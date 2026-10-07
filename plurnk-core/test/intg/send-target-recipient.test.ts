@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§send-target-recipient} — a SEND addressed to a non-recipient (an immutable turn source,
 // a file path) states the address contract without guessing what the model intended.
 import test from "node:test";
@@ -6,7 +7,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async () => {
+test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
         makeMockResponse("````KILL\nthe answer\n````", 10),
@@ -15,7 +17,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-target" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200, "the target-less reply concluded on the second turn");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -35,7 +37,8 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
     });
 });
 
-test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
+test("a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),
         makeMockResponse("````KILL\ndone\n````", 10),
@@ -44,7 +47,7 @@ test("a SEND addressed to a file path preserves the scheme's factual 501", async
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-target-file" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });

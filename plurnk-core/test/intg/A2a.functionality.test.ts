@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§a2a-functionality} {§a2a-catalog} — outbound A2A agents as the
 // workspace `a2a` family through the daemon: the environment baseline,
 // per-alias catalog, shared hot enable/disable, and exact Problems.
@@ -34,6 +35,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+    for (const workerId of [model, peer, client]) await ownWorker(db, workspaceId, workerId);
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule(OutboundModule.init({
         PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
@@ -55,7 +57,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     // {§http-outbound-proposes} — reaching a remote agent proposes. A client dispatch settles its
     // own proposal through the event it receives, exactly as a real client does; an alias that is
     // not configured still refuses before any proposal, so a refusal needs no settlement.
-    const send = (alias: string, workerId = client) => dispatchSettled(daemon, () =>
+    const send = (alias: string, workerId = client) => dispatchSettled(daemon, { workspaceId, address: TEST_OWNER }, () =>
         daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } }));
     try {
         assert.deepEqual(

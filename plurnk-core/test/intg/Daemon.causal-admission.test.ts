@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import { holdChild } from "./_db.ts";
 import assert from "node:assert/strict";
@@ -11,6 +12,7 @@ import { waitForDb, withDaemon } from "./_rpc.ts";
 
 for (const op of ["WORK", "FORK"]) {
     test(`{§worker-lifecycle-no-resurrection}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
+    serverProposals(t, "accept");
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeMockResponse(`\`\`\`\`${op} (worker://late-child)
 Do the delegated task.
@@ -38,7 +40,7 @@ Wait for the child.
                 finally { if (args[0].workerId === workerId) finished.resolve(); }
             });
             try {
-                const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Delegate this task.", policy: { proposals: "accept" } });
+                const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Delegate this task." });
                 await entered.promise;
                 await daemon.cancelWorker({ workspaceId, workerId });
                 assert.equal((await db.test_get_loop_status.get({ id: accepted.loopId }))?.status, 499);

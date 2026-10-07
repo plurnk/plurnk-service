@@ -3,7 +3,8 @@
 // owns no socket.
 //
 // This is the single external client interface:
-//   POST /agui — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
+//   POST /agui — a Run; POST /agui/connect — an observer that also waits while idle.
+//   A worker streams SSE. HITL is terminate-resume: a
 //   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
 //   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's
 //   standard resume entries resolve the durable proposal and continue the exact loop.
@@ -216,6 +217,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
                 return;
             }
             if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res);
+            if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -335,7 +337,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
 
     // Resolve the thread's conversation worker within its world. Cached per
     // workspace + threadId; worker names are immutable so the binding cannot rot. Durable
-    // capability changes use workspace.capabilities.set; LoopPolicy controls proposals.
+    // capability changes use workspace.capabilities.set; approval ownership is durable in Core.
     async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
         const key = Module.#threadKey(env.workspaceName, threadId);
         const cached = this.#threadWorkers.get(key);

@@ -10,8 +10,6 @@ import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { Knob } from "@plurnk/plurnk-meta";
-import LoopPolicies from "../core/LoopPolicies.ts";
-import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
@@ -50,10 +48,6 @@ export type DrainInjectionArgs = {
     systemPrompt: string;
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
-    policy?: LoopPolicyRequest;
-    // Delegated authority applies only when injection creates a fresh loop;
-    // active and parked loops retain their immutable policy.
-    freshLoopPolicy?: LoopPolicy;
     openPaths?: string[];
 };
 
@@ -78,7 +72,7 @@ type CompletionWakeGate = {
 
 type InjectionCompatibility = Pick<
     DrainInjectionArgs,
-    "workerId" | "providerSpec" | "providerSpecExplicit" | "effort" | "childProviderSpec" | "turnCeiling" | "policy"
+    "workerId" | "providerSpec" | "providerSpecExplicit" | "effort" | "childProviderSpec" | "turnCeiling"
 > & { loopId: number };
 
 type RunLoop = (args: {
@@ -215,9 +209,6 @@ export default class DrainSupervisor {
     }
 
     async inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
-        if (args.policy !== undefined && args.freshLoopPolicy !== undefined) {
-            throw new Error("drain injection cannot combine an explicit policy with a fresh-loop policy");
-        }
         const { workspaceId, workerId, prompt } = args;
         // {§worker-message-admission} — selection, compatibility, admission and the wake check share one lock.
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(workerId, async () => {
@@ -257,7 +248,6 @@ export default class DrainSupervisor {
                     effort: args.effort,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
-                    ...(args.policy === undefined ? {} : { policy: args.policy }),
                 });
             }
             const result = active === undefined ? null
@@ -277,7 +267,6 @@ export default class DrainSupervisor {
                 effort: args.effort,
                 childProviderSpec: args.childProviderSpec ?? null,
                 maxTurns: args.turnCeiling?.effective,
-                policy: args.policy ?? args.freshLoopPolicy,
                 openPaths: args.openPaths,
                 evidence: args.evidence,
                 messageAddress: args.messageAddress,
@@ -298,7 +287,6 @@ export default class DrainSupervisor {
         effort: Effort;
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
-        policy?: LoopPolicyRequest;
         openPaths?: string[];
     }): Promise<{ loopId: number }> {
         // {§worker-model-selection} — resolve the complete route before persistence;
@@ -313,8 +301,6 @@ export default class DrainSupervisor {
             spawn_model_route_id: spawnRouteId,
             effort: args.effort,
             max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
-            // {§loop-policy-composition} — the one place a fresh loop's policy is made whole.
-            policy: JSON.stringify(LoopPolicies.compose(args.policy ?? {})),
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
         // {§message-arrival}: the loop's initial message is ordinal 1 of its inbox; the loop row's

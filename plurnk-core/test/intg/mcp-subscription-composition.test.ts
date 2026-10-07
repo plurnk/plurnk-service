@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolve } from "node:path";
@@ -21,6 +22,7 @@ const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect th
 const read = (uri: string) => PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
 
 test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource updates refresh a later READ without changing history or waking unrelated workers", { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
     const alpha = "fixture://alpha";
     const beta = "fixture://beta";
     const documents = new Map([[alpha, "alpha-version-one"], [beta, "beta-version-one"]]);
@@ -61,7 +63,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     const client = await insertWorker(db, workspaceId, null, "viewer", "client");
     const lifecycle = new LoopLifecycle(db);
     const run = async (workerId: number) => {
-        const result = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the resource.", policy: { proposals: "accept" } });
+        const result = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the resource." });
         await waitForDb(() => lifecycle.status(result.loopId), (status) => status === 200);
         return result;
     };

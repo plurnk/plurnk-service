@@ -4,6 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ownWorker } from "./_approval.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -313,6 +314,7 @@ test("provider error: a terminal kind is durable product truth, never a notices 
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await ownWorker(db, workspaceId, workerId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({

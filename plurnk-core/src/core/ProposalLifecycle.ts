@@ -6,8 +6,8 @@ import {
     TurnDisposition,
     type OperationResult,
     type PlurnkStatement,
-    type ProposalDisposition,
     type ProposalProjection,
+    type ProposalDisposition,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -15,9 +15,9 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EngineNotifications } from "./notifications.ts";
-import type { PlurnkSchemeContext, LoopPolicy } from "./scheme-types.ts";
+import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
-import LoopPolicyReader from "./LoopPolicyReader.ts";
+import ProposalPolicies from "./ProposalPolicies.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -43,6 +43,7 @@ export interface AppliedProposalResolution extends ProposalResolution {
     readonly result?: object;
 }
 interface ProposalWaiter {
+    disposition: ProposalDisposition | null;
     resolve: (resolution: AppliedProposalResolution) => void;
     // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
     release: () => void;
@@ -56,10 +57,9 @@ const abortOutcome = (reason: unknown): string =>
 // {§proposal-harness-settlement} — the settlements nobody was present to explain; an outcome token
 // alone ("no_review_channel") names a condition the reader cannot act on.
 const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string; readonly recovery: string }>> = {
-    // The same fact LoopPolicies already states when composing an impossible policy.
     no_review_channel: {
-        condition: "this loop is unattended, so a proposal has no reviewer and nobody is present to answer",
-        recovery: "State proposals accept or reject when the loop is created, or attend the loop.",
+        condition: "this worker's owner does not implement proposal review",
+        recovery: "Attach a review-capable owner or configure server approval.",
     },
     timeout: {
         condition: "no answer arrived before the operator's proposal deadline",
@@ -110,7 +110,9 @@ interface ProposalRow {
     query: string | null;
     rx: string;
     attrs: string;
-    loop_policy: string;
+    owner: string;
+    owner_tools: string;
+    turn_kind: string;
 }
 
 interface OrchestrationProposalAttrs {
@@ -235,10 +237,12 @@ export default class ProposalLifecycle {
         return [...this.#pending.keys()];
     }
 
-    async pending(logEntryId: number): Promise<ProposalPendingEvent> {
+    async pending(logEntryId: number): Promise<ProposalPendingEvent | null> {
+        const waiter = this.#pending.get(logEntryId);
+        if (waiter === undefined) return null;
         const row = await this.#db.proposal_get_pending.get<ProposalRow>({ log_entry_id: logEntryId });
         if (row === undefined) throw new Error(`Pending proposal ${logEntryId} has no durable proposed row.`);
-        return this.#project(row);
+        return this.#project(row, waiter);
     }
 
     async list(workspaceId: number): Promise<ProposalProjection[]> {
@@ -247,14 +251,15 @@ export default class ProposalLifecycle {
         // #pending carries this process's callable resolution owner. Discovery
         // exposes only their intersection; persistence alone cannot fabricate
         // a resolvable stopped world.
-        const projected = await Promise.all(
-            rows.filter((row) => this.#pending.has(row.logEntryId)).map((row) => this.#project(row)),
-        );
+        const projected = rows.flatMap((row) => {
+            const waiter = this.#pending.get(row.logEntryId);
+            return waiter === undefined ? [] : [this.#project(row, waiter)];
+        });
         return projected.map(({ workspaceId: _workspaceId, ...proposal }) => proposal);
     }
 
     settleOwned(proposal: ProposalPendingEvent): void {
-        if (proposal.disposition.owner !== "loop") return;
+        if (proposal.disposition.decision === "review" || !this.#pending.has(proposal.logEntryId)) return;
         const { decision, outcome } = proposal.disposition;
         this.resolve(proposal.logEntryId, {
             decision,
@@ -319,11 +324,12 @@ export default class ProposalLifecycle {
         }
     }
 
-    async #project(row: ProposalRow): Promise<ProposalPendingEvent> {
+    #project(row: ProposalRow, waiter: ProposalWaiter): ProposalPendingEvent {
+        const owner = Validator.assertWorkerOwner({ address: row.owner, tools: JSON.parse(row.owner_tools) as string[] });
+        waiter.disposition ??= ProposalPolicies.disposition(owner.tools, row.turn_kind === "maintenance");
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
-        const policy = LoopPolicyReader.parse(row.loop_policy, row.loopId);
         const target = this.#target(row, op, attrs);
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
@@ -334,8 +340,8 @@ export default class ProposalLifecycle {
             target,
             body: typeof result.body === "string" ? result.body : "",
             attrs,
-            policy,
-            disposition: ProposalLifecycle.#disposition(policy),
+            owner: row.owner,
+            disposition: waiter.disposition,
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
@@ -422,15 +428,6 @@ export default class ProposalLifecycle {
         };
     }
 
-    // {§proposal-disposition} — the persisted policy decides the owner; nothing downstream re-derives it.
-    static #disposition(policy: LoopPolicy): ProposalDisposition {
-        if (policy.proposals === "accept") return { owner: "loop", decision: "accept" };
-        if (policy.proposals === "reject") {
-            return { owner: "loop", decision: "reject", outcome: "no_review_channel" };
-        }
-        return { owner: "client" };
-    }
-
     // The wait is untimed by default because a decision belongs to whoever is deciding. It still
     // does not outlive its loop: an aborted loop settles the proposal the way shutdown already
     // does, carrying the abort's own reason as the outcome (#769).
@@ -449,6 +446,7 @@ export default class ProposalLifecycle {
             const onAbort = (): void => cancel(abortOutcome(signal?.reason));
             const timeoutHandle = timeoutMs === null ? null : setTimeout(() => cancel("timeout"), timeoutMs);
             this.#pending.set(logEntryId, {
+                disposition: null,
                 resolve,
                 release: () => {
                     if (timeoutHandle !== null) clearTimeout(timeoutHandle);

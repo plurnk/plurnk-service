@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§exec-tool-fall-through} — a bare shell command whose program is the name of an enabled
 // runtime's tool dies with the shell's exit 127; the failure receipt says so at the failure site
 // and names the invocation the registry actually publishes, so recovery takes one turn.
@@ -12,6 +13,7 @@ import { makeMockResponse } from "./_mock.ts";
 import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
 test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async (t) => {
+    serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -28,7 +30,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
         const ws = await connect({ daemon });
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `tool-fall-through-${crypto.randomUUID()}` });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "try the tool by name", policy: { proposals: "accept" } }, { timeoutMs: 30_000 });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "try the tool by name" }, { timeoutMs: 30_000 });
             assert.equal(finalStatus, 200);
             // {§exec-stream}: the spawn's execution row is `started`; the process's conclusion is the receipt
             // on the stream's terminal READ — one per channel with content, and the shell's complaint is on stderr alone.
@@ -53,7 +55,8 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
     }
 });
 
-test("an ordinary missing shell command keeps the plain exit-127 receipt", { timeout: 60_000 }, async () => {
+test("an ordinary missing shell command keeps the plain exit-127 receipt", { timeout: 60_000 }, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -68,7 +71,7 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
         const ws = await connect({ daemon });
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `plain-127-${crypto.randomUUID()}` });
-            const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "run nothing", policy: { proposals: "accept" } }, { timeoutMs: 30_000 });
+            const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "run nothing" }, { timeoutMs: 30_000 });
             const terminal = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; rx: string }>({ loop_id: loopId }))
                 .find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.ok(terminal);

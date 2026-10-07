@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§members-functionality} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -121,6 +122,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
         await rootWorkspace(db, workspaceId, root);
         const model = await insertWorker(db, workspaceId, null, "conversation", "model");
         const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+        await ownWorker(db, workspaceId, client);
         const daemon = new Daemon({ db, provider: null });
         await daemon.start();
         const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, _workerId = model): Promise<T> =>
@@ -141,7 +143,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             const before = await outputs();
             const pending = operate(program);
             while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
-            await daemon.resolveProposal(proposals[seen]!, { decision: "accept" });
+            await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             const result = await pending;
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "members", after: before, timeoutMs: 60_000 }) as { status?: number; problem?: { type?: string; recovery?: string } };
             return { result, outcome };

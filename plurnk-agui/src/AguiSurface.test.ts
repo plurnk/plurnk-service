@@ -5,6 +5,25 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS } from "./AguiSurface.ts";
 import { streamConclusion } from "../test/notification-fixture.ts";
 
+test("{§agui-action-schema-enforcement} {§worker-ownership}: worker directories retain approval ownership", () => {
+    const schema = AGUI_BUILTIN_ACTIONS["workspace.workers"].outputSchema;
+    const worker = {
+        id: 1,
+        name: "main",
+        created_at: "2026-10-07T00:00:00Z",
+        owner: "agui://anonymous/threads/main",
+        origin: "client",
+        parentWorkerId: null,
+        kind: "conversation",
+        lifecycle: "idle",
+    };
+    assert.deepEqual(Validator.assertJsonSchemaInstance("worker directory", schema, { workers: [worker] }), { workers: [worker] });
+    for (const owner of [undefined, ""]) {
+        assert.throws(() => Validator.assertJsonSchemaInstance("invalid owner", schema, JSON.parse(JSON.stringify({ workers: [{ ...worker, owner }] }))),
+            /does not satisfy its JSON Schema/);
+    }
+});
+
 test("{§agui-discovery-contract}: stream conclusions admit pending wakes, not predicted loop execution", () => {
     const schema = AGUI_NOTIFICATIONS["stream/concluded"].payloadSchema;
     const conclusion = streamConclusion({ wakeAction: "wake-pending" });

@@ -1,4 +1,4 @@
-import type { A2AAgentDefinition as A2aAgentDefinition, FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
+import { WORKER_NAME, type A2AAgentDefinition as A2aAgentDefinition, type FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
 import { readDefinition } from "./definition.ts";
@@ -12,7 +12,7 @@ import {
 const PREFIX = "PLURNK_A2A_";
 const CONTROLS = [
     "CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "ERROR_DETAIL_LIMIT", "EXPOSE", "TOKEN",
-    "ENDPOINT_PATH", "ENDPOINT_URL", "WORKSPACE", "PROJECT_ROOT", "PROPOSALS",
+    "ENDPOINT_PATH", "ENDPOINT_URL", "WORKSPACE", "PROJECT_ROOT", "PARENT_WORKER",
     "NAME", "DESCRIPTION", "VERSION", "PROVIDER_ORGANIZATION", "PROVIDER_URL",
     "DOCUMENTATION_URL", "ICON_URL", "SKILLS",
 ];
@@ -32,18 +32,17 @@ export interface HostedAgentConfiguration {
         readonly name: string;
         readonly projectRoot: string | null;
     };
-    readonly proposals: HostedProposals;
+    readonly parentWorker: string;
     readonly card: AgentCard;
 }
-
-// A2A carries no review channel, so an inbound loop settles its own proposals.
-const HOSTED_PROPOSALS = ["accept", "reject"] as const;
-export type HostedProposals = typeof HOSTED_PROPOSALS[number];
 
 // {§http-host} — the exposure rides the service listener, so it has no address knobs (#641).
 // A still-set one fails hard naming the successor; it never silently binds nothing, and it never
 // case-folds into an alias definition. Spelled out only here, as the refusal's own evidence.
 const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
+    if (environ.PLURNK_A2A_PROPOSALS !== undefined) {
+        throw new ConfigurationError("PLURNK_A2A_PROPOSALS", "PLURNK_A2A_PROPOSALS is retired: the parent worker's owner reviews operations; PLURNK_SERVICE_PROPOSALS controls server approval.");
+    }
     for (const name of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"] as const) {
         if (environ[name] !== undefined) {
             throw new ConfigurationError(name,
@@ -83,11 +82,11 @@ const required = (environ: NodeJS.ProcessEnv, field: string): string => {
     return value;
 };
 
-const hostedProposals = (raw: string): HostedProposals => {
-    if (!(HOSTED_PROPOSALS as readonly string[]).includes(raw)) {
-        throw new ConfigurationError("PLURNK_A2A_PROPOSALS", `PLURNK_A2A_PROPOSALS must be one of ${HOSTED_PROPOSALS.join(", ")}; got ${JSON.stringify(raw)}.`);
+const parentWorker = (raw: string): string => {
+    if (raw !== "_plurnk" && !WORKER_NAME.test(raw)) {
+        throw new ConfigurationError("PLURNK_A2A_PARENT_WORKER", "PLURNK_A2A_PARENT_WORKER must name an existing worker, or _plurnk.");
     }
-    return raw as HostedProposals;
+    return raw;
 };
 
 const stringArray = (value: unknown, field: string): string[] => {
@@ -231,7 +230,7 @@ export const hostedAgentConfiguration = (
             name: required(environ, "PLURNK_A2A_WORKSPACE"),
             projectRoot: projectRoot === undefined || projectRoot.length === 0 ? null : projectRoot,
         },
-        proposals: hostedProposals(required(environ, "PLURNK_A2A_PROPOSALS")),
+        parentWorker: parentWorker(required(environ, "PLURNK_A2A_PARENT_WORKER")),
         card,
     };
 };

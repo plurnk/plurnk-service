@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§exec-stream} — a FIND over an exec stream's channel resolves the runtime's own default channel
 // (stdout), never the entry-manifest fallback `body`; it answers with the match, not a 500.
 import test from "node:test";
@@ -6,7 +7,8 @@ import StreamMock from "./_stream-mock.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async () => {
+test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new StreamMock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nprintf 'alpha\\nbeta\\n'\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````FIND ($STREAM#stdout) [{\"pattern\":\"/beta/\"}]````\n\n````NOTE\nlooking\n````", 10),
@@ -16,7 +18,7 @@ test("FIND over an exec stream channel answers the match instead of throwing on 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-over-stream" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const find = rows.find((r) => r.op === "FIND" && r.origin === "model");

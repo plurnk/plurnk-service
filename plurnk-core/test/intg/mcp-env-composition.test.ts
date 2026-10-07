@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -61,6 +62,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
     try {
         const workspaceId = await insertWorkspace(db, `mcp-env-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "alice", "client");
+        await ownWorker(db, workspaceId, workerId);
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         const set = (alias: string, value: string) => invoke("env", "add", { alias, definition: { value } });
         const starts = async (server: string): Promise<Start[]> => (await readFile(marker(server), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
@@ -98,7 +100,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: op.statement });
             if (approve) {
                 await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10000 });
-                daemon.resolveProposal(proposals[seen]!, { decision: "accept" });
+                await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             }
             assert.equal((await pending).status, 200);
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });

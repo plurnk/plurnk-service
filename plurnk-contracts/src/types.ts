@@ -2,12 +2,12 @@
 // the single import surface for consumers. Run `npm run build:types` to regenerate.
 export * from "./types.generated.ts";
 
-import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
+import proposalPolicySchema from "../schema/ProposalPolicy.json" with { type: "json" };
 import effortSchema from "../schema/Effort.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
     ClientStatement,
-    LoopPolicy,
+    ProposalPolicy,
     Position,
     PlurnkStatement,
     ProviderRequestAccounting,
@@ -66,10 +66,11 @@ export const EFFORTS = Object.freeze(
     effortSchema.enum as Effort[],
 ) as readonly Effort[];
 
-// Schema-owned vocabulary of `LoopPolicy.proposals`. {§loop-policy}
+// Schema-owned server disposition vocabulary. {§proposal-disposition}
+// {§proposal-policy}
 export const PROPOSAL_POLICIES = Object.freeze(
-    loopPolicySchema.properties.proposals.enum as LoopPolicy["proposals"][],
-) as readonly LoopPolicy["proposals"][];
+    proposalPolicySchema.enum as ProposalPolicy[],
+) as readonly ProposalPolicy[];
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;

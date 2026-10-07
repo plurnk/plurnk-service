@@ -38,7 +38,7 @@ try {
                     name: `floor-${crypto.randomUUID()}`,
                     projectRoot: root,
                 });
-                await runLoopToTerminal(ws, 2, { prompt: "ping", policy: { proposals: "accept" } });
+                await runLoopToTerminal(ws, 2, { prompt: "ping" });
             } finally {
                 ws.close();
             }

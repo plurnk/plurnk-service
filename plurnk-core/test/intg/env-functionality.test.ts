@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§functionality-scope} {§env-functionality} — the environment family beneath the shared
 // coordinator, registered by Core. Worker-scoped client actions, one durable value per worker, and
 // the model's manager bound to the invoking worker: the same six verbs, acting for one worker.
@@ -63,7 +64,9 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
     try {
         const workspaceId = await insertWorkspace(db, `env-family-${crypto.randomUUID()}`);
         const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+        await ownWorker(db, workspaceId, alice);
         const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        await ownWorker(db, workspaceId, bob);
         const invoke = <T>(workerId: number, verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
             daemon.invokeModuleAction(`worker.env.${verb}`, params, { scope: "worker", workspaceId, workerId }) as Promise<T>;
         const listed = async (workerId: number) => (await invoke<FunctionalityListResult>(workerId, "list")).definitions;
@@ -188,7 +191,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(program) });
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
             const logEntryId = proposals[seen]!;
-            daemon.resolveProposal(logEntryId, { decision: "accept" });
+            await daemon.resolveProposal(logEntryId, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             return { status: (await pending).status, logEntryId };
         };
         const stdoutOf = async (logEntryId: number): Promise<string> => {
@@ -288,7 +291,9 @@ test("{§functionality-scope} readWorkerEnvironment layers the Worker's override
     try {
         const workspaceId = await insertWorkspace(db, `env-seam-${crypto.randomUUID()}`);
         const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+        await ownWorker(db, workspaceId, alice);
         const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        await ownWorker(db, workspaceId, bob);
         await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
         await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "worker", workspaceId, workerId: alice });
         const ambient = { TZ: "UTC", PATH: process.env.PATH ?? "" };

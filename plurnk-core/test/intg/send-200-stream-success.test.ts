@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import { lastReply } from "./_packet.ts";
 // {§send-premature-terminate} {§loop-response-messages}
 
@@ -21,7 +22,8 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 };
 
 for (const command of ["true", "hostname"]) {
-    for (const earlyReply of [false, true]) test(`a successful ${command} reaches the next packet, early reply=${earlyReply}`, async () => {
+    for (const earlyReply of [false, true]) test(`a successful ${command} reaches the next packet, early reply=${earlyReply}`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
         const reply = earlyReply ? "\n````SEND\nThe hostname is plurnk-sandbox.\n````" : "";
         const provider = new Mock({
@@ -35,7 +37,7 @@ for (const command of ["true", "hostname"]) {
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "stream-success-terminal" });
-                const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", policy: { proposals: "accept" } });
+                const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude" });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(provider.remaining, 0, "the model gets exactly one observation turn before completing");
                 assert.equal(provider.received.length, 2);
@@ -58,6 +60,7 @@ for (const command of ["true", "hostname"]) {
 }
 
 test("{§completion-defers-to-results}: a successful execution receipt defers completion one packet without a strike", async (t) => {
+    serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_MAX_STRIKES;
     process.env.PLURNK_SERVICE_MAX_STRIKES = "1";
     t.after(() => {
@@ -75,7 +78,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-final-strike" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "run the command", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "run the command" });
             assert.equal(result.finalStatus, 200, "the deferred completion concludes on the next packet; at MAX_STRIKES 1 a strike would have ended the loop");
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
@@ -90,7 +93,8 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
     }));
 });
 
-test("{§completion-defers-to-results}: a failed same-turn stream defers completion without echoing its command", async () => {
+test("{§completion-defers-to-results}: a failed same-turn stream defers completion without echoing its command", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -102,7 +106,7 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-failure-terminal" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude" });
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });

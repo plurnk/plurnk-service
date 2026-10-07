@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§op-execution-order} {§edit-execution}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +7,8 @@ import LineAnchors from "../../src/content/line-anchors.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
+test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         { assistant: { content: "````FIND (worker:///*)````\n````KILL (log:///1/2/*)````\n````NOTE\nContinue after curating the observed pre-program row.\n````", reasoning: null } },
         { assistant: { content: "````KILL\ndone\n````", reasoning: null } },
@@ -15,7 +17,7 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-selection-snapshot" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "Exercise current-turn log selection.", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "Exercise current-turn log selection." });
             assert.equal(result.finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{
                 turn_id: number;
@@ -43,7 +45,8 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
     });
 });
 
-test("{§op-execution-order}: FIND observes an entry created by EDIT in the same turn", async () => {
+test("{§op-execution-order}: FIND observes an entry created by EDIT in the same turn", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
@@ -54,7 +57,7 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: loopId });
@@ -67,7 +70,8 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     });
 });
 
-test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async () => {
+test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("\n````EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n````\n\n````NOTE\nfixture created\n````", 10),
         makeMockResponse("\n````READ (worker:///mode.md)````\n````EDIT (worker:///mode.md) <4>\nFOUR\n````\n\n````EDIT (worker:///mode.md) <2>\nTWO\n2.5\n````\n\n````NOTE\nmutated and observed\n````", 10),
@@ -77,7 +81,7 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-batch" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
@@ -104,7 +108,8 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
     });
 });
 
-test("{§edit-execution}: overlapping numeric EDITs apply to successive resource states", async () => {
+test("{§edit-execution}: overlapping numeric EDITs apply to successive resource states", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````EDIT (worker:///atomic.md)\none\ntwo\nthree\n````\n\n````NOTE\nfixture\n````", 10),
         makeMockResponse("````EDIT (worker:///atomic.md) <1,2>\nchanged\n````\n\n````EDIT (worker:///atomic.md) <2,3>\nalso changed\n````\n\n````READ (worker:///atomic.md)````\n````NOTE\nchecked\n````", 10),
@@ -114,7 +119,7 @@ test("{§edit-execution}: overlapping numeric EDITs apply to successive resource
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "mode-atomic-failure" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
@@ -126,7 +131,8 @@ test("{§edit-execution}: overlapping numeric EDITs apply to successive resource
     });
 });
 
-test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed EDIT path", async () => {
+test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed EDIT path", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -143,7 +149,7 @@ verify
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "anchored-range" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
@@ -152,7 +158,8 @@ verify
     });
 });
 
-test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect intact", async () => {
+test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect intact", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const content = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     const [one, two, three, four, five, six, seven, eight] = LineAnchors.tokens(
         "worker:///anchor-batch.md",
@@ -183,7 +190,7 @@ verify
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "anchored-batch-failure" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{
                 aside: string | null;

@@ -60,7 +60,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         });
         const added = await application.invokeModuleAction("workspace.schedule.add", {
             alias: "beat",
-            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "Take the beat.", policy: { proposals: "accept" } },
+            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "Take the beat." },
         }, { scope: "workspace", workspaceId }) as { status: number; alias: string; definition?: { state: string; detail?: { next: string | null; rule: string } } };
         assert.equal(added.status, 201);
         assert.equal(added.alias, "beat");

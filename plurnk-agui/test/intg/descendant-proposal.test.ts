@@ -23,7 +23,7 @@ const post = async (
             runId: crypto.randomUUID(),
             state: {},
             messages: [],
-            tools: [],
+            tools: [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }],
             context: [],
             ...input,
         }),

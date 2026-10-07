@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 // {§log-kill-meta-operation}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +14,8 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
-test("{§log-kill-meta-operation} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async () => {
+test("{§log-kill-meta-operation} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
@@ -25,7 +27,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-curation-receipts" });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 6, `init + five model turns; got ${ids.length}`);

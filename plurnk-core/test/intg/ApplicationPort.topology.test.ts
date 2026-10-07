@@ -47,6 +47,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             name: contextId,
             created_at: projectedContext.created_at,
             origin: "model",
+            owner: "_plurnk",
             parentWorkerId: null,
             // {§application-worker-observation} — a root conversation with no loop yet (#523).
             kind: "conversation",
@@ -74,6 +75,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             name: taskId,
             created_at: children[0]?.created_at,
             origin: "model",
+            owner: "_plurnk",
             parentWorkerId: context.workerId,
             // forkWorker mints a FORK child (fork boundary set); no loop has run on it yet.
             kind: "fork",

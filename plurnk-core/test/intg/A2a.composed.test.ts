@@ -1,3 +1,4 @@
+import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -37,7 +38,8 @@ class WorkspaceRoutedMock extends Mock {
     }
 }
 
-test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons complete one delegated A2A Task", async () => {
+test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons complete one delegated A2A Task", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const callerProvider = new Mock({
         contextWindow: 100_000,
@@ -127,7 +129,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             prompt: "Delegate the fruit comparison to the remote agent, then return its result.",
             // {§http-outbound-proposes} — reaching a remote agent is a host effect, so this caller
             // states that it approves its own delegations. Without a statement nobody resolves them.
-            policy: { proposals: "accept" },
+
         });
         assert.deepEqual(await terminal.promise, {
             status: 200,
@@ -153,9 +155,10 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 
         const agentRoots = await agent.listWorkers(agentWorkspace.workspaceId, {
             origin: "model",
-            parentWorkerId: null,
+            parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId),
         });
-        assert.equal(agentRoots.length, 1, "the remote A2A Context is one root Worker");
+        assert.equal(agentRoots.length, 1, "the remote A2A Context is one child of the configured runtime parent");
+        assert.equal(agentRoots[0]!.owner, "_plurnk");
         const agentTasks = await agent.listWorkers(agentWorkspace.workspaceId, {
             origin: "model",
             parentWorkerId: agentRoots[0]!.id,
@@ -176,7 +179,8 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 // Worker `a2a` family (no injected resolver), delegates twice, and the
 // composition respects both the Context/Task ↔ Worker mapping on the hosted
 // side and topology-scoped ambience on the calling side.
-test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async () => {
+test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const delegate = (fruit: string) => makeMockResponse([
         "````SEND (a2a://remote)",
@@ -280,7 +284,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         const runToTerminal = async (workerId: number, prompt: string): Promise<OperationResult> => {
             const expected = terminals.length + 1;
             arrival = Promise.withResolvers<void>();
-            await caller!.runLoop({ workspaceId: callerWorkspace.workspaceId, workerId, prompt, policy: { proposals: "accept" } });
+            await caller!.runLoop({ workspaceId: callerWorkspace.workspaceId, workerId, prompt });
             while (terminals.length < expected) {
                 arrival = Promise.withResolvers<void>();
                 await arrival.promise;
@@ -297,9 +301,9 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         const replies = await caller.readMessages({ workspaceId: callerWorkspace.workspaceId, workerId: worker.workerId });
         assert.deepEqual(replies.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["First delegation done.", "Second delegation done."]);
 
-        // Each delegation is one remote Context (a root Worker) holding exactly
+        // Each delegation is one remote Context under the runtime parent, holding exactly
         // one Task (a child Worker); nothing lands in the unrelated workspace.
-        const contexts = await agent.listWorkers(agentWorkspace.workspaceId, { origin: "model", parentWorkerId: null });
+        const contexts = await agent.listWorkers(agentWorkspace.workspaceId, { origin: "model", parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId) });
         assert.equal(contexts.length, 2, "two delegations are two remote A2A Contexts");
         for (const context of contexts) {
             const tasks = await agent.listWorkers(agentWorkspace.workspaceId, { origin: "model", parentWorkerId: context.id });

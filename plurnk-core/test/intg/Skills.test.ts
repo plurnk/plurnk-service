@@ -1,3 +1,4 @@
+import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§skills-functionality} {§skills-sources} — standard Agent Skills through the shared workspace
 // Functionality lifecycle: source roots are inputs, workspace bindings own
 // enablement, discovery is inert, and only fetched sources are materialized.
@@ -159,6 +160,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "skills-busy", projectRoot: project });
+    await ownWorker(db, workspace.workspaceId, workspace.workerId);
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, {
         scope: "workspace", workspaceId: workspace.workspaceId,
     });
@@ -191,7 +193,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
         const after = await action("list", {}) as { definitions: Array<{ alias: string }> };
         assert.ok(!after.definitions.some(({ alias }) => alias === "beta"), "refused addition creates no binding");
     } finally {
-        await daemon.resolveProposal(id, { decision: "reject" });
+        await daemon.resolveProposal(id, { decision: "reject" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
         await pending;
     }
 });

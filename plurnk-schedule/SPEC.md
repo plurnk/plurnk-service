@@ -4,10 +4,9 @@
 
 Scheduled messages are one workspace Functionality family named `schedule`,
 owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}). A definition is
-`{ rule, target, prompt, policy? }`: RFC 5545 rule text ({§schedule-rule}), a
+`{ rule, target, prompt }`: RFC 5545 rule text ({§schedule-rule}), a
 `worker://<name>` target in the workspace ({§worker-name}, preserved exactly), the message delivered at each
-occurrence, and optionally the proposal policy of a loop the delivery starts
-({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
+occurrence ({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
 coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `enable`,
 `disable`, `remove`. The adapter publishes no documents of its own; the
 runtime document's authored body is `docs/schedule.md`
@@ -75,7 +74,8 @@ The module holds one armed occurrence per enabled (workspace, alias). At the
 occurrence it resolves the target worker by name and delivers the prompt
 through the application port's `runLoop` with the source `schedule://<alias>`.
 The message joins the worker's live loop, waking it if parked, or starts a new
-loop with the definition's policy ({§message-arrival}, {§message-causal-source}).
+loop ({§message-arrival}, {§message-causal-source}). Delivery carries no approval
+authority; the receiving worker retains its owner ({§worker-ownership}).
 A future occurrence is not live work for WAIT ({§wait-obligation-matrix}); it
 neither holds a loop open nor concludes it. The next occurrence
 then arms from the present: a late fire delivers once and skips what it
