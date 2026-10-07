@@ -78,6 +78,7 @@ contribution types live in its framework's package, so this package never depend
 | `SchemeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§scheme-module-slice}) | `registerScheme`, and the facet a runtime or a family manager exposes |
 | `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-module-slice}) | The runtimes a resident family prepares |
 | `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§plugin-set-module-slice}) | `readWorkspacePlugins` |
+| `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills` |
 
 A start seam is a `Pick` of {§application-port} naming the calls the module makes.
 

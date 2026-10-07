@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test, { after, before, mock, type TestContext } from "node:test";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { SkillTree } from "@plurnk/plurnk-agent-skills";
 import { Mock } from "@plurnk/plurnk-providers";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -194,6 +195,24 @@ test("{§module-contained-configuration} a contained setting is the module's own
         source: "engine:configuration", kind: "configuration_unavailable", level: "warn",
         owner: "module:@acme/contained", key: "ACME_EXPOSURE", message: "ACME_EXPOSURE must be 0 or 1.",
     }]);
+});
+
+test("{§provided-skills-module-slice} host-composed references are supplied as ordinary skill trees", async (t) => {
+    environment(t, {});
+    const { daemon } = await boot(t);
+    let readSkills: (() => Promise<ReadonlyMap<string, SkillTree>>) | undefined;
+    daemon.registerModule({ setup(seam) {
+        readSkills = () => seam.readProvidedSkills();
+    } }, "@acme/skill-consumer");
+    await daemon.start();
+    assert.ok(readSkills);
+    const trees = await readSkills();
+    assert.deepEqual([...trees.keys()], ["plurnk"]);
+    const tree = trees.get("plurnk")!;
+    assert.equal(tree.document.name, "plurnk");
+    assert.ok((await tree.list()).includes(".env.defaults"));
+    const document = tree.resource("SKILL.md");
+    assert.equal(new TextDecoder().decode(await document.read(1, (await document.size())!)), tree.document.source);
 });
 
 test("{§module-discovery} an untrusted module is skipped and reported, never imported", async (t) => {

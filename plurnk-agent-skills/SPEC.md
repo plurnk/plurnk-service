@@ -8,6 +8,14 @@ consumer-composed tree implement the same contract. Listing does not read
 supporting bodies; resources without native files do not acquire synthetic ones.
 The consumer owns composition, activation, and publication, not this loader.
 
+### §provided-skills-module-slice Host-provided trees
+
+`ProvidedSkillsSeam.readProvidedSkills()` supplies the host-composed trees keyed
+by standard skill name. The host owns their composition; the skills family
+subjects them to ordinary definition precedence, enablement, and resource
+publication ({§skills-configuration}). Reading the set neither publishes nor
+enables it and does not create filesystem copies.
+
 ## §agent-skills-directory Source directory
 
 The loader consumes the standard [Agent Skills directory format](https://agentskills.io/specification).

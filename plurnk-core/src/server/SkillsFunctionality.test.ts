@@ -1,8 +1,33 @@
-// {§skills-sources} The vendor installer's knobs are retired, not ignored.
+// {§skills-configuration} Source declarations and the host-owned configuration boundary.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseEnv } from "node:util";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import SkillsFunctionality, { serviceSkills } from "./SkillsFunctionality.ts";
+
+test("{§module-workspace-paths} skills use the host's opaque source scopes and precedence without private services", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skills-seam-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const configurationRoots = ["near", "far"].map((scope) => ({ scope, directory: join(root, scope) }));
+    for (const { directory, scope } of configurationRoots) {
+        const folder = join(directory, "skills/review");
+        await mkdir(folder, { recursive: true });
+        await writeFile(join(folder, "SKILL.md"), `---\nname: review\ndescription: ${scope} review\n---\n`);
+    }
+    const family = new SkillsFunctionality({
+        workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots }),
+        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
+        readProvidedSkills: async () => new Map(),
+        workspaceStateDirectory: async () => { throw new Error("Discovery does not allocate state."); },
+        operatorEnvironment: () => { throw new Error("Discovery does not launch a subprocess."); },
+    });
+    assert.deepEqual((await family.available({ workspaceId: 1 })).map(({ definition, provenance }) => ({ definition, provenance })), [{
+        definition: { name: "review", source: join(root, "near/skills/review") },
+        provenance: { kind: "file", source: join(root, "near/skills/review/SKILL.md") },
+    }]);
+});
 
 test("{§skills-configuration} native env parsing retains exact standard skill names without opening their sources", () => {
     const names = ["3d-tools", "分析", "café", "ｓｋｉｌｌ", "skill"];
@@ -49,7 +74,7 @@ test("{§skills-configuration} invalid disabled definitions still fail validatio
     }
 });
 
-test("{§skills-sources} a retired vendor-installer knob fails boot, naming what replaced it", (t) => {
+test("{§skills-sources} a retired vendor-installer knob fails validation, naming what replaced it", (t) => {
     const saved = process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;
     t.after(() => {
         if (saved === undefined) delete process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;

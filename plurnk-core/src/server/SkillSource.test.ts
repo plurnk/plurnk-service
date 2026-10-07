@@ -2,12 +2,13 @@
 // git and archive fetches are witnessed in test/intg/Skills.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SkillSource from "./SkillSource.ts";
 
 const skill = (name: string, description = `Use ${name}.`): string => `---\nname: ${name}\ndescription: ${description}\n---\nBody of ${name}.\n`;
+const localReader = new SkillSource(() => { throw new Error("Reading a local source must not launch a subprocess."); });
 
 const problemType = (code: string) => (error: { problem?: { type?: string } }): boolean =>
     error.problem?.type === `https://problems.plurnk.xyz/skills/functionality/${code}`;
@@ -57,14 +58,14 @@ test("{§skills-sources} local skills retain their standard folder identity; nes
     const source = join(base, "root-skill");
     await mkdir(join(source, "skills", "alpha", "examples", "inner"), { recursive: true });
     await writeFile(join(source, "SKILL.md"), skill("root-skill"));
-    const opened = await SkillSource.open({ kind: "folder", location: source });
+    const opened = await localReader.open({ kind: "folder", location: source });
     t.after(() => opened.close());
     assert.deepEqual(opened.skills.map(({ name, dir }) => ({ name, dir })), [{ name: "root-skill", dir: source }],
         "a skill at the root is the source; nothing below it is walked");
     const misnamed = join(base, "checkout-dir");
     await mkdir(misnamed);
     await writeFile(join(misnamed, "SKILL.md"), skill("root-skill"));
-    const rejected = await SkillSource.open({ kind: "skill-file", location: join(misnamed, "SKILL.md") });
+    const rejected = await localReader.open({ kind: "skill-file", location: join(misnamed, "SKILL.md") });
     assert.deepEqual(rejected.skills, [], "a SKILL.md is read in its actual directory, not renamed in a temporary copy");
     assert.match(rejected.invalid[0]!.reason, /must match folder "checkout-dir"/u);
     await rejected.close();
@@ -77,7 +78,7 @@ test("{§skills-sources} local skills retain their standard folder identity; nes
     await writeFile(join(tree, "skills", "alpha", "examples", "inner", "SKILL.md"), skill("inner"));
     await writeFile(join(tree, "skills", "misnamed", "SKILL.md"), skill("other"));
     await writeFile(join(tree, ".git", "hidden", "SKILL.md"), skill("hidden"));
-    const walked = await SkillSource.open({ kind: "folder", location: tree });
+    const walked = await localReader.open({ kind: "folder", location: tree });
     t.after(() => walked.close());
     assert.deepEqual(walked.skills.map(({ name, description, dir }) => ({ name, description, dir })), [
         { name: "alpha", description: "Alpha.", dir: join(tree, "skills", "alpha") },
@@ -91,7 +92,27 @@ test("{§skills-sources} an Agent Plugin source is refused: its skills keep the 
     await mkdir(join(base, "plugin", "skills", "alpha"), { recursive: true });
     await writeFile(join(base, "plugin", "plugin.json"), JSON.stringify({ name: "acme" }));
     await writeFile(join(base, "plugin", "skills", "alpha", "SKILL.md"), skill("alpha"));
-    await assert.rejects(() => SkillSource.open({ kind: "folder", location: join(base, "plugin") }), problemType("source-is-plugin"));
+    await assert.rejects(() => localReader.open({ kind: "folder", location: join(base, "plugin") }), problemType("source-is-plugin"));
+});
+
+test("{§skills-sources} fetching uses the supplied operator environment and preserves explicit SSH configuration", async (t) => {
+    const base = await fixture(t);
+    const report = join(base, "environment.json");
+    const commit = "a".repeat(40);
+    await writeFile(join(base, "git"), `#!${process.execPath}\n${[
+        'const fs = require("node:fs");',
+        'fs.writeFileSync(process.env.SKILL_ENV_REPORT, JSON.stringify({ marker: process.env.SKILL_ENV_MARKER, prompt: process.env.GIT_TERMINAL_PROMPT, ssh: process.env.GIT_SSH_COMMAND, transport: process.env.GIT_SSH }));',
+        `console.log(${JSON.stringify(`${commit}\tHEAD`)});`,
+    ].join("\n")}\n`, { mode: 0o700 });
+    const baseEnv = { PATH: base, SKILL_ENV_REPORT: report, SKILL_ENV_MARKER: "host-admitted", GIT_TERMINAL_PROMPT: "1" };
+    for (const overrides of [{}, { GIT_SSH_COMMAND: "operator ssh" }, { GIT_SSH: "/operator/ssh" }]) {
+        const source = new SkillSource(() => ({ ...baseEnv, ...overrides }));
+        assert.equal(await source.resolveCommit("https://forge.example/skills.git"), commit);
+        assert.deepEqual(JSON.parse(await readFile(report, "utf8")), {
+            marker: "host-admitted", prompt: "0",
+            ...(overrides.GIT_SSH === undefined ? { ssh: overrides.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes" } : { transport: overrides.GIT_SSH }),
+        });
+    }
 });
 
 test("{§skills-sources} install places a skill under its name and refuses links out of it, leaving the root clean", async (t) => {

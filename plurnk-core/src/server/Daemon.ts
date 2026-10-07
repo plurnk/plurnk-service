@@ -241,16 +241,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
-        this.#skills = new SkillsFunctionality({
-            db,
-            plugins: this.#plugins,
-            storage: this.#storage,
-            hostPaths,
-            provided: async () => {
-                const tree = await PlurnkSkill.load(this.#nodeModulesPath);
-                return new Map([[tree.document.name, tree]]);
-            },
-        });
+        this.#skills = new SkillsFunctionality(this);
         this.#skills.attach(this.#functionality.register(this.#skills));
         this.#schemes.register("skill", new Skill((workspaceId) => this.#skills.trees(workspaceId)));
         // {§members-functionality} — Core's own family: file membership on the same surface.
@@ -1562,6 +1553,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§agent-plugins-hosting}
     readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<AgentRootScope>> {
         return this.#plugins.read(workspaceId);
+    }
+
+    async readProvidedSkills(): ReturnType<HostSetupSeam["readProvidedSkills"]> {
+        const tree = await PlurnkSkill.load(this.#nodeModulesPath);
+        return new Map([[tree.document.name, tree]]);
     }
 
     // {§mcp-launch-environment}

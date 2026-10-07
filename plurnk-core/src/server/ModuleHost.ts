@@ -3,6 +3,7 @@
 // The capability-provider functions are the Functionality coordinator's host interface: core's own,
 // not part of the published contract.
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
+import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
@@ -50,4 +51,5 @@ export type HostSetupSeam = ModuleSetupSeam
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & SchemeRegistrationSeam
     & WorkspacePluginsSeam<AgentRootScope>
+    & ProvidedSkillsSeam
     & CapabilityProviderSeam;

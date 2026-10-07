@@ -8,7 +8,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
 import { Knob } from "@plurnk/plurnk-meta";
-import ExecEnv from "../schemes/exec-env.ts";
 import { actionError, messageOf } from "./skills-problems.ts";
 
 const execFileP = promisify(execFile);
@@ -62,23 +61,28 @@ const reason = (cause: unknown): string => {
     return text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0).at(-1) ?? messageOf(cause);
 };
 
-const tool = async (command: string, args: readonly string[]): Promise<string> => {
-    const env = ExecEnv.withoutOwnSecrets();
-    const { stdout } = await execFileP(command, [...args], {
-        // {§exec-env-scoped} — the operator's git configuration, credentials and SSH agent reach the
-        // fetch; plurnk's own secrets never do, and neither git nor ssh ever prompts.
-        env: {
-            ...env,
-            GIT_TERMINAL_PROMPT: "0",
-            ...(env.GIT_SSH_COMMAND === undefined && env.GIT_SSH === undefined ? { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" } : {}),
-        },
-        timeout: Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1),
-        maxBuffer: TOOL_OUTPUT_BYTES,
-    });
-    return stdout;
-};
-
 export default class SkillSource {
+    readonly #operatorEnvironment: () => NodeJS.ProcessEnv;
+
+    constructor(operatorEnvironment: () => NodeJS.ProcessEnv) {
+        this.#operatorEnvironment = operatorEnvironment;
+    }
+
+    async #tool(command: string, args: readonly string[]): Promise<string> {
+        const env = this.#operatorEnvironment();
+        const { stdout } = await execFileP(command, [...args], {
+            // {§skills-sources} The host supplies the admitted operator environment; fetching never prompts.
+            env: {
+                ...env,
+                GIT_TERMINAL_PROMPT: "0",
+                ...(env.GIT_SSH_COMMAND === undefined && env.GIT_SSH === undefined ? { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" } : {}),
+            },
+            timeout: Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1),
+            maxBuffer: TOOL_OUTPUT_BYTES,
+        });
+        return stdout;
+    }
+
     // URL admission is independent of filesystem and network availability.
     static remote(source: string): (LocatedSource & { readonly kind: "git" }) | null {
         if (/^(?:https|ssh):\/\//iu.test(source)) {
@@ -126,11 +130,11 @@ export default class SkillSource {
     }
 
     // The commit a git remote's branch or tag names now; its default branch when no ref is given.
-    static async resolveCommit(remote: string, ref?: string): Promise<string> {
+    async resolveCommit(remote: string, ref?: string): Promise<string> {
         let listing: string;
         try {
             // Exact refnames: a bare pattern tail-matches (`v1` finds `feature/v1`) and omits a tag's peeled commit.
-            listing = await tool("git", ref === undefined
+            listing = await this.#tool("git", ref === undefined
                 ? ["ls-remote", "--", remote, "HEAD"]
                 : ["ls-remote", "--", remote, `refs/heads/${ref}`, `refs/tags/${ref}`, `refs/tags/${ref}^{}`]);
         } catch (cause) {
@@ -152,7 +156,7 @@ export default class SkillSource {
     }
 
     // Local trees stay in place; fetched sources own private staging released by close().
-    static async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string } = {}): Promise<OpenedSource> {
+    async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string } = {}): Promise<OpenedSource> {
         if (located.kind === "folder" || located.kind === "skill-file") {
             const root = located.kind === "folder" ? located.location : dirname(located.location);
             await SkillSource.#assertSkillSource(root, located.location);
@@ -168,9 +172,9 @@ export default class SkillSource {
                     root = join(staging, "checkout");
                     try {
                         // No hook runs on the checkout: an operator's global post-checkout would run fetched content.
-                        await tool("git", ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
+                        await this.#tool("git", ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
                             ...(pin.ref === undefined ? [] : ["--branch", pin.ref]), "--", located.location, root]);
-                        commit = (await tool("git", ["-C", root, "rev-parse", "HEAD"])).trim();
+                        commit = (await this.#tool("git", ["-C", root, "rev-parse", "HEAD"])).trim();
                     } catch (cause) {
                         const at = pin.ref === undefined ? "" : ` at '${pin.ref}'`;
                         throw actionError("source-unreachable", 502, `git could not fetch '${located.location}'${at}: ${reason(cause)}`, {
@@ -191,8 +195,8 @@ export default class SkillSource {
                     try {
                         // Both tools strip absolute and parent-relative member names and create an
                         // archive's links only after its files, so no member lands outside staging.
-                        if (/\.zip$/iu.test(located.location)) await tool("unzip", ["-qq", "-n", located.location, "-d", into]);
-                        else await tool("tar", ["-x", "-f", located.location, "-C", into]);
+                        if (/\.zip$/iu.test(located.location)) await this.#tool("unzip", ["-qq", "-n", located.location, "-d", into]);
+                        else await this.#tool("tar", ["-x", "-f", located.location, "-C", into]);
                     } catch (cause) {
                         throw actionError("source-unreadable", 422, `'${located.location}' could not be unpacked: ${reason(cause)}`, { path: located.location, retryable: false }, cause);
                     }
