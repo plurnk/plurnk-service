@@ -79,6 +79,12 @@ An extension is one package of one kind, declared once: under `plurnk` in its
   runs every module's `setup` before any module's `start`, then `stop` and
   `close` at shutdown; each member is optional.
 
+A module exposing read-only resource folders can use `registerResourceTreeScheme`
+from `@plurnk/plurnk-schemes`: it supplies names and original bytes; the host owns
+MIME handling, entry projections and ordinary selection. See {§resource-tree-scheme}
+in that package's contract. `@plurnk/plurnk-skills` is the built-in example; its
+contract is `skill://plurnk/packages/@plurnk/plurnk-skills/SPEC.md`.
+
 ## Examples
 
 A plugin directory, under a plugin root or packaged for npm:

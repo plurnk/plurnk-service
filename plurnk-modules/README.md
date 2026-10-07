@@ -25,4 +25,9 @@ What a module contributes to another kind is typed by that kind's framework: sch
 facets by `@plurnk/plurnk-schemes`, runtimes by `@plurnk/plurnk-execs`, and the installed plugin
 set by `@plurnk/plurnk-agent-plugins`.
 
+For read-only resource folders, `ResourceTreeRegistrationSeam` in
+`@plurnk/plurnk-schemes` lets a module supply named trees of original bytes; the host
+provides their entry projections, MIME handling, and ordinary READ/FIND behavior.
+The [`skills module`](../plurnk-skills/SPEC.md) uses this seam without importing core.
+
 [`SPEC.md`](SPEC.md) owns the contract.
