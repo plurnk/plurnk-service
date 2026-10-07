@@ -6,11 +6,11 @@
 // executor and every parameter is one of plurnk's slots; then the block is rewritten to canonical
 // fences and never taught. Any call this cannot map exactly leaves the whole input as it was.
 
-// The operations that cannot run without a target ({§op-shapes}).
-const TARGETED = new Set(["FIND", "READ", "EDIT", "COPY", "MOVE"]);
-// The operations that take no body ({§matcher-body-redirect}, {§transfer-resource-selections}).
-const BODILESS = new Set(["FIND", "READ", "COPY", "MOVE"]);
-const OPERATIONS = new Set(["FIND", "READ", "EDIT", "COPY", "MOVE", "KILL", "SEND", "NOTE", "WAIT", "BARE", "WORK", "FORK"]);
+import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
+import { plurnkLexer } from "./generated/plurnkLexer.ts";
+import StatementShape from "./StatementShape.ts";
+
+const OPERATIONS: ReadonlySet<string> = new Set(PLURNK_OPS);
 const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | "body" | "start" | "end" | "limit">> = Object.freeze({
     path: "path", target: "path", file_path: "path", filepath: "path", file: "path", filename: "path", resource: "path", uri: "path", url: "path",
     scope: "scope", range: "scope", lines: "scope",
@@ -439,7 +439,8 @@ export default class NativeToolCalls {
     static #content(name: string, slots: Slots, text: string): void {
         if (text.length === 0) return;
         const lines = text.split("\n");
-        if (BODILESS.has(name) && slots.path === undefined && slots.extra === "" && /^\s*\(/u.test(lines[0]!)) {
+        if (StatementShape.body(name) === "none" && slots.path === undefined && slots.extra === ""
+            && NativeToolCalls.#headingHasTarget(name, lines[0]!.trim())) {
             slots.extra = lines.shift()!.trim();
             if (lines.every((entry) => entry.trim() === "")) return;
         }
@@ -644,8 +645,13 @@ export default class NativeToolCalls {
     // A call whose scope came as `end` or `limit` without a `start` names no scope, and one that cannot run
     // without a target names none: either is unmappable.
     static #coherent({ name, slots }: Call): boolean {
-        if (TARGETED.has(name) && slots.path === undefined && !slots.extra.startsWith("(")) return false;
+        if (StatementShape.requiresTarget(name) && slots.path === undefined && !NativeToolCalls.#headingHasTarget(name, slots.extra)) return false;
         return slots.start !== undefined || (slots.end === undefined && slots.limit === undefined);
+    }
+
+    static #headingHasTarget(name: string, slots: string): boolean {
+        const { statement } = plurnkLexer.readHeading(`\`\`\`${name} ${slots}`);
+        return statement !== null && ("source" in statement || "target" in statement && statement.target !== null);
     }
 
     static #fence(name: string, slots: Slots): string[] {

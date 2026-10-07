@@ -8,9 +8,6 @@ import { isReasoningOperation } from "./ReasoningOperation.ts";
 
 export type FenceCharacter = "`" | "~";
 
-// {§prose-code-blocks}: the operations whose body is a message or a prompt for another reader.
-const PROSE: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK", "BARE"]);
-
 // {§forgotten-tag}: an operation heading on the line under a bare fence, as the heading it would be.
 type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };
 
@@ -55,9 +52,8 @@ type PairingOptions = {
     readonly executors: ReadonlySet<string>;
     /** {§reasoning-operations} — other operations quote rather than execute. */
     readonly reasoning: boolean;
-    /** Whether a heading line closes its block on that line, decided by the heading lexer itself
-     * (targets, metadata strings and asides may hold backticks that close nothing). */
-    readonly closesOnLine: (heading: string) => boolean;
+    /** The grammar and AST builder own slot binding, body shape and inline closure. */
+    readonly heading: (heading: string, name: string) => Omit<Split, "runtime">;
     /** {§pairing-objective}: whether a body is well-formed in its runtime's declared media type; absent, or
      * true for a runtime with none, is no opinion. */
     readonly wellFormed?: (runtime: string, body: string) => boolean;
@@ -130,21 +126,7 @@ export default class FencePairing {
         const after = next.slice(name.length);
         const rest = after.trimStart();
         if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
-        const bodiless = FencePairing.#bodiless(name, after);
-        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: native ? null : name };
-    }
-
-    // FIND, READ, COPY, MOVE and a targeted KILL take no body ({§matcher-body-redirect}, {§read-exact-target},
-    // {§transfer-resource-selections}) — except a KILL on the log, whose body is its distillation
-    // ({§log-kill-distillation}).
-    static #bodiless(name: string, after: string): boolean {
-        return ["FIND", "READ", "COPY", "MOVE"].includes(name) || name === "KILL" && /^[ \t]*\(/u.test(after) && !/^[ \t]*\(log:\/\/\//u.test(after);
-    }
-
-    // {§terminal-kill} — only the parameterless KILL is the turn's terminal; a targeted one, the log
-    // KILL with its distillation included, is an ordinary fence.
-    static #terminal(name: string, after: string): boolean {
-        return name === "KILL" && !/^[ \t]*\(/u.test(after);
+        return { ...options.heading(`${fence}${next}`, name), runtime: native ? null : name };
     }
 
     static #known(name: string, options: PairingOptions): boolean {
@@ -170,14 +152,13 @@ export default class FencePairing {
             const glued = /^[ \t]*(`{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(tail);
             if (glued !== null && FencePairing.#known(glued[2]!, options)) {
                 const headingWidth = glued[1]!.length;
-                return { kind: "closeThenHeading", width, headingWidth, selfClosed: options.closesOnLine(tail.trimStart()), bodiless: FencePairing.#bodiless(glued[2]!, glued[3]!) };
+                return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]!) };
             }
             // {§operation-fences}: the fence run and a known name make the heading, whatever follows the name on
             // its line; the lexer opens the same line, so the pairing must read it as a heading too (#996).
             const name = NAME.exec(tail)?.[0];
             if (name !== undefined && FencePairing.#known(name, options)) {
-                const after = tail.slice(name.length);
-                return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: FencePairing.#terminal(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
+                return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: options.operations.has(name) ? null : name };
             }
             if (tail.includes("`")) return { kind: "text" };
         }

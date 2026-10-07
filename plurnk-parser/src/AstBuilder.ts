@@ -57,10 +57,11 @@ import {
     SendStatementContext,
     TargetContext,
     TargetWithMetadataContext,
+    plurnkParser,
 } from "./generated/plurnkParser.ts";
-import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { PathSyntax, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
 import { targetMembers } from "./target-members.ts";
+import StatementShape from "./StatementShape.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -666,7 +667,8 @@ export default class AstBuilder {
         const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
         const first = slots[0]!;
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        if (first.target === null && first.lineMarker === null && first.metadata === null) {
+        const shape = StatementShape.body("KILL", first);
+        if (shape === "terminal") {
             return [{
                 op: "KILL", aside: AstBuilder.#asideOf(ctx), ...first, matcher: null,
                 body: AstBuilder.#headingBody("KILL", ctx, split.inline, position), position,
@@ -674,7 +676,7 @@ export default class AstBuilder {
         }
         // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
-        const distilling = first.target !== null && first.target.kind === "url" && first.target.scheme === "log";
+        const distilling = shape === "distillation";
         const lifted = AstBuilder.#liftSelections("KILL", slots, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null);
         if (!distilling) AstBuilder.#ignoreUnread("KILL with a target", AstBuilder.#unread(lifted.consumed, split.inline, split.below), position, AstBuilder.#PATTERN_HINT);
         const distillation = !distilling ? null
@@ -938,7 +940,7 @@ export default class AstBuilder {
     }
 
     static #asideOf(ctx: ParserRuleContext): string | null {
-        const token = AstBuilder.#findToken(ctx, plurnkLexer.ASIDE);
+        const token = AstBuilder.#findToken(ctx, plurnkParser.ASIDE);
         if (token === null) return null;
         // {§log-heading-notation} — ` · words` after the slots is the aside.
         if (token.startsWith("\u00B7")) return token.slice(1).trim();
@@ -953,7 +955,7 @@ export default class AstBuilder {
     static #bodyTextOf(ctx: ParserRuleContext): string | null {
         const text = AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
         if (text === null) return null;
-        const closer = AstBuilder.#findToken(ctx, plurnkLexer.SECTION_END);
+        const closer = AstBuilder.#findToken(ctx, plurnkParser.SECTION_END);
         if (closer !== null && closer.includes("`")) return text;
         const whole = text.replace(/\r?\n$/u, "");
         return whole === "" ? null : whole;

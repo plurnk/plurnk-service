@@ -21,6 +21,13 @@ using the same lexer, quotation pairing and AST admission. Nothing executes
 in this package. Its optional advisory callback reports normalization warnings
 only for the operations it admits.
 
+The heading-only lexer feeds `HeadingReader` through the same token normalization,
+grammar and AST builder without fence pairing. `FencePairing` consumes its shape, not a second slot
+grammar. `StatementShape` owns the body-role classification shared by recovery,
+KILL construction and diagnostics; native-call recovery uses the same heading
+reader to recognize operands ({§fence-pairing}, {§native-tool-calls}). The full parse
+remains the sole publisher of admission errors and advisories.
+
 ## §parser-build 2. Build and artifacts
 
 `npm run build:grammar` regenerates `src/generated` from the grammars with

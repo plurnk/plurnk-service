@@ -10,6 +10,25 @@ const ops = (input: string) => read(input).items.flatMap((item) => item.kind ===
 const canonical = (fence: string) => PlurnkParser.parse(fence, { executors: EXECUTORS }).items.flatMap((item) => item.kind === "statement" ? [{ ...item.statement, position: undefined }] : []);
 const withoutPosition = <T extends object>(statements: T[]) => statements.map((statement) => ({ ...statement, position: undefined }));
 
+test("{§native-tool-calls} operand ownership comes from the same grammar as fenced headings", () => {
+    for (const [heading, expected] of [
+        ["READ <1> (a.md)", "READ (a.md) <1>"],
+        ["READ → a.md <1>", "READ (a.md) <1>"],
+        ["FIND <1,3> (src/**)", "FIND (src/**) <1,3>"],
+        ["COPY (a.md) <1> (b.md)", "COPY (a.md) <1> (b.md)"],
+    ]) {
+        const name = heading.split(" ")[0];
+        const slots = heading.slice(name.length).trim();
+        for (const input of [
+            `<invoke name="${heading}">\n</invoke>`,
+            `<tool_call><function=${name}>\n${slots}\n</function></tool_call>`,
+        ]) {
+            assert.deepEqual(withoutPosition(ops(input)), canonical(`\`\`\`${expected}\n\`\`\``), input);
+            assert.deepEqual(read(input).items.filter((item) => item.kind === "error" && item.error.severity === "error"), [], input);
+        }
+    }
+});
+
 test("{§native-tool-calls} a DSML READ with path and scope parameters is that READ (engine-edit-probe-kSoo0p)", () => {
     const input = [
         "<｜｜DSML｜｜ calls>",

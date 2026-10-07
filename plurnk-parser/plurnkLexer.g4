@@ -12,37 +12,47 @@ tokens {
 @lexer::header {
 import FencePairing, { type BlockEnd, type Pairing } from "../FencePairing.ts";
 import { isReasoningOperation } from "../ReasoningOperation.ts";
+import HeadingReader, { HeadingErrors } from "../HeadingReader.ts";
+import StatementShape from "../StatementShape.ts";
 }
 
 @lexer::members {
 // {§fence-pairing} — block boundaries are decided once, for the whole input, by FencePairing; the
 // predicates below only ask it where the block they are in ends.
 private pairingCache: Pairing | null = null;
-// A lexer over one heading line only answers whether that line closes its own block.
+// HeadingReader uses this mode to read slots without recursively pairing the input.
 public lineOnly: boolean = false;
 private fencePairing(): Pairing {
     this.pairingCache ??= FencePairing.pair(this.inputStream.toString(), {
         operations: new Set(Object.keys(plurnkLexer.OPERATIONS)),
         executors: this.knownExecutors,
         reasoning: this.reasoning,
-        closesOnLine: (heading) => this.headingClosesOnLine(heading),
+        heading: (heading, name) => {
+            const { selfClosed, statement } = plurnkLexer.readHeading(heading, this.knownExecutors, this.reasoning);
+            const op = statement?.op ?? name;
+            const body = StatementShape.body(op, statement?.op === "KILL" ? statement : undefined);
+            return { selfClosed, bodiless: body === "none", terminal: body === "terminal", prose: body === "prose", mutation: body === "mutation" };
+        },
         wellFormed: this.wellFormed,
     });
     return this.pairingCache;
 }
 // The heading lexer decides whether a heading line closes its block on that line: targets, metadata
 // strings and asides may hold backticks that close nothing ({§one-line-turn}, {§transparent-inline-closer}).
-private headingClosesOnLine(heading: string): boolean {
+private closedOnLine(tokens: readonly Token[]): boolean {
+    return this.mode === plurnkLexer.DEFAULT_MODE && (this.inlineCloserSeen
+        || tokens.some((token) => token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")));
+}
+public static readHeading(heading: string, executors?: ReadonlySet<string>, reasoning = false) {
     const lexer = new plurnkLexer(antlr.CharStream.fromString(heading + "\n"));
-    lexer.knownExecutors = this.knownExecutors;
-    lexer.reasoning = this.reasoning;
     lexer.lineOnly = true;
+    if (executors !== undefined) lexer.knownExecutors = new Set(executors);
+    lexer.reasoning = reasoning;
+    const errors = new HeadingErrors();
     lexer.removeErrorListeners();
-    let closed = false;
-    for (let token = lexer.nextToken(); token.type !== Token.EOF; token = lexer.nextToken()) {
-        if (token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")) closed = true;
-    }
-    return lexer.mode === plurnkLexer.DEFAULT_MODE && (closed || lexer.inlineCloserSeen);
+    lexer.addErrorListener(errors);
+    const tokens = lexer.getAllTokens();
+    return { selfClosed: lexer.closedOnLine(tokens), statement: HeadingReader.read(tokens, errors) };
 }
 private lineStartOf(index: number): number {
     const starts = this.fencePairing().lineStarts;
@@ -182,6 +192,11 @@ private knownExecutor(name: string): boolean {
 private slotReady: boolean = false;
 // {§scope-on-scopeless}: whether this heading has taken its target; a SEND without one takes no scope.
 private headingTarget: boolean = false;
+private targetClosed(): void {
+    this.slotReady = true;
+    this.metadataReady = true;
+    this.headingTarget = true;
+}
 private scopeless(): boolean {
     return this.openOp === "WORK" || this.openOp === "FORK" || this.openOp === "BARE" || this.openOp === "NOTE"
         || this.openOp === "SEND" && !this.headingTarget;
@@ -636,7 +651,7 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§log-heading-notation} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
-SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.slotReady = true; this.metadataReady = true; this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
+SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.targetClosed(); this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
 // {§log-heading-notation} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
 SLOTS_CHARGE : { this.slotReady && this.chargeAhead() }? '\u00B7' [ \t]* ([0-9]+ ([ \t]+ 'tokens')?)? { this.noteNotation("charge"); } -> skip ;
 // {§log-heading-notation} - ` · words` before a comment on the same line is stray text, skipped and named: the
@@ -670,7 +685,7 @@ TARGET_FIND_RELATIVE_SCOPE : { this.openOp === "FIND" }? RELATIVE_L_PATTERN { th
 TARGET_PREFIXED_TEXT_SCOPE : { this.isTextCoordinateOp() }? [1-9] [0-9]* TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_SCOPE : { this.openOp === "FIND" || this.execFence || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
-TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; this.headingTarget = true; } -> type(RPAREN), mode(SLOTS) ;
+TARGET_END : ')' { this.targetClosed(); } -> type(RPAREN), mode(SLOTS) ;
 
 mode METADATA;
 METADATA_FENCE : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;

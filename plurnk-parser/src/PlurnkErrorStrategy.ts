@@ -9,6 +9,7 @@ import {
 } from "antlr4ng";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
+import StatementShape from "./StatementShape.ts";
 
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #OFFENDING_CHAR_RE = /at: '([^']*)'$/;
@@ -199,7 +200,16 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return text.length > 0 ? `'${text}'` : "input";
     }
 
-    static #describeExpected(e: RecognitionException): string | null {
+    static #expectedNames(types: readonly number[], recognizer: Parser): string[] {
+        const operation = PlurnkErrorStrategy.parserOpenOp(recognizer);
+        const bodiless = operation !== null && !operation.exec && StatementShape.body(operation.op) === "none";
+        return [...new Set(types
+            .filter((type) => !bodiless || type !== plurnkParser.BODY_TEXT)
+            .map((type) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[type])
+            .filter((name): name is string => Boolean(name)))];
+    }
+
+    static #describeExpected(e: RecognitionException, recognizer: Parser): string | null {
         const expected = e.getExpectedTokens();
         if (!expected) return null;
         const types: number[] = expected.toArray();
@@ -207,11 +217,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // Every OPEN_<OP> token maps to the same canonical heading class, so a
         // statement-position expected-set yields that phrase 10+ times. Dedup to one entry -
         // the model needs the distinct options, not the alternation count.
-        const names = [...new Set(
-            types
-                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-                .filter((s): s is string => Boolean(s)),
-        )];
+        const names = PlurnkErrorStrategy.#expectedNames(types, recognizer);
         if (names.length === 0) return null;
         if (names.length === 1) return names[0];
         if (names.length === 2) return `${names[0]} or ${names[1]}`;
@@ -259,7 +265,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         this.beginErrorCondition(recognizer);
 
         const got = PlurnkErrorStrategy.#describeToken(e.offendingToken);
-        const expected = PlurnkErrorStrategy.#describeExpected(e);
+        const expected = PlurnkErrorStrategy.#describeExpected(e, recognizer);
 
         let msg: string;
         if (e instanceof InputMismatchException || e instanceof NoViableAltException) {
@@ -276,12 +282,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         this.beginErrorCondition(recognizer);
         const tok = recognizer.getCurrentToken();
         const expectedTokens = this.getExpectedTokens(recognizer);
-        const expectedNames = [...new Set(
-            expectedTokens
-                .toArray()
-                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-                .filter((s): s is string => Boolean(s)),
-        )];
+        const expectedNames = PlurnkErrorStrategy.#expectedNames(expectedTokens.toArray(), recognizer);
         const expected = expectedNames.length > 0
             ? (expectedNames.length === 1 ? expectedNames[0] : expectedNames.join(" or "))
             : "more input";
@@ -296,12 +297,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const tok = recognizer.getCurrentToken();
         const got = PlurnkErrorStrategy.#describeToken(tok);
         const expectedTokens = this.getExpectedTokens(recognizer);
-        const expectedNames = [...new Set(
-            expectedTokens
-                .toArray()
-                .map((t) => PlurnkErrorStrategy.#SLOT_BY_TOKEN[t])
-                .filter((s): s is string => Boolean(s)),
-        )];
+        const expectedNames = PlurnkErrorStrategy.#expectedNames(expectedTokens.toArray(), recognizer);
         const expected = expectedNames.length > 0
             ? (expectedNames.length === 1 ? expectedNames[0] : expectedNames.join(" or "))
             : null;

@@ -364,7 +364,9 @@ input at once by {§fence-pairing}:
 
 A whole-input pass, `FencePairing`, decides where every block ends before the lexer reads a
 token; the lexer's semantic predicates consult its decision, and ANTLR keeps framing, slots and
-statement composition ({§parser-architecture}). The pass is a least-cost parse of the fence
+statement composition ({§parser-architecture}). Heading shape comes from the same grammar and
+AST interpretation as normal admission, including recovered operand order and target notation;
+fence pairing does not infer slot ownership from raw text. The pass is a least-cost parse of the fence
 lines as a bracket language, in the manner of Aho and Peterson's least-errors parser
 (SIAM J. Comput. 1(4), 1972): every reading of the fences is a derivation, and the pass returns
 the cheapest.
@@ -409,7 +411,7 @@ repaired reading: a complete nested interpretation takes precedence. Each class 
 | Counted | Complete readings | Repaired readings | Why |
 |---|---|---|---|
 | Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with the next row | 1 | Every operation the author wrote should run |
-| Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
+| Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, non-log targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
 | Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL, or an executor heading inside a SEND, WORK, FORK or BARE body ({§prose-code-blocks}); a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
 | Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
 | Other fences read as text | 3 | 5 | The least departure from the fences as written |
@@ -912,8 +914,8 @@ disposition.
 anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
 ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
 selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
-The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: string | null }`,
-with `group` beside them when the heading carries more than one slot ({§target-group}).
+Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and
+`matcher`; no grouped AST reaches execution ({§target-group}).
 The body is retained on parameterless KILL ({§kill-conclusion}) and on a `log:///` target, where
 it is the model's distillation of what the KILL retires and lands as its own NOTE row
 ({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one
@@ -1134,7 +1136,8 @@ refusal ({§matcher-refusal}), not a parse error.
   operation, two for COPY and MOVE, any number on READ and KILL ({§target-group}) — is a parser
   error at its opening paren. Report the unexpected slot and the grammar's expected
   alternatives when available, without inferring pattern intent or imposing another
-  operation's operand count. The statement is dropped and its siblings run.
+  operation's operand count. Recovery-only body text is not advertised as a valid body
+  for an operation that takes none. The statement is dropped and its siblings run.
 
 | Prefix    | Dialect  | Canonical form                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|
