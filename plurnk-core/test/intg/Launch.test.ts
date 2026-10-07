@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
-import Launch, { LaunchError, READINESS_LINE } from "../../src/launch/Launch.ts";
+import Launch, { LaunchError, READINESS_LINE, type LaunchedDaemon } from "../../src/launch/Launch.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -47,16 +47,17 @@ test("{§daemon-launch} {§state-root}: a private daemon publishes its address, 
     const home = await mkdtemp(join(tmpdir(), "plurnk-launch-"));
     // A root with a space: the readiness line carries the path as a JSON string, so it parses exact.
     const root = join(home, "private world");
+    let first: LaunchedDaemon | undefined;
     try {
-        const first = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: root, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
-        assert.match(first.url, /^http:\/\/127\.0\.0\.1:\d+$/u);
+        first = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: root, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
+        assert.match(first.url, /^http:\/\/127\.0\.0\.1:\d+\/agui$/u);
         assert.equal(first.host, "127.0.0.1");
         assert.ok(first.port > 0);
         assert.equal(first.dbPath, join(root, "data", "plurnk", "plurnk.db"), "the database lives under the state root, never under XDG_DATA_HOME");
         assert.equal(first.route, "no model", "a modelless boot is still a ready daemon");
         assert.ok(READINESS_LINE.test(first.stdout()), "the readiness line is the contract the helper parsed");
         assert.equal(await exists(join(home, ".local", "share", "plurnk")), false, "nothing under the XDG data home");
-        const response = await fetch(`${first.url}/`);
+        const response = await fetch(first.url);
         assert.notEqual(response.status, 503, "after readiness the listener is past service-starting");
         const stopped = await first.stop();
         assert.deepEqual(stopped, { code: 0, signal: null }, "SIGTERM is a clean teardown");
@@ -69,6 +70,7 @@ test("{§daemon-launch} {§state-root}: a private daemon publishes its address, 
             assert.equal(second.dbPath, first.dbPath);
         } finally { await second.stop(); }
     } finally {
+        await first?.stop();
         await rm(home, { recursive: true, force: true });
     }
 });
@@ -155,10 +157,10 @@ test("{§startup-readiness-line}: an IPv6 host is bracketed in the published URL
     try {
         const daemon = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: join(home, "private"), host: "::1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
         try {
-            assert.match(daemon.url, /^http:\/\/\[::1\]:\d+$/u);
+            assert.match(daemon.url, /^http:\/\/\[::1\]:\d+\/agui$/u);
             assert.equal(daemon.host, "[::1]");
             assert.ok(daemon.port > 0);
-            const response = await fetch(`${daemon.url}/`);
+            const response = await fetch(daemon.url);
             assert.notEqual(response.status, 503);
         } finally { await daemon.stop(); }
     } finally {
@@ -202,7 +204,7 @@ test("{§daemon-launch}: a shared daemon logs to its file, is released at readin
         assert.ok(report.sawLine, "readiness was read from the log file");
         assert.equal(report.dbPath, join(home, "private", "data", "plurnk", "plurnk.db"));
         assert.ok(alive(pid), "the daemon outlives its launcher");
-        const response = await fetch(`${report.url}/`);
+        const response = await fetch(report.url);
         assert.notEqual(response.status, 503, "and still answers");
         assert.match(await readFile(logFile, "utf8"), READINESS_LINE, "the daemon's output is in the caller's log, not in a departed launcher");
         process.kill(pid, "SIGTERM");
