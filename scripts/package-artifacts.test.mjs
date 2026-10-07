@@ -32,6 +32,8 @@ test("core package projection retains runtime-loaded modules and rejects test he
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",
         "dist/launch/Launch.js",
+        "dist/evidence/EvidenceReader.js",
+        "dist/evidence/digest.sql",
         "INSTALL.md",
         "plurnk.service",
         "docs/copy-move.md",
@@ -44,12 +46,21 @@ test("core package projection retains runtime-loaded modules and rejects test he
     ]), [
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
         "plurnk-core: required runtime artifact is absent: dist/launch/Launch.js",
+        "plurnk-core: required runtime artifact is absent: dist/evidence/EvidenceReader.js",
+        "plurnk-core: required runtime artifact is absent: dist/evidence/digest.sql",
         "plurnk-core: required runtime artifact is absent: INSTALL.md",
         "plurnk-core: required runtime artifact is absent: plurnk.service",
         "plurnk-core: required runtime artifact is absent: docs/copy-move.md",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",
         "plurnk-core: test-only artifact leaked into package: dist/core/zero-pin.d.ts",
+    ]);
+});
+
+test("digest package projection retains its public entrypoint and snapshot statements", () => {
+    assert.deepEqual(packageArtifactViolations("plurnk-digest", ["dist/index.js", "dist/share.sql"]), []);
+    assert.deepEqual(packageArtifactViolations("plurnk-digest", ["dist/index.js"]), [
+        "plurnk-digest: required runtime artifact is absent: dist/share.sql",
     ]);
 });
 
