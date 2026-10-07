@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, type InputModality } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
@@ -61,7 +62,11 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const caption = user.content[user.content.indexOf(file) - 1];
     assert.ok(caption?.type === "text" && /^log:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
-    assert.equal(user.content.length, 3, "packet text, one caption, one part: the retained document needs no ejection message");
+    assert.deepEqual(user.content.map(({ type }) => type), ["text", "text", "file", "text"], "packet text, caption, native document, then previous emission");
+    assert.deepEqual(user.content.at(-1), {
+        type: "text",
+        text: `\n\n## Previous Emission\n\n${PlurnkParser.frame("READ (contract.pdf)", null)}\n\n${PlurnkParser.frame("NOTE", "looking")}`,
+    }, "the complete previous content program follows the native input");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

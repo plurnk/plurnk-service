@@ -10,7 +10,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { testExecutors } from "./_execs.ts";
 
@@ -118,10 +118,9 @@ for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
             const rows = logEntries(packet).filter((row) => String(row.logPath).startsWith("log:///1/2/"));
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
-            const emissions = provider.received[1]!.filter(({ role }) => role === "assistant");
-            assert.doesNotMatch(JSON.stringify(emissions), /READ \(worker:\/\/\/fact\.txt\)/u, "reasoning OPs are not relabeled as content emissions");
-            assert.equal(emissions.length, 0, "a reply is not replayed, and reasoning OPs never are");
-            if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply is in context once, in its own row");
+            assert.deepEqual(provider.received[1]!.map(({ role }) => role), ["system", "user"]);
+            assert.equal(packetSection(packet, "previous-emission"), content, "only the content program is replayed; reasoning OPs stay in their own channel");
+            if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply retains its own log row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
             const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
             assert.equal(raw.content, reasoning);

@@ -264,23 +264,28 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
         await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
-        const settled = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet) as { weight: number };
+        const settledTurn = (await db.test_get_turn.get<{ packet: string; sequence: number }>({ id: third.turnId }))!;
+        const settled = JSON.parse(settledTurn.packet) as { weight: number };
         const betaRow = logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
         assert.ok(betaRow, "the newest large NOTE is a bodied row of the settled packet");
-        // A wall 600 tokens under the settled packet: the next packet is over it by its newest small rows and
-        // those 600 tokens, and the beta NOTE alone sheds that. The output budget is half the window, so the
-        // packet that fits the wall is still over budget.
-        const contextWindow = Math.ceil((settled.weight - 600) / 0.9);
+        // {§previous-emission}: pin the wall below this request even without its optional replay,
+        // so fitting still requires a result body. The preceding packet had a different replay.
+        const baseline = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
+            initialMessages: messages, workspaceId, workerId, loopId, provider: wide,
+            currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitPreviousEmission: true,
+        });
+        const contextWindow = Math.ceil((baseline.weight - 600) / 0.9);
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const tight = new Mock({ contextWindow, responses: [response(continuing), response(`\`\`\`\`KILL (${betaRow.logPath})\`\`\`\`\n${continuing}`), response(continuing)] });
         const wall = tight.inputWall!;
-        assert.ok(wall < settled.weight && wall > settled.weight - betaRow.tokens, `the wall sits inside the beta NOTE: ${wall} of ${settled.weight}`);
+        assert.ok(wall < baseline.weight && wall > baseline.weight - betaRow.tokens, `the wall sits inside the beta NOTE after optional replay is omitted: ${wall} of ${baseline.weight}`);
         const fourth = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
         assert.equal(fourth.status, 102, "the packet was submitted, not ended");
         assert.equal(tight.remaining, 2);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: fourth.turnId }))!.packet) as { weight: number };
         assert.ok(packet.weight <= wall, `the packet fits the wall: ${packet.weight} of ${wall}`);
+        assert.equal(packetSection(packet, "previous-emission"), "", "optional replay is omitted before a result body");
         const entries = logEntries(packet);
         const taken = entries.find((row) => row.logPath === betaRow.logPath)!;
         assert.equal(taken.body, undefined, "the newest bodied row is a receipt");

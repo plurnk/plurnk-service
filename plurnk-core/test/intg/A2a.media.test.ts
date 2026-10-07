@@ -100,8 +100,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             }
         }
         assert.equal(parts[5]!.length, 0, "curating the READ removes the attachment from context");
-        // {§packet-wire-envelope}: the packet is the system and user messages; the assistant message is the model's own program.
-        const restoredText = provider.received[6]!.filter((message) => message.role !== "assistant").map(chatMessageText).join("\n\n");
+        const restoredText = provider.received[6]!.map(chatMessageText).join("\n\n");
         const log = /(?:^|\n)## Log\n\n([\s\S]*?)(?=\n\n## |$)/u.exec(restoredText)?.[1];
         assert.ok(log, "the provider packet contains the materialized Log section");
         const restoredRead = parseLogRecords(log).find((row) => row.path === `${resource}#bytes`);

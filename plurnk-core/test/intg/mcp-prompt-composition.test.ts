@@ -77,8 +77,9 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             const texts = provider.received.map((messages) => messages.map(chatMessageText).join("\n"));
             assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))));
             assert.match(texts[1]!, /"role": "assistant"/u, "the supplied role remains visible as prompt data");
-            // {§packet-wire-envelope}: the only assistant message is the worker's own previous program, never MCP content.
-            assert.ok(provider.received.every((messages) => messages.filter((message) => message.role === "assistant").every((message) => /^```/u.test(chatMessageText(message)) && !chatMessageText(message).includes("\"role\": \"assistant\""))), "MCP roles are data, not new conversation messages");
+            for (const messages of provider.received) {
+                assert.deepEqual(messages.map(({ role }) => role), ["system", "user"], "MCP roles are data, not new conversation messages");
+            }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
             assert.equal(parts[1]!.length, 0, "retrieving a prompt lists its media without attaching it");
