@@ -35,7 +35,7 @@ const setup = async (
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const url = `http://127.0.0.1:${http.httpAddress().port}/`;
+    const url = `http://127.0.0.1:${http.httpAddress().port}/agui`;
     const post = async (
         workspace: string, action?: Record<string, unknown>, prompt?: string, onEvent?: (event: Event) => void,
     ): Promise<Event[]> => {

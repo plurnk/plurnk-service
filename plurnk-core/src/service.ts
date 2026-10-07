@@ -224,8 +224,7 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
-        // {§http-host} — PLURNK_PORT is the daemon's one listener; the discovered client interface
-        // claims its root ({§module-http-mounts}).
+        // {§http-host} — PLURNK_PORT is the daemon's one listener for all module mounts.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
         const configuration = Service.#configuration;
@@ -267,7 +266,7 @@ export default class Service {
             }
             const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
             // {§startup-readiness-line} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
-            const aguiUrl = `http://${isIPv6(aguiAddr.host) ? `[${aguiAddr.host}]` : aguiAddr.host}:${aguiAddr.port}`;
+            const aguiUrl = `http://${isIPv6(aguiAddr.host) ? `[${aguiAddr.host}]` : aguiAddr.host}:${aguiAddr.port}/agui`;
             process.stdout.write(`plurnk-service agui=${aguiUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
 
             const shutdown = (): void => {

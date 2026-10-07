@@ -12,7 +12,7 @@ import type { AguiEvent } from "../../src/types.ts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> }> => {
-    const res = await fetch(`http://127.0.0.1:${port}/`, {
+    const res = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ threadId, runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [], forwardedProps: { plurnk: { workspace, action: { kind, ...params } } } }),
     });

@@ -142,7 +142,7 @@ export const probeInstalledDaemon = async ({
             || problem.type !== "https://problems.plurnk.xyz/agui/http/route-not-found") {
             throw new Error("installed daemon listener did not return the AG-UI route-not-found Problem");
         }
-        probeResult = { address: url.origin, pid: child.pid };
+        probeResult = { address: url.href, pid: child.pid };
     } catch (cause) {
         probeFailure = cause;
     }

@@ -37,7 +37,7 @@ const parseEvents = (body: string): Event[] => body
     .map((frame) => JSON.parse(frame.slice(6)) as Event);
 
 const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<Event[]> => {
-    const response = await fetch(`http://127.0.0.1:${port}/`, {
+    const response = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
@@ -119,7 +119,7 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     assert.equal(cold.ok, true);
     assert.equal((cold.result!.definitions as { state: string }[])[0].state, "dormant");
     assert.equal(served.requests.length, 0, "inspection never connects to the MCP server");
-    const response = await fetch(`http://127.0.0.1:${port}/`, {
+    const response = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(runInput(workspace, "prompt", { messages: [{ id: "m", role: "user", content: "Reply OK." }] })),
     });

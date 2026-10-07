@@ -1,10 +1,11 @@
 // {§module-http-mounts} — modules claim their HTTP prefixes before any module sets up; a claim has
-// one owner, a daemon with a listener has exactly one root owner, a module mounts exactly what it
+// one owner, the root is optional, a module mounts exactly what it
 // claimed, and the listener is admitted only after every module has started.
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
@@ -23,13 +24,13 @@ const serving = (mounts: readonly string[], mounted: readonly string[] = mounts,
     },
 });
 
-const fixture = async (t: TestContext) => {
+const fixture = async (t: TestContext, client: Parameters<Daemon["registerModule"]>[0] = {}) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
     // {§module-discovery} — registering its package's name holds the client interface out of
-    // discovery, so each test composes its own root owner.
-    daemon.registerModule({}, "@plurnk/plurnk-agui");
+    // discovery, so each test composes its own client interface.
+    daemon.registerModule(client, "@plurnk/plurnk-agui");
     t.after(async () => {
         await daemon.stop();
         await http.close();
@@ -40,7 +41,7 @@ const fixture = async (t: TestContext) => {
         const response = await fetch(`http://127.0.0.1:${port}${pathname}`);
         return { status: response.status, body: await response.text() };
     };
-    return { daemon, get };
+    return { daemon, get, port };
 };
 
 test("{§module-http-mounts} a prefix claimed by two modules fails boot naming both owners", async (t) => {
@@ -51,10 +52,50 @@ test("{§module-http-mounts} a prefix claimed by two modules fails boot naming b
     await assert.rejects(daemon.start(), /HTTP mount '\/shared' is claimed by both '@acme\/first' and '@acme\/second'/u);
 });
 
-test("{§module-http-mounts} a daemon with a listener and no root owner fails boot", async (t) => {
-    const { daemon } = await fixture(t);
+test("{§module-http-mounts} a daemon with a listener needs no root owner", async (t) => {
+    const { daemon, get } = await fixture(t);
     daemon.registerModule(serving(["/only"]), "@acme/only");
-    await assert.rejects(daemon.start(), /no module claims the HTTP root '\/'/u);
+    await daemon.start();
+    assert.deepEqual(await get("/only"), { status: 200, body: "/only" });
+    assert.equal((await get("/")).status, 404);
+    assert.equal((await get("/missing")).status, 404);
+});
+
+test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", async (t) => {
+    const client = AguiModule.create({ token: "" });
+    assert.deepEqual(client.mounts, ["/agui"]);
+    const { daemon, get, port } = await fixture(t, client);
+    await daemon.start();
+    const input = JSON.stringify({
+        threadId: "routing", runId: "discover", state: {}, messages: [], tools: [], context: [],
+        forwardedProps: { plurnk: { action: { kind: "discover" } } },
+    });
+    for (const path of ["/", "/agui"]) {
+        const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+            method: "POST", headers: { "content-type": "application/json" }, body: input,
+        });
+        if (path === "/") {
+            assert.equal(response.status, 404);
+            const problem = await response.json() as { type: string };
+            assert.equal(problem.type, "https://problems.plurnk.xyz/http/route-not-found");
+        } else {
+            assert.equal(response.status, 200);
+            assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
+            assert.match(await response.text(), /plurnk.action.result/u);
+        }
+    }
+    assert.equal((await get("/")).status, 404);
+});
+
+test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {
+    const { daemon, get } = await fixture(t, AguiModule.create({ token: "" }));
+    daemon.registerModule(serving(["/"]), "@acme/web");
+    await daemon.start();
+    assert.deepEqual(await get("/"), { status: 200, body: "/" });
+    assert.deepEqual(await get("/page"), { status: 200, body: "/" });
+    const agui = await get("/agui");
+    assert.equal(agui.status, 404, "GET is not an AG-UI run");
+    assert.equal(JSON.parse(agui.body).type, "https://problems.plurnk.xyz/agui/http/route-not-found");
 });
 
 test("{§module-http-mounts} a declared mount that is not an absolute pathname prefix names its module", async (t) => {

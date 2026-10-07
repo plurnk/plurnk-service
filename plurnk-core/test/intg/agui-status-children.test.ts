@@ -33,7 +33,7 @@ test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 w
         await daemon.start();
         const { port } = http.httpAddress();
         const workspace = `agui-children-${crypto.randomUUID()}`;
-        const response = await fetch(`http://127.0.0.1:${port}/`, {
+        const response = await fetch(`http://127.0.0.1:${port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({

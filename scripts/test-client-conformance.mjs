@@ -403,7 +403,7 @@ try {
     )).href);
     const bridgeToken = await seededToken();
     const terminal = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
+        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
         world,
         { workspace: world },
     );
@@ -442,7 +442,7 @@ try {
     }
 
     const observer = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
+        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
         "independent-observer",
         { workspace: world },
     );
@@ -464,7 +464,7 @@ try {
     await daemon.stop();
     daemon = await boot();
     const afterRestart = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
+        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
         world,
         { workspace: world },
     );
@@ -484,7 +484,7 @@ try {
     await daemon.stop();
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({
-        host: "127.0.0.1", port, method: "POST", path: "/",
+        host: "127.0.0.1", port, method: "POST", path: "/agui",
         headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: `Bearer ${bridgeToken}` },
     });
     const disconnected = new Promise((accept) => unfinished.on("error", accept));

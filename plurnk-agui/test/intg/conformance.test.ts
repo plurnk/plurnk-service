@@ -25,7 +25,7 @@ test("the official @ag-ui/client accepts the full stream (create-ag-ui-app confo
     const sandbox = await mkdtemp(join(tmpdir(), "agui-conf-"));
 
     try {
-        const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/`, threadId: "conformance" });
+        const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/agui`, threadId: "conformance" });
         agent.messages = [{ id: "m1", role: "user", content: "Reply with exactly one short sentence: say pong." }];
         const seen = new Set<string>();
         await agent.runAgent({ forwardedProps: { plurnk: { workspace: "conformance", projectRoot: sandbox, policy: { proposals: "accept" }, maxTurns: 6 } } }, {

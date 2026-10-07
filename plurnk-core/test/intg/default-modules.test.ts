@@ -23,13 +23,13 @@ test("{§mcp-module} {§schedule-module} {§a2a-module} a bare daemon discovers 
     }
 });
 
-test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at its root", async (t) => {
+test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at /agui", async (t) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, http });
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/`, {
+    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

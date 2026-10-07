@@ -1,5 +1,5 @@
 // {§agui-daemon-client} The go-live smoke: the in-process client interface, discovered by the
-// daemon and mounted at the root of its listener, drives
+// daemon and mounted at /agui on its listener, drives
 // a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
 // process, no DaemonClient. Gated on a configured model supplied to the runner;
 // skips clean when absent.
@@ -32,7 +32,7 @@ test("in-process module: discovery → AG-UI+ run → real model → SSE", { ski
     const addr = http.httpAddress();
 
     try {
-        const res = await fetch(`http://${addr.host}:${addr.port}/`, {
+        const res = await fetch(`http://${addr.host}:${addr.port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({

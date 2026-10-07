@@ -1,9 +1,9 @@
-// {§agui-daemon-client} The daemon's AG-UI+ client interface, a discovered module: it claims the
-// root of the daemon's one listener and `/agui` ({§module-http-mounts}), mounts both at start, and
+// {§agui-daemon-client} The daemon's AG-UI+ client interface, a discovered module: it claims
+// `/agui` on the daemon's one listener ({§module-http-mounts}), mounts it at start, and
 // owns no socket.
 //
 // This is the single external client interface:
-//   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
+//   POST /agui — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
 //   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
 //   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's
 //   standard resume entries resolve the durable proposal and continue the exact loop.
@@ -69,8 +69,8 @@ interface RegisteredAction extends AguiActionContract {
 }
 
 export default class Module implements DaemonModule<SchemeRegistrationSeam, AguiPort> {
-    // {§module-http-mounts} — the root of the daemon's listener, and `/agui`.
-    readonly mounts: readonly string[] = Object.freeze(["/", "/agui"]);
+    // {§module-http-mounts} — the client protocol owns only its own prefix.
+    readonly mounts: readonly string[] = Object.freeze(["/agui"]);
     #seam!: AguiPort;
     readonly #opts: ResolvedModuleOptions;
     #portal!: Portal;
@@ -152,13 +152,10 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         await seam.registerScheme("agui", new MessageScheme("agui"));
     }
 
-    // {§http-host} — mounted as the root, every request nothing more specific claims is AG-UI's, so
-    // unknown paths keep their refusals. The daemon admits its listener only after every module
-    // has started ({§agui-listener-admission}).
+    // {§agui-listener-admission} — the host admits traffic after every module has started.
     async start(seam: AguiPort): Promise<void> {
         if (this.#stopped) throw new Error("plurnk-agui: stopped module cannot be activated");
         if (this.#activated) throw new Error("plurnk-agui: module already activated");
-        seam.registerHttpRoute("/", (req, res) => this.#route(req, res));
         seam.registerHttpRoute("/agui", (req, res) => this.#route(req, res));
         this.#seam = seam;
         this.#registerActions();
@@ -218,7 +215,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
                 ));
                 return;
             }
-            if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#runs.run(req, res);
+            if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,

@@ -9,15 +9,15 @@ does not recompute them.
 
 - §agui-daemon-client **The module is a discovered module of the daemon.** The package
   declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
-  ({§module-discovery}); nothing composes it by hand. It claims the root of the daemon's one
-  listener and `/agui` ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
+  ({§module-discovery}); nothing composes it by hand. It claims only `/agui` on the daemon's
+  listener ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
   registers the `agui` message scheme, and its start seam is `AguiPort`, the slice of
   {§application-port} it calls. A daemon without a listener leaves it out. No WebSocket, no
   separate process.
 - §agui-listener-admission **Bound is not ready.** The socket is core's
   ({§startup-listener-admission}): bound before durable-state admission and answering a
   retryable `503 service-starting` until daemon activation admits it after every module has
-  started ({§module-http-mounts}). This module mounts `/` and `/agui` at `start`, so no
+  started ({§module-http-mounts}). This module mounts `/agui` at `start`, so no
   request reaches it before its port is installed; from `stop` it answers `503
   service-stopping`.
 - §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread is a conversation over it**
@@ -618,7 +618,7 @@ address is the daemon's.
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 
-`POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual
+`POST /agui` accepts a schema-valid AG-UI `RunAgentInput`: the last textual
 `user` message becomes the
 `ApplicationPort.runLoop` prompt (`maxTurns` and the general loop `policy` from
 the forwarded PLURNK properties or module defaults); the response is `text/event-stream`,

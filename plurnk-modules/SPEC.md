@@ -23,11 +23,12 @@ type names only what the module uses.
 
 §module-http-mounts **A module declares the HTTP prefixes it serves.** `mounts` lists absolute
 pathname prefixes ({§http-host}). The host claims every module's mounts before any module sets
-up: one prefix claimed twice fails boot naming both owners, and a host with a listener requires
-exactly one module to claim the root `/`. At `start` a module mounts exactly its claims through
+up: one prefix claimed twice fails boot naming both owners. The root `/` is optional and obeys
+the same ownership rule as any other prefix. At `start` a module mounts exactly its claims through
 `registerHttpRoute`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
 listener answers `503 service-starting` until every module has started, so readiness never
-depends on registration order. A host without a listener has nothing to serve a mount on:
+depends on registration order; afterwards an unclaimed path answers `404 route-not-found`.
+A host without a listener has nothing to serve a mount on:
 before any module sets up, it leaves out every module that declares mounts, registered or
 discovered, with an info notice owned by `module:<package>`.
 

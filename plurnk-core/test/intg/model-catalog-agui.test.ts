@@ -12,7 +12,7 @@ test("{§model-catalog}: AG-UI delivers route reasoning choices without creating
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
     const query = { provider: "google", search: "gemini-3.7-flash", availability: "all" as const };
-    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/`, {
+    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

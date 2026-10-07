@@ -196,7 +196,7 @@ const standardInput = (body: Record<string, unknown>): Record<string, unknown> =
 });
 
 const post = async (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> => {
-    const res = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) });
+    const res = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) });
     assert.equal(res.status, 200);
     const text = await res.text();
     const events = text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
@@ -297,7 +297,7 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
 // A streaming reader that stays OPEN, collecting events until the connection ends —
 // lets a test hold concurrent AG-UI Runs on one workspace and observe routing live.
 const openStream = (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> =>
-    fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) })
+    fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) })
         .then((res) => res.text())
         .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
 
@@ -328,7 +328,7 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
         const stream = openStream(port, { threadId: "shutdown", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
         await entered.promise;
         mod.stop();
-        const refused = await fetch(`http://127.0.0.1:${port}/`);
+        const refused = await fetch(`http://127.0.0.1:${port}/agui`);
         assert.equal(refused.status, 503);
         const problem = await refused.json() as { type: string; stage: string };
         assert.equal(problem.type, "https://problems.plurnk.xyz/agui/http/service-stopping");
@@ -1557,7 +1557,7 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
     const mod = await host(seam);
     try {
         const ac = new AbortController();
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             signal: ac.signal,
@@ -1843,7 +1843,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
     const mod = await host(seam);
     try {
         const agent = new HttpAgent({
-            url: `http://127.0.0.1:${mod.address().port}/`,
+            url: `http://127.0.0.1:${mod.address().port}/agui`,
             threadId: "verified-interrupt",
         });
         agent.messages = [{ id: "current-user", role: "user", content: "Run the command." }];
@@ -1852,7 +1852,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
 
         assert.deepEqual(agent.pendingInterrupts.map(({ id }) => id), ["prop:42"]);
         const reattachedAgent = new HttpAgent({
-            url: `http://127.0.0.1:${mod.address().port}/`,
+            url: `http://127.0.0.1:${mod.address().port}/agui`,
             threadId: "verified-interrupt",
         });
         reattachedAgent.messages = [{ id: "reattach-user", role: "user", content: "Reconnect." }];
@@ -2041,7 +2041,7 @@ test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a 
     const { seam } = mockSeam();
     const mod = await host(seam);
     try {
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(standardInput({
@@ -2067,7 +2067,7 @@ test("{§agui-conversation-sync}: unknown Run modes fail without echoing untrust
     const { seam } = mockSeam();
     const mod = await host(seam);
     try {
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(standardInput({
@@ -2104,7 +2104,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     const mod = await host(seam);
     try {
         const agent = new HttpAgent({
-            url: `http://127.0.0.1:${mod.address().port}/`,
+            url: `http://127.0.0.1:${mod.address().port}/agui`,
             threadId: "replay-client",
         });
         agent.messages = [{ id: "current-user", role: "user", content: "Current question." }];
@@ -2240,7 +2240,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
     const mod = await host(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
         assert.equal(res.status, 400, "the missing workspace is a request defect, not an internal failure");
         assert.equal(res.headers.get("content-type"), "application/problem+json");
         const body = await res.json() as { type: string; status: number; detail: string; stage: string; recovery: string; retryable: boolean };
@@ -2263,7 +2263,7 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
     const mod = await host(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
         assert.equal(res.status, 404, "an action addresses a world that exists");
         const body = await res.json() as { type: string; workspace: string; recovery: string; retryable: boolean };
         assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
@@ -2281,7 +2281,7 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
             env: { PLURNK_AGUI_TOKEN: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
         });
         try {
-            const base = `http://127.0.0.1:${mod.address().port}`;
+            const base = `http://127.0.0.1:${mod.address().port}/agui`;
             const preflight = await fetch(base, { method: "OPTIONS" });
             const refused = await fetch(base, { method: "POST", body: "{}" });
             assert.equal(refused.status, 401, "CORS never stands in for the bearer");
@@ -2317,12 +2317,12 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
         return body;
     };
     try {
-        const unauthorized = await problem("/", { method: "POST", body: "{}" });
+        const unauthorized = await problem("/agui", { method: "POST", body: "{}" });
         assert.equal(unauthorized.type, "https://problems.plurnk.xyz/agui/http/bearer-token-required");
         assert.equal(unauthorized.status, 401);
         assert.equal(unauthorized.stage, "authorization");
 
-        const invalidJson = await problem("/", {
+        const invalidJson = await problem("/agui", {
             method: "POST",
             headers: { authorization: "Bearer expected", "content-type": "application/json" },
             body: "{",
@@ -2331,7 +2331,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
         assert.equal(invalidJson.status, 400);
         assert.equal(invalidJson.stage, "request-validation");
 
-        const invalidInput = await problem("/", {
+        const invalidInput = await problem("/agui", {
             method: "POST",
             headers: { authorization: "Bearer expected", "content-type": "application/json" },
             body: "{}",
@@ -2339,12 +2339,12 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
         assert.equal(invalidInput.type, "https://problems.plurnk.xyz/agui/http/invalid-run-input");
         assert.ok(Array.isArray(invalidInput.issues));
 
-        const missingRoute = await problem("/missing", {
+        const missingRoute = await problem("/agui/missing", {
             method: "GET",
             headers: { authorization: "Bearer expected" },
         });
         assert.equal(missingRoute.type, "https://problems.plurnk.xyz/agui/http/route-not-found");
-        assert.equal(missingRoute.path, "/missing");
+        assert.equal(missingRoute.path, "/agui/missing");
     } finally { await mod.close(); }
 });
 
@@ -2608,7 +2608,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
     };
     const mod = await host(seam);
     try {
-        const action = fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({
+        const action = fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({
             threadId: "cold", runId: "inspect", forwardedProps: { plurnk: { workspace: "cold", action: { kind: "loop.inject", prompt: "hello" } } },
         })) });
         await lookup.promise;
@@ -2645,7 +2645,7 @@ for (const stage of ["envelope", "conversation"] as const) {
         const mod = await host(seam);
         const input = { threadId: "named", runId: "fixture", forwardedProps: { plurnk: { workspace: "world", action: { kind: "workspace.workers" } } } };
         try {
-            const refused = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(input)) });
+            const refused = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(input)) });
             assert.equal(refused.status, 503);
             assert.deepEqual(await refused.json(), problem);
             fail = false;
@@ -2728,7 +2728,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
         env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
     });
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         const raw = await res.text();
         const beats = (raw.match(/^: hb$/gm) ?? []).length;
         assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
@@ -2746,7 +2746,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
         env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
     });
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.doesNotMatch(await res.text(), /^: hb$/m);
     } finally { await mod.close(); }
 });
@@ -2802,7 +2802,7 @@ test("{§agui-run-endpoint} the prompt is the last textual user message, and a n
         });
         assert.deepEqual(loopRuns.map(({ prompt }) => prompt), ["the standing request"], "the latest user turn is the prompt");
 
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -2882,7 +2882,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
     const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
     const mod = await host(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.equal(res.status, 200, "the SSE opened before the throw");
         const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
         const err = frames.find((e) => e.type === "RUN_ERROR");
@@ -2976,7 +2976,7 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
         const port = mod.address().port;
         for (const [threadId, problem] of Object.entries(refusals)) {
             // The binding fails before the SSE opens, so the refusal is the HTTP Problem itself.
-            const res = await fetch(`http://127.0.0.1:${port}/`, {
+            const res = await fetch(`http://127.0.0.1:${port}/agui`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify(standardInput({ threadId, messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })),

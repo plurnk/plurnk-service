@@ -212,12 +212,14 @@ listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
 ({§application-port}). A prefix is an absolute pathname. Each request goes to the
 longest mounted prefix; a prefix claims itself and the subtree beneath it, never
 a longer sibling name; `/` is the root and receives whatever nothing more
-specific claimed. Until daemon activation admits it the listener answers `503
+specific claimed when a module mounts it. An admitted listener returns an HTTP
+`404 route-not-found` Problem for any path without a mounted handler; a root mount
+is not required. Until daemon activation admits it the listener answers `503
 service-starting` to every request: the service has not admitted its client
 interface. Adapters claim their prefixes before setup and mount them at
 `start()`, after durable lifecycle recovery ({§module-http-mounts}), and
 none opens a socket of its own. The standards
-address by URL, never by port (#641): AG-UI mounts `/` and `/agui`, A2A the
+address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the
 well-known card and its endpoint path, on the same address.
 
 §startup-admission-order After listener ownership, database admission completes
@@ -230,7 +232,7 @@ preserving the originating failure: daemon, observability, database, listener.
 
 §startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
 the service prints exactly one line, `plurnk-service agui=<url> db=<json string> route=<json string>`:
-the URL brackets an IPv6 host, and the database path and the route (the active model route or
+the URL includes `/agui` and brackets an IPv6 host, and the database path and the route (the active model route or
 `no model`, or `invalid model configuration`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
 the URL as a URL and the strings as JSON; nothing else the service prints on stdout before it has
 that prefix. Before the line the listener answers `503 service-starting`; after it,
@@ -3898,7 +3900,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 |---|---|
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The listener's bind address and TCP port — THE client surface, the AG-UI+ listener the plurnk-agui module binds at boot; production is single-listener. **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
+| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
@@ -6071,6 +6073,7 @@ the sentence.
 | code | status | contract |
 |---|---:|---|
 | `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
+| `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `configuration-unsupported` | 400 | Environment discovery reads this installation's declared configuration; client configuration contributes nothing. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
 | `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |

@@ -40,6 +40,7 @@ test("release probe uses a child-owned ephemeral listener and awaits graceful te
             PLURNK_RELEASE_PROBE_CLEANUP: cleanup,
         });
         assert.notEqual(new URL(result.address).port, String(address.port), "operator/stale port input cannot select the probe listener");
+        assert.equal(new URL(result.address).pathname, "/agui", "the full protocol endpoint is retained");
         await access(cleanup);
     } finally {
         await new Promise((resolve) => stale.close(resolve));

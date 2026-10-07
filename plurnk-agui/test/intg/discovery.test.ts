@@ -15,7 +15,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
     try {
         await daemon.start();
         const { host, port } = http.httpAddress();
-        const response = await fetch(`http://${host}:${port}/`, {
+        const response = await fetch(`http://${host}:${port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -84,7 +84,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
             );
         }
         for (const [name, action] of Object.entries(discovery.actions)) {
-            const invalid = await fetch(`http://${host}:${port}/`, {
+            const invalid = await fetch(`http://${host}:${port}/agui`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({

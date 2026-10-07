@@ -1702,7 +1702,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§module-http-mounts} — every prefix is claimed before any module sets up: one owner per
-    // prefix, and a daemon with a listener has exactly one root owner.
+    // prefix, including the optional root mount.
     #claimMounts(): void {
         for (const { module, owner } of this.#modules) {
             for (const prefix of module.mounts ?? []) {
@@ -1713,9 +1713,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 if (holder !== undefined) throw new Error(`HTTP mount '${prefix}' is claimed by both '${holder}' and '${owner}'`);
                 this.#mountClaims.set(prefix, owner);
             }
-        }
-        if (this.#http !== null && !this.#mountClaims.has("/")) {
-            throw new Error("no module claims the HTTP root '/': the service's client interface must own it");
         }
     }
 

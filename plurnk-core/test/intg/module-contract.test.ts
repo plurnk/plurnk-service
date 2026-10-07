@@ -115,7 +115,7 @@ test("{§module-http-mounts} a discovered module's mount conflict fails boot nam
     assert.deepEqual(await lines(), [], "boot fails before any module sets up");
 });
 
-test("{§module-http-mounts} a discovered module beside no root owner fails boot", async (t) => {
+test("{§module-http-mounts} a discovered module serves its own route without a root owner", async (t) => {
     environment(t, { ACME_PACKAGE_ROUTE: "/package" });
     await writeFile(trace, "");
     const db = await openMigrated();
@@ -123,7 +123,10 @@ test("{§module-http-mounts} a discovered module beside no root owner fails boot
     const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     daemon.registerModule({}, CLIENT_INTERFACE);
-    await assert.rejects(daemon.start(), /no module claims the HTTP root '\/'/u);
+    await daemon.start();
+    const origin = `http://127.0.0.1:${http.httpAddress().port}`;
+    assert.equal(await (await fetch(`${origin}/package`)).text(), PACKAGE);
+    assert.equal((await fetch(`${origin}/`)).status, 404);
 });
 
 test("{§module-http-mounts} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
@@ -146,7 +149,7 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
     const { daemon, get, lines } = await boot(t);
     await daemon.start();
     assert.deepEqual(await lines(), []);
-    assert.match(await get("/package"), /route-not-found/u, "the client interface answers what no module claimed");
+    assert.match(await get("/package"), /route-not-found/u, "the HTTP host answers what no module claimed");
 });
 
 test("{§module-workspace-paths} a module receives the bound project and ordered input roots, independent of private state placement", async (t) => {

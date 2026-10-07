@@ -50,7 +50,7 @@ const setup = async (
     const { port } = http.httpAddress();
     const workspace = "mcp-interaction-composition";
     const post = async (additions: Record<string, unknown> = {}): Promise<Event[]> => {
-        const response = await fetch(`http://127.0.0.1:${port}/`, {
+        const response = await fetch(`http://127.0.0.1:${port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({

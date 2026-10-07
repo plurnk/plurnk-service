@@ -29,6 +29,7 @@ interface BootedDaemon {
     child: ChildProcess;
     host: string;
     port: number;
+    url: string;
     tmpdir: string;
 }
 
@@ -93,18 +94,19 @@ const bootDaemon = (
 
         child.stdout?.on("data", (chunk: Buffer) => {
             stdoutBuf += chunk.toString("utf8");
-            const match = stdoutBuf.match(/plurnk-service agui=http:\/\/([^:]+):(\d+)/);
+            const match = stdoutBuf.match(/plurnk-service agui=(http:\/\/\S+) /u);
             if (match !== null && !settled) {
                 settled = true;
                 clearTimeout(timer);
                 // The banner must report the BOUND port, not the configured one — booted with
                 // port 0 here, so a 0 in the field means a parser downstream gets garbage.
-                if (Number(match[2]) === 0) {
+                const address = new URL(match[1]!);
+                if (Number(address.port) === 0) {
                     child.kill("SIGKILL");
                     rejectPromise(new Error(`banner agui= port unbound (configured-port leak): ${stdoutBuf}`));
                     return;
                 }
-                resolvePromise({ child, host: match[1], port: Number(match[2]), tmpdir: dir });
+                resolvePromise({ child, host: address.hostname, port: Number(address.port), url: address.href, tmpdir: dir });
             }
         });
         child.stderr?.on("data", (chunk: Buffer) => { stderrBuf += chunk.toString("utf8"); });
@@ -130,7 +132,7 @@ const action = async (
     threadId = "startup-specimen",
     workspace?: string,
 ): Promise<unknown> => {
-    const response = await fetch(`http://${booted.host}:${booted.port}/`, {
+    const response = await fetch(booted.url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -228,10 +230,13 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
 test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon();
     try {
-        // Any HTTP response proves the module's listener is live and serving — the route
-        // surface is the agui module's own contract, not this launcher smoke's business.
-        const res = await fetch(`http://${booted.host}:${booted.port}/`, { signal: AbortSignal.timeout(5000) });
-        assert.ok(res.status > 0, `the AG-UI listener answered HTTP (status ${res.status})`);
+        assert.equal(new URL(booted.url).pathname, "/agui");
+        const res = await fetch(booted.url, { signal: AbortSignal.timeout(5000) });
+        assert.equal(res.status, 404, "GET is not an AG-UI run");
+        assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/route-not-found");
+        const root = await fetch(new URL("/", booted.url));
+        assert.equal(root.status, 404);
+        assert.equal((await root.json() as { type: string }).type, "https://problems.plurnk.xyz/http/route-not-found");
     } finally {
         const { code, signal } = await stopDaemon(booted);
         assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
@@ -242,7 +247,7 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
 test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process teardown", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon(async () => ({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "100" }));
     const pending = request({
-        host: booted.host, port: booted.port, method: "POST", path: "/",
+        host: booted.host, port: booted.port, method: "POST", path: "/agui",
         headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
     });
     const disconnected = new Promise<Error>((resolve) => pending.on("error", resolve));

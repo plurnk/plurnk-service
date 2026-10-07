@@ -18,7 +18,7 @@ export const aguiRouteTemplate = (
     url: string | undefined,
 ): AguiRouteTemplate => {
     if (method === "OPTIONS") return "preflight";
-    if (method === "POST" && (url === "/" || url === "/agui")) return "/agui";
+    if (method === "POST" && url === "/agui") return "/agui";
     return "unmatched";
 };
 

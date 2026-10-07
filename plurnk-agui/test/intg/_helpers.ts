@@ -10,7 +10,7 @@ export async function openTestDatabase() {
 }
 
 // {§agui-daemon-client} — the daemon's one listener, bound before the daemon exists as the service
-// binds it ({§startup-listener-admission}); the daemon discovers this module and mounts it at the root.
+// binds it ({§startup-listener-admission}); the daemon discovers this module and mounts it at /agui.
 export async function bindListener(): Promise<{ httpAddress(): { host: string; port: number }; close(): Promise<void> }> {
     const { default: HttpListener } = await import(join(SERVICE, "src/server/HttpListener.ts"));
     return HttpListener.bind({ host: "127.0.0.1", port: 0 });

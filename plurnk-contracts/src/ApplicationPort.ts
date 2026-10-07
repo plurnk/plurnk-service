@@ -147,7 +147,7 @@ export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => vo
 /**
  * {§http-host} The daemon's one HTTP listener, offered to exterior adapters. A daemon is one trust
  * domain on one address: core binds `PLURNK_HOST:PLURNK_PORT` before it admits durable state,
- * answers 503 until a root is mounted, and hands each request to the longest mounted prefix.
+ * answers 503 until admission, then routes to the longest mounted prefix or answers 404.
  * Adapters mount at `start()`; none opens a socket of its own. This is the one place the
  * application port names a transport, by ruling (#641): the standards address by URL, never by
  * port, so every exterior interface shares the address.

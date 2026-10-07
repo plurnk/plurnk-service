@@ -33,7 +33,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
     try {
         await daemon.start();
         const { host, port } = http.httpAddress();
-        const agent = new HttpAgent({ url: `http://${host}:${port}/`, threadId: "official-client" });
+        const agent = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "official-client" });
         agent.messages = [{ id: "m1", role: "user", content: "Exercise the installed one-shot interface." }];
         const events: AguiEvent[] = [];
         const errors: Error[] = [];
@@ -70,7 +70,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.equal(fixture.requests[0].body.reasoning.max_tokens, provider.reasoningBudget,
             "the test-tier reasoning allowance reaches the configured fixture protocol");
 
-        const rejected = new HttpAgent({ url: `http://${host}:${port}/`, threadId: "official-rejected" });
+        const rejected = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "official-rejected" });
         rejected.messages = [{ id: "rejected", role: "user", content: "Exercise the rejected provider request." }];
         const problems: RunErrorEvent[] = [];
         const failedTypes: EventType[] = [];

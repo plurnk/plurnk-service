@@ -71,6 +71,36 @@ test("{§http-host} a mount is an absolute pathname prefix, and each prefix is m
     } finally { await listener.close(); }
 });
 
+test("{§http-host} an admitted listener without a root mount serves claimed paths and returns 404 elsewhere", async () => {
+    const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+    try {
+        const { port } = listener.httpAddress();
+        listener.registerHttpRoute("/agui", reply("agui"));
+        listener.admit();
+        assert.equal((await get(port, "/agui")).body, "agui");
+        assert.equal((await get(port, "/agui/child")).body, "agui");
+        for (const pathname of ["/", "/aguix", "/elsewhere"]) {
+            for (const method of ["GET", "POST", "OPTIONS"]) {
+                const response = await fetch(`http://127.0.0.1:${port}${pathname}`, { method });
+                assert.equal(response.status, 404, `${method} ${pathname}`);
+                assert.equal(response.headers.get("content-type"), "application/problem+json");
+                assert.deepEqual(await response.json(), Problems.create(
+                    "http", "route-not-found", 404, "The requested HTTP route does not exist.",
+                    { stage: "routing", retryable: false },
+                ));
+            }
+        }
+    } finally { await listener.close(); }
+});
+
+test("{§http-host} an admitted listener with no mounts returns 404, not startup status", async () => {
+    const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+    try {
+        listener.admit();
+        assert.equal((await get(listener.httpAddress().port, "/")).status, 404);
+    } finally { await listener.close(); }
+});
+
 test("{§startup-listener-admission} a lost bind race rejects with the socket's own error", async () => {
     const holder = createServer();
     try {

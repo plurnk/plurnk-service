@@ -5,7 +5,7 @@ interface and translates daemon lifecycle events into AG-UI events.
 
 ## Interface
 
-`POST /` accepts `RunAgentInput` and returns an AG-UI event stream.
+`POST /agui` accepts `RunAgentInput` and returns an AG-UI event stream.
 
 PLURNK uses standard AG-UI events for Runs, messages, steps, tool calls, state,
 and approval requests. Additional execution metadata uses namespaced
@@ -45,7 +45,7 @@ event schemas, and settlement rules live in [SPEC.md](./SPEC.md).
 
 The daemon discovers this package as a module: its `package.json` declares
 `plurnk: { kind: "module", module: "./module" }`, and the service composes
-nothing by hand. The module mounts `/` and `/agui` on the daemon's listener
+nothing by hand. The module mounts only `/agui` on the daemon's listener
 and reads its settings from the assembled environment, which carries this
 package's `.env.defaults`. `SPEC.md` owns the exact value contract.
 

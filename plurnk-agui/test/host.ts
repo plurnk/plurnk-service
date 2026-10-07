@@ -23,7 +23,7 @@ export const host = async (seam: AguiPort, options: ModuleOptions = {}): Promise
     await module.start(port);
     const server = createServer((req, res) => {
         const pathname = new URL(req.url ?? "/", "http://host").pathname;
-        const handler = routes.get(pathname === "/agui" || pathname.startsWith("/agui/") ? "/agui" : "/");
+        const handler = [...routes.entries()].find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1];
         if (handler === undefined) throw new Error(`the module mounted no route for '${pathname}'`);
         void handler(req, res);
     });

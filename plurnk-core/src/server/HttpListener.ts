@@ -2,7 +2,7 @@
 // ({§startup-listener-admission}); exterior adapters mount routes on it at start() and never open
 // a socket of their own (#641). Until the daemon admits it, after every module has started
 // ({§module-http-mounts}), every request is answered 503; after that each request goes to the
-// longest mounted prefix, and the root receives whatever nothing more specific claimed.
+// longest mounted prefix, or receives 404 when no mounted prefix claims it.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Problems, type HttpHost, type HttpRouteHandler } from "@plurnk/plurnk-contracts";
 
@@ -86,8 +86,7 @@ export default class HttpListener implements HttpHost {
 
     async #dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const pathname = new URL(req.url ?? "/", "http://listener").pathname;
-        const handler = this.#admitted ? this.#route(pathname) : null;
-        if (handler === null) {
+        if (!this.#admitted) {
             // The daemon has not admitted its client interface. A request that arrives in that
             // window is told to come back, not that the address is wrong.
             const problem = Problems.create(
@@ -96,6 +95,16 @@ export default class HttpListener implements HttpHost {
                 503,
                 "The PLURNK service owns this listener but has not admitted its client interface yet.",
                 { stage: "startup", retryable: true },
+            );
+            res.writeHead(problem.status, { "content-type": "application/problem+json" });
+            res.end(JSON.stringify(problem));
+            return;
+        }
+        const handler = this.#route(pathname);
+        if (handler === null) {
+            const problem = Problems.create(
+                "http", "route-not-found", 404, "The requested HTTP route does not exist.",
+                { stage: "routing", retryable: false },
             );
             res.writeHead(problem.status, { "content-type": "application/problem+json" });
             res.end(JSON.stringify(problem));

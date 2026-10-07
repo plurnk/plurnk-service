@@ -10,14 +10,16 @@ if (mode === "exit") {
     process.exit(7);
 }
 
-const server = createServer((_request, response) => {
+const server = createServer((request, response) => {
     if (mode === "bad-http") {
         response.writeHead(200, { "content-type": "text/plain" });
         response.end("not AG-UI");
         return;
     }
     response.writeHead(404, { "content-type": "application/problem+json" });
-    response.end(JSON.stringify({ type: "https://problems.plurnk.xyz/agui/http/route-not-found" }));
+    response.end(JSON.stringify({ type: request.url === "/agui"
+        ? "https://problems.plurnk.xyz/agui/http/route-not-found"
+        : "https://problems.plurnk.xyz/http/route-not-found" }));
 });
 
 await new Promise((resolve, reject) => {
@@ -40,4 +42,4 @@ process.once("SIGINT", stop);
 const address = server.address();
 if (address === null || typeof address === "string") throw new Error("fixture did not bind TCP");
 process.stderr.write(`plurnk-service: @plurnk/plurnk-service@${version} fixture fixture-path\n`);
-process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port} db="fixture" route="no model"\n`);
+process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port}/agui db="fixture" route="no model"\n`);

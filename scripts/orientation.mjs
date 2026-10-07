@@ -173,10 +173,10 @@ try {
     const address = await new Promise((accept, reject) => {
         const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
         const inspect = () => {
-            const match = startup.match(/agui=http:\/\/([^:]+):(\d+)/);
+            const match = startup.match(/agui=(http:\/\/\S+)/);
             if (match === null) return;
             clearTimeout(timeout);
-            accept({ host: match[1], port: match[2] });
+            accept(new URL(match[1]));
         };
         daemon.stdout.on("data", inspect);
         daemon.once("exit", (code) => reject(new Error(`daemon exited during startup (status ${code})`)));
@@ -200,9 +200,9 @@ try {
     ], projectRoot, {
         env: {
             ...process.env,
-            PLURNK_HOST: address.host,
+            PLURNK_HOST: address.hostname,
             PLURNK_PORT: address.port,
-            PLURNK_AGUI_URL: `http://${address.host}:${address.port}`,
+            PLURNK_AGUI_URL: address.href,
         },
     });
     phases.push({ label: "client", command: client.command, cwd: client.cwd, status: client.status, wallMs: client.wallMs });
