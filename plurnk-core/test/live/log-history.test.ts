@@ -19,8 +19,8 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             s,
             2,
             {
-                prompt: "Reply with `ready`.",
-                maxTurns: 2,
+                prompt: "Read worker:///_plurnk/plurnk/pattern.md, then reply with `ready`.",
+                maxTurns: 4,
             },
             { signal: t.signal },
         );
@@ -32,15 +32,18 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         const priorPrograms = await s.db.test_turn_sources.all<{
             turn_id: number; kind: string; content: string; producer: string;
         }>({ worker_id: primed.modelWorkerId });
-        assert.ok(priorPrograms.some(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk"),
-            "initialization establishes a reasoning source, not an assistant-content program");
+        // {§worker-initialization-entry} — initialization records its survey program and authors no reasoning.
+        assert.ok(priorPrograms.some(({ kind, producer }) => kind === "ops" && producer === "_plurnk"),
+            "initialization records its survey as a program source");
+        assert.ok(!priorPrograms.some(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk"),
+            "initialization authors no reasoning");
         assert.ok(priorPrograms.some(({ kind, producer }) => kind === "ops" && producer === "model"),
             "the completed model turn establishes a content program");
         const priorReads = (await s.db.test_log_entries_by_loop.all<{
             id: number; op: string | null; active: number; attrs: string;
-        }>({ loop_id: primedTurn.loop_id })).filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        }>({ loop_id: primedTurn.loop_id })).filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row) && !LogEntryProjection.isReasoning(row));
         const activePriorIds = priorReads.filter(({ active }) => active === 1).map(({ id }) => id);
-        assert.ok(activePriorIds.length > 0, "initialization's reasoning READ is available for curation");
+        assert.ok(activePriorIds.length > 0, "the first loop's READ is available for curation");
 
         const { finalStatus, modelWorkerId, turnIds } = await liveLoop(
             s,

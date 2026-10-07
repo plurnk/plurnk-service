@@ -60,9 +60,9 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
             assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
             assert.ok((body?.content.split("\n").length ?? 0) > 100, "the entry retains a page far longer than a hundred lines");
-            // {§markerless-first-page} — a markerless READ is the whole page; the live tier reads the
-            // shipped panel, so nothing but the budget bounds it.
+            // {§markerless-first-page} — a markerless READ is its first page: PLURNK_SERVICE_PREVIEW_LINES lines.
             const range = r.range as { total?: number; returned?: readonly number[] } | undefined;
-            assert.deepEqual(range?.returned, [1, range?.total ?? -1], "the whole page, whatever its length");
+            const page = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES);
+            assert.deepEqual(range?.returned, [1, Math.min(page, range?.total ?? -1)], "the first page, at most the panel's preview lines");
         } finally { await schemes.close(); await db.close(); }
     });
