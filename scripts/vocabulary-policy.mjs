@@ -19,7 +19,6 @@ const KIND_WORDS = "exec|executor|scheme|schemes|mimetype|mimetypes|provider|pro
 
 export const RETIRED = [
     { label: "retired setting", re: /PLURNK_PLUGINS_TRUSTED_ONLY/u, successor: "PLURNK_EXTENSIONS_TRUSTED_ONLY" },
-    { label: "retired setting", re: /PLURNK_MIMETYPES_FAMILY_ROOT/u, successor: "PLURNK_MIMETYPES_PACKAGES_ROOT" },
     { label: "retired diagnostic family", re: /native-plugins/u, successor: "the `extensions` family" },
     { label: "retired specification tag", re: new RegExp(`§(?:${TAGS.join("|")})(?![a-z-])`, "u"), successor: "its `extension-*` tag" },
     { label: "retired specification tag", re: new RegExp(`§(?:${GRAMMAR_TAGS.join("|")})(?![a-z-])`, "u"), successor: "its `grammar-package` tag" },

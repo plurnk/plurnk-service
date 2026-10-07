@@ -2,6 +2,7 @@
 
 ## 2.0.0
 
+- Retire family-wide dependency freshness scanning; packages declare independent compatibility.
 - Preserve ANTLR missing-token recovery nodes without fabricating exact source coordinates.
 
 ### Major Changes

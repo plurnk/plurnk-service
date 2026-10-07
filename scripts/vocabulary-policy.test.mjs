@@ -21,7 +21,6 @@ test("every retired form is refused by name with its successor", () => {
         "a capability package and a capability framework",
         "every grammar leaf and the default leaf set",
         "malformed lifecycle hooks and the runtimes hook",
-        "set PLURNK_MIMETYPES_FAMILY_ROOT=..",
         "see {\u00A7grammar-family-lifecycle}",
         "calls assertGrammarLeafContract",
         "an optional grammar extension",
