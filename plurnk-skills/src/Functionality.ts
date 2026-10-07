@@ -3,7 +3,7 @@
 // belong to workspace definitions, never to an installation scope.
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import {
     SKILL_NAME,
@@ -15,7 +15,6 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import Paths from "../Paths.ts";
 import type {
     FunctionalityDefinitionSource,
     FunctionalityFamilyHandle,
@@ -27,20 +26,21 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { FunctionalityAdapter, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import SkillSource from "./SkillSource.ts";
-import { SkillsActionError, actionError, messageOf } from "./skills-problems.ts";
+import { SkillsActionError, actionError, messageOf } from "./problems.ts";
 
 const SKILLS_FAMILY = "skills";
-const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
+const SKILLS_OWNER = "@plurnk/plurnk-skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
 // {§skills-sources} — the vendor installer's knobs; each names what replaced it.
 const RETIRED_KNOBS: Readonly<Record<string, string>> = Object.freeze({
     PLURNK_SERVICE_SKILLS_CLI: "add fetches git, folder and file sources itself",
-    PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS: "PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS bounds each fetch",
+    PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS: "PLURNK_SKILLS_FETCH_TIMEOUT_MS bounds each fetch",
+    PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS: "use PLURNK_SKILLS_FETCH_TIMEOUT_MS",
     PLURNK_SERVICE_SKILLS_REGISTRY_URL: "discover takes a source; Agent Skills have no standard registry",
     PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT: "discover takes a source; Agent Skills have no standard registry",
     PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS: "discover takes a source; Agent Skills have no standard registry",
 });
-type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "workspaceStateDirectory" | "operatorEnvironment">
+export type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "workspaceStateDirectory" | "operatorEnvironment">
     & WorkspacePluginsSeam & ProvidedSkillsSeam;
 
 interface Installed {
@@ -69,7 +69,7 @@ const missing = (cause: unknown): false => {
 const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), missing);
 
 const environment = (env: NodeJS.ProcessEnv = process.env): ResourceEnvironment => new ResourceEnvironment(
-    "PLURNK_SKILLS_", { controls: [], settings: [], aliasPattern: SKILL_NAME }, env,
+    "PLURNK_SKILLS_", { controls: ["FETCH_TIMEOUT_MS"], settings: [], aliasPattern: SKILL_NAME }, env,
 );
 
 export const serviceSkills = (env: NodeJS.ProcessEnv = process.env): ReadonlyMap<string, SkillDefinition> => {
@@ -102,7 +102,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", source: "https://git.example/acme/skills.git" } };
-    readonly docsDir = Paths.packageRoot;
+    readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery = {
         details: "`source` lists the Agent Skills one source carries: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. A candidate carries the exact definition to add.",
     };
@@ -123,7 +123,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
             const stale = process.env[knob];
             if (stale !== undefined && stale.length > 0) throw new ConfigurationError(knob, `${knob} is retired: ${successor}.`);
         }
-        Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1);
+        Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1);
         serviceSkills();
     }
 

@@ -19,6 +19,7 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import skillsModule from "@plurnk/plurnk-skills/module";
 
 const MODULE_INPUT_SCHEMA = { type: "object", additionalProperties: true } as const;
 const MODULE_OUTPUT_SCHEMA = { type: "object", additionalProperties: true } as const;
@@ -146,6 +147,7 @@ test("{§manifest-client-display} {§mimetype-client-display} Daemon composes de
         },
     });
     try {
+        await skillsModule().setup(daemon);
         const capabilities = await daemon.listClientDisplayCapabilities();
         Validator.assertClientDisplayCapabilities(capabilities);
         assert.deepEqual(

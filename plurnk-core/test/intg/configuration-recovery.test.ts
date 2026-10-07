@@ -242,7 +242,7 @@ for (const [family, key, value] of [
     ["schedule", "PLURNK_SCHEDULE_broken", "{}"],
     ["members", "PLURNK_MEMBERS_broken", "!"],
     ["skills", "PLURNK_SKILLS_broken", "{}"],
-    ["skills", "PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", "bad"],
+    ["skills", "PLURNK_SKILLS_FETCH_TIMEOUT_MS", "bad"],
     ["skills", "PLURNK_SERVICE_ROOTS", "unknown"],
 ] as const) {
     test(`{§configuration-repair-path} ${key} leaves a model able to inspect the error and use another family`, { timeout: 30_000 }, async (t) => {

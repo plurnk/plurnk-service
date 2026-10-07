@@ -122,6 +122,7 @@ export type {
 export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
 export type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "./module-slice.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
+export type { ResourceTree, ResourceTreeSource, ResourceTreeRegistrationSeam } from "./resource-tree.ts";
 export type {
     ExtensionAttributionContext,
     ExtensionAttributionDeclaration,

@@ -1,5 +1,5 @@
 // {§skills-sources} Source forms, skill finding and installation containment, on the filesystem alone;
-// git and archive fetches are witnessed in test/intg/Skills.test.ts.
+// git and archive fetches are witnessed in plurnk-core/test/intg/Skills.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";

@@ -1,18 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
 import { DatabaseSync } from "node:sqlite";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { SqlRiteSync } from "@possumtech/sqlrite";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Validator, type KillStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { Validator, type FunctionalityListResult, type KillStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
+import Daemon from "../../src/server/Daemon.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
+import { readStmt } from "./_dsl.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
 // release freezes what it shipped, the previous release is the path an existing database takes, and
@@ -44,6 +47,53 @@ const shape = (path: string): string => {
 
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
+
+test("{§db-migrations} {§skills-module}: extraction preserves bindings and fetched bytes without the former namespace", async (t) => {
+    const path = await released(RELEASED);
+    const home = await mkdtemp(join(tmpdir(), "plurnk-skills-upgrade-"));
+    const hostPaths = new HostPaths({ home, env: {} });
+    const key = "a".repeat(32);
+    const definition = { name: "review", source: "https://unreachable.invalid/skills.git", commit: "b".repeat(40) };
+    const state = JSON.stringify({ version: 1, definitions: {
+        review: { origin: "workspace", enabled: true, definition },
+        plurnk: { origin: "service", enabled: false },
+    } });
+    const sourceKey = createHash("sha256").update(JSON.stringify([
+        definition.name, definition.source, null, definition.commit,
+    ])).digest("hex");
+    const root = join(hostPaths.stateDir, "workspaces", key);
+    const oldDirectory = join(root, encodeURIComponent("@plurnk/plurnk-core/skills"));
+    const directory = join(root, encodeURIComponent("@plurnk/plurnk-skills"));
+    const resource = join(sourceKey, "review", "SKILL.md");
+    const content = "---\nname: review\ndescription: Retained review\n---\nPinned bytes.\n";
+    await mkdir(join(oldDirectory, sourceKey, "review"), { recursive: true });
+    await writeFile(join(oldDirectory, resource), content);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec("INSERT INTO workspaces (id, name) VALUES (1, 'skillsUpgrade')");
+        before.exec("INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'reader', 'client')");
+        const put = before.prepare("INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (1, ?, ?)");
+        put.run("@plurnk/plurnk-core/skills", state);
+        put.run("@plurnk/plurnk-service/storage", JSON.stringify({ key }));
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    let daemon = new Daemon({ db, provider: null, hostPaths });
+    t.after(async () => { await daemon.stop(); await db.close(); await rm(home, { recursive: true, force: true }); });
+    assert.equal(await db.workspace_module_state_get.get({ workspace_id: 1, namespace_owner: "@plurnk/plurnk-core/skills" }), undefined);
+    assert.deepEqual(await db.workspace_module_state_get.get({ workspace_id: 1, namespace_owner: "@plurnk/plurnk-skills" }), { state });
+    const read = () => daemon.dispatchAsClient({ workspaceId: 1, workerId: 1, statement: readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] }) });
+    await daemon.start();
+    assert.equal((await read()).content, content.trimEnd(), "the unreachable source is not fetched again");
+    assert.equal(await readFile(join(directory, resource), "utf8"), content);
+    await assert.rejects(stat(oldDirectory), { code: "ENOENT" }, "the old path is not retained as an alias");
+    const listed = await daemon.invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId: 1 }) as FunctionalityListResult;
+    assert.equal(listed.definitions.find(({ alias }) => alias === "plurnk")?.state, "disabled");
+    assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.definition, definition);
+    await daemon.stop();
+    daemon = new Daemon({ db, provider: null, hostPaths });
+    await daemon.start();
+    assert.equal((await read()).content, content.trimEnd(), "a completed upgrade remains stable on restart");
+});
 
 test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
     const path = await released(RELEASED);

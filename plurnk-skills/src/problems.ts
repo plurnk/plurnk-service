@@ -1,4 +1,4 @@
-// {§skills-functionality} — the skills family's Problems, raised by the adapter and by its sources.
+// {§problems-skills} — the skills family's Problems, raised by the adapter and by its sources.
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 
 export class SkillsActionError extends Error {

@@ -5,7 +5,7 @@ import { parseEnv } from "node:util";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import SkillsFunctionality, { serviceSkills } from "./SkillsFunctionality.ts";
+import SkillsFunctionality, { serviceSkills } from "./Functionality.ts";
 
 test("{§module-workspace-paths} skills use the host's opaque source scopes and precedence without private services", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-seam-"));
@@ -85,4 +85,17 @@ test("{§skills-sources} a retired vendor-installer knob fails validation, namin
         /PLURNK_SERVICE_SKILLS_REGISTRY_URL is retired: discover takes a source; Agent Skills have no standard registry\./u);
     process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL = "";
     assert.doesNotThrow(() => SkillsFunctionality.validateConfiguration(), "an empty retired knob states nothing");
+});
+
+test("{§skills-module} the former core fetch knob is rejected, never used as an alias", (t) => {
+    const key = "PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS";
+    const previous = process.env[key];
+    t.after(() => {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+    });
+    process.env[key] = "1000";
+    assert.throws(() => SkillsFunctionality.validateConfiguration(), {
+        message: `${key} is retired: use PLURNK_SKILLS_FETCH_TIMEOUT_MS.`,
+    });
 });

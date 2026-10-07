@@ -34,12 +34,12 @@ import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
-import SkillsFunctionality from "./SkillsFunctionality.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
 import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
-import Skill from "../schemes/Skill.ts";
+import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
+import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
 import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
@@ -126,7 +126,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     static validateWorkspaceConfiguration(): void {
-        SkillsFunctionality.validateConfiguration();
         agentRootScopes();
         serviceMembers();
         modelScope();
@@ -160,7 +159,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #functionality: Functionality;
     // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
     #retention: Retention | null = null;
-    readonly #skills: SkillsFunctionality;
     readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
@@ -185,7 +183,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         dbPath?: string;
         http?: HttpListener | null;
         configuration?: ConfigurationDiagnostics;
-        // {§skills-functionality} — standard skill machinery, replaceable in tests.
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
@@ -239,11 +236,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             withWorkspaceGate: (workspaceId, owner, gate, run) => this.#residency.exclusively(workspaceId, owner, gate, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
-        // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
-        this.#skills = new SkillsFunctionality(this);
-        this.#skills.attach(this.#functionality.register(this.#skills));
-        this.#schemes.register("skill", new Skill((workspaceId) => this.#skills.trees(workspaceId)));
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
@@ -1397,6 +1390,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#residency.rematerializeActive();
     }
 
+    registerResourceTreeScheme(name: string, source: ResourceTreeSource): Promise<void> {
+        return this.registerScheme(name, new ResourceTreeScheme(name, source));
+    }
+
     #normalizeRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): {
         tag: string;
         entry: RegistryEntry;
@@ -1598,6 +1595,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
+        await this.#storage.upgrade();
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());

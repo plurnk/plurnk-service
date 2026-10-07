@@ -7,7 +7,7 @@ import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
-import type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
+import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { AgentRootScope } from "./AgentRoots.ts";
 
 // A family as the host's coordinator receives it: the runtimes a resident family prepares are
@@ -50,6 +50,7 @@ export interface CapabilityProviderSeam {
 export type HostSetupSeam = ModuleSetupSeam
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & SchemeRegistrationSeam
+    & ResourceTreeRegistrationSeam
     & WorkspacePluginsSeam<AgentRootScope>
     & ProvidedSkillsSeam
     & CapabilityProviderSeam;

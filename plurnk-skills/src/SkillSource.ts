@@ -8,7 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
 import { Knob } from "@plurnk/plurnk-meta";
-import { actionError, messageOf } from "./skills-problems.ts";
+import { actionError, messageOf } from "./problems.ts";
 
 const execFileP = promisify(execFile);
 
@@ -56,7 +56,7 @@ const isFile = (path: string): Promise<boolean> => stat(path).then((info) => inf
 // The reason a tool gave: its last stderr line, or that it outran its deadline.
 const reason = (cause: unknown): string => {
     const failure = cause as { killed?: boolean; stderr?: unknown };
-    if (failure.killed === true) return "it outran PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS";
+    if (failure.killed === true) return "it outran PLURNK_SKILLS_FETCH_TIMEOUT_MS";
     const text = typeof failure.stderr === "string" && failure.stderr.trim().length > 0 ? failure.stderr : messageOf(cause);
     return text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0).at(-1) ?? messageOf(cause);
 };
@@ -77,7 +77,7 @@ export default class SkillSource {
                 GIT_TERMINAL_PROMPT: "0",
                 ...(env.GIT_SSH_COMMAND === undefined && env.GIT_SSH === undefined ? { GIT_SSH_COMMAND: "ssh -o BatchMode=yes" } : {}),
             },
-            timeout: Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1),
+            timeout: Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1),
             maxBuffer: TOOL_OUTPUT_BYTES,
         });
         return stdout;

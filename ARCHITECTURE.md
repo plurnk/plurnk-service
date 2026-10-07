@@ -44,6 +44,7 @@ flowchart LR
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     modules["plurnk-modules<br/>module contract"] --> core
     skills["plurnk-agent-skills<br/>standard skill resource trees"] --> core
+    skillFamily["Skills family module<br/>sources · bindings · live trees"] --> core
     providers["Provider framework"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
@@ -71,6 +72,7 @@ package; this root document does not restate their teaching.
 | Language parser and AST builder | `@plurnk/plurnk-parser` | [`plurnk-parser/SPEC.md`](./plurnk-parser/SPEC.md) |
 | Discovery, trust predicate, teaching bytes                | `@plurnk/plurnk-meta`                                        | [`plurnk-meta/SPEC.md`](./plurnk-meta/SPEC.md)                                                                 |
 | Agent Skills documents and resource trees                 | `@plurnk/plurnk-agent-skills`                                | [`plurnk-agent-skills/SPEC.md`](./plurnk-agent-skills/SPEC.md)                                               |
+| Agent Skills workspace management | `@plurnk/plurnk-skills` | [`plurnk-skills/SPEC.md`](./plurnk-skills/SPEC.md) |
 | Provider adaptation and model selection                   | `@plurnk/plurnk-providers`, aliases, model-data package      | [`plurnk-providers/SPEC.md`](./plurnk-providers/SPEC.md), [`plurnk-aliases/SPEC.md`](./plurnk-aliases/SPEC.md) |
 | Scheme framework                                          | `@plurnk/plurnk-schemes` and installed scheme extensions     | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
 | Executor framework                                        | `@plurnk/plurnk-execs` and installed executor extensions     | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |

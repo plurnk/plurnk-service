@@ -67,6 +67,7 @@ test("PDF package projection rejects the fixture builder", () => {
 test("first-party teaching sources are required packed runtime inputs", () => {
     for (const [owner, paths] of [
         ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/references/extensibility.md", "docs/worker.md", "docs/pattern.md", "docs/delegation.md"]],
+        ["plurnk-skills", ["docs/skills.md"]],
         ["plurnk-providers", ["docs/models.md"]],
     ]) {
         assert.deepEqual(packageArtifactViolations(owner, paths), []);

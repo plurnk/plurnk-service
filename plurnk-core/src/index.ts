@@ -1,6 +1,5 @@
-// Frozen 1.x compatibility barrel ({§service-package-exports}). Clients use
-// AG-UI; internal composition imports its owners directly. Do not add another
-// root promise without a concrete consumer and an owning contract.
+// Legacy internal exports ({§service-package-exports}). Clients use AG-UI;
+// new library APIs belong to their owning packages, not this barrel.
 
 export { default as Engine } from "./core/Engine.ts";
 export { default as SchemeRegistry } from "./core/SchemeRegistry.ts";
@@ -10,7 +9,6 @@ export { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export { default as Daemon } from "./server/Daemon.ts";
 
-export { default as Skill } from "./schemes/Skill.ts";
 export { default as Log } from "./schemes/Log.ts";
 export { default as Exec } from "./schemes/Exec.ts";
 export { default as File } from "./schemes/File.ts";

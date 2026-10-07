@@ -273,7 +273,6 @@ ok(
         "Mock",
         "Paths",
         "SchemeRegistry",
-        "Skill",
     ]),
     "the packed root exports match {§service-package-exports} exactly",
 );

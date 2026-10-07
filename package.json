@@ -44,6 +44,7 @@
         "plurnk-providers",
         "plurnk-a2a",
         "plurnk-schedule",
+        "plurnk-skills",
         "plurnk-agui",
         "plurnk-core"
     ],

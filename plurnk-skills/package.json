@@ -1,0 +1,43 @@
+{
+    "name": "@plurnk/plurnk-skills",
+    "version": "1.29.0",
+    "description": "Agent Skills workspace management and read-only resource trees for Plurnk",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-skills"
+    },
+    "exports": {
+        ".": { "plurnk-dev": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+        "./module": { "plurnk-dev": "./src/daemon-module.ts", "types": "./dist/daemon-module.d.ts", "default": "./dist/daemon-module.js" },
+        "./package.json": "./package.json"
+    },
+    "plurnk": { "kind": "module", "module": "./module" },
+    "files": [".env.defaults", "dist/**/*", "docs/**/*", "README.md", "SPEC.md"],
+    "engines": { "node": ">=26" },
+    "scripts": {
+        "test": "npm run test:lint && npm run test:unit",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --test --test-timeout=30000 src/*.test.ts",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-agent-skills": "1.29.0",
+        "@plurnk/plurnk-meta": "1.29.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-agent-plugins": "^1.29.0",
+        "@plurnk/plurnk-contracts": "^1.29.0",
+        "@plurnk/plurnk-modules": "^1.29.0",
+        "@plurnk/plurnk-schemes": "^1.29.0"
+    },
+    "publishConfig": { "access": "public" },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-skills#readme",
+    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "author": "@wikitopian"
+}

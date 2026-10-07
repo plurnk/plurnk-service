@@ -104,6 +104,7 @@
         "@plurnk/plurnk-contracts": "1.29.0",
         "@plurnk/plurnk-parser": "1.29.0",
         "@plurnk/plurnk-schedule": "1.29.0",
+        "@plurnk/plurnk-skills": "1.29.0",
         "@plurnk/plurnk-execs": "1.29.0",
         "@plurnk/plurnk-execs-common": "1.29.0",
         "@plurnk/plurnk-execs-jq": "1.29.0",

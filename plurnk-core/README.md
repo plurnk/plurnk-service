@@ -53,9 +53,8 @@ configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit
 Protect durable history with a [consistent database backup](./INSTALL.md#backup-and-restore).
 The `share` command exports diagnostic reports, not a restorable database.
 
-The 1.x package retains its frozen root library barrel for SemVer compatibility;
-it is not the client boundary and gains no new APIs. Programmatic forensic use
-imports `@plurnk/plurnk-service/digest`.
+Clients use AG-UI; extension authors use the owning framework packages.
+Programmatic forensic use imports `@plurnk/plurnk-service/digest`.
 The digest requires a new or empty output directory, separate from its input
 database. Existing output and overlapping input/output paths are refused.
 

@@ -661,13 +661,33 @@ capability when the public surface cannot express a coherent extension.
 
 ## Module slice
 
-§scheme-module-slice **A daemon module contributes to the scheme kind through two types this package
+§scheme-module-slice **A daemon module contributes to the scheme kind through types this package
 owns.** They complete the module contract's slices ({§module-seam-slices}).
 
 | Type | Contract |
 | --- | --- |
 | `SchemeRegistrationSeam` | `registerScheme(name, handler)` adds one process-wide addressable `SchemeHandler`; scheme readiness and model-facing capability publication remain the host's. |
+| `ResourceTreeRegistrationSeam` | `registerResourceTreeScheme(name, source)` exposes named read-only resource trees through {§resource-tree-scheme}, without giving the module a storage interface. |
 | `RuntimeSchemeFacet` | A scheme face over a module's own resources. It claims only its own path subtree and there is the scheme's whole live half; unclaimed coordinates keep the standard executor-output behavior. A runtime carries one on its registration ({§executor-module-slice}), and a Functionality family's manager may expose one ({§functionality-adapter}). |
+
+§resource-tree-scheme **A tree supplies resources; the host supplies their entry projections.**
+`ResourceTreeSource.trees(workspaceId)` returns the currently available trees keyed by URI
+authority. Each tree lists relative resource paths and supplies a {§scheme-source-bytes}
+`ByteSource` for a relative path. Listing is authoritative; a source's null size means absent.
+The source owns containment and acquisition, including optional native-file identity.
+
+| Concern | Contract |
+| --- | --- |
+| Addressing | `name://authority/path`; resource authority, ordinary folder scopes, a dynamic MIME `body` channel. READ and source transfers share exact-resource preparation. |
+| Publication | Demand-loaded entries, not eagerly injected bodies. Model and client writes are forbidden; only the host writes projections. |
+| Projection | The host detects MIME, applies the configured input bound, and uses the installed MIME projection. Original bytes remain the source of byte views, transfers and attachments. Refresh replaces obsolete projection metadata too. |
+| FIND | The host refreshes resources in the requested path/authority scope, including descendants needed for shallow folder summaries, then performs ordinary pattern selection. |
+| Withdrawal | FIND removes cached projections for withdrawn authorities and absent resources in its refreshed scope. An exact missing READ never returns cached content. Historical log receipts are unchanged. |
+| Failures | Optional `refusal(cause, address)` translates recognized source failures into ordinary failure results (status ≥400); null preserves the host's missing-file result or propagates the original unexpected exception. Projection and persistence failures must not be recast as source failures. |
+
+The module does not receive scopes, matchers, database handles, or entry lifecycle controls through
+this source interface. A tree registration uses the ordinary scheme registry, with the same unique
+name, readiness, capability and lifecycle rules as other schemes.
 
 ## §scheme-discovery §6 Discovery & registration (third-party)
 
