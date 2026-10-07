@@ -29,7 +29,7 @@ try {
         private: true,
         type: "module",
     }, null, 2)}\n`);
-    // The pre-publication gate cannot install this lockstep candidate from npm.
+    // The pre-publication gate cannot install this unpublished candidate from npm.
     // Extract its exact artifact; bundling fails if either runtime-neutral
     // contract gains a dependency unavailable to browser Workers.
     await mkdir(installedPackage, { recursive: true });

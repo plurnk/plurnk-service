@@ -52,21 +52,17 @@ Where things are, for an agent that has to act before it has read everything:
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
   line of at most 100 characters citing `(#N)`, no body.
-- **Release train** (`scripts/release-*.mjs`): `npm run release:version -- <service-version>`
-  stamps the platform; land the stamp through the normal gate. Then, from a clean `main` with
-  `PLURNK_CLIENT_CHECKOUT=<client checkout>` and `PLURNK_EXTERNAL_REPOS_ROOT=<directory holding
-  the sibling checkouts>` exported,
-  run `npm run release:publish -- <client-version>` under `setsid` with its output in a log:
-  it outruns a ten-minute shell cap, so watch the log, never the registry. It re-runs the
-  drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
-  advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding in what
-  ships: the audit omits dev dependencies, which never reach a user), then
-  publishes the service and the client, signs and mirrors their `v<version>` tags,
-  and creates the GitHub Release entries. GitHub CLI write access is preflighted.
-  `npm run release:finalize -- <service-version> <client-version>` repairs missing
-  records from existing signed tags without npm publication. Afterwards, regenerate
-  and commit the changelog, then relock the bench checkout with
-  `npm update @plurnk/plurnk-service --no-audit --no-fund`.
+- **Releases are independent** ({§package-release-contract}). Record package intent with
+  `npm run changeset`; `npm run release:version` applies it and synchronizes the lockfile.
+  Review and land those changes through the normal gate. From clean canonical `main`
+  checkouts, `npm run release:check -- <new-artifact-directory> <package-directory>...`
+  qualifies only explicitly selected packages, including outside packages when named.
+  `npm run release:publish -- <artifact-directory>` publishes those retained archives in
+  dependency order, verifies the installed composition, and creates signed tags and GitHub
+  release records. Retry with that same artifact directory; do not rebuild an interrupted
+  release. No automatic version stamping or neighboring-repository sweep occurs during
+  publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
+  After the packages are served, update and verify the bench checkout's dependencies.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
   probes only feed the limit.

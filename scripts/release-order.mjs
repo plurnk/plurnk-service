@@ -1,10 +1,5 @@
-// Prints the bottom-up publish command list for the owner's OTP session.
-// Order is the root workspaces array, which is maintained dependency-first.
-import fs from "node:fs/promises";
-import path from "node:path";
+import { selectPackages } from "./release-candidate.mjs";
 
-const root = JSON.parse(await fs.readFile("package.json", "utf8"));
-for (const dir of root.workspaces) {
-    const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
-    console.log(`npm publish -w ${pkg.name} --otp=<OTP>   # ${pkg.version}`);
+for (const { manifest } of await selectPackages(process.argv.slice(2))) {
+    console.log(`${manifest.name}@${manifest.version}`);
 }

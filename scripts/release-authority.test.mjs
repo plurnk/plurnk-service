@@ -2,16 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
     canonicalForgeOrigin,
-    externalRepositoryName,
+    repositoryName,
     repositoryAuthorityViolations,
 } from "./release-authority.mjs";
 
-test("{§release-finalization} managed package identity is independent of its checkout directory", () => {
-    for (const [name, repository] of [
-        ["@plurnk/plurnk-tavily-plugin", "plurnk-tavily-plugin"],
-        ["@plurnk/plurnk-mimetypes-image", "plurnk-mimetypes-image"],
-    ]) {
-        const repo = externalRepositoryName(name);
+test("{§release-finalization} source identity comes from the canonical repository, not checkout spelling or version", () => {
+    for (const repository of ["plurnk-tavily-plugin", "plurnk-service", "plurnk"]) {
+        const repo = repositoryName(canonicalForgeOrigin(repository));
         assert.equal(repo, repository);
         assert.deepEqual(repositoryAuthorityViolations({
             repo,
@@ -21,8 +18,8 @@ test("{§release-finalization} managed package identity is independent of its ch
             remoteHead: "abc",
         }), []);
     }
-    for (const name of [undefined, "plurnk-tavily-plugin", "@other/plurnk-tavily-plugin", "@plurnk/", "@plurnk/../other"]) {
-        assert.throws(() => externalRepositoryName(name), /invalid managed package identity/);
+    for (const origin of [undefined, "plurnk-tavily-plugin", "git@github.com:plurnk/plurnk.git", "ssh://git@ssh.possumtech.com/other/plurnk.git"]) {
+        assert.throws(() => repositoryName(origin), /noncanonical release origin/);
     }
 });
 

@@ -1,5 +1,4 @@
-// The single release freshness gate — the FIRST step of `release:version`, so a tree with
-// ANY outdated dependency cannot be stamped (fail on any update). Each stale
+// The release freshness gate. Each stale
 // package is either resolved (bump the range, relock, drill) or waived in
 // deps-waivers.json with { reason, issue, lane } — documented, attributed debt
 // (an open issue on the owning lane), never silence. The waiver is the escape
@@ -24,11 +23,8 @@ export const classify = (outdated, waivers, ownerVeto, workspaceNames) => {
     const blockers = [];
     const excused = [];
     for (const [name, info] of Object.entries(outdated)) {
-        // Workspace platform packages are versioned by the release workflow in lockstep —
-        // temporary drift while that workflow runs is not a blocker. @plurnk-scoped
-        // EXTERNALS release on their own cadence and are ordinary freshness concerns
-        // (#349): an own grammar package a minor behind is exactly the staleness this
-        // gate exists to refuse.
+        // Workspace candidates are checked against their source graph, not registry latest.
+        // Installed external dependencies remain ordinary freshness concerns.
         if (workspaceNames.has(name)) continue;
         const { current, latest } = Array.isArray(info) ? info[0] : info;
         const w = waivers[name];
@@ -50,7 +46,7 @@ const outdated = async () => {
     }
 };
 
-// The lockstep-exempt set is exactly the workspace tree — read each member's
+// The source-owned set is exactly the workspace tree — read each member's
 // published name (dir and name differ: plurnk-core publishes @plurnk/plurnk-service).
 const workspacePackageNames = async () => {
     const { workspaces = [] } = JSON.parse(await readFile("package.json", "utf8"));

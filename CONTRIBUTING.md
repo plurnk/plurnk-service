@@ -131,29 +131,44 @@ it is not a release gate.
 
 ## Release
 
+Packages have independent versions ({§package-release-contract}). Add a changeset
+for each public change; describe the service's outward effect explicitly when it
+also needs a release. Compatible, unchanged packages do not need new versions.
+Standalone repositories use their own version preparation and dependency ranges.
+
 ```sh
-export PLURNK_CLIENT_CHECKOUT=/path/to/plurnk
-export PLURNK_EXTERNAL_REPOS_ROOT=/path/to/repository-forest
-npm run release:version -- <platform-version>
-# Review and commit the stamp.
-npm run release:check -- <client-version>
-npm run release:publish -- <client-version>
+npm run changeset
+npm run release:version
+# Review the manifests, per-package changelogs and lockfile; land through the gate.
+PLURNK_CLIENT_CHECKOUT=/path/to/plurnk npm run release:check -- \
+  /path/to/new-release-artifacts plurnk-contracts plurnk-core /path/to/plurnk
+npm run release:publish -- /path/to/new-release-artifacts
 ```
 
-`release:check` is the read-only qualification path; `release:publish` repeats it
-before mutation and resumes torn runs by skipping served immutable packages.
-Preserve applicable live, demo, and canonical `plurnk-bench` evidence in the issue.
+The package directories above are an example selection, not a fixed train. Name
+every unpublished dependency candidate; all other dependencies resolve normally.
+Only selected repositories are prerequisites. Each must be clean, signed and
+accepted on canonical `main`, with npm and GitHub publication authority.
 
-The train finishes by signing and pushing both release tags to the forge and
-GitHub, then creating GitHub Releases from the tagged changelog. GitHub CLI
-(`gh`) must have write access to both repositories before publication starts.
-Regenerate and commit `CHANGELOG.md` after new tags: `npm run changelog -- --write`.
+`release:check` builds and gates source, projects archives, and tests a fresh
+installed composition. It retains those exact archives, source identities, and
+resolved dependency evidence. `release:publish` changes no source: it publishes
+dependencies before consumers, verifies registry-installed products, and records
+the release. Registry errors stop publication; only an explicit missing version
+permits a new upload. On interruption, retry **the same artifact directory**;
+already-served artifacts must match byte-for-byte ({§release-candidate-graph}).
 
-To repair missing release records for versions already published and tagged,
+Products and standalone packages use signed `v<version>` tags; other monorepo
+packages use `<package-name>@<version>`. Service releases gather their concurrent
+modules into one GitHub record; independent module releases get their own records.
+Preserve applicable live/demo and benchmark evidence in the issue. Regenerate the
+root product changelog after new product tags: `npm run changelog -- --write`.
+
+To repair missing tags or release records after successful registry verification,
 without republishing packages:
 
 ```sh
-npm run release:finalize -- <platform-version> <client-version>
+npm run release:finalize -- /path/to/qualified-release-artifacts
 ```
 
 Existing signed tags and published release records are verified and preserved

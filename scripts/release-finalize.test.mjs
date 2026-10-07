@@ -10,7 +10,7 @@ import { releaseNotes } from "./changelog.mjs";
 
 // {§release-finalization}: command-boundary witnesses; no registry or remote writes.
 const COMMIT = "a".repeat(40);
-const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true } = {}) => {
+const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true, releaseTag = "v1.2.3" } = {}) => {
     const calls = [];
     const manifest = { name: "@plurnk/plurnk-service", version: "1.2.3" };
     const run = async (command, args) => {
@@ -19,18 +19,18 @@ const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, 
         if (command === "npm") return JSON.stringify({ ...manifest, version: registry });
         if (command === "gh") {
             if (args[0] === "api" && !line.includes("/releases")) return JSON.stringify({ permissions: { push: permission } });
-            if (args[0] === "api") return JSON.stringify(release ? [{ tag_name: "v1.2.3", draft: false, prerelease: false }] : []);
-            if (args[1] === "create") { release = true; return "https://github.com/plurnk/plurnk-service/releases/tag/v1.2.3"; }
+            if (args[0] === "api") return JSON.stringify(release ? [{ tag_name: releaseTag, draft: false, prerelease: false }] : []);
+            if (args[1] === "create") { release = true; return `https://github.com/plurnk/plurnk-service/releases/tag/${releaseTag}`; }
         }
         if (command === "git") {
             if (line === "remote get-url origin") return "ssh://git@ssh.possumtech.com/plurnk/plurnk-service.git";
             if (line === "remote get-url github") return "git@github.com:plurnk/plurnk-service.git";
             if (args[0] === "show") return JSON.stringify(manifest);
             if (args[0] === "rev-parse") return args[1].endsWith("^{commit}") ? COMMIT : "b".repeat(40);
-            if (line === "tag --list v1.2.3") return tag ? "v1.2.3" : "";
+            if (line === `tag --list ${releaseTag}`) return tag ? releaseTag : "";
             if (args[0] === "ls-remote") {
                 if (args.includes("refs/heads/main")) return `${COMMIT}\trefs/heads/main`;
-                return remoteTags[args[1]] ? `${remoteTags[args[1]]}\trefs/tags/v1.2.3` : "";
+                return remoteTags[args[1]] ? `${remoteTags[args[1]]}\trefs/tags/${releaseTag}` : "";
             }
             if (args[0] === "tag" && args[1] === "-s") { tag = true; return ""; }
             if (args[0] === "push") {
@@ -73,6 +73,22 @@ test("repair requires an existing signed tag, not today's HEAD", async () => {
     await finalizeRelease({ ...repair.options, commit: undefined }, repair.run);
     assert.ok(repair.calls.some((c) => c[1] === "verify-tag"));
     assert.ok(!repair.calls.some((c) => c[1] === "tag" && c[2] === "-s"));
+});
+
+test("{§release-finalization} module tags are independent of the product version and can share its release record", async () => {
+    for (const record of [false, true]) {
+        const releaseTag = "@plurnk/plurnk-hooks@1.2.3";
+        const { calls, run, options } = fixture({ releaseTag });
+        await finalizeRelease({ ...options, tagName: releaseTag, record, composition: "Tested service: 2.4.0" }, run);
+        assert.ok(calls.some((call) => call[0] === "git" && call[1] === "tag" && call[2] === "-s" && call.includes(releaseTag)));
+        assert.ok(calls.some((call) => call[1] === "verify-tag" && call[2] === releaseTag));
+        const releases = calls.filter((call) => call[0] === "gh" && call[1] === "release" && call[2] === "create");
+        assert.equal(releases.length, record ? 1 : 0);
+        if (record) {
+            assert.ok(releases[0].includes(releaseTag));
+            assert.match(releases[0].at(-1), /Tested service: 2.4.0/);
+        }
+    }
 });
 
 test("repeating finalization keeps tags and existing release records unchanged", async () => {

@@ -13,14 +13,6 @@ export const resolveClientCheckout = (env, cwd = process.cwd(), defaultCheckout)
     return resolve(cwd, clientCheckout);
 };
 
-export const resolveExternalReposRoot = (env, cwd = process.cwd()) => {
-    const reposRoot = optionalPath(env.PLURNK_EXTERNAL_REPOS_ROOT);
-    if (reposRoot === undefined) {
-        throw new Error("PLURNK_EXTERNAL_REPOS_ROOT must name the external repository forest");
-    }
-    return resolve(cwd, reposRoot);
-};
-
 export const resolveCandidateTopology = (serviceRoot, env, cwd = process.cwd()) => {
     const benchmarks = optionalPath(env.PLURNK_BENCHMARKS);
     const candidateDir = optionalPath(env.PLURNK_CANDIDATE_DIR);

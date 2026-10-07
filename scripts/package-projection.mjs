@@ -52,7 +52,7 @@ export const projectManifest = (manifest, files) => {
 
 // Rewrite one packed tarball in place: its manifest becomes the projection of what it ships.
 // Returns the projected manifest and the shipped file list (package-relative).
-export const projectTarball = async (archive) => {
+export const projectTarball = async (archive, { gitHead } = {}) => {
     const stage = await mkdtemp(path.join(tmpdir(), "plurnk-package-projection-"));
     try {
         await run("tar", ["-xzf", archive, "-C", stage]);
@@ -61,6 +61,7 @@ export const projectTarball = async (archive) => {
         const manifestPath = path.join(stage, "package", "package.json");
         const source = JSON.parse(await readFile(manifestPath, "utf8"));
         const { manifest, violations } = projectManifest(source, files);
+        if (gitHead !== undefined) manifest.gitHead = gitHead;
         if (violations.length > 0) {
             throw new Error(`${source.name}: the published manifest points outside the tarball:\n  ${violations.join("\n  ")}`);
         }

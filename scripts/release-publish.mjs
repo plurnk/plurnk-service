@@ -1,147 +1,28 @@
-// The deterministic publish machine replaces the shell loop whose piped
-// exit codes masked a refused publish and announced a torn release. Five laws, mechanized:
-//   1. The committed stamp is clean, then built and gated before the first publish.
-//   2. npm's REAL exit code — execFile rejects on nonzero; a refused publish HALTS the train.
-//   3. Nothing counts as published until the REGISTRY SERVES the stamped version (bounded poll).
-//   4. Managed dependency leaves publish after their platform owner and before any clean
-//      consumer install; that install counts the dep tree and boots a live listener as a gate.
-//   5. The script's green exit is the ONLY state that permits a release announcement.
-// Idempotent: a package the registry already serves at the stamp is skipped — a torn release
-// rerun publishes exactly the missing rungs.
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
-import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
-import { projectTarball } from "./package-projection.mjs";
-import { resolveClientCheckout } from "./project-topology.mjs";
-import { awaitRegistryVersion } from "./registry-visibility.mjs";
-import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
-import { finalizeReleaseTrain } from "./release-finalize.mjs";
+import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
+import { output, readCandidate } from "./release-candidate.mjs";
+import { verifyConsumer } from "./release-consumer.mjs";
+import { publishCandidates } from "./release-registry.mjs";
+import { assertReleaseHosting, finalizeCandidate } from "./release-finalize.mjs";
 
-const run = promisify(execFile);
-const ROOT_PKG = "@plurnk/plurnk-service";
-const CLIENT_PKG = "@plurnk/plurnk";
-const CLIENT_ROOT = resolveClientCheckout(process.env);
-const CLIENT_RELEASE = path.join(CLIENT_ROOT, "scripts", "release-publish.mjs");
-const clientVersion = process.argv[2];
-
-if (!/^\d+\.\d+\.\d+$/.test(clientVersion ?? "")) {
-    throw new Error("usage: release-publish.mjs <client-version>");
-}
-
-const assertClean = async (phase) => {
-    const dirty = (await run("git", ["status", "--porcelain"])).stdout.trim();
-    if (dirty !== "") {
-        throw new Error(`release-publish requires a clean committed stamp ${phase}:\n${dirty}`);
+const [destination, ...extra] = process.argv.slice(2);
+if (destination === undefined || extra.length !== 0) throw new Error("usage: release-publish.mjs <qualified-artifact-directory>");
+const directory = path.resolve(destination);
+const candidate = await readCandidate(directory);
+const { packages } = candidate;
+for (const [root, repo] of new Map(packages.map((record) => [record.root, record.repo]))) {
+    await assertReleaseRepository(root, repo);
+    await assertReleaseHosting(root, repo);
+    for (const { commit } of packages.filter((record) => record.root === root)) {
+        await output("git", ["verify-commit", commit], root);
+        await output("git", ["merge-base", "--is-ancestor", commit, "HEAD"], root);
     }
-};
-const runVisible = (command, args, options = {}) => new Promise((resolve, reject) => {
-    const child = spawn(command, args, { ...options, stdio: "inherit" });
-    child.once("error", reject);
-    child.once("exit", (code) => code === 0
-        ? resolve()
-        : reject(new Error(`${command} ${args.join(" ")} failed (exit ${code})`)));
-});
-
-const root = JSON.parse(await fs.readFile("package.json", "utf8"));
-const order = [];
-for (const dir of root.workspaces) {
-    const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
-    order.push({ name: pkg.name, version: pkg.version });
 }
-const version = order[0].version;
-if (!order.every((p) => p.version === version)) throw new Error("lockstep violated: workspaces disagree on version — stamp before publishing");
-
-await runVisible("node", ["scripts/release-check.mjs", clientVersion]);
-await assertClean("before publication");
-const serviceCommit = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
-
-const served = async (name) => {
-    try { return (await run("npm", ["view", name, "version"])).stdout.trim(); }
-    catch { return null; } // never published — view exits nonzero
-};
-
-console.log(`release-publish: ${order.length} workspaces at ${version}`);
-const staging = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-release-publish-"));
-try {
-    for (const { name } of order) {
-        if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
-        console.log(`  publish ${name}`);
-        // The committed stamp was built and gated once above. Publication remains
-        // script-free so no package can mutate or re-prove itself mid-train, and what is
-        // published is the projected tarball (#797): the dev condition never reaches a consumer.
-        const [record] = JSON.parse((await run("npm", ["pack", "-w", name, "--json", "--ignore-scripts", "--pack-destination", staging], { maxBuffer: 64 * 1024 * 1024 })).stdout);
-        if (typeof record?.filename !== "string") throw new Error(`${name}: npm pack returned no filename`);
-        const archive = path.join(staging, record.filename);
-        await projectTarball(archive);
-        await run("npm", ["publish", archive, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
-        await awaitRegistryVersion({ name, version, lookup: served });
-    }
-} finally {
-    await fs.rm(staging, { recursive: true, force: true });
-}
-
-// Managed leaves may depend on the just-published platform while the platform
-// also installs them as optional runtime capabilities. Publish them between
-// their owner and the clean consumer, never after a consumer has resolved stale
-// leaf metadata.
-console.log("release-publish: external package phase");
-await new Promise((res, rej) => {
-    const ph = spawn("node", ["scripts/release-external-packages.mjs"], { stdio: "inherit" });
-    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`external package phase failed (exit ${code})`)));
-});
-
-// Law 3: the consumer's seat. Install the root artifact FROM THE REGISTRY and boot it.
-console.log(`verify: consumer install of ${ROOT_PKG}@${version}`);
-const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-release-verify-"));
-try {
-    await run("npm", ["init", "-y"], { cwd: tmp });
-    await run("npm", ["i", `${ROOT_PKG}@${version}`], { cwd: tmp, maxBuffer: 64 * 1024 * 1024 });
-    await run("npm", ["ls", "--all"], { cwd: tmp, maxBuffer: 64 * 1024 * 1024 });
-    const installed = await fs.readdir(path.join(tmp, "node_modules", "@plurnk"));
-    console.log(`verify: dependency graph valid; ${installed.length} @plurnk packages on disk`);
-
-    const probeEnv = Object.fromEntries(
-        Object.entries(process.env).filter(([name]) => !name.startsWith("PLURNK_")),
-    );
-    const probe = await probeInstalledDaemon({
-        command: path.join(tmp, "node_modules", ".bin", "plurnk-service"),
-        cwd: tmp,
-        env: {
-            ...probeEnv,
-            HOME: tmp,
-            XDG_CONFIG_HOME: path.join(tmp, ".config"),
-            XDG_DATA_HOME: path.join(tmp, ".local", "share"),
-            OTEL_TRACES_EXPORTER: "none",
-            OTEL_METRICS_EXPORTER: "none",
-            OTEL_LOGS_EXPORTER: "none",
-        },
-        packageName: ROOT_PKG,
-        version,
-    });
-    console.log(`verify: installed artifact ${ROOT_PKG}@${version} owned ${probe.address} and exited cleanly`);
-} finally {
-    await fs.rm(tmp, { recursive: true, force: true });
-}
-
-// The client has an independent version line but consumes the platform. Only
-// prepare and publish it after its exact contracts are registry-resolvable.
-console.log(`release-publish: client phase ${CLIENT_PKG}@${clientVersion}`);
-await runVisible("node", [CLIENT_RELEASE, clientVersion, version], { cwd: CLIENT_ROOT });
-const clientCommit = (await run("git", ["rev-parse", "HEAD"], { cwd: CLIENT_ROOT })).stdout.trim();
-
-// Verify the exact served artifacts rather than whichever client happened to
-// own the latest tag before this train.
-console.log(`verify: packed composition ${CLIENT_PKG}@${clientVersion} + ${ROOT_PKG}@${version}`);
-await runVisible("node", [path.join(CLIENT_ROOT, "scripts", "test-composition.mjs")], {
-    cwd: CLIENT_ROOT,
-    env: {
-        ...process.env,
-        PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`,
-        PLURNK_COMPOSITION_SERVICE: `${ROOT_PKG}@${version}`,
-    },
-});
-
-await finalizeReleaseTrain({ serviceRoot: process.cwd(), clientRoot: CLIENT_ROOT, platformVersion: version, clientVersion, serviceCommit, clientCommit });
-console.log(`release-publish: platform ${version}, managed externals, and client ${clientVersion} published, consumer-verified, tagged, and recorded on GitHub`);
+await assertNpmPublisher(process.cwd());
+await publishCandidates(packages, { publish: async (record) => {
+    console.log(`publish ${record.name}@${record.version}`);
+    await output("npm", ["publish", path.join(directory, record.archive), "--access", "public", "--ignore-scripts"], record.root);
+} });
+await verifyConsumer(packages, { directory, registry: true, evidence: path.join(directory, "registry-lock.json") });
+await finalizeCandidate(candidate, directory);
+console.log(`release-publish GREEN: ${packages.length} packages published, consumer-verified, and recorded; artifacts retained at ${directory}`);

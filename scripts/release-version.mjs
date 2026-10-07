@@ -1,67 +1,13 @@
-// Lockstep version stamp. Usage: node scripts/release-version.mjs <version>
-// Sets every workspace to <version>, pins internal runtime/dev dependencies
-// exactly, and gives extension-facing peers a compatible-major range.
-// The root workspaces array is authoritative; a missing manifest crashes.
-import fs from "node:fs/promises";
-import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { compatibleRange } from "./release-compat.mjs";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const run = promisify(execFile);
-const version = process.argv[2];
-if (!version) throw new Error("usage: release-version.mjs <version>");
+// {§package-release-contract}: Changesets owns version calculation and range updates.
+const run = (command, args) => new Promise((accept, reject) => {
+    const child = spawn(command, args, { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? accept() : reject(new Error(`${command} exited ${code}`)));
+});
 
-const root = JSON.parse(await fs.readFile("package.json", "utf8"));
-const members = new Set();
-const manifests = new Map();
-
-for (const dir of root.workspaces) {
-    const file = path.join(dir, "package.json");
-    const pkg = JSON.parse(await fs.readFile(file, "utf8"));
-    members.add(pkg.name);
-    manifests.set(file, pkg);
-}
-
-// A stamp is legal only on a number no platform package has published (npm immutability).
-// Checks workspaces and the external package registry and fails with the full burned list; this
-// also makes the external-package sweep's serves-check trustworthy (a leaf serving the stamp
-// mid-train can only have gotten it from this release).
-{
-    const reg = JSON.parse(await fs.readFile(path.join("plurnk-meta", "external-packages.json"), "utf8"));
-    const names = new Set([...members, ...reg.packages.map((entry) => entry.name)]);
-    const burned = [];
-    await Promise.all([...names].map(async (name) => {
-        try {
-            const vs = JSON.parse((await run("npm", ["view", name, "versions", "--json"])).stdout);
-            if ((Array.isArray(vs) ? vs : [vs]).includes(version)) burned.push(name);
-        } catch { /* unpublished package — virgin by definition */ }
-    }));
-    if (burned.length > 0) throw new Error(`${version} is already published by ${burned.length} package(s):\n  ${burned.sort().join("\n  ")}`);
-    console.log(`${version} is unpublished across ${names.size} platform packages`);
-}
-
-for (const [file, pkg] of manifests) {
-    pkg.version = version;
-    for (const field of ["dependencies", "devDependencies"]) {
-        for (const name of Object.keys(pkg[field] ?? {})) {
-            if (members.has(name)) pkg[field][name] = version;
-        }
-    }
-    for (const name of Object.keys(pkg.peerDependencies ?? {})) {
-        if (members.has(name)) pkg.peerDependencies[name] = compatibleRange(version);
-    }
-    await fs.writeFile(file, `${JSON.stringify(pkg, null, 4)}\n`);
-}
-
-console.log(`stamped ${manifests.size} workspaces at ${version}`);
-
-// The stamp rewrites manifests, so the committed package-lock must be
-// regenerated in the same act or `npm ci` fails on committed state (the 1.0.9 train shipped every
-// workspace's lock self-version a tick stale — benign only because the drill uses `npm install`).
-// --package-lock-only touches no node_modules; the verification is structural, not trusted.
-await run("npm", ["install", "--package-lock-only", "--no-audit", "--no-fund"], { maxBuffer: 64 * 1024 * 1024 });
-const lock = JSON.parse(await fs.readFile("package-lock.json", "utf8"));
-const stale = root.workspaces.filter((dir) => lock.packages?.[dir]?.version !== version);
-if (stale.length > 0) throw new Error(`lockfile sync failed — ${stale.length} workspace(s) still stale after regen: ${stale.join(", ")}`);
-console.log(`lockfile synced — ${root.workspaces.length} workspace self-versions at ${version}`);
+if (process.argv.length !== 2) throw new Error("release:version takes no version argument; record package changes with npm run changeset first");
+await run(process.execPath, [fileURLToPath(import.meta.resolve("@changesets/cli/bin.js")), "version"]);
+await run("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]);

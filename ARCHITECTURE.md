@@ -117,6 +117,19 @@ The root lint enforces Acyclic and Stable Dependencies over every workspace's de
 dependencies, naming the cycle or the edge; the other four are design review rules. An extension
 kind's API therefore sits beneath both its host and its extensions, never inside the host.
 
+### Package releases
+
+Packages are independently versioned public contracts, not synchronized slices of a repository.
+The service is the assembled platform product; its release describes changes visible through that
+product. Client and benchmark releases have their own contracts. No additional repository version
+governs their compatibility.
+
+Dependency ranges express supported contracts; a tested installation records an exact composition.
+Neither matching version numbers nor a shared release date proves compatibility. Release planning
+may coordinate packages, but it never republishes an unchanged package merely to align numbers.
+The release workflow and its qualification boundaries live at {§package-release-contract} and
+{§release-candidate-graph}.
+
 ### Implementation mechanisms
 
 Prefer standard declarative mechanisms that directly express the owning contract: grammar

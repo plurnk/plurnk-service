@@ -12,10 +12,9 @@ export const canonicalForgeOrigin = (repo) => {
     return `ssh://git@ssh.possumtech.com/plurnk/${repo}.git`;
 };
 
-export const externalRepositoryName = (name) => {
-    const repo = typeof name === "string" && name.startsWith("@plurnk/")
-        ? name.slice("@plurnk/".length) : "";
-    if (!REPOSITORY_NAME.test(repo)) throw new Error(`invalid managed package identity: ${name}`);
+export const repositoryName = (origin) => {
+    const repo = /^ssh:\/\/git@ssh\.possumtech\.com\/plurnk\/([a-z0-9.-]+)\.git$/.exec(origin)?.[1];
+    if (repo === undefined || !REPOSITORY_NAME.test(repo)) throw new Error(`noncanonical release origin ${origin}`);
     return repo;
 };
 

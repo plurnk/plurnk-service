@@ -4,7 +4,6 @@ import test from "node:test";
 import {
     resolveCandidateTopology,
     resolveClientCheckout,
-    resolveExternalReposRoot,
 } from "./project-topology.mjs";
 
 const serviceRoot = "/open/plurnk-service";
@@ -40,17 +39,6 @@ test("conformance's sibling default applies only when no client checkout is supp
             "an explicit path overrides the default without guessing from filesystem availability",
         );
     }
-});
-
-test("release topology requires an explicit external repository forest", () => {
-    assert.throws(
-        () => resolveExternalReposRoot({}, cwd),
-        /PLURNK_EXTERNAL_REPOS_ROOT must name the external repository forest/,
-    );
-    assert.equal(
-        resolveExternalReposRoot({ PLURNK_EXTERNAL_REPOS_ROOT: "../forest" }, cwd),
-        resolve(cwd, "../forest"),
-    );
 });
 
 test("candidate topology defaults artifacts to the shared benchmark tree", () => {
