@@ -5,7 +5,7 @@ import { Module, type SchedulerTimers } from "@plurnk/plurnk-schedule";
 import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorkspace, openMigrated } from "./_db.ts";
+import { holdChild, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);
@@ -80,7 +80,7 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
 
 // {§schedule-delivery} — a composed daemon with one hourly rule targeting the recipient worker; the
 // scheduler's timers are the test's, so an occurrence fires when the test says so.
-test("{§schedule-delivery}: an occurrence runs its own loop; no WAIT holds a loop for it", { timeout: 30_000 }, async () => {
+test("{§schedule-delivery}: an occurrence after conclusion starts a successor loop", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
         "````KILL\nDone for now; the reminder will start its own loop.\n````",
@@ -123,5 +123,62 @@ test("{§schedule-delivery}: an occurrence runs its own loop; no WAIT holds a lo
         await waitForDb(async () => (await daemon.listWorkerLoops({ workspaceId, workerId })).filter(({ status }) => status === 200).length, (done) => done === 2);
         assert.equal(loops.length, 2, "the occurrence started a second loop on the same worker");
         assert.deepEqual(module.functionality.scheduler.armed(workspaceId), ["reminder"], "the next recurrence armed from the delivery");
+    } finally { await daemon.stop(); await db.close(); }
+});
+
+test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuinely parked loop and arrives there exactly once", { timeout: 30_000 }, async () => {
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: 65536, responses: [
+        { assistant: { content: "```WAIT <600>\nWaiting for the child.\n```", reasoning: null } },
+        { assistant: { content: "```NOTE\nReceived the scheduled message.\n```\n\n```WAIT <600>\nThe child is still running.\n```", reasoning: null } },
+    ] });
+    let now = INITIAL;
+    let serial = 0;
+    const timers = new Map<number, { callback: () => void; due: number }>();
+    const module = Module.init({
+        env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now,
+        timers: {
+            set: (callback, delay) => { const id = ++serial; timers.set(id, { callback, due: now + delay }); return id; },
+            clear: (id) => { timers.delete(id as number); },
+        },
+    });
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule(module, "@plurnk/plurnk-schedule");
+    await daemon.start();
+    try {
+        const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-parked-arrival", projectRoot: null });
+        const { workerId, workerName } = await daemon.createConversationWorker({ workspaceId, name: "recipient" });
+        await holdChild(db, workspaceId, workerId);
+        const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for the child." });
+        const lifecycle = new LoopLifecycle(db);
+        await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+        assert.equal(provider.received.length, 1, "a real parked loop, not a WAIT receipt that merely says continue");
+
+        const added = await daemon.invokeModuleAction("workspace.schedule.add", {
+            alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `worker://${workerName}`, prompt: "scheduled-proof" },
+        }, { scope: "workspace", workspaceId }) as { status: number };
+        assert.equal(added.status, 201);
+        const occurrence = [...timers.entries()].toSorted((a, b) => a[1].due - b[1].due)[0];
+        assert.ok(occurrence, "one occurrence is armed");
+        now = occurrence[1].due;
+        timers.delete(occurrence[0]);
+        occurrence[1].callback();
+
+        await waitForDb(() => db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: accepted.loopId }),
+            (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("Received the scheduled message.")));
+        await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+        await waitForDb(async () => module.functionality.scheduler.armed(workspaceId), (aliases) => aliases.length === 0);
+        assert.equal(provider.received.length, 2, "the occurrence wakes the loop without waiting for its ten-minute deadline");
+        assert.match(JSON.stringify(provider.received[1]), /scheduled-proof/u, "the resumed model sees the message");
+        assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId })).map(({ id }) => id), [accepted.loopId],
+            "the scheduler joins the existing loop rather than starting a successor");
+        const arrivals = (await db.test_messages_by_loop.all<{ source: string; body: string; log_entry_id: number | null }>({ loop_id: accepted.loopId }))
+            .filter(({ source }) => source === "schedule://reminder");
+        assert.deepEqual(arrivals.map(({ body }) => body), ["scheduled-proof"]);
+        assert.ok(arrivals[0]!.log_entry_id !== null, "the arrival has a published ordinary log receipt");
+        const listing = await daemon.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
+        const reminder = listing.definitions.find(({ alias }) => alias === "reminder");
+        assert.ok(reminder !== undefined && reminder.state !== "unavailable", "exhaustion follows a successful delivery");
+        await daemon.cancelWorker({ workspaceId, workerId });
     } finally { await daemon.stop(); await db.close(); }
 });

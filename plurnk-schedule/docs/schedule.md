@@ -20,8 +20,8 @@ Nothing is persisted.
 
 ## add
 
-`add` persists the rule for this workspace and arms it. It is a host effect,
-admitted under the loop's policy.
+`add` persists the rule for this workspace and arms its next occurrence, if any.
+It is a host effect, admitted under the loop's policy.
 
 ```schedule (add)
 {"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://exampleWorkerName", "prompt": "Text delivered at each occurrence."}}
@@ -42,9 +42,9 @@ and every command; UTC otherwise.
 
 ## list, enable, disable, remove
 
-`list` shows each rule with its zone, its wording, and its next occurrence,
-or `exhausted` once it has run out. A rule that could not deliver, because its
-worker is gone, is `unavailable` with the exact Problem; `enable` retries it.
+`list` shows each rule with its zone, its wording, and its next occurrence.
+`exhausted` means no future occurrence, not proof of delivery. A rule that could
+not deliver is `unavailable` with the exact Problem; `enable` retries it.
 `disable` disarms without forgetting; `remove` forgets.
 
 ## Receiving a scheduled message

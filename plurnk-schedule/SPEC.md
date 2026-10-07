@@ -37,7 +37,9 @@ defect, not a refusal.
 A workspace rule ends: its RRULE carries `COUNT` or `UNTIL`, else `add`
 refuses with `rule-unbounded`. A service rule ({§schedule-environment}) may be
 unbounded; the operator owns it. An exhausted rule stays listed `active` with
-`exhausted: true` and `next: null`; it arms nothing.
+`exhausted: true` and `next: null`; it arms nothing. Exhaustion states that no
+future occurrence exists, not that a message was delivered: a rule may already
+be exhausted when added.
 
 ## §schedule-zone Zone
 
@@ -71,11 +73,11 @@ like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
 
 The module holds one armed occurrence per enabled (workspace, alias). At the
 occurrence it resolves the target worker by name and delivers the prompt
-through the application port's `runLoop` with the source `schedule://<alias>`
-and the definition's policy: the message joins the worker's live loop or
-starts one ({§message-arrival}, {§message-causal-source}); no WAIT holds a loop
-for an occurrence — a loop with nothing live concludes, and the occurrence's
-message starts the next loop on the same worker. The next occurrence
+through the application port's `runLoop` with the source `schedule://<alias>`.
+The message joins the worker's live loop, waking it if parked, or starts a new
+loop with the definition's policy ({§message-arrival}, {§message-causal-source}).
+A future occurrence is not live work for WAIT ({§wait-obligation-matrix}); it
+neither holds a loop open nor concludes it. The next occurrence
 then arms from the present: a late fire delivers once and skips what it
 missed, never a backlog. A missing worker or a refused delivery disarms the
 rule and lists it `unavailable` with the Problem; `enable` retries. After

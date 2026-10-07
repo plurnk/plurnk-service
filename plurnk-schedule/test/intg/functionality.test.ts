@@ -269,6 +269,38 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     await adapter.scheduler.close();
 });
 
+test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add is exhausted; a bare rule starts from add", async () => {
+    const time = new FakeTime();
+    const adapter = family(time);
+    const port = new FakePort();
+    adapter.scheduler.start(port);
+    try {
+        const identity = { workspaceId: 5 };
+        const [candidate] = await adapter.discover({ source: "FREQ=SECONDLY;COUNT=1" }, identity);
+        assert.ok(candidate);
+        time.now = NOW + 5 * SECOND;
+        const { definition: expired } = await adapter.admit({ alias: "expired", definition: {
+            ...candidate.definition, target: "worker://bot", prompt: "Expired.",
+        } }, identity);
+        const { definition: fresh } = await adapter.admit({ alias: "fresh", definition: {
+            rule: "FREQ=SECONDLY;COUNT=1", target: "worker://bot", prompt: "Fresh.",
+        } }, identity);
+        const prepared = await adapter.prepare(preparation(5, { expired, fresh }));
+        const expiredOutcome = prepared.outcomes.get("expired");
+        assert.ok(expiredOutcome?.state === "active");
+        const expiredDetail = expiredOutcome.detail as { next: string | null; exhausted: boolean };
+        assert.deepEqual([expiredDetail.next, expiredDetail.exhausted], [null, true], "an expired candidate has no occurrence left to deliver");
+        const freshOutcome = prepared.outcomes.get("fresh");
+        assert.ok(freshOutcome?.state === "active");
+        const freshDetail = freshOutcome.detail as { next: string | null; exhausted: boolean };
+        assert.deepEqual([freshDetail.next, freshDetail.exhausted], ["2026-09-16T12:30:21+00:00[UTC]", false]);
+        await prepared.commit();
+        assert.deepEqual(adapter.scheduler.armed(5), ["fresh"], "no implicit replay or re-dating of the expired occurrence");
+        await time.advance(FIRST + 5 * SECOND);
+        assert.deepEqual(port.deliveries, [{ workspaceId: 5, workerId: 7, prompt: "Fresh.", source: "schedule://fresh" }]);
+    } finally { await adapter.scheduler.close(); }
+});
+
 test("{§schedule-first-arming} a single occurrence that passes between add and its arming still arms, fires at once, and delivers once", async () => {
     const time = new FakeTime();
     const adapter = family(time);
