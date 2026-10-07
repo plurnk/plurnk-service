@@ -44,7 +44,7 @@ The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
 | Local or feature branch | The affected canonical tier; feature pushes are not hooked gates. |
 | Main push | Hooked `npm test`; root changes run full integration. |
 | Release candidate | Preserved applicable live/demo/bench evidence, then `release:check`. |
-| Publication | `release:publish`, which repeats qualification before mutation. |
+| Publication | `release:publish` uses the qualified archives, verifies the registry-installed composition, and records the release. |
 | Model or benchmark campaign | Explicit `test:live`, `test:demo`, or canonical `plurnk-bench`; never the hot path. |
 
 ## Development workflow

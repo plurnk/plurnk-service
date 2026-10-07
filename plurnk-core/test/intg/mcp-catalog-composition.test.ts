@@ -9,7 +9,6 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
-import { waitForDb } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
@@ -145,9 +144,16 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.equal((await read("worker:///_plurnk/tools/fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");
     assert.equal(provider.received.length, 0, "catalog updates do not invoke the model");
+    const terminated = Promise.withResolvers<void>();
+    const unsubscribe = daemon.subscribeToEvents((scope, method) => {
+        if (scope === workspaceId && method === "loop/terminated") terminated.resolve();
+    });
+    t.after(unsubscribe);
     const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool.", policy: { proposals: "accept" } });
     const lifecycle = new LoopLifecycle(db);
-    await waitForDb(() => lifecycle.status(loop.loopId), (status) => status === 200);
+    // {§module-workspace-quiescence}: the stored result precedes turn-gate release.
+    await terminated.promise;
+    assert.equal(await lifecycle.status(loop.loopId), 200);
     assert.equal(provider.received.length, 2);
     assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /Observed third from the server\./);
     await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { candidateGraph, publicationOrder } from "./release-package-graph.mjs";
+import { candidateGraph, publicationBatches } from "./release-package-graph.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
 
 const exec = promisify(execFile);
@@ -33,20 +33,27 @@ export const assertPublishedArtifact = (candidate, published) => {
 };
 
 export const publishCandidates = async (records, { publish, lookup = registryPackage, wait = awaitRegistryVersion }) => {
-    const order = publicationOrder(candidateGraph(records.map(({ manifest }) => manifest)));
+    const batches = publicationBatches(candidateGraph(records.map(({ manifest }) => manifest)));
     for (const record of records) {
         const published = await lookup(record.name, record.version);
         if (published !== undefined) assertPublishedArtifact(record, published);
     }
-    for (const { name } of order) {
-        const record = records.find((item) => item.name === name);
-        const existing = await lookup(name, record.version);
-        if (existing !== undefined) {
-            assertPublishedArtifact(record, existing);
-            continue;
+    for (const batch of batches) {
+        const pending = [];
+        for (const { name } of batch) {
+            const record = records.find((item) => item.name === name);
+            const existing = await lookup(name, record.version);
+            if (existing !== undefined) {
+                assertPublishedArtifact(record, existing);
+                continue;
+            }
+            await publish(record);
+            pending.push(record);
         }
-        await publish(record);
-        await wait({ name, version: record.version, lookup: async () => (await lookup(name, record.version))?.version });
-        assertPublishedArtifact(record, await lookup(name, record.version));
+        for (const record of pending) {
+            const { name, version } = record;
+            await wait({ name, version, lookup: async () => (await lookup(name, version))?.version });
+            assertPublishedArtifact(record, await lookup(name, version));
+        }
     }
 };

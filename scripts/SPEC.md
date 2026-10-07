@@ -20,7 +20,7 @@
 | Preparation | Version and dependency edits precede qualification. Publication never edits source, stamps another repository, or substitutes a different candidate. |
 | Qualification | Build and test the source repositories; run package-specific release checks only for the selected packages, inspect their projected archives, and exercise the installed composition before publication. No ignored peer conflicts, forced incompatible overrides, or reliance on an unpublished registry version. |
 | Dependencies | Newer available versions are not a release prerequisite. Audit the fresh installed production composition at the moderate floor; advisory-service unavailability is a reported gap, not a clean audit. |
-| Publication | Publish dependencies before consumers. Query the exact package/version, not its latest tag. A registry failure is not evidence that a package is unpublished. |
+| Publication | Upload independent packages sequentially as one dependency layer; verify that layer's registry visibility and immutable artifacts before uploading its consumers. Query the exact package/version, not its latest tag. A registry failure is not evidence that a package is unpublished. |
 | Retry | Retain qualified artifacts and their source identities. Resume only missing publication steps; a conflicting immutable artifact fails rather than being overwritten or accepted as equivalent. |
 
 ## §release-finalization Publication records

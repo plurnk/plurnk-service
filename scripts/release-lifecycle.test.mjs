@@ -45,6 +45,19 @@ test("{§release-candidate-graph} an interrupted publication resumes only its mi
     assert.equal(registry.size, 2);
 });
 
+test("{§release-candidate-graph} independent packages upload before waiting, but consumers require verified dependencies", async () => {
+    const selected = [...records(), { name: "independent", version: "1.0.0", manifest: { name: "independent", version: "1.0.0" }, commit: "a".repeat(40), integrity: "sha512-independent" }];
+    const calls = [];
+    const uploaded = new Map();
+    const visible = new Map();
+    await publishCandidates(selected, {
+        lookup: async (name) => visible.get(name),
+        publish: async (record) => { calls.push(`publish ${record.name}`); uploaded.set(record.name, published(record)); },
+        wait: async ({ name }) => { calls.push(`verify ${name}`); visible.set(name, uploaded.get(name)); },
+    });
+    assert.deepEqual(calls, ["publish contract", "publish independent", "verify contract", "verify independent", "publish consumer", "verify consumer"]);
+});
+
 test("{§release-candidate-graph} registry uncertainty and immutable conflicts prevent every upload", async () => {
     for (const failure of ["network", "conflict"]) {
         const calls = [];

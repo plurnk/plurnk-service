@@ -46,3 +46,15 @@ export const publicationOrder = (graph) => {
     for (const name of [...graph.keys()].sort()) visit(name);
     return ordered;
 };
+
+export const publicationBatches = (graph) => {
+    const depths = new Map();
+    const batches = [];
+    for (const manifest of publicationOrder(graph)) {
+        const dependencies = INSTALL_FIELDS.flatMap((field) => Object.keys(manifest[field] ?? {})).filter((name) => graph.has(name));
+        const depth = dependencies.reduce((maximum, name) => Math.max(maximum, depths.get(name) + 1), 0);
+        depths.set(manifest.name, depth);
+        (batches[depth] ??= []).push(manifest);
+    }
+    return batches;
+};
