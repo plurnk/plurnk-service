@@ -914,7 +914,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const problem = failures[0].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
         assert.equal(problem.detail,
-            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
+            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
         assert.equal(problem.column, 38);

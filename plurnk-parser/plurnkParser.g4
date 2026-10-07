@@ -65,8 +65,8 @@ findStatement : OPEN_FIND slotModifiers? opAside? statementEnd ;
 // {§target-group} — READ and KILL take several `(path)` slots; each binds the scope and metadata after it.
 readStatement : OPEN_READ targetGroup? opAside? statementEnd ;
 editStatement : OPEN_EDIT slotModifiers? opAside? statementEnd ;
-copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
-moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
+copyStatement : OPEN_COPY transferModifiers opAside? statementEnd ;
+moveStatement : OPEN_MOVE transferModifiers opAside? statementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
 dispositionStatement
     : OPEN_WAIT execModifiers? opAside? statementEnd
@@ -94,7 +94,8 @@ statementEnd
     ;
 
 // COPY and MOVE repeat the same resource selection used by single-target OPs.
-// Scope and metadata belong to that operand; neither operation admits a body.
+// Scope and metadata belong to that operand. Neither operation admits a body: the builder
+// ignores one with an advisory ({§transfer-resource-selections}).
 transferModifiers
     : resourceSelection resourceSelection
     ;
@@ -106,12 +107,6 @@ resourceSelection
 selectionModifier
     : lineMarker
     | metadata
-    ;
-
-emptyStatementEnd
-    : SECTION_END
-    | BODY_OPEN SECTION_END?
-    |
     ;
 
 slotModifiers

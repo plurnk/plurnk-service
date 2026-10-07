@@ -40,7 +40,7 @@ test("{§bare-option-object}: a bare heading object is the body of an executor w
     const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" ? [item.error.message] : []);
     const mcp = "```gitea (list_issues) {\"owner\":\"plurnk\"}\n```";
     assert.deepEqual([statement(mcp).metadata, statement(mcp).body], [null, "{\"owner\":\"plurnk\"}"], "an MCP tool's heading object is its arguments body");
-    assert.deepEqual(warnings(mcp), ["`gitea` took its body on the heading line; the body belongs on the lines below it."]);
+    assert.deepEqual(warnings(mcp), ["`gitea` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line."]);
     const shell = "```sh {\"cwd\":\"/tmp\"}\nls\n```";
     assert.deepEqual([statement(shell).metadata, statement(shell).body], [["{\"cwd\":\"/tmp\"}"], "ls"], "the house option array is the shell's option block");
     assert.deepEqual(warnings(shell), ["`sh` took a bare option object; the taught form is `[{…}]`."]);

@@ -67,9 +67,9 @@ export default class PlurnkParser {
             const name = writtenOp(statement);
             const modifiers: string[] = [];
             // {§naked-pattern} — a lifted matcher is written back bare when the bare form reads back
-            // identically; otherwise as its `pattern` option ({§matcher-option}), the escape.
+            // identically and draws nothing; otherwise as its `pattern` option ({§matcher-option}), the escape.
             const naked = (raw: string): boolean => raw.trim() === raw && raw !== "" && !/[\r\n]/u.test(raw) && !raw.includes("<!--")
-                && (/^(\/|\$|~|&|\^)/u.test(raw) || ((statement.op === "FIND" || statement.op === "READ" || statement.op === "KILL") && !/^[[(<`]/u.test(raw)));
+                && (/^(\/|\$|~|&|\^)/u.test(raw) || ((statement.op === "FIND" || statement.op === "READ" || statement.op === "KILL") && !/^[[(<`]/u.test(raw) && !AstBuilder.isJsonObject(raw)));
             const metadataOf = (metadata: readonly string[] | null | undefined, matcher: { raw: string } | null | undefined, bare: boolean): string[] => {
                 const blocks = metadata?.map((block) => `[${block}]`) ?? [];
                 if (matcher === null || matcher === undefined) return blocks;
@@ -297,23 +297,6 @@ export default class PlurnkParser {
         const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
         PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
-        // {§heading-inline-body} — a body that began on the heading line ran as the body; say so,
-        // right after its statement, so the form is learned from the packet, not from silence.
-        for (const note of lexer.takeInlineBodies()) {
-            const advisory: ParseItem<S> = {
-                kind: "error",
-                error: new PlurnkParseError(
-                    note.line,
-                    note.column,
-                    "parser",
-                    `\`${note.heading.replace(/^`+/, "")}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line.`,
-                    "warning",
-                ),
-            };
-            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
-            if (at !== -1) items.splice(at + 1, 0, advisory);
-        }
-
         // {§log-heading-notation} — the log's heading notation was read as the slot it stands for; each reading is
         // named once, right after its statement, with the form to write. A statement that was not built draws none.
         const named = new Set<string>();

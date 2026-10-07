@@ -173,7 +173,7 @@ export default class AstBuilder {
         if (!inline || (op !== "FIND" && op !== "READ" && op !== "KILL")) return null;
         // {§bare-option-object} — here the same text is the matcher; a JSON object is named, so the
         // collision with the option form is learned in the turn it happens.
-        if (metadataFree && text.startsWith("{") && AstBuilder.#isJsonObject(text)) AstBuilder.#adviseTrailing(position, "`{…}` was read as the matcher; an option block is `[{…}]`.");
+        if (metadataFree && text.startsWith("{") && AstBuilder.isJsonObject(text)) AstBuilder.#adviseTrailing(position, "`{…}` was read as the matcher; an option block is `[{…}]`.");
         return { text, aside, scope, metadata };
     }
 
@@ -237,7 +237,8 @@ export default class AstBuilder {
         return AstBuilder.metadataOptions([inner]) !== null;
     }
 
-    static #isJsonObject(text: string): boolean {
+    // {§bare-option-object} — shared by reading and rendering: a matcher that parses as one is written as its option.
+    static isJsonObject(text: string): boolean {
         let parsed: unknown;
         try { parsed = JSON.parse(text); }
         catch (cause) {
@@ -249,20 +250,12 @@ export default class AstBuilder {
 
     // {§bare-option-object} — one JSON object where the option block goes, on an operation that takes
     // options and no bare matcher: read as `[{…}]`, so every consumer sees the taught shape. The receipt
-    // names the indulgence once, in place of the inline-body advisory the lexer withheld.
-    static #liftBareOptionObject(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position): { metadata: SchemeMetadata; lifted: boolean } {
-        if (metadata !== null || split.inline === null || !AstBuilder.#isJsonObject(split.inline.trim())) return { metadata, lifted: false };
+    // names the indulgence once, in place of the {§heading-inline-body} advisory. `placed` says the heading
+    // admits a block there: BARE, WORK and FORK take one only after their target.
+    static #liftBareOptionObject(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position, placed = true): { metadata: SchemeMetadata; lifted: boolean } {
+        if (!placed || metadata !== null || split.inline === null || !AstBuilder.isJsonObject(split.inline.trim())) return { metadata, lifted: false };
         AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", `\`${tag}\` took a bare option object; the taught form is \`[{…}]\`.`, "warning"));
         return { metadata: [split.inline.trim()], lifted: true };
-    }
-
-    // {§bare-option-object}: for an executor whose declared body is JSON, a bare heading object is that body,
-    // written on the wrong line; the lexer withheld the inline-body advisory, so name the form here.
-    static #inlineObjectBody(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position): { metadata: SchemeMetadata; lifted: boolean } {
-        if (metadata === null && split.inline !== null && AstBuilder.#isJsonObject(split.inline.trim())) {
-            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", `\`${tag}\` took its body on the heading line; the body belongs on the lines below it.`, "warning"));
-        }
-        return { metadata, lifted: false };
     }
 
     // {§matcher-option} — shared by admission and rendering; invalid blocks remain owner input.
@@ -296,7 +289,8 @@ export default class AstBuilder {
         return { inline: text.slice(0, eol), below: below === "" ? null : below };
     }
 
-    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false, target: ParsedPath | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null } {
+    // `consumed` says whether `raw` was read: as the matcher, or as the target's channel.
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false, target: ParsedPath | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null; consumed: boolean } {
         const options = AstBuilder.metadataOptions(metadata);
         if (options === null || !Object.hasOwn(options, "pattern")) {
             const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
@@ -307,15 +301,16 @@ export default class AstBuilder {
             if (channel !== null && (target!.fragment === null || target!.fragment === undefined)) {
                 target!.fragment = channel[1]!;
                 if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]!}`;
-                return { matcher: null, metadata: metadata ?? (bare!.metadata === null ? null : [bare!.metadata]), aside: bare!.aside, scope: bare!.scope };
+                return { matcher: null, metadata: metadata ?? (bare!.metadata === null ? null : [bare!.metadata]), aside: bare!.aside, scope: bare!.scope, consumed: true };
             }
             return bare === null
-                ? { matcher: null, metadata, aside: null, scope: null }
+                ? { matcher: null, metadata, aside: null, scope: null, consumed: false }
                 : {
                     matcher: AstBuilder.#parseMatcherBody(bare.text, position, target),
                     metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
                     aside: bare.aside,
                     scope: bare.scope,
+                    consumed: true,
                 };
         }
         const pattern = options.pattern;
@@ -325,20 +320,33 @@ export default class AstBuilder {
         }
         const matcher = AstBuilder.#parseMatcherBody(pattern, position, target);
         const others = Object.keys(options).filter((key) => key !== "pattern");
-        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null };
+        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null, consumed: false };
     }
 
-    // {§matcher-option} — a text or log operation's body is never a matcher; it is ignored with one
-    // advisory naming the option form, and the operation still runs ({§matcher-body-redirect}: warn,
-    // never strike).
-    static #adviseBody(op: string, raw: string | null, position: Position): void {
-        if (raw === null || raw.trim() === "") return;
-        if (AstBuilder.#bareMatcher(raw, op, false) !== null) return;
-        AstBuilder.#advisories.push(new PlurnkParseError(
-            position.line, position.column, "parser",
-            `${op === "KILL" ? "KILL with a target" : op} takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.`,
-            "warning",
-        ));
+    // {§matcher-body-redirect} {§transfer-resource-selections} — an operation that takes no body ignores the text
+    // its matcher did not read, on the heading line or beneath it, with one advisory; the operation still runs:
+    // warn, never strike.
+    static #ignoreUnread(name: string, unread: readonly (string | null)[], position: Position, hint = ""): void {
+        if (!unread.some((text) => text !== null && text.trim() !== "")) return;
+        AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", `${name} takes no body; the body was ignored.${hint}`, "warning"));
+    }
+
+    static readonly #PATTERN_HINT = " A pattern belongs on the opening fence line after the path.";
+
+    // The matcher was offered the heading text, or the line beneath when the heading carries none.
+    static #unread(consumed: boolean, inline: string | null, below: string | null): (string | null)[] {
+        if (!consumed) return [inline, below];
+        return inline === null ? [] : [below];
+    }
+
+    // {§heading-inline-body} — the body an operation takes, its heading-line text included. Each builder decides
+    // what that text is; taking it as the body is named once, here, where the reading is made.
+    static #headingBody(name: string, ctx: ParserRuleContext, inline: string | null, position: Position): string | null {
+        if (inline !== null) {
+            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+                `\`${name}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line.`, "warning"));
+        }
+        return AstBuilder.#bodyTextOf(ctx);
     }
 
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -404,8 +412,8 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position, AstBuilder.#parseRangeMarker);
         AstBuilder.#bareTarget("FIND", slots.target, inline, position);
-        AstBuilder.#adviseBody("FIND", below, position);
         const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null, slots.target);
+        AstBuilder.#ignoreUnread("FIND", AstBuilder.#unread(lifted.consumed, inline, below), position, AstBuilder.#PATTERN_HINT);
         return {
             op: "FIND",
             aside: aside ?? lifted.aside,
@@ -433,7 +441,7 @@ export default class AstBuilder {
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        const raw = AstBuilder.#headingBody("LOOK", ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position);
         return {
             op: "LOOK",
             aside: AstBuilder.#asideOf(ctx),
@@ -450,8 +458,8 @@ export default class AstBuilder {
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("READ", slots.target, split.inline, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
-        AstBuilder.#adviseBody("READ", bodied.raw, position);
         const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null, slots.target);
+        AstBuilder.#ignoreUnread("READ", AstBuilder.#unread(lifted.consumed, split.inline, bodied.raw), position, AstBuilder.#PATTERN_HINT);
         const aside = bodied.aside ?? lifted.aside;
         // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
         // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
@@ -497,7 +505,8 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
-        // replacement (none deletes each match). Any other heading-line text is the body it always was.
+        // replacement (none deletes each match). Any other heading-line text, beside an option block's
+        // pattern too, is the first line of the body.
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("EDIT", slots.target, split.inline, position);
         const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true, slots.lineMarker !== null, slots.target);
@@ -508,7 +517,7 @@ export default class AstBuilder {
             lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseTextLineMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
-            body: lifted.matcher === null || split.inline === null ? AstBuilder.#bodyTextOf(ctx) : split.below,
+            body: lifted.consumed ? split.below : AstBuilder.#headingBody("EDIT", ctx, split.inline, position),
             position,
         };
     }
@@ -518,6 +527,7 @@ export default class AstBuilder {
         const modifier = ctx.transferModifiers();
         const selections = modifier.resourceSelection();
         if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
+        AstBuilder.#ignoreUnread("COPY", [AstBuilder.#bodyTextOf(ctx)], position);
         return {
             op: "COPY",
             aside: AstBuilder.#asideOf(ctx),
@@ -532,6 +542,7 @@ export default class AstBuilder {
         const modifier = ctx.transferModifiers();
         const selections = modifier.resourceSelection();
         if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
+        AstBuilder.#ignoreUnread("MOVE", [AstBuilder.#bodyTextOf(ctx)], position);
         return {
             op: "MOVE",
             aside: AstBuilder.#asideOf(ctx),
@@ -562,15 +573,16 @@ export default class AstBuilder {
             metadata: null,
             // {§send-wait-scope} Repeated duration bounds compose as their earliest wake.
             lineMarker: durations.length === 0 ? null : { marks: [Math.min(...durations)] },
-            body: AstBuilder.#bodyTextOf(ctx),
+            body: AstBuilder.#headingBody(op, ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position),
             position,
         };
     }
 
     static #buildNote(ctx: NoteStatementContext): NoteStatement {
+        const position = AstBuilder.#positionOf(ctx);
         return {
             op: "NOTE", aside: AstBuilder.#asideOf(ctx), target: null, metadata: null, lineMarker: null,
-            body: AstBuilder.#bodyTextOf(ctx), position: AstBuilder.#positionOf(ctx),
+            body: AstBuilder.#headingBody("NOTE", ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position), position,
         };
     }
 
@@ -580,7 +592,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractSlots(ctx.resourceSelection(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const options = AstBuilder.#liftBareOptionObject("SEND", AstBuilder.#metadataFromCtx(ctx), split, position);
-        const raw = options.lifted ? split.below : AstBuilder.#bodyTextOf(ctx);
+        const raw = options.lifted ? split.below : AstBuilder.#headingBody("SEND", ctx, split.inline, position);
         return {
             op: "SEND",
             aside: AstBuilder.#asideOf(ctx),
@@ -599,14 +611,14 @@ export default class AstBuilder {
         // {§bare-option-object}: the option-array shape is the house convention; an executor whose declared body is
         // JSON (an MCP tool's arguments) reads a bare heading object as that body.
         const options = AstBuilder.jsonBodyExecutors.has(runtime)
-            ? AstBuilder.#inlineObjectBody(runtime, slots.metadata, split, position)
+            ? { metadata: slots.metadata, lifted: false }
             : AstBuilder.#liftBareOptionObject(runtime, slots.metadata, split, position);
         return {
             runtime,
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
             metadata: options.metadata,
-            body: options.lifted ? split.below : AstBuilder.#bodyTextOf(ctx),
+            body: options.lifted ? split.below : AstBuilder.#headingBody(runtime, ctx, split.inline, position),
             position,
         };
     }
@@ -625,14 +637,14 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        const options = AstBuilder.#liftBareOptionObject("BARE", slots.metadata, split, position);
+        const options = AstBuilder.#liftBareOptionObject("BARE", slots.metadata, split, position, slots.target !== null);
         return {
             op: "BARE",
             aside: AstBuilder.#asideOf(ctx),
             target: slots.target,
             metadata: options.metadata,
             lineMarker: null,
-            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#headingBody("BARE", ctx, split.inline, position) ?? "",
             position,
         };
     }
@@ -646,14 +658,16 @@ export default class AstBuilder {
         if (slots.target === null && slots.lineMarker === null && slots.metadata === null) {
             return {
                 op: "KILL", aside: AstBuilder.#asideOf(ctx), ...slots, matcher: null,
-                body: AstBuilder.#bodyTextOf(ctx), position,
+                body: AstBuilder.#headingBody("KILL", ctx, split.inline, position), position,
             };
         }
         // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
         const distilling = slots.target !== null && slots.target.kind === "url" && slots.target.scheme === "log";
-        if (!distilling) AstBuilder.#adviseBody("KILL", split.below, position);
         const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null, slots.target);
+        if (!distilling) AstBuilder.#ignoreUnread("KILL with a target", AstBuilder.#unread(lifted.consumed, split.inline, split.below), position, AstBuilder.#PATTERN_HINT);
+        const distillation = !distilling ? null
+            : lifted.consumed || split.inline === null ? split.below : AstBuilder.#headingBody("KILL", ctx, split.inline, position);
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
@@ -662,7 +676,7 @@ export default class AstBuilder {
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             ...AstBuilder.#targetGroup("KILL", group, slots, lifted.metadata, position),
-            body: distilling && split.below !== null && split.below.trim() !== "" ? split.below : null,
+            body: distillation !== null && distillation.trim() !== "" ? distillation : null,
             position,
         };
     }
@@ -671,14 +685,14 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        const options = AstBuilder.#liftBareOptionObject("WORK", slots.metadata, split, position);
+        const options = AstBuilder.#liftBareOptionObject("WORK", slots.metadata, split, position, slots.target !== null);
         return {
             op: "WORK",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
             metadata: options.metadata,
             lineMarker: null,
-            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#headingBody("WORK", ctx, split.inline, position) ?? "",
             position,
         };
     }
@@ -687,14 +701,14 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        const options = AstBuilder.#liftBareOptionObject("FORK", slots.metadata, split, position);
+        const options = AstBuilder.#liftBareOptionObject("FORK", slots.metadata, split, position, slots.target !== null);
         return {
             op: "FORK",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
             metadata: options.metadata,
             lineMarker: null,
-            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#headingBody("FORK", ctx, split.inline, position) ?? "",
             position,
         };
     }
@@ -936,10 +950,6 @@ export default class AstBuilder {
         if (closer !== null && closer.includes("`")) return text;
         const whole = text.replace(/\r?\n$/u, "");
         return whole === "" ? null : whole;
-    }
-
-    static #requiredBodyTextOf(ctx: ParserRuleContext): string {
-        return AstBuilder.#bodyTextOf(ctx) ?? "";
     }
 
     static #isDigit(c: string | undefined): boolean {

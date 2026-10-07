@@ -715,21 +715,33 @@ dead; in the distinct recorded emissions one heading carried the form (zai run42
 ```` ```WORK (worker://deprecation-implementer) <1,-1> ````), beside two recipient SENDs whose scope
 the recipient refuses at runtime.
 
-§heading-inline-body Nonempty body text belongs below the fence header.
-The ingester tolerates body text after horizontal whitespace on the header,
-preserves it, and emits one warning stating that normalization. This does not
-change the meaning of a compact empty block or permit unmatched fences.
+§heading-inline-body Nonempty body text belongs below the fence header. Text after the slots
+on the heading line is read by the operation's shape, by the builder that reads that operation,
+and that reading is named: no text on the line is dropped silently, and none loses the operation.
+Taken as the body, it is the first body line, with one warning: "`EDIT` body text was on the OP
+line and was taken as the body; body content goes immediately beneath the opening fence line." A
+sigil claims a matcher only on an operation that has one. This does not change the meaning of a
+compact empty block or permit unmatched fences.
+
+| Operation | Text after the slots on the heading line |
+|---|---|
+| FIND, READ, KILL with a target other than `log:///` | The matcher ({§naked-pattern}). Beside an option block's `pattern`, ignored ({§matcher-body-redirect}). |
+| KILL on a `log:///` target | The matcher. Beside an option block's `pattern`, the first line of the distillation ({§log-kill-distillation}). |
+| EDIT | A sigil-led matcher ({§edit-pattern}), unless an option block carries the `pattern`; otherwise the body. |
+| COPY, MOVE | Ignored ({§transfer-resource-selections}). |
+| SEND, WORK, FORK, BARE, executors | One JSON object is the option block where the heading admits one ({§bare-option-object}); otherwise the body. |
+| NOTE, WAIT, KILL without a target | The body. |
 
 §bare-option-object A bare option object is the option block, where the house option array owns the
 block. On an operation that takes an option block and no bare matcher — SEND, BARE, WORK, FORK and
-every executor fence — heading text after the slots that is exactly one JSON object `{…}` is read
+every executor fence — heading text after the slots that is exactly one JSON object `{…}`, where the
+heading admits a block (BARE, WORK and FORK only after their target), is read
 as `[{…}]`: the AST carries the array form, the written heading renders it, and one
 warning-severity receipt names the indulgence in place of the {§heading-inline-body} advisory:
 "`SEND` took a bare option object; the taught form is `[{…}]`." The option array is a house
 convention, not a language rule ({§scheme-metadata-modifier}): an executor whose declared body is
 JSON ({§executor-invocation}), an MCP tool, reads the object as its body instead — its arguments,
-written on the heading line — with one warning: "`gitea` took its body on the heading line; the
-body belongs on the lines below it." The host names those executors to the parse
+written on the heading line — under {§heading-inline-body}. The host names those executors to the parse
 (`ParseOptions.jsonBodyExecutors`). A heading that already carries a block keeps the object as
 inline body. On FIND, READ and KILL the same text is the matcher
 ({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
@@ -788,7 +800,7 @@ still the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body:
 with a matcher it is the replacement for every selected span ({§edit-pattern}),
 and an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
 whose block left no metadata back bare when the bare form reads back identically
-({§naked-pattern}), otherwise as `[{"pattern": "…"}]`.
+and draws no advisory ({§naked-pattern}), otherwise as `[{"pattern": "…"}]`.
 
 ## 3. Lexical elements
 
@@ -985,8 +997,10 @@ Mutation semantics:
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
 - §transfer-resource-selections COPY and MOVE require two singular
   `ResourceSelection` operands, source first and destination second, and admit
-  no body. Each selection binds its own target, scope, matcher, and metadata
-  under {§slot-order}, {§matcher-option}, and {§scheme-metadata-modifier}.
+  no body: text after the slots on the heading line, or beneath it, is ignored and the
+  operation still runs, with one warning-severity advisory (`MOVE takes no body; the body
+  was ignored.`). Each selection binds its own target, scope, matcher, and metadata under
+  {§slot-order}, {§matcher-option}, and {§scheme-metadata-modifier}.
 
 ### Per-operation observations
 
@@ -1903,7 +1917,8 @@ diagnostics are:
   marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
   since `@patch` is a search a model means.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
-  of a FIND, READ or targeted KILL is a body, and those operations take none: the builder
+  of a FIND, READ or targeted KILL, or heading text the matcher did not read because an option
+  block carries the `pattern`, is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ
   takes no body; the body was ignored. A pattern belongs on the opening fence line
   after the path.`). KILL's advisory names `KILL with a target`; it must not

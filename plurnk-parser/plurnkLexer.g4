@@ -190,9 +190,6 @@ private targetDepth: number = 0;
 private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private inlineBody: boolean = false;
-private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
-// {§bare-option-object} - true once this heading carried a [...] block.
-private headingMetadata: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
 private missedTags: Array<{ line: number; column: number; tag: string }> = [];
 private forgottenTags: Array<{ line: number; column: number; tag: string }> = [];
@@ -329,7 +326,6 @@ private naked: boolean = false;
 
 private open(implicitName?: string): void {
     this.naked = false;
-    this.headingMetadata = false;
     this.fenceLength = 0;
     this.fenceCharacter = this.text.charCodeAt(0);
     while (this.text.charCodeAt(this.fenceLength) === this.fenceCharacter) this.fenceLength++;
@@ -552,43 +548,6 @@ private inlineBodyAhead(): boolean {
     return previous === 0x20 || previous === 0x09;
 }
 
-private noteInlineBody(): void {
-    this.inlineBody = true;
-    // {§naked-pattern} - a sigil is a matcher on any heading, and every heading-line word on FIND,
-    // READ or KILL is one, so only a bodied operation's stray heading text is worth an advisory.
-    const first = this.text.charCodeAt(0) === 0x60 ? this.inputStream.LA(1) : this.text.charCodeAt(0);
-    if (first === 0x2F || first === 0x24 || first === 0x7E || first === 0x26 || first === 0x5E) return;
-    if (this.openOp === "FIND" || this.openOp === "READ" || this.openOp === "KILL") return;
-    // {§bare-option-object} - one JSON object where the option block goes is the option block: the
-    // builder lifts it, and its receipt stands in for this advisory.
-    if (first === 0x7B && this.bareOptionObjectOnLine()) return;
-    this.inlineBodies.push({ line: this.getOpenTagLine(), column: this.getOpenTagColumn(), heading: this.getOpenHeading() });
-}
-
-private bareOptionObjectOnLine(): boolean {
-    if (this.headingMetadata || this.text.charCodeAt(0) === 0x60) return false;
-    if (!(this.execFence || this.openOp === "SEND" || this.openOp === "BARE" || this.openOp === "WORK" || this.openOp === "FORK")) return false;
-    let rest = this.text;
-    for (let offset = 1; ; offset++) {
-        const c = this.inputStream.LA(offset);
-        if (c <= 0 || c === 0x0A || c === 0x0D) break;
-        rest += String.fromCodePoint(c);
-    }
-    // a closing fence on the heading line is not part of the object
-    const fence = rest.lastIndexOf("\x60\x60\x60");
-    if (fence !== -1 && rest.slice(fence).replace(/[\x60 \t]/gu, "") === "") rest = rest.slice(0, fence);
-    rest = rest.trim();
-    let parsed: unknown;
-    try { parsed = JSON.parse(rest); } catch { return false; }
-    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
-}
-
-public takeInlineBodies(): Array<{ line: number; column: number; heading: string }> {
-    const taken = this.inlineBodies;
-    this.inlineBodies = [];
-    return taken;
-}
-
 public getOpenTag(): string { return this.openOp; }
 public getOpenOp(): string { return this.openOp; }
 public isExecFence(): boolean { return this.execFence; }
@@ -687,9 +646,9 @@ SLOTS_DOT_BEFORE_ASIDE : { this.slotReady && !this.chargeAhead() && this.asideCo
 SLOTS_DOT_ASIDE : { this.slotReady && !this.chargeAhead() && !this.asideCommentLater() }? '\u00B7' [ \t]* ~[ \t\r\n`] ~[\r\n`]* { this.noteNotation("aside"); } -> type(ASIDE) ;
 // {§bare-anchor-scope} - an EDIT's `@abcde` (or `@abcde,@fghij`) alone where the scope goes is that scope.
 SLOTS_BARE_ANCHOR : { this.slotReady && this.openOp === "EDIT" && this.bareAnchorAhead() }? LINE_ANCHOR (',' ' '? LINE_ANCHOR)? { this.noteNotation("anchor"); this.text = "<" + this.text + ">"; } -> type(L_MARKER) ;
-SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
+SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.inlineBody = true; } -> type(BODY_TEXT), mode(BODY) ;
 // {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
-SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
+SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.inlineBody = true; } -> type(BODY_TEXT), mode(BODY) ;
 // {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
 SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
@@ -722,7 +681,7 @@ METADATA_TICK : '`' -> type(METADATA_TEXT) ;
 METADATA_QUOTE : '"' -> type(METADATA_TEXT) ;
 METADATA_NEST_OPEN : '[' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
 METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
-METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; this.headingMetadata = true; } -> type(RBRACKET), mode(SLOTS) ;
+METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
