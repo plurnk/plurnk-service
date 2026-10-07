@@ -914,12 +914,45 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const problem = failures[0].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
         assert.equal(problem.detail,
-            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
+            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
         assert.equal(problem.column, 38);
     } finally { await db.close(); }
 });
+
+for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.md <1>"]) {
+    test(`{§fence-pairing}: ${heading} missing its closer preserves the following READ and its result`, async () => {
+        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        try {
+            await seedEntryWithChannel(db, {
+                workspaceId, scheme: "worker", pathname: "/trim.md",
+                content: "one\ntwo\nthree", mimetype: "text/markdown",
+            });
+            const source = [`\`\`\`${heading}`, "```READ (worker:///trim.md) <1,-1>", "```"].join("\n");
+            const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
+            const context = { workspaceId, workerId, loopId };
+            const first = await engine.runTurn({ ...context, provider, messages: [] });
+            assert.equal(first.status, 102, "the addressed KILL is a mutation, not completion");
+            assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["READ", 200]]);
+
+            const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
+            const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
+            assert.ok(readSource.kind === "statement");
+            const retained = await engine.look({ ...context, statement: readSource.statement });
+            assert.equal(retained.status, 200);
+            assert.ok("content" in retained);
+            assert.equal(retained.content, source, "recovery preserves the original emission");
+
+            const next = await engine.runTurn({ ...context, provider, messages: [] });
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+            const observations = logEntries(packet).filter(({ path, logPath }) =>
+                path === "worker:///trim.md" && String(logPath).endsWith("/READ"));
+            assert.equal(observations.length, 1, "the following turn receives the recovered READ's result");
+            assert.match(String(observations[0].body), /^1<@[0-9A-Za-z]{5}>two\n2<@[0-9A-Za-z]{5}>three\n$/);
+        } finally { await db.close(); }
+    });
+}
 
 test("{§transfer-resource-selections} a malformed COPY destination cannot dispatch or materialize", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
