@@ -3,6 +3,7 @@
 "@plurnk/plurnk-service": major
 "@plurnk/plurnk-contracts": patch
 "@plurnk/plurnk-modules": patch
+"@plurnk/plurnk-meta": patch
 ---
 
 Serve AG-UI only at `/agui`, removing the root endpoint. Clients must use the

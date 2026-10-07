@@ -48,7 +48,7 @@ the daemon starts.
 
 | Surface | Shape | Code in the daemon |
 | --- | --- | --- |
-| Application | an AG-UI client: `POST /` with `RunAgentInput` on the daemon's listener (`PLURNK_PORT`) returns an event stream | none |
+| Application | an AG-UI client: `POST /agui` with `RunAgentInput` on the daemon's listener (`PLURNK_PORT`) returns an event stream | none |
 | Agent | an A2A client of the exposure that `PLURNK_A2A_EXPOSE` mounts | none |
 | Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none |
 | Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon |
