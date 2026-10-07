@@ -94,7 +94,7 @@ test("{§unfenced-operation}: an operation written without its fence is not resp
         assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), [], source);
         assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [...texts], source);
         assert.deepEqual(parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []),
-            ["`READ` has no fence, so it did not run."], source);
+            ["Unfenced `READ` ignored."], source);
     }
 });
 
@@ -123,10 +123,10 @@ test("{§unfenced-operation}: an executor's name with an operand slot did not ru
     const warnings = (source: string) => parse(source).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
     const texts = (source: string) => parse(source).items.flatMap((item) => item.kind === "text" ? [item.content] : []);
     const call = 'gitea (list_issues) <!-- List issues -->\n{"owner": "plurnk"}';
-    assert.deepEqual(warnings(call), ["`gitea` has no fence, so it did not run."]);
+    assert.deepEqual(warnings(call), ["Unfenced `gitea` ignored."]);
     assert.deepEqual(texts(call), ['{"owner": "plurnk"}'], "the heading line leaves response text; its body line is what remains");
-    assert.deepEqual(warnings("sh(build.sh)"), ["`sh` has no fence, so it did not run."], "a glued operand counts");
-    assert.deepEqual(warnings("sh is a shell.\nGitea (list_issues) works too."), ["`Gitea` has no fence, so it did not run."], "the name inside a sentence is a word; the executor's case rule applies");
+    assert.deepEqual(warnings("sh(build.sh)"), ["Unfenced `sh` ignored."], "a glued operand counts");
+    assert.deepEqual(warnings("sh is a shell.\nGitea (list_issues) works too."), ["Unfenced `Gitea` ignored."], "the name inside a sentence is a word; the executor's case rule applies");
     assert.deepEqual(warnings("Use gitea (list_issues) for that."), [], "only at column zero");
 });
 

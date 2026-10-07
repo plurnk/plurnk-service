@@ -678,7 +678,7 @@ export default class AstBuilder {
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
         const distilling = shape === "distillation";
         const lifted = AstBuilder.#liftSelections("KILL", slots, position, distilling ? split.inline : split.inline ?? split.below, split.inline !== null);
-        if (!distilling) AstBuilder.#ignoreUnread("KILL with a target", AstBuilder.#unread(lifted.consumed, split.inline, split.below), position, AstBuilder.#PATTERN_HINT);
+        if (!distilling) AstBuilder.#ignoreUnread("This KILL", AstBuilder.#unread(lifted.consumed, split.inline, split.below), position, AstBuilder.#PATTERN_HINT);
         const distillation = !distilling ? null
             : lifted.consumed || split.inline === null ? split.below : AstBuilder.#headingBody("KILL", ctx, split.inline, position);
         return lifted.selections.flatMap(AstBuilder.#selectionTargets).map((selection, index) => ({

@@ -146,7 +146,7 @@ test("PlurnkStatement: targeted KILL's body warning does not prohibit completion
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
     const ignored = PlurnkParser.parseStatements("````KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n````");
     assert.equal(ignored.items[0]?.kind, "statement", "the KILL still parses without its body");
-    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /KILL with a target takes no body/u.test(item.error.message)));
+    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /This KILL takes no body/u.test(item.error.message)));
     const completion = PlurnkParser.parseStatements("````KILL\nThe final answer.\n````");
     assert.equal(completion.items.length, 1);
     const final = completion.items[0];

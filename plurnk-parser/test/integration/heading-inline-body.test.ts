@@ -38,7 +38,7 @@ const optioned = (name: string, empty: string | undefined): Read => (kind, text,
 const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = [
     ["FIND (a.md)", "FIND", matcherOp("FIND")],
     ["READ (a.md)", "READ", matcherOp("READ")],
-    ["KILL (a.md)", "KILL", matcherOp("KILL with a target")],
+    ["KILL (a.md)", "KILL", matcherOp("This KILL")],
     ["KILL (log:///1/2/3)", "KILL", (kind, text, inline) => inline ? matcherOp("KILL")(kind, text, inline) : { body: text }],
     ["EDIT (a.md) <1>", "EDIT", (kind, text, inline) => inline && kind === "sigil" ? { matcher: text } : bodied("EDIT")(kind, text, inline)],
     ["COPY (a.md) (b.md)", "COPY", () => ({ advisory: "COPY takes no body; the body was ignored." })],
@@ -59,7 +59,7 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     // Beside an option block's pattern the heading text is not the matcher.
     [`FIND (a.md)${PATTERN}`, "FIND", () => ({ matcher: "/p/", advisory: ignored("FIND") })],
     [`READ (a.md)${PATTERN}`, "READ", () => ({ matcher: "/p/", advisory: ignored("READ") })],
-    [`KILL (a.md)${PATTERN}`, "KILL", () => ({ matcher: "/p/", advisory: ignored("KILL with a target") })],
+    [`KILL (a.md)${PATTERN}`, "KILL", () => ({ matcher: "/p/", advisory: ignored("This KILL") })],
     [`KILL (log:///1/2/3)${PATTERN}`, "KILL", (kind, text, inline) => ({ matcher: "/p/", ...bodied("KILL")(kind, text, inline) })],
     [`EDIT (a.md) <1>${PATTERN}`, "EDIT", (kind, text, inline) => ({ matcher: "/p/", ...bodied("EDIT")(kind, text, inline) })],
 ];

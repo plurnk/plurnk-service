@@ -389,12 +389,10 @@ export default class PlurnkParser {
         return items;
     }
 
-    // {§unfenced-operation}: a prose line that opens with an operation's name and anything else
-    // wrote the operation without its fence. It did not run, and the model that wrote it believes
-    // it did. A name with only an optional aside never reaches here: the lexer opened it ({§naked-operation}).
-    // {§unfenced-operation} — a native name opening a column-zero line, or a registered executor's name
-    // followed by an operand slot (`gitea (list_issues)`, `sh(build.sh)`); an executor's name inside a
-    // sentence is a word, since `sh`, `env` and `members` are English.
+    // {§unfenced-operation}: name the ignored fragment, not the outcome of fenced operations
+    // elsewhere in the turn. A name with only an optional aside is opened by the lexer
+    // ({§naked-operation}); executor names require an operand slot, since `sh`, `env` and
+    // `members` can also be ordinary words.
     static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, executors: ReadonlySet<string>, boundary?: Position): Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> {
         const items: Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> = [];
         const lower = new Set([...executors].map((name) => name.toLowerCase()));
@@ -407,7 +405,7 @@ export default class PlurnkParser {
                 ? native
                 : PlurnkParser.#unfencedExecutor(tokens, index, lower);
             if (name === undefined) continue;
-            items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `\`${name}\` has no fence, so it did not run.`, "warning") } });
+            items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `Unfenced \`${name}\` ignored.`, "warning") } });
         }
         return items;
     }

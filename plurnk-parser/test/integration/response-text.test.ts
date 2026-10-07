@@ -60,9 +60,9 @@ test("{§response-text}: statement and client tiers still ignore outside text", 
 test("{§unfenced-operation}: a prose line that opens with an operation's name draws one warning; quoted, offset and mid-sentence names draw none", () => {
     const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "node"] }).items
         .flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [[item.error.line, item.error.column, item.error.message]] : []);
-    assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "`KILL` has no fence, so it did not run."]]);
+    assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "Unfenced `KILL` ignored."]]);
     assert.deepEqual(warnings("Let me look.\nREAD (worker:///notes.md)\nKILL"), [
-        [2, 0, "`READ` has no fence, so it did not run."],
+        [2, 0, "Unfenced `READ` ignored."],
         [3, 0, "`KILL` opened with no fence; the taught form is three backticks."],
     ], "{§naked-operation} the bare name alone opens; the operand line still refuses");
     assert.deepEqual(warnings("Example:\n```\nKILL (worker:///notes.md)\n```"), [[2, 0, "`KILL` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line."]], "{§forgotten-tag} a heading under a bare fence at the top level runs");

@@ -36,11 +36,19 @@ test("{§log-kill-distillation} a pattern option and a distillation ride one log
     assert.equal(inline?.op === "KILL" ? inline.body : "?", null);
 });
 
-test("{§kill-scope} a body beneath any other targeted KILL still draws the advisory and is dropped", () => {
-    const source = "```KILL (sh:///ab3d5678)\nstop it\n```\n";
-    const [kill] = statements(source);
-    assert.equal(kill?.op === "KILL" ? kill.body : "?", null);
-    assert.match(advisories(source)[0] ?? "", /KILL with a target takes no body/u);
+test("{§kill-scope} {§log-kill-distillation} a bodyless KILL's advisory names only that invocation", () => {
+    for (const heading of ["KILL (sh:///ab3d5678)", "KILL (notes.md)", "KILL <1>"]) {
+        const source = PlurnkParser.frame(heading, "stop it");
+        const [kill] = statements(source);
+        assert.equal(kill?.op === "KILL" ? kill.body : "?", null, heading);
+        assert.deepEqual(advisories(source), ["This KILL takes no body; the body was ignored. A pattern belongs on the opening fence line after the path."], heading);
+    }
+    for (const heading of ["KILL", "KILL (log:///1/2/3)", "KILL (log://alice/1/2/3)"]) {
+        const source = PlurnkParser.frame(heading, "Retained information.");
+        const [kill] = statements(source);
+        assert.equal(kill?.op === "KILL" ? kill.body : "?", "Retained information.", heading);
+        assert.deepEqual(advisories(source), [], heading);
+    }
 });
 
 test("{§kill-conclusion} the parameterless KILL is unchanged: its body is the answer and it ends the turn", () => {

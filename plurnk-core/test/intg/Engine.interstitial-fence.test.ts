@@ -90,9 +90,46 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
         assert.equal(sources.some((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside"), false, "and it is not outside text either: the turn has no outside source");
         assert.equal(JSON.parse(model[0]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
-            ["`KILL` has no fence, so it did not run."]);
+            ["Unfenced `KILL` ignored."]);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.");
+    } finally { await db.close(); }
+});
+
+test("{§unfenced-operation}: an ignored content heading does not deny a successful reasoning operation", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `reasoning-and-unfenced-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Read the note.");
+        const body = "The recovery marker is MARIGOLD-43.";
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
+        const heading = "READ (worker:///notes.md)";
+        const reasoning = PlurnkParser.frame(heading, null);
+        const notices: Array<{ kind: string; message?: string }> = [];
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: heading, reasoning } },
+            { assistant: { content: PlurnkParser.frame("KILL", body), reasoning: null } },
+        ] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId, maxTurns: 3,
+            messages: [{ role: "user", content: "Read the note." }],
+        });
+        assert.equal(result.result.status, 200);
+        assert.equal(provider.received.length, 2);
+        const turnId = result.turnIds.at(-2)!;
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
+        const reads = rows.filter(({ op, origin }) => op === "READ" && origin === "model");
+        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the reasoning READ ran once; its unfenced repetition did not run");
+        assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid reasoning operation prevents a no-operation strike");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), ["Unfenced `READ` ignored."]);
+        const next = JSON.stringify(provider.received[1]);
+        assert.ok(next.includes(body), "the next request contains the successful result");
+        assert.ok(next.includes("Unfenced `READ` ignored."), "the same request identifies only the ignored fragment");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, heading);
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "reasoning")?.content, reasoning);
     } finally { await db.close(); }
 });
 
@@ -366,7 +403,7 @@ test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their 
         const strikes = await Promise.all(result.turnIds.slice(1).map(async (turnId) => (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number }>({ turn_id: turnId }))
             .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx)));
         assert.deepEqual(strikes, [[422], [422], [422]], "{§empty-turn} each strike is an error row the next packet carries");
-        assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "`sh` has no fence, so it did not run.").length, 3, "each turn heard its receipt");
+        assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "Unfenced `sh` ignored.").length, 3, "each turn heard its receipt");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds[1]! });
         assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false, "the narration is no row");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });

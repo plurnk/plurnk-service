@@ -65,7 +65,7 @@ test("{§unfenced-operation}: aside recovery never admits operands, extra text, 
     ]) {
         const result = PlurnkParser.parse(`${header}\n\`\`\`NOTE\nSibling.\n\`\`\``);
         assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Sibling."]], header);
-        assert.deepEqual(warnings(result), ["`KILL` has no fence, so it did not run."], header);
+        assert.deepEqual(warnings(result), ["Unfenced `KILL` ignored."], header);
     }
 });
 
@@ -99,7 +99,7 @@ test("{§naked-operation}: bare native names open, but prose and executor names 
     assert.deepEqual(statements(PlurnkParser.parse("READ\n")).map((s) => [s.op, (s as { target?: unknown }).target ?? null]), [["READ", null]], "a naked READ has no target; dispatch refuses it as any targetless READ");
     assert.deepEqual(statements(PlurnkParser.parse("  KILL\nThe answer.\n")), [], "an offset name is prose, as every offset example is");
     assert.deepEqual(statements(PlurnkParser.parse("KILL is what ends a loop.\n")), [], "prose after a name is not an aside or a naked heading");
-    assert.deepEqual(warnings(PlurnkParser.parse("KILL is what ends a loop.\n")), ["`KILL` has no fence, so it did not run."], "it is the unfenced form, and still says so");
+    assert.deepEqual(warnings(PlurnkParser.parse("KILL is what ends a loop.\n")), ["Unfenced `KILL` ignored."], "it is the unfenced form, and still says so");
     assert.deepEqual(statements(PlurnkParser.parse("sh\necho hi\n", { executors: ["sh"] })), [], "an executor's name is a runtime, not an operation");
 });
 
@@ -107,9 +107,9 @@ test("{§unfenced-operation}: a name with an operand and no fence still did not 
     for (const line of ["KILL (notes.md)", "READ (a.md) <1,-1>", "EDIT <3>", "FIND [{\"pattern\":\"x\"}]"]) {
         const result = PlurnkParser.parse(`${line}\n`);
         assert.deepEqual(statements(result), [], line);
-        assert.deepEqual(warnings(result), [`\`${line.split(/[ (<[]/u)[0]}\` has no fence, so it did not run.`], line);
+        assert.deepEqual(warnings(result), [`Unfenced \`${line.split(/[ (<[]/u)[0]}\` ignored.`], line);
     }
-    assert.deepEqual(warnings(PlurnkParser.parse("READ the file first, then decide.\n")), ["`READ` has no fence, so it did not run."], "a verb opening a column-zero line is the unfenced form, as before");
+    assert.deepEqual(warnings(PlurnkParser.parse("READ the file first, then decide.\n")), ["Unfenced `READ` ignored."], "a verb opening a column-zero line is the unfenced form, as before");
 });
 
 test("{§naked-operation}: reasoning is never read this way", () => {

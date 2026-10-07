@@ -735,8 +735,8 @@ compact empty block or permit unmatched fences.
 
 | Operation | Text after the slots on the heading line |
 |---|---|
-| FIND, READ, KILL with a target other than `log:///` | The matcher ({§naked-pattern}). Beside an option block's `pattern`, ignored ({§matcher-body-redirect}). |
-| KILL on a `log:///` target | The matcher. Beside an option block's `pattern`, the first line of the distillation ({§log-kill-distillation}). |
+| FIND, READ, KILL with a non-log target | The matcher ({§naked-pattern}). Beside an option block's `pattern`, ignored ({§matcher-body-redirect}). |
+| KILL on a log target | The matcher. Beside an option block's `pattern`, the first line of the distillation ({§log-kill-distillation}). |
 | EDIT | A sigil-led matcher ({§edit-pattern}), unless an option block carries the `pattern`; otherwise the body. |
 | COPY, MOVE | Ignored ({§transfer-resource-selections}). |
 | SEND, WORK, FORK, BARE, executors | One JSON object is the option block where the heading admits one ({§bare-option-object}); otherwise the body. |
@@ -1381,18 +1381,15 @@ tiers ignore outside text. Core alone owns storing it as the turn's outside sour
 and no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
 intent.
 
-§unfenced-operation **An operation written without its fence did not run, and the parser says
-so.** An outside-text line that opens at column zero with an operation's name and anything else
-— `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
-fence, so it did not run. `` The line is not response text ({§response-text}): it is neither stored
-as outside text nor echoed into the next packet, and the exact emission remains at `ops://`; a name
-with only an optional complete aside opens the operation instead ({§naked-operation}). A registered executor's name followed by an
-operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under the executor's
-own spelling; quoted blocks, offset lines and names inside a sentence draw nothing, since `sh`,
-`env` and `members` are ordinary words. The model that wrote it believes it ran: stored as
-outside text ({§outside-text}), an unfenced KILL would sit in the record as an answer never given,
-and only the warning tells the model otherwise. The warning and the exclusion together keep the
-line out of the record.
+§unfenced-operation **The parser identifies ignored unfenced fragments.** An outside-text line
+that opens at column zero with an operation's name and anything else — `KILL The answer…`,
+`READ (a.md)`, `KILL (notes.md)` — draws one warning: `` Unfenced `KILL` ignored. ``
+This describes only that fragment, never a fenced operation elsewhere in the turn or its reasoning.
+The line is not response text ({§response-text}): it is neither stored as outside text nor echoed
+into the next packet, and the exact emission remains at `ops://`. A name with only an optional
+complete aside opens the operation instead ({§naked-operation}). A registered executor's name
+followed by an operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under
+the executor's own spelling. Quoted blocks, offset lines and names inside a sentence draw nothing.
 
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
@@ -1929,16 +1926,15 @@ diagnostics are:
   body instead, the anchor would be written into the file, or the EDIT refused for want of a line
   marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
   since `@patch` is a search a model means.
-- §matcher-body-redirect **A body beneath those headings.** Text below the heading
-  of a FIND, READ or targeted KILL, or heading text the matcher did not read because an option
-  block carries the `pattern`, is a body, and those operations take none: the builder
-  keeps the statement without it and raises one warning-severity advisory (`READ
-  takes no body; the body was ignored. A pattern belongs on the opening fence line
-  after the path.`). KILL's advisory names `KILL with a target`; it must not
-  prohibit parameterless completion bodies. Delivered like {§misplaced-aside-advisory} as a
-  `parse_advisory` notice (a warning, never an error). One sigil line beneath the heading is the bare form
-  written a line low and still lifts; nothing else is promoted into a matcher from
-  below the heading, and the advisory never echoes the body.
+- §matcher-body-redirect **Unread body text on bodyless operations.** FIND, READ and bodyless
+  KILL keep the statement but discard text the matcher did not consume, with one warning:
+  `READ takes no body; the body was ignored. A pattern belongs on the opening fence line
+  after the path.` KILL's advisory says `This KILL`, limiting the claim to that invocation:
+  parameterless completion and log distillation bodies remain valid. Delivered like
+  {§misplaced-aside-advisory} as a `parse_advisory` notice (a warning, never an error).
+  One sigil line beneath a bodyless heading is the bare form written a line low and still lifts;
+  nothing else is promoted into a matcher from below the heading. An option block's `pattern`
+  prevents that lift, and the advisory never echoes the discarded text.
 - §combined-anchor-tolerance **Combined line number and anchor in a scope.** A
   text-coordinate scope written `L<@hash>` — digits immediately before the opener — is the
   displayed `42<@abcde>` row prefix copied whole: the scope is the anchor, the number is dropped, and one

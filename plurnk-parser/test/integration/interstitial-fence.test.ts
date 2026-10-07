@@ -46,7 +46,7 @@ test("{§response-text}: an unfenced heading is not response text, and says it d
         const result = PlurnkParser.parse("Prelude.\n" + bare + "\n" + task);
         assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"], bare);
         assert.deepEqual(errors(result).map(({ line, column, severity, message }) => [line, column, severity, message]),
-            [[2, 0, "warning", `\`${bare.split(/[ (]/u)[0]}\` has no fence, so it did not run.`]]);
+            [[2, 0, "warning", `Unfenced \`${bare.split(/[ (]/u)[0]}\` ignored.`]]);
         assert.deepEqual(result.items.flatMap((item) => item.kind === "text" ? [item.content] : []), ["Prelude.\n"], "the unfenced line is not response text");
     }
     // {§naked-operation} — the bare name alone is not unfenced prose: it opens, up to the next heading.
