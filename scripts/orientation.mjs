@@ -194,7 +194,7 @@ try {
         "--model", model,
         "--project-root", projectRoot,
         "--repo", "**",
-        "--auto",
+        "--yolo",
         "--timeout", timeout,
         prompt,
     ], projectRoot, {
