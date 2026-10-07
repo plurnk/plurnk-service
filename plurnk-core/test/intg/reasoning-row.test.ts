@@ -9,6 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 
 const frame = PlurnkParser.frame;
 const KNOB = "PLURNK_SERVICE_REASONING_ROWS";
@@ -97,6 +98,24 @@ test("{§reasoning-row}: with the knob off, no row lands", async () => {
     });
 });
 
+test("{§reasoning-row}: an oversized reasoning line is a column-scoped suffix and the original stays readable", async () => {
+    await withKnob("1", () => withEnv("PLURNK_SERVICE_PREVIEW_CHARS", "64", async () => {
+        const reasoning = "🙂".repeat(200);
+        const { db, rows, engine, ids } = await story(100_000, reasoning);
+        try {
+            const preview = rows.find((row) => kindOf(row) === "reasoning");
+            assert.ok(preview);
+            assert.equal(JSON.parse(preview.rx!).content, "🙂".repeat(64));
+            assert.deepEqual(JSON.parse(preview.tx!).lineMarker, { marks: [1, 137, 1, 201] });
+            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
+            assert.ok(item?.kind === "statement");
+            const whole = await engine.look({ ...ids, statement: item.statement });
+            assert.equal(whole.status, 200);
+            assert.equal(whole.content, reasoning, "automatic preview bounds never truncate source evidence");
+        } finally { await db.close(); }
+    }));
+});
+
 test("{§reasoning-row}: reasoning longer than the page lands as its last page, with its range, and the whole stays at its address", async () => {
     await withKnob("1", async () => {
         const lines = Array.from({ length: 300 }, (_, i) => `thought ${i + 1}: ${i + 1 === 300 ? "DECISION: patch the resolver" : "an exploratory step"}`);
@@ -139,3 +158,63 @@ test("{§reasoning-row}: PLURNK_SERVICE_REASONING_TRAILING_LINES is the row's ow
     }));
 });
 
+test("{§reasoning-row}: the optional preview never displaces an authored READ result", async () => {
+    const evidence = Array.from({ length: 40 }, (_, i) => `fact ${i}: ${"evidence ".repeat(12)}`).join("\n");
+    const reasoning = "Consider the evidence. ".repeat(100);
+    const outcomes: unknown[] = [];
+    for (const enabled of ["0", "1"]) await withKnob(enabled, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `reasoning-priority-${enabled}`);
+            const workerId = await insertWorker(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, workerId, 1);
+            const schemes = new SchemeRegistry();
+            const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/evidence.txt", content: evidence });
+            const messages = [{ role: "user" as const, content: "Read the evidence." }];
+            const builder = new PacketBuilder({ db, schemes, executors: () => undefined });
+            const floor = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId,
+                provider: new Mock({ contextWindow: 1_000_000, responses: [] }), currentTurnSeq: 1, gitStatus: null });
+            await withEnv("PLURNK_PROVIDERS_OUTPUT_BUDGET", String(1_000_000 - floor.weight - 3_000), async () => {
+                const provider = new Mock({ contextWindow: 1_000_000, responses: [
+                    { assistant: { content: frame("READ (worker:///evidence.txt) <1,-1>", null), reasoning } },
+                ] });
+                const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages, turnNumber: 1 });
+                const rows = await rowsOf(db, turn.turnId);
+                const read = rows.find((row) => row.op === "READ" && row.scheme === "worker");
+                assert.ok(read, "the authored READ has a receipt");
+                const result = JSON.parse(read.rx!);
+                assert.equal(result.status, 200, `the requested result fits with reasoning previews ${enabled}`);
+                assert.equal(result.content, evidence, "the requested result remains complete");
+                assert.equal(rows.some((row) => kindOf(row) === "reasoning"), false, "no room remains for optional reasoning");
+                outcomes.push(result);
+            });
+        } finally { await db.close(); }
+    });
+    assert.deepEqual(outcomes[1], outcomes[0], "the optional preview does not change the requested result");
+});
+
+for (const content of ["", frame("NOTE", "content note")]) {
+    test(`{§reasoning-row}: reasoning-only operations retain their preview ${content === "" ? "without" : "with"} a content emission`, async () => {
+        await withKnob("1", async () => {
+            const db = await openMigrated();
+            try {
+                const workspaceId = await insertWorkspace(db, `reasoning-source-${crypto.randomUUID()}`);
+                const workerId = await insertWorker(db, workspaceId, null, "alice");
+                const loopId = await insertLoop(db, workerId, 1);
+                const reasoning = frame("NOTE", "reasoned finding");
+                const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+                const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning } }] });
+                const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+                const rows = await rowsOf(db, turn.turnId);
+                const preview = rows.find((row) => kindOf(row) === "reasoning");
+                assert.ok(preview, "reasoning preview does not depend on content-channel operations");
+                assert.equal(JSON.parse(preview.rx!).content, reasoning);
+                assert.equal(rows.filter((row) => kindOf(row) === "emission").length, content === "" ? 0 : 1);
+                const notes = rows.filter((row) => row.op === "NOTE");
+                assert.equal(notes.length, content === "" ? 1 : 2, "reasoning operations execute exactly once");
+                assert.ok(notes.every((row) => row.sequence > preview.sequence), "the preview precedes the operations it informed");
+            } finally { await db.close(); }
+        });
+    });
+}

@@ -139,9 +139,7 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
     } finally { await db.close(); }
 });
 
-// {§empty-turn} — an operation attempt that did not parse, or prose cut at the allowance, is not an
-// answer: it is admitted as an empty turn — kept, struck once, its strike an error row on the turn —
-// and the loop continues. Nothing is read back on the model's behalf; its reasoning stays at its address.
+// {§empty-turn} {§reasoning-row}
 for (const [label, content, finishReason] of [
     ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
@@ -177,7 +175,7 @@ for (const [label, content, finishReason] of [
             assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§empty-turn} the strike is one error row on the turn");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2]! }))
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
-            assert.deepEqual(readBack, [], "the runtime reads nothing back on the model's behalf, and initialization authors no reasoning either ({§worker-initialization-entry})");
+            assert.deepEqual(readBack, [], "no separate read-back turn is manufactured after an empty turn");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
@@ -213,7 +211,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 7, "{§empty-turn} nothing is read back after any empty turn; no runtime turn follows");
+        assert.equal(result.turnIds.length, 7, "{§empty-turn} no runtime read-back turn follows an empty turn");
         const [, workingTurn, proseTurn, toxinTurn, untranslatedTurn, brokenTurn] = result.turnIds;
         const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const notesOf = async (turnId: number) => (await rowsOf(turnId))
@@ -275,13 +273,17 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             assert.equal(packetSection(JSON.parse(turn!.packet), "messages"), "[]", "the original message is already answered");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
+            const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });
+            const previews = emptyRows.filter(({ attrs }) => JSON.parse(attrs).kind === "reasoning");
+            assert.deepEqual(previews.map(({ sequence, rx }) => [sequence, JSON.parse(rx).content]), [[1, reasoning]],
+                "the ordinary preview belongs to the empty turn and does not count as authored progress");
             assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike sends no notice");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[3]! }))
                 .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
-            assert.deepEqual(readBack, [], "no runtime READ follows the empty turn: the trace stays at its address for the model to READ");
+            assert.deepEqual(readBack, [], "no runtime READ follows the empty turn: its preview and source belong to that turn");
             const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
-            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/1/error"]], "the strike rides the next packet's errors, on the empty turn's own address");
+            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/2/error"]], "the strike rides the next packet's errors, after the empty turn's reasoning row");
         } finally { await db.close(); }
     });
 }

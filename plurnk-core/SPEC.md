@@ -363,7 +363,6 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Project filesystem | `*` | File cap below; `project root member files` |
 | Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
 | Named scratch entries | `worker://<worker>/*` | Markerless; `worker knowledgebase entries` |
-| The worker's own reasoning | `reasoning://<worker>/**` | Markerless; `this worker's reasoning, by loop and turn` |
 
 Only the three namespace surveys carry asides; the other targets name
 their surface. The word `skills` names Agent Skills and nothing else.
@@ -2442,14 +2441,15 @@ like any other row.
 The model's memory of its own reasoning, behind `PLURNK_SERVICE_REASONING_ROWS` (default `1`):
 when it is `1`, every model turn that reasoned lands its reasoning as one row of its
 own, `log:///<loop>/<turn>/<sequence>/reasoning → reasoning://<worker>/<loop>/<turn>`, the harness's
-READ of the turn's reasoning source, immediately before the turn's emission row, so the transcript
+READ of the turn's reasoning source, immediately before the turn's emission row (or its first
+operation or diagnostic when there is no content emission), so the transcript
 reads what the model thought and then what it emitted, and the assistant message that follows stays
 the canonical program ({§emission-row}, {§packet-wire-envelope}).
 
 | Concern | Rule |
 |---|---|
-| Room | The row lands only when the packet has room for its page after everything else the turn lands, one receipt's reserve kept for the emission row's head ({§context-fit}); without room, no row lands and nothing else in the turn changes: no prefix, no receipt, no other row touched. |
-| Body | The model's own text when it fits the row's page — `PLURNK_SERVICE_REASONING_TRAILING_LINES` lines, unset meaning the shared `PLURNK_SERVICE_PREVIEW_LINES`, within `PLURNK_SERVICE_PREVIEW_CHARS` — and otherwise its **last page**: the final lines, trimmed from the front on a line boundary, because a turn's conclusions and plan sit at its end (#999). The statement carries the scope it took and the receipt its `range` ({§packet-extent-metadata}); the complete reasoning stays readable at its address by any scope ({§turn-source-resources}). |
+| Room | Admission occurs after all mandatory turn rows, including the emission and diagnostics, using the remaining room under {§context-fit}. Its earlier chronological coordinate is reserved without inserting a placeholder; if it does not fit, that coordinate remains unused. Nothing else changes: no partial preview, refusal, or other row touched. Reasoning-only and empty model turns follow the same rule; content operations are not required. |
+| Body | The model's own text when it fits the row's page — `PLURNK_SERVICE_REASONING_TRAILING_LINES` lines, unset meaning the shared `PLURNK_SERVICE_PREVIEW_LINES`, within `PLURNK_SERVICE_PREVIEW_CHARS` — and otherwise its **last page**. Keep complete final lines where possible; if the last line alone exceeds the character bound, select its suffix with the ordinary exact column scope. Unicode code points count once and CRLF is one indivisible separator, as in {§body-projection}. The statement carries the scope it took and the receipt its `range` ({§packet-extent-metadata}); the complete reasoning stays readable at its address by any scope ({§turn-source-resources}). |
 | Weight | Charged like any row, visible in the gauge and its `largest` ({§context-gauge}). |
 | Curation | The verbs alone: a KILL retires it like any row ({§context-verbs}); the daemon reorders nothing and un-bodies nothing on its account. |
 | Absence | Means no room or no reasoning; the model tells them apart by reading `reasoning://` for the turn. |
@@ -5259,7 +5259,7 @@ Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualifie
 | inbound `SEND` from outside the workspace | the operator's: complete when it fit, otherwise its size and address ({§context-fit}, {§message-projection}); a peer worker's: its first page ({§markerless-first-page}) |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | the model's own: complete; what it did not author: its first page ({§markerless-first-page}); then {§context-fit} |
-| the `reasoning` row | the model's own reasoning, complete, or no row at all ({§reasoning-row}) |
+| the `reasoning` row | the optional reasoning preview under {§reasoning-row} |
 | a row the wall took | its size and address, no body and no native part ({§context-own-rows-fit}) |
 | bodyless row | heading and any facts; no coordinate lines; `tokens` includes any selected native part |
 

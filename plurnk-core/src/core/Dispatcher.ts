@@ -39,7 +39,7 @@ import BodyPreview from "../content/body-preview.ts";
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
-import { reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
+import { resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
@@ -1301,8 +1301,8 @@ export default class Dispatcher {
     // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
     // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
     // this turn lands; without room, no row and nothing else changes.
-    async writeReasoning({ reasoning, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence, fit }: {
-        reasoning: string; workerName: string; loopSeq: number; turnSeq: number;
+    async writeReasoning({ content: reasoning, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence, fit }: {
+        content: string; workerName: string; loopSeq: number; turnSeq: number;
         workerId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
     }): Promise<number | null> {
         if (reasoning.length === 0) return null;
@@ -1329,8 +1329,7 @@ export default class Dispatcher {
             op: "READ", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
         }, this.#weighContent);
         if (fit !== undefined) {
-            // One receipt's reserve keeps the room the emission row's head needs ({§context-fit}).
-            const remaining = await reserved(fit, 1).remaining();
+            const remaining = await fit.remaining();
             if (remaining !== null && weight > remaining) return null;
         }
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({

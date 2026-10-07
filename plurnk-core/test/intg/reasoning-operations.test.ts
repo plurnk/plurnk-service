@@ -16,11 +16,13 @@ import { testExecutors } from "./_execs.ts";
 
 const frame = PlurnkParser.frame;
 
-for (const operation of [
+for (const preview of ["0", "1"]) for (const operation of [
     { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
     { name: "FIND", source: frame("FIND (worker:///fact.txt)", null) },
     { name: "READ", source: frame("READ (worker:///fact.txt)", null) },
-]) test(`{§reasoning-operations} {§empty-turn}: an admitted reasoning ${operation.name} runs, and nothing is read back on the model's behalf`, async () => {
+]) test(`{§reasoning-operations} {§reasoning-row}: reasoning ${operation.name} runs once with previews ${preview}, without an extra turn`, async () => {
+    const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
+    process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-no-repeat");
@@ -31,17 +33,23 @@ for (const operation of [
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
-        const outcomes = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.ok(outcomes.some(({ op, status_rx }) => op === operation.name && status_rx === 200), "the reasoning operation actually ran");
+        const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(outcomes.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
+            [[operation.name, 200]], "exactly the authored operation ran");
         assert.deepEqual(outcomes.filter(({ op }) => op === "error").map(({ status_rx }) => status_rx), [],
             `an admitted reasoning ${operation.name} is the turn's work: no empty-turn strike beside it ({§empty-turn})`);
-        const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: workerId });
-        assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === "/1/2"), [],
-            "the runtime never copies a trace into the log; the model READs its reasoning when it wants it");
+        const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ worker_id: workerId });
+        assert.deepEqual(reads.filter(({ origin }) => origin === "_plurnk").map(({ pathname, turn_id, rx }) => [pathname, turn_id, JSON.parse(rx).content]),
+            preview === "1" ? [["/1/2", result.turnId, reasoning]] : [], "only the configured optional preview appears, on the same turn");
+        assert.equal(provider.received.length, 1, "no reasoning repeat, replay, or extra inference");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === result.turnId && kind === "reasoning" && content === reasoning),
             "the complete original reasoning remains available for deliberate READs");
-    } finally { await db.close(); }
+    } finally {
+        await db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS;
+        else process.env.PLURNK_SERVICE_REASONING_ROWS = previous;
+    }
 });
 
 test("{§reasoning-operations}: admission is unconditional and the language definition is the only system teaching", async () => {

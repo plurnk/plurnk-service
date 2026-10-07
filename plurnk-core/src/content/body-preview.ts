@@ -20,16 +20,24 @@ export default class BodyPreview {
     }
 
     // {§reasoning-row} — the last page of a text whose conclusions sit at its end: the final `maxLines` logical
-    // lines, trimmed from the front to the shared character bound on a line boundary. `whole` says the text fits
+    // lines, preferring line boundaries and using a column scope for an oversized final line. `whole` says the text fits
     // the page as it stands, in which case `start` is 0 and the marker covers every line.
     static selectTail(text: string, maxLines: number): { start: number; marker: LineMarker; whole: boolean } {
         const maxChars = Knob.integer("PLURNK_SERVICE_PREVIEW_CHARS", 1);
-        const lines = new TextCoordinates(text).logicalLines();
+        const coordinates = new TextCoordinates(text);
+        const lines = coordinates.logicalLines();
         if (lines.length === 0) return { start: 0, marker: { marks: [1, -1] }, whole: true };
         // Code points, a CRLF counted as one separator — the same unit as the first page.
         const points = (from: number): number => Array.from(text.slice(from).replaceAll("\r\n", "\n")).length;
         let first = Math.max(0, lines.length - maxLines);
         while (first < lines.length - 1 && points(lines[first]!.start) > maxChars) first++;
+        if (points(lines[first]!.start) > maxChars) {
+            const suffix = text.slice(lines[first]!.start).match(/\r\n|[\s\S]/gu)!.slice(-maxChars).join("");
+            const start = text.length - suffix.length;
+            const region = coordinates.regionFromOffsets(start, text.length);
+            if (region === null) throw new Error("An automatic text preview must have an addressable region.");
+            return { start, marker: { marks: [region.startLine, region.startColumn, region.endLine, region.endColumn] }, whole: false };
+        }
         const whole = first === 0 && points(0) <= maxChars;
         return { start: lines[first]!.start, marker: { marks: [first + 1, lines.length] }, whole };
     }

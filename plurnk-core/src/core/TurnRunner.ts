@@ -13,8 +13,8 @@ import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatem
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string };
-// {§emission-row} — an admitted emission as the grammar read it, and the turn it announces.
-export type AdmittedEmission = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number; readonly reasoning: string | null };
+// {§emission-row} {§reasoning-row}: source text and its durable turn coordinates.
+export type AdmittedTextSource = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -940,14 +940,6 @@ export default class TurnRunner {
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
-            {
-                // {§worker-initialization-entry} — the worker's own reasoning is an addressable, searchable
-                // space from the first packet: surveyed by name, never read back.
-                op: "FIND", aside: "this worker's reasoning, by loop and turn",
-                target: { kind: "url", raw: `reasoning://${workerName}/**`, scheme: "reasoning", username: null, password: null, hostname: workerName, port: null, pathname: "/**", query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            },
         ];
         return surveys.filter(({ target }) =>
             this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined);
@@ -1745,6 +1737,7 @@ export default class TurnRunner {
     async #settleAdmittedTurn(args: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
         const { childProvider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
+        const coordinates = { workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq };
         // {§operator-config-workspace-max-commands} — workspace maxCommands
         // narrows the operator ceiling before the admitted program reaches the
         // shared executor.
@@ -1754,9 +1747,9 @@ export default class TurnRunner {
             source: split.sourceBacked ? split.packetAssistant.content : null,
             emission: split.emissionStatements === null ? null : {
                 content: TurnOps.renderEmission(split.emissionStatements),
-                workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
-                reasoning: split.packetAssistant.reasoning ?? null, // {§reasoning-row}
+                ...coordinates,
             },
+            reasoning: split.packetAssistant.reasoning ? { content: split.packetAssistant.reasoning, ...coordinates } : null,
             sourceModelCallId: emission.modelCallId,
             origin: "model",
             workspaceId,

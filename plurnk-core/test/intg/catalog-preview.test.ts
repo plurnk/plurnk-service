@@ -188,8 +188,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization executes its program once: nine surveys, the worker's own reasoning among them, nothing else",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization executes the eight environment surveys, without a reasoning demonstration",
                 );
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
                     "`_plurnk` initialization has no content emission ({§emission-row})");
@@ -199,7 +199,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 200 },
                 );
                 assert.ok(turn?.completed_at !== null, "a completed continuation turn is distinct from an open turn");
-                assert.equal(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning"), undefined, "initialization observes no reasoning ({§worker-initialization-entry})");
+                assert.equal(initializationRows.some(({ scheme }) => scheme === "reasoning"), false, "initialization neither reads nor surveys reasoning ({§worker-initialization-entry})");
                 const program = (await db.test_turn_sources_by_turn.all<{ kind: string; content: string }>({ turn_id: commons.turn_id })).find(({ kind }) => kind === "ops");
                 assert.ok(program, "the survey is the initialization turn's ops source");
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
@@ -216,7 +216,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
     }
 });
 
-test("an empty workspace executes all nine orienting FINDs and preserves empty-surface results", async () => {
+test("an empty workspace executes all eight orienting FINDs and preserves empty-surface results", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
@@ -238,11 +238,10 @@ test("an empty workspace executes all nine orienting FINDs and preserves empty-s
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: workerName, pathname: "/*" },
-                    { scheme: "reasoning", hostname: workerName, pathname: "/**" },
                 ], "the surveys execute in their taught order ({§actor-boundary-catalog-preview})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, null, "project root member files", "workspace knowledgebase entries", "worker knowledgebase entries", "this worker's reasoning, by loop and turn"],
+                    [null, null, null, null, null, "project root member files", "workspace knowledgebase entries", "worker knowledgebase entries"],
                     "asides name what each namespace is; the program echo shows them verbatim",
                 );
                 const orientations = [
@@ -307,8 +306,8 @@ test("an empty workspace executes all nine orienting FINDs and preserves empty-s
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization contains nine surveys and nothing else",
+                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization contains eight environment surveys and nothing else",
                 );
                 assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops"), [],
                     "turn 0 has no content source to announce or read ({§emission-row})");
