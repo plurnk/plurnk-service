@@ -352,10 +352,11 @@ export default class PacketWire {
         return messages;
     }
 
-    // {§emission-row} — the wire omits NOTE and WAIT blocks, whose rows show them whole; the frozen
-    // projection keeps every statement. Deliberately a text filter: the projection is TurnOps' own
-    // rendering, whose fences are longer than any backtick run inside them, so a block is read back by
-    // its fences alone, whatever era froze it.
+    // {§emission-row} — bodies are logged, never replayed: a statement with a body is its heading and an
+    // empty closer, and one without a body is one line, so the shape says whether anything was left out. A
+    // NOTE or WAIT, and a parameterless KILL or SEND, is not replayed at all: its own row shows it whole.
+    // Deliberately a text filter: the frozen projection is TurnOps' own rendering, whose fences are longer
+    // than any backtick run inside them, so a block is read back by its fences alone, whatever era froze it.
     static deliveredEmission(frozen: string): string {
         const lines = frozen.split("\n");
         const kept: string[] = [];
@@ -364,7 +365,10 @@ export default class PacketWire {
             if (fence === undefined) throw new Error(`an emission block opens with a fence, not ${JSON.stringify(lines[index])}`);
             const end = lines.findIndex((line, at) => at > index && (line === fence || line.startsWith(`${fence} <!-- `)));
             if (end === -1) throw new Error("an emission block closes with its own fence");
-            if (!new RegExp(`^${fence}(?:NOTE|WAIT)\\b`, "u").test(lines[index]!)) kept.push(lines.slice(index, end + 1).join("\n"));
+            const heading = lines[index]!;
+            if (!new RegExp(`^${fence}(?:(?:NOTE|WAIT)\\b|(?:KILL|SEND)(?:\\s+<!--.*-->)?\\s*$)`, "u").test(heading)) {
+                kept.push(end > index + 1 ? `${heading}\n${fence}` : `${heading}${fence}`);
+            }
             index = end + 2;
         }
         return kept.join("\n\n");

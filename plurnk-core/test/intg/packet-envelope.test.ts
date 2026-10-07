@@ -6,7 +6,6 @@ import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-provider
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import EmissionHead from "../../src/core/EmissionHead.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { RequestPacket, StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -38,9 +37,9 @@ test("{§packet-wire-envelope}: each placed emission follows the user message it
     const wire = PacketWire.packetToWireMessages(source, emissions) as ChatMessage[];
     assert.deepEqual(roles(wire), ["system", "user", "assistant", "user", "assistant", "user"]);
     assert.equal(wire[1]!.content, `## Log\n\n${records[0]}`, "the user stub: the log heading and the first emission's row");
-    assert.equal(wire[2]!.content, emissions.get("1/1/1"));
+    assert.equal(wire[2]!.content, PacketWire.deliveredEmission(emissions.get("1/1/1")!), "the emission as the wire shows it");
     assert.equal(wire[3]!.content, `${records[1]}\n\n${records[2]}\n\n${records[3]}`, "the survey's result and the next turn's arrival, then the next emission's row");
-    assert.equal(wire[4]!.content, emissions.get("1/2/2"));
+    assert.equal(wire[4]!.content, PacketWire.deliveredEmission(emissions.get("1/2/2")!));
     assert.equal(wire[5]!.content, `${records[4]}\n\n## Worker\n${source.sections[2]!.content}`, "the emission's result, then the clump");
     assert.equal(userText(wire), PacketWire.renderSlot(source.sections, "user"), "role boundaries only: the user slot's bytes are unchanged");
     assert.deepEqual(PacketWire.placedEmissions(source.sections, emissions), ["1/1/1", "1/2/2"]);
@@ -86,14 +85,12 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
     return { db, result, provider, rows, workerId };
 };
 
-test("{§emission-row} {§packet-token-accounting}: a long body keeps its head behind the preview note, NOTE text lives only in its row, and source READ restores exact bodies", async (t) => {
+test("{§emission-row} {§packet-token-accounting}: a body is never replayed, NOTE text lives only in its row, and source READ restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_line, index) => `PREVIEWED-BODY line ${index + 1}`).join("\n");
     const edit = PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", body);
     const first = `${edit}\n\n${PlurnkParser.frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
     const reasoning = PlurnkParser.frame("NOTE", "REASONING-MEMORY: independent reasoning note.");
-    const head = EmissionHead.cut(body).head.replace(/\r?\n$/u, "");
-    assert.ok(head.split("\n").length < 20, "the head is a flat ~100-token cut, far short of the 120-line body ({§emission-row})");
-    const header = `${PlurnkParser.frame("EDIT (worker:///memory.md) <!-- remember -->", head)} <!-- preview; the whole statement ran: READ (ops://analyst/1/2) for all of it -->`;
+    const header = "```EDIT (worker:///memory.md) <!-- remember -->\n```";
     const { db, result, provider, rows, workerId } = await run("envelope-header-history", "Work, curate, then inspect your original program.", [
         say(first, reasoning),
         say(PlurnkParser.frame("KILL (log:///1/2/*/NOTE)", null)),
@@ -104,24 +101,23 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
     const second = provider.received[1]!;
-    assert.equal(assistants(second).at(-1), header, "the long body keeps its head, its closer names the source, and the NOTE is not announced");
+    assert.equal(assistants(second).at(-1), header, "the body is not replayed, its empty closer says one was written, and the NOTE is not announced");
     assert.match(userText(second), /CURATABLE-MEMORY/u, "the content NOTE remains ordinary working memory");
     assert.match(userText(second), /REASONING-MEMORY/u, "reasoning NOTE memory remains independent of assistant history");
     const third = provider.received[2]!;
     assert.doesNotMatch(assistants(third).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u, "curating notes leaves no automatic assistant duplicate");
     assert.doesNotMatch(userText(third), /CURATABLE-MEMORY/u, "the curated NOTE row is gone from the log");
     assert.equal(assistants(third)[0], header, "a later request does not change the retained header");
-    assert.equal(assistants(third).at(-1), "```KILL (log:///1/2/*/NOTE)\n```", "a bodyless operation renders bare");
+    assert.equal(assistants(third).at(-1), "```KILL (log:///1/2/*/NOTE)```", "a bodiless operation is one line");
     const last = provider.received[3]!;
     assert.match(userText(last), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete source program");
-    assert.match(userText(last), /PREVIEWED-BODY line 120/u, "including the cut remainder");
+    assert.match(userText(last), /PREVIEWED-BODY line 120/u, "including the whole body");
     assert.doesNotMatch(assistants(last).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY|PREVIEWED-BODY line 101/u);
     const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first), "the source READ returns the complete original program, not the header projection");
     const emitted = rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!;
-    assert.equal((JSON.parse(emitted.rx) as { content: string }).content,
-        `${header}\n\n${PlurnkParser.frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`,
-        "the frozen projection keeps every statement; only the wire omits the NOTE");
+    assert.equal((JSON.parse(emitted.rx) as { content: string }).content, first,
+        "the frozen projection keeps every statement whole; the wire derives what it shows");
     const record = userText(second).split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     const charged = Number(/ · (\d+)/u.exec(record)![1]);
     assert.equal(charged, contentWeight(record) + contentWeight(header), "the row charges its record and precisely the assistant bytes it delivers");
@@ -147,7 +143,7 @@ test("{§emission-row} {§packet-wire-envelope}: initialization remains in the l
     const texts = rows.map(({ rx }) => (JSON.parse(rx) as { content: string }).content);
     assert.equal(texts[0], `${surveyRead}\n\n${PlurnkParser.frame("NOTE", "Bearings: nothing read yet.")}`, "frozen with every admitted content statement");
     const delivered = texts.map((text) => PacketWire.deliveredEmission(text));
-    assert.equal(delivered[0], surveyRead, "the wire delivers it without the NOTE, whose row shows it whole");
+    assert.equal(delivered[0], PacketWire.deliveredEmission(surveyRead), "the wire delivers it without the NOTE, whose row shows it whole");
     assert.doesNotMatch(texts[0]!, /Let me look around|Done for now/u, "free text never reaches the emission");
 
     const opening = provider.received[0]!;
@@ -171,10 +167,10 @@ test("{§emission-row}: a whole KILL of an emission row takes its emission off t
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(rows.find(({ coordinate }) => coordinate === "1/2/2")!.active, 0, "the row is retired");
-    assert.ok(assistants(provider.received[1]!).includes(surveyRead), "the emission was present before its KILL");
+    assert.ok(assistants(provider.received[1]!).includes(PacketWire.deliveredEmission(surveyRead)), "the emission was present before its KILL");
     const last = provider.received.at(-1)!;
-    assert.ok(!assistants(last).includes(surveyRead), "its emission left the wire");
-    assert.deepEqual(assistants(last), [PlurnkParser.frame("KILL (log:///1/2/2/emission)", null)], "only the KILL's own emission remains");
+    assert.ok(!assistants(last).includes(PacketWire.deliveredEmission(surveyRead)), "its emission left the wire");
+    assert.deepEqual(assistants(last), [PacketWire.deliveredEmission(PlurnkParser.frame("KILL (log:///1/2/2/emission)", null))], "only the KILL's own emission remains");
     assert.doesNotMatch(userText(last), /log:\/\/\/1\/2\/2\/emission/u, "its row left the log");
 });
 
@@ -192,9 +188,10 @@ test("{§emission-row}: a <1,-1> scope retires an emission; a partial scope aime
     const refused = provider.received[2]!;
     assert.match(userText(refused), /### log:\/\/\/1\/3\/\d+\/KILL → log:\/\/\/1\/2\/2\/emission[^\n]*\n\{[^\n]*"status":422/u, "the exact partial scope is refused");
     assert.match(userText(refused), /curated whole/u, "and the refusal says why");
-    assert.ok(assistants(refused).includes(noted), "the emission is untouched by the refusal");
-    assert.ok(assistants(provider.received[3]!).includes(noted), "a partial sweep leaves the emission intact");
-    assert.ok(!assistants(provider.received[4]!).includes(noted), "<1,-1> retires it");
+    const shown = PacketWire.deliveredEmission(noted);
+    assert.ok(assistants(refused).includes(shown), "the emission is untouched by the refusal");
+    assert.ok(assistants(provider.received[3]!).includes(shown), "a partial sweep leaves the emission intact");
+    assert.ok(!assistants(provider.received[4]!).includes(shown), "<1,-1> retires it");
     const retired = rows.find(({ coordinate }) => coordinate === "1/2/2")!;
     assert.equal(retired.active, 0);
     assert.deepEqual(JSON.parse(retired.folded), [], "never trimmed, only retired");

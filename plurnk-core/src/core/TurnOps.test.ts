@@ -5,13 +5,8 @@ import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
-const SOURCE = "ops://analyst/1/2";
-const aside = `<!-- preview; the whole statement ran: READ (${SOURCE}) for all of it -->`;
 
-import { contentWeight } from "./content-weight.ts";
-import { EMISSION_HEAD_WEIGHT } from "./EmissionHead.ts";
-
-test("{§emission-row} the frozen projection keeps every header and body within the preview bound, and adds no nested operations", () => {
+test("{§emission-row} the frozen projection keeps every header and body whole, and adds no nested operations", () => {
     const headers = [
         "READ (worker:///notes.md) <1,-1> /needle/ <!-- inspect -->",
         "EDIT (worker:///notes.md) <@abcde> <!-- replace -->",
@@ -42,8 +37,8 @@ test("{§emission-row} the frozen projection keeps every header and body within 
         .map(({ statement }) => statement);
     assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
     const original = structuredClone(statements);
-    assert.equal(TurnOps.renderEmission(statements, SOURCE), headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n"),
-        "every statement is its own original operation, whole within the bound");
+    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n"),
+        "every statement is its own original operation, whole");
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
 });
 
@@ -57,46 +52,15 @@ for (const [name, body] of [
             const source = PlurnkParser.frame(header, body);
             const statements = TurnOps.parseInternal(source);
             assert.equal(statements.length, 1);
-            assert.equal(TurnOps.renderEmission(statements, SOURCE), PlurnkParser.frame(header, body === "" ? null : body));
+            assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame(header, body === "" ? null : body));
         });
     }
 }
 
-const longLines = (count: number): string => Array.from({ length: count }, (_line, index) => `line ${String(index + 1).padStart(2, "0")} ${"x".repeat(40)}`).join("\n");
-
-test("{§emission-row} a body over the head keeps whole lines up to about a hundred tokens, and its closer names the source", () => {
-    const body = longLines(10);
+test("{§emission-row} a long body is frozen whole", () => {
+    const body = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
     const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", body));
-    const rendered = TurnOps.renderEmission(statements, SOURCE);
-    assert.ok(rendered.endsWith(` ${aside}`), "the closer names the source");
-    const [kept] = TurnOps.parseInternal(rendered.slice(0, -aside.length - 1));
-    const head = (kept as EditStatement).body!;
-    const lines = head.split("\n");
-    assert.ok(lines.length >= 2 && lines.length < 10, `the head is whole lines, got ${lines.length}`);
-    assert.ok(body.startsWith(head) && !head.endsWith("…"), "the head is the body's own opening, with no harness mark inside the fence");
-    assert.ok(contentWeight(`${head}\n`) <= EMISSION_HEAD_WEIGHT, "the head fits the hundred tokens");
-    assert.ok(contentWeight(`${head}\n${body.split("\n")[lines.length]}\n`) > EMISSION_HEAD_WEIGHT, "one more line would not");
-});
-
-test("{§emission-row} a first line longer than the head is cut inside itself, and the aside still rides its own closer", () => {
-    const statements = TurnOps.parseInternal(PlurnkParser.frame("SEND (worker://helper)", "a".repeat(400)));
-    const rendered = TurnOps.renderEmission(statements, SOURCE);
-    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", "a".repeat(EMISSION_HEAD_WEIGHT * 2))} ${aside}`);
-    assert.match(rendered.split("\n").at(-1)!, /^``` <!-- preview; the whole statement ran: READ \(/u, "the preview note sits on the closer's own line");
-});
-
-test("{§emission-row} a body within the head renders whole, with no aside", () => {
-    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree"));
-    assert.equal(TurnOps.renderEmission(statements, SOURCE), PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree"));
-});
-
-test("{§emission-row} a worker that copies the aside onto its own closer keeps its body; the aside is outside text", () => {
-    const copied = TurnOps.renderEmission(TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", longLines(10))), SOURCE);
-    const parsed = PlurnkParser.parse(copied);
-    const [statement] = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
-    assert.equal(statement!.op, "EDIT");
-    assert.ok(longLines(10).startsWith((statement as EditStatement).body!), "the head is kept as the body, unmarked");
-    assert.ok(parsed.items.some((item) => item.kind === "text" && item.content.includes("the whole statement ran: READ (")), "the copied preview note is outside text");
+    assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
 });
 
 test("{§outside-text} a worker that ends its emission with comments keeps every operation; the comments are outside text", () => {

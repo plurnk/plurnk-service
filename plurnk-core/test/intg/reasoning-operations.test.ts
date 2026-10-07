@@ -112,8 +112,8 @@ for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
             assert.match(JSON.stringify(rows), /An externally established fact/u);
             const emissions = provider.received[1]!.filter(({ role }) => role === "assistant");
             assert.doesNotMatch(JSON.stringify(emissions), /READ \(worker:\/\/\/fact\.txt\)/u, "reasoning OPs are not relabeled as content emissions");
-            assert.equal(emissions.length, content === "" ? 0 : 1, "only the authored content program is projected");
-            if (content !== "") assert.equal(emissions[0]!.content, content);
+            assert.equal(emissions.length, 0, "a reply is not replayed, and reasoning OPs never are");
+            if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply is in context once, in its own row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
             const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
             assert.equal(raw.content, reasoning);

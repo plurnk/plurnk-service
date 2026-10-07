@@ -1,25 +1,19 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import EmissionHead from "./EmissionHead.ts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
-    // {§emission-row} — each body as its head, nothing of the harness's inside the fence; a longer body's closer calls
-    // the head a preview of a statement that ran whole, then names the source (#998, #1006: an ellipsis and "display
-    // cut" read as a truncated statement in the model's own voice). Dispatch and source evidence keep the originals.
-    static renderEmission(statements: readonly PlurnkStatement[], source: string): string {
+    // {§emission-row} — the frozen projection is the admitted program, canonical and whole; the wire derives
+    // what the model is shown from it ({§packet-wire-envelope}).
+    static renderEmission(statements: readonly PlurnkStatement[]): string {
         return statements.map((statement) => {
-            const heading = PlurnkParser.heading(statement);
             const body = "body" in statement && statement.body !== null
                 ? (typeof statement.body === "string" ? statement.body : statement.body.raw)
                 : "";
-            if (body.length === 0) return PlurnkParser.frame(heading, null);
-            const { head: kept, cut } = EmissionHead.cut(body);
-            if (!cut) return PlurnkParser.frame(heading, body);
-            return `${PlurnkParser.frame(heading, kept.replace(/\r?\n$/u, ""))} <!-- preview; the whole statement ran: READ (${source}) for all of it -->`;
+            return PlurnkParser.frame(PlurnkParser.heading(statement), body.length === 0 ? null : body);
         }).join("\n\n");
     }
 

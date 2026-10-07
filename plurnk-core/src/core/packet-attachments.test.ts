@@ -180,7 +180,7 @@ test("{§packet-wire-envelope} {§emission-row} native attachments ride the clos
     const wire = await PacketWire.wireMessages(packet, emissions, async () => bytes, () => true);
     assert.deepEqual(wire.map(({ role }) => role), ["system", "user", "assistant", "user"]);
     assert.equal(wire[1]!.content, `## Log\n\n${rendered.records[0]}`, "the user stub: the log heading and the emission's row");
-    assert.equal(wire[2]!.content, emissionRow.rx.content, "the emission, as the worker's own message");
+    assert.equal(wire[2]!.content, PacketWire.deliveredEmission(emissionRow.rx.content), "the emission, as the wire shows it, is the worker's own message");
     const closing = wire.at(-1)!.content;
     assert.ok(Array.isArray(closing));
     assert.deepEqual(closing[0], { type: "text", text: `${rendered.records[1]}\n\n## Worker\n{"loop":1,"turn":2}` }, "the READ result, then the status clump");

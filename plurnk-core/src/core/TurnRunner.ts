@@ -1753,7 +1753,7 @@ export default class TurnRunner {
             statements: split.packetAssistant.ops,
             source: split.sourceBacked ? split.packetAssistant.content : null,
             emission: split.emissionStatements === null ? null : {
-                content: TurnOps.renderEmission(split.emissionStatements, `ops://${request.workerName}/${request.loopSeq}/${request.seq}`),
+                content: TurnOps.renderEmission(split.emissionStatements),
                 workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
                 reasoning: split.packetAssistant.reasoning ?? null, // {§reasoning-row}
             },

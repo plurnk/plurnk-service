@@ -44,8 +44,8 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"], "only the content draft occupies assistant history");
-    assert.equal(draft.find(({ role }) => role === "assistant")!.content, "```EDIT (worker:///a.md)\nalpha\n```",
-        "the wire carries the worker's operation whole within the preview bound; its NOTE lives only in its row");
+    assert.equal(draft.find(({ role }) => role === "assistant")!.content, "```EDIT (worker:///a.md)\n```",
+        "the wire shows the worker's operation without its body; its NOTE lives only in its row");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
