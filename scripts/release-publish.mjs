@@ -3,7 +3,7 @@ import { assertNpmPublisher, assertReleaseRepository } from "./release-authority
 import { output, readCandidate } from "./release-candidate.mjs";
 import { verifyConsumer } from "./release-consumer.mjs";
 import { publishCandidates } from "./release-registry.mjs";
-import { assertReleaseHosting, finalizeCandidate } from "./release-finalize.mjs";
+import { assertReleaseHosting, finalizeCandidate, packageReleaseNotes } from "./release-finalize.mjs";
 
 const [destination, ...extra] = process.argv.slice(2);
 if (destination === undefined || extra.length !== 0) throw new Error("usage: release-publish.mjs <qualified-artifact-directory>");
@@ -19,6 +19,7 @@ for (const [root, repo] of new Map(packages.map((record) => [record.root, record
     }
 }
 await assertNpmPublisher(process.cwd());
+for (const record of packages) await packageReleaseNotes(record);
 await publishCandidates(packages, { publish: async (record) => {
     console.log(`publish ${record.name}@${record.version}`);
     await output("npm", ["publish", path.join(directory, record.archive), "--access", "public", "--ignore-scripts"], record.root);

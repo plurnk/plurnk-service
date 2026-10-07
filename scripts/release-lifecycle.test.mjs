@@ -88,13 +88,16 @@ test("{§release-candidate-graph} incompatible candidate edges cannot publish pa
     assert.deepEqual(calls, []);
 });
 
-test("release gates retain packed projection, bounded production audit, and package-owned checks", async () => {
+test("release qualification audits the installed composition and retains package-owned checks", async () => {
     const gates = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
-    assert.match(gates, /\["audit", "--audit-level=moderate", "--omit=dev"\]/);
-    assert.match(gates, /npm_config_fetch_retries: "0"/);
-    assert.match(gates, /npm_config_fetch_timeout: "60000"/);
-    assert.match(gates, /audit UNREACHABLE[\s\S]*continuing/);
-    const [, classifier] = gates.match(/const unreachable = \/(.+)\/iu\.test\(text\)/);
+    const consumer = await readFile(new URL("./release-consumer.mjs", import.meta.url), "utf8");
+    assert.match(consumer, /\["install", "--no-audit", "--no-fund", "--include=peer", \.\.\.specs\]/);
+    assert.match(consumer, /await auditProduction\(cwd\)/);
+    assert.match(consumer, /\["audit", "--audit-level=moderate", "--omit=dev"\]/);
+    assert.match(consumer, /npm_config_fetch_retries: "0"/);
+    assert.match(consumer, /npm_config_fetch_timeout: "60000"/);
+    assert.match(consumer, /audit UNREACHABLE[\s\S]*continuing/);
+    const [, classifier] = consumer.match(/const unreachable = \/(.+)\/iu\.test\(text\)/);
     assert.ok(new RegExp(classifier, "iu").test("npm warn audit network timeout at: https://registry.npmjs.org/-/npm/v1/security/advisories/bulk"));
     assert.ok(!new RegExp(classifier, "iu").test("found 3 vulnerabilities (1 moderate, 2 high)"));
     assert.match(gates, /\["scripts\/package-provenance\.mjs", "--pack"\]/);

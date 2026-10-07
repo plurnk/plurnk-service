@@ -2,13 +2,22 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { canonicalForgeOrigin } from "./release-authority.mjs";
-import { releaseNotes } from "./changelog.mjs";
 import { readCandidate, readJson } from "./release-candidate.mjs";
 
 const exec = promisify(execFile);
 const output = async (command, args, cwd) => (await exec(command, args, {
     cwd, maxBuffer: 64 * 1024 * 1024,
 })).stdout.trim();
+
+export const packageReleaseNotes = async ({ root, packageFile, version, commit }, run = output) => {
+    const file = path.join(path.dirname(packageFile), "CHANGELOG.md");
+    const lines = (await run("git", ["show", `${commit}:${file}`], root)).split("\n");
+    const starts = lines.flatMap((line, index) => line === `## ${version}` ? [index] : []);
+    if (starts.length !== 1) throw new Error(`${file}: expected exactly one release section for ${version}`);
+    const start = starts[0];
+    const next = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+    return `${lines.slice(start, next < 0 ? undefined : next).join("\n").trim()}\n`;
+};
 
 export const assertReleaseHosting = async (root, repo, run = output) => {
     const origin = await run("git", ["remote", "get-url", "origin"], root);
@@ -73,7 +82,7 @@ export const finalizeRelease = async ({ root, repo, packageFile, version, commit
         if (existing.draft || existing.prerelease) throw new Error(`${repo}: ${tag} exists but is not a stable published release`);
         return;
     }
-    const changes = notes ?? await releaseNotes(root, tag, repo);
+    const changes = notes ?? await packageReleaseNotes({ root, packageFile, version, commit: revision }, run);
     const body = composition === undefined ? changes : `${changes}\n\n${composition}`;
     await run("gh", [
         "release", "create", tag, "--repo", `plurnk/${repo}`, "--verify-tag",
@@ -94,16 +103,7 @@ export const finalizeCandidate = async ({ packages }, directory) => {
         const module = item.repo === "plurnk-service" && item.name !== "@plurnk/plurnk-service";
         const tagName = module ? `${item.name}@${item.version}` : `v${item.version}`;
         const record = !module || service === undefined;
-        let notes;
-        if (module && record) {
-            const file = path.join(path.dirname(item.packageFile), "CHANGELOG.md");
-            const changelog = await output("git", ["show", `${item.commit}:${file}`], item.root);
-            const heading = `## ${item.version}\n`;
-            const start = changelog.indexOf(heading);
-            if (start < 0) throw new Error(`${item.name}: no release notes for ${item.version}`);
-            const next = changelog.indexOf("\n## ", start + heading.length);
-            notes = changelog.slice(start, next < 0 ? undefined : next);
-        }
+        const notes = record ? await packageReleaseNotes(item) : undefined;
         await finalizeRelease({ ...item, tagName, record, notes, composition });
     }
 };

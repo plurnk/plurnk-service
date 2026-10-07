@@ -19,6 +19,7 @@
 | Resolution | Candidate dependency and peer ranges must admit the selected version of that dependency. Unselected dependencies resolve normally from the registry; an excluded product cannot block the release. |
 | Preparation | Version and dependency edits precede qualification. Publication never edits source, stamps another repository, or substitutes a different candidate. |
 | Qualification | Build and test the source repositories; run package-specific release checks only for the selected packages, inspect their projected archives, and exercise the installed composition before publication. No ignored peer conflicts, forced incompatible overrides, or reliance on an unpublished registry version. |
+| Dependencies | Newer available versions are not a release prerequisite. Audit the fresh installed production composition at the moderate floor; advisory-service unavailability is a reported gap, not a clean audit. |
 | Publication | Publish dependencies before consumers. Query the exact package/version, not its latest tag. A registry failure is not evidence that a package is unpublished. |
 | Retry | Retain qualified artifacts and their source identities. Resume only missing publication steps; a conflicting immutable artifact fails rather than being overwritten or accepted as equivalent. |
 
@@ -28,6 +29,7 @@
 | --- | --- |
 | Qualification | Canonical signed sources, npm authority, and GitHub release-write permission are checked before publication. |
 | Sources | The selected package's canonical Git repository owns its source identity; directory names and inventory entries are not release authority. |
+| Notes | The package's `CHANGELOG.md` section `## <version>` at the verified source commit supplies its release notes. Qualification and publication require that section before uploading artifacts. |
 | npm and consumers | Package publication and installed-product verification precede release records. |
 | Git | Each release gets a signed tag on its exact verified source commit: `v<version>` for products and standalone packages, `<package-name>@<version>` for other monorepo packages. Push to the canonical forge and GitHub mirror; never move an existing tag. |
 | GitHub | A stable Release names that tag and records the tested composition. A service release gathers its simultaneously released modules; otherwise each changed module has its own record. Existing published records are preserved; conflicts or hosting failures fail the train. |

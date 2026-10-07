@@ -1,8 +1,25 @@
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { output, readJson, writeJson } from "./release-candidate.mjs";
 import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
+
+export const auditProduction = async (cwd, { run = promisify(execFile), warn = console.warn } = {}) => {
+    try {
+        await run("npm", ["audit", "--audit-level=moderate", "--omit=dev"], {
+            cwd,
+            maxBuffer: 64 * 1024 * 1024,
+            env: { ...process.env, npm_config_audit: "true", npm_config_fetch_retries: "0", npm_config_fetch_timeout: "60000" },
+        });
+    } catch (cause) {
+        const text = `${cause.stdout ?? ""}\n${cause.stderr ?? ""}`;
+        const unreachable = /network timeout|audit endpoint returned an error|ETIMEDOUT|ECONNRESET|ERR_SOCKET_TIMEOUT|FETCH_ERROR|socket hang up|request to .* failed|timed out/iu.test(text);
+        if (!unreachable) throw cause;
+        warn(`release-consumer: dependency audit UNREACHABLE — the advisory endpoint did not answer; continuing (#649). Re-run \`npm audit\` when it recovers.\n${text.trim().slice(0, 300)}`);
+    }
+};
 
 // The same named graph is installed from archives before publication and from npm afterwards.
 export const verifyConsumer = async (records, { directory, evidence, registry = false }) => {
@@ -10,8 +27,9 @@ export const verifyConsumer = async (records, { directory, evidence, registry = 
     try {
         await writeJson(path.join(cwd, "package.json"), { name: "release-consumer", private: true, version: "1.0.0" });
         const specs = records.map(({ name, version, archive }) => registry ? `${name}@${version}` : path.join(directory, archive));
-        await output("npm", ["install", "--no-audit", "--no-fund", ...specs], cwd);
+        await output("npm", ["install", "--no-audit", "--no-fund", "--include=peer", ...specs], cwd);
         await output("npm", ["ls", "--all"], cwd);
+        await auditProduction(cwd);
         for (const { name, version } of records) {
             const installed = await readJson(path.join(cwd, "node_modules", name, "package.json"));
             if (installed.version !== version) throw new Error(`${name}: consumer installed ${installed.version}, expected ${version}`);

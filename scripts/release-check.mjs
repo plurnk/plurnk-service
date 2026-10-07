@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { assertClean, output, packCandidate, readJson, selectPackages, writeJson } from "./release-candidate.mjs";
 import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
-import { assertReleaseHosting } from "./release-finalize.mjs";
+import { assertReleaseHosting, packageReleaseNotes } from "./release-finalize.mjs";
 import { verifyConsumer } from "./release-consumer.mjs";
 
 const [destination, ...directories] = process.argv.slice(2);
@@ -21,7 +21,10 @@ for (const [root, repo] of repositories) {
     await assertClean(root);
     const { head } = await assertReleaseRepository(root, repo);
     await assertReleaseHosting(root, repo);
-    for (const record of records.filter((item) => item.root === root)) record.commit = head;
+    for (const record of records.filter((item) => item.root === root)) {
+        record.commit = head;
+        await packageReleaseNotes({ ...record, version: record.manifest.version });
+    }
 }
 await assertNpmPublisher(process.cwd());
 await mkdir(directory); // Never replace an earlier qualification or its retained archives.

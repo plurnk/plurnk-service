@@ -5,11 +5,32 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { assertReleaseHosting, finalizeRelease } from "./release-finalize.mjs";
+import { assertReleaseHosting, finalizeRelease, packageReleaseNotes } from "./release-finalize.mjs";
 import { releaseNotes } from "./changelog.mjs";
 
 // {§release-finalization}: command-boundary witnesses; no registry or remote writes.
 const COMMIT = "a".repeat(40);
+
+test("{§release-finalization} every candidate uses its own versioned changelog at its verified commit", async () => {
+    for (const packageFile of ["package.json", "plurnk-core/package.json", "plurnk-meta/package.json"]) {
+        const notes = await packageReleaseNotes({ root: "/fixture", packageFile, version: "2.0.0", commit: COMMIT }, async (command, args, cwd) => {
+            assert.equal(command, "git");
+            assert.deepEqual(args, ["show", `${COMMIT}:${path.join(path.dirname(packageFile), "CHANGELOG.md")}`]);
+            assert.equal(cwd, "/fixture");
+            return "# Changes\n\n## 2.1.0\n\n- Later.\n\n## 2.0.0\n\n- Independent releases.\n\n## 1.0.0\n\n- Earlier.\n";
+        });
+        assert.equal(notes, "## 2.0.0\n\n- Independent releases.\n");
+    }
+});
+
+test("{§release-finalization} missing or ambiguous package release notes fail qualification", async () => {
+    const record = { root: "/fixture", packageFile: "package.json", version: "2.0.0", commit: COMMIT };
+    for (const changelog of ["## 2.0.01\n", "## 1.0.0\n", "## 2.0.0\nA\n## 2.0.0\nB"]) {
+        await assert.rejects(packageReleaseNotes(record, async () => changelog), /exactly one.*2\.0\.0/);
+    }
+    const failure = new Error("changelog is absent from the verified commit");
+    await assert.rejects(packageReleaseNotes(record, async () => { throw failure; }), (cause) => cause === failure);
+});
 const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true, releaseTag = "v1.2.3" } = {}) => {
     const calls = [];
     const manifest = { name: "@plurnk/plurnk-service", version: "1.2.3" };
