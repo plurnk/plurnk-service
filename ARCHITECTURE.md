@@ -114,6 +114,18 @@ The root lint enforces Acyclic and Stable Dependencies over every workspace's de
 dependencies, naming the cycle or the edge; the other four are design review rules. An extension
 kind's API therefore sits beneath both its host and its extensions, never inside the host.
 
+### Implementation mechanisms
+
+Prefer standard declarative mechanisms that directly express the owning contract: grammar
+productions for syntax and operand binding, JSON Schema for data shapes, and SQL for relational
+queries and invariants. Use TypeScript for orchestration, integration, algorithms, and behavior
+those mechanisms do not express clearly.
+
+This is a design bias, not a prohibition or an invitation to force awkward DSLs. A procedural layer
+must not independently reconstruct or enforce rules already owned by the grammar, schema, or
+database. When imperative interpretation is necessary, document the concrete limitation it addresses
+and verify the composed behavior.
+
 ## Extensibility
 
 Plurnk is extended at its faces, never its organs (principle 5). Each face has one seam and, where
