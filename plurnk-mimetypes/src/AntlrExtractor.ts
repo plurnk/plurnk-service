@@ -60,7 +60,15 @@ function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined
 
     // Terminal node — wraps a single token under `symbol`.
     if (typeof n.symbol === "object" && n.symbol !== null && !("children" in n)) {
-        const sym = n.symbol as { line?: number; text?: string; type?: number };
+        const sym = n.symbol as {
+            line?: number; text?: string; type?: number;
+            tokenIndex?: number; start?: number; stop?: number;
+        };
+        // antlr4ng's inserted-token sentinel ({§mimetype-parser-coordinates}).
+        // Actual malformed offsets still reach the strict coordinate boundary.
+        if (sym.tokenIndex === -1 && sym.start === -1 && sym.stop === -1) {
+            return { type: tokenTypeName(node, sym), text: sym.text ?? "" };
+        }
         const region = coordinates?.antlrToken(sym);
         return {
             type: tokenTypeName(node, sym),

@@ -2,6 +2,8 @@
 
 ## 2.0.0
 
+- Preserve ANTLR missing-token recovery nodes without fabricating exact source coordinates.
+
 ### Major Changes
 
 - Establish the coordinated 2.0 baseline and independent package versioning. From

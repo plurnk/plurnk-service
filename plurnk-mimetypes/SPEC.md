@@ -588,6 +588,7 @@ flowchart LR
 | Producer                                 | Retained native span                                      | Materialization rule                                                                         |
 |------------------------------------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------------|
 | `antlr4ng`                               | Code-point `start` and inclusive `stop` offsets.          | Make the stop exclusive, then map both offsets against the exact source.                     |
+| ANTLR inserted recovery token           | `tokenIndex`, `start`, and `stop` are all `-1`.           | Preserve the node without source coordinates; a missing token is not an editable source span. |
 | `web-tree-sitter` string input           | JavaScript `startIndex` and exclusive `endIndex` offsets. | Map the UTF-16 offsets against the exact source; never publish native point columns.         |
 | Point-only synthetic Tree-sitter capture | Zero-based row and JavaScript column offsets.             | Resolve against the exact source; retain absolute indices whenever source nodes expose them. |
 

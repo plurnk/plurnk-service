@@ -230,6 +230,52 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
         await assert.rejects(Promise.resolve().then(() => e.deepJson("content")), (error) => error === failure);
     });
 
+    it("preserves inserted recovery tokens without assigning them exact source bounds", async () => {
+        const source = "hello";
+        const missing = { symbol: {
+            text: "<missing '('>", type: 2, tokenIndex: -1,
+            start: -1, stop: -1, line: 99, column: 99,
+        } };
+        const fakeTree = new Compilation_unitContext([
+            missing, term("hello", 1, 0),
+            { symbol: { text: "<EOF>", type: -1, tokenIndex: 1, start: 5, stop: 4 } },
+        ], 0, 4);
+        class Extractor extends AntlrExtractor {
+            protected parseTree(_content: string): unknown { return fakeTree; }
+            protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+        }
+        const e = new Extractor(metadata);
+        const tree = e.deepJson(source) as { children: unknown[] };
+        assert.deepEqual(tree.children[0], { type: "token", text: "<missing '('>" });
+        const parent = { startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 };
+        for (const [dialect, pattern] of [["jsonpath", "$.children[0]"], ["xpath", "/*/token"]] as const) {
+            const matches = await e.query(source, dialect, pattern);
+            assert.equal(matches.length, 1);
+            assert.ok(matches[0].matching);
+            assert.equal(matches[0].regions, undefined);
+            assert.deepEqual(matches[0].enclosingRegions, [parent]);
+        }
+        const [present, eof] = await e.query(source, "jsonpath", "$.children[1,2]");
+        assert.deepEqual(present.regions, [parent]);
+        assert.deepEqual(eof.regions, [{ ...parent, startColumn: 6 }]);
+    });
+
+    it("still rejects invalid native spans that are not inserted recovery tokens", () => {
+        for (const symbol of [
+            { start: -1, stop: -1, tokenIndex: 0 },
+            { start: -1, stop: 0, tokenIndex: -1 },
+            { start: 0, stop: 99, tokenIndex: -1 },
+        ]) {
+            class Extractor extends AntlrExtractor {
+                protected parseTree(_content: string): unknown {
+                    return new Compilation_unitContext([{ symbol }], 0, 0);
+                }
+                protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
+            }
+            assert.throws(() => new Extractor(metadata).deepJson("x"), ParserCoordinateError);
+        }
+    });
+
     it("returns null for binary content", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { return new Compilation_unitContext([], 0, 0); }
