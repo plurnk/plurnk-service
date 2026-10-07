@@ -813,17 +813,11 @@ export default class TurnRunner {
         return gitStatus;
     }
 
-    // {§worker-initialization-entry} — the worker's first turn is the worked example
-    // itself: the actual orienting operations and ordinary NOTEs, executed as a
-    // complete turn before the model boundary.
+    // {§worker-initialization-entry}: execute the initialization program before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
         const { workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         const { initializationStatements, initializationPolicies } = container;
-        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Nine bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
-        // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
-        // named scratch, and the worker's own reasoning, in that order.
-        // Their `init` classification lets the model curate this opening survey as one log set.
+        // {§actor-boundary-catalog-preview}: `init` lets the model curate the opening surveys as one set.
         // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
