@@ -4922,7 +4922,8 @@ removed ({§packet-extension-transform}), takes its emission with it, and a log 
 is one user message. An emission of only NOTE and WAIT delivers nothing, so its record runs on
 into the next user message. The Worker block and the status clump always follow the log, so a
 request never ends on an emission, and the projection refuses one that would. The digest's packet
-artifacts record the sections, and `.wire.json` the messages ({§share-packet-names}).
+artifacts record the sections, and `.wire.json` reconstructs their text-message
+envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 
 ### §packet-cache-monotone Default order and cache locality
 
@@ -5213,7 +5214,7 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 | `<stem>.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
 | `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
 | `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
-| `<stem>.wire.json` | The turn stored a provider request | The request's text messages in order, its worker's emission rows placed ({§packet-wire-envelope}); `<stem>.wire.invalid.json` names a stored log that cannot be projected |
+| `<stem>.wire.json` | The turn stored a provider request | Reconstructed text-message envelope with its worker's emission rows placed ({§packet-wire-envelope}), not dispatched HTTP bytes. Excludes native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |

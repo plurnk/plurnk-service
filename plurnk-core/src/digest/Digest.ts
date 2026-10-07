@@ -11,10 +11,9 @@
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
-//   <digest>/<stem>.system.md       BYTE-FOR-BYTE the system message sent
-//                                         when the turn involved a provider.
+//   <digest>/<stem>.system.md       Stored system text slot, before provider/SDK transformations.
 //   <digest>/<stem>.user.md         User text slot; digest.json retains native attachment descriptors.
-//   <digest>/<stem>.wire.json       The request's text messages in order, emissions in place.
+//   <digest>/<stem>.wire.json       Reconstructed text-message envelope, emissions in place; not HTTP bytes.
 //   <digest>/<stem>.response.md      Request-only note when no response was admitted.
 //   <digest>/<stem>.assistant.md     Exact persisted turnOps, regardless of producer.
 //   <digest>/<stem>.reasoning.md     Exact persisted reasoning, regardless of producer.
@@ -28,8 +27,8 @@
 //   <digest>/<stem>.attemptNNN.rejected.parse-errors.json
 //                                          Admission errors for that attempt.
 //
-// Provider request slots are byte-identical to what Engine emits because both
-// paths project through PacketWire. Assistant files preserve durable turnOps.
+// Packet text slots use the Engine's PacketWire projection; they do not capture transport controls
+// or native payloads ({§share-packet-names}). Assistant files preserve durable turnOps.
 //
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.

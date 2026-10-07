@@ -236,8 +236,8 @@ export default class DigestRender {
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
     }
 
-    // {§digest-cache-ledger} — the prompt a turn's request carried: its wire messages in order, each role
-    // above its content, the text `.wire.json` holds; null when no valid packet is stored.
+    // {§digest-cache-ledger} — the reconstructed text envelope, each role above its content,
+    // as `.wire.json` holds it ({§share-packet-names}); null when no valid packet is stored.
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
         if (packet === null) return null;
