@@ -8,10 +8,10 @@ HTTP+JSON v1 binding.
 
 ## Expose an agent
 
-The module is an exterior client of Core's `ApplicationPort`; it does not add
-an A2A scheduler or Task database. The installed service reads the ordinary
-Plurnk environment cascade. Enable the exposure and describe its public
-identity in an operator or project `.env`:
+Enable the exposure in `$XDG_CONFIG_HOME/plurnk/.env` (normally
+`~/.config/plurnk/.env`), or a service configuration file selected with
+`--config`. A project `.env` is not automatically loaded; see
+[service configuration](../plurnk-core/INSTALL.md#precedence).
 
 ```dotenv
 PLURNK_A2A_EXPOSE=1
@@ -29,6 +29,54 @@ advertised HTTP+JSON interface at `/a2a` on the service listener
 interface requires that bearer; the card itself stays public. Starting the
 service or reading the card does not create or hydrate the named workspace;
 the first admitted Task does so.
+
+Restart an already-running service to load these settings. Configure its
+[model](../plurnk-providers/README.md#configure-a-model) through the ordinary
+model settings. For a new workspace, `PLURNK_A2A_PROJECT_ROOT=/absolute/project`
+selects a project folder; leaving it empty creates a headless workspace.
+
+### Without a declared parent
+
+Omit `PLURNK_A2A_PARENT_WORKER` to use `_plurnk`. New Context workers are its
+children, and Task workers are children of their Context. They inherit the runtime
+owner, which cannot review approvals. With the default
+`PLURNK_SERVICE_PROPOSALS=review`, operations requiring approval are rejected.
+For unattended automatic approval, set:
+
+```dotenv
+PLURNK_SERVICE_PROPOSALS=accept
+```
+
+This setting applies service-wide, not just to A2A, and does not bypass
+capability restrictions.
+
+### With a client-owned parent
+
+In the service configuration, name an existing worker in the inbound workspace:
+
+```dotenv
+PLURNK_A2A_PARENT_WORKER=supervisor
+```
+
+Create or open that worker through a client attached to the same running daemon
+before admitting new A2A contexts. For the `research` workspace above:
+
+```sh
+PLURNK_CLIENT_YOLO=0 plurnk --workspace=research --worker=supervisor
+```
+
+Control attachment claims runtime-owned work; it does not take ownership from
+another client. New Context and Task workers inherit the parent's approval owner.
+With service approval set to `review`, that client receives their approval requests
+even while idle. Client YOLO defaults to on; the command above selects manual review.
+Disconnecting a review-capable owner leaves approvals waiting for reconnection.
+
+In either setup, task clarification returns to the A2A caller through
+`input-required`; it is not an operation approval. A missing named parent refuses
+new Context creation, and changing the setting does not reparent existing Contexts.
+See [A2A ownership](./SPEC.md)
+({§a2a-worker-ownership}), [core ownership](../plurnk-core/SPEC.md)
+({§worker-ownership}), and [the configuration reference](./.env.defaults).
 
 ## Connect to an agent
 
