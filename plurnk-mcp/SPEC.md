@@ -11,7 +11,7 @@ executor, resource, proposal, entry, Problem, and lifecycle contracts.
 
 The host's own wire authority is revision `2026-07-28`, specification commit
 `5f5440bb26a62e2cf3440b92da5a667efa03b267`. The implementation exact-pins
-`@modelcontextprotocol/client@2.0.0`. SDK exports are not protocol authority:
+`@modelcontextprotocol/client@2.2.0`. SDK exports are not protocol authority:
 that package deliberately retains legacy and deprecated API shapes. It owns
 core negotiation and transport; this package owns only exact-pinned extension
 wire that the SDK does not yet implement.

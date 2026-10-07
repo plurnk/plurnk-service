@@ -12,6 +12,7 @@
 
 ### Patch Changes
 
+- Use the OAuth issuer-binding security fix in MCP SDK 2.2.0.
 - Updated dependencies
   - @plurnk/plurnk-meta@2.0.0
   - @plurnk/plurnk-contracts@2.0.0
