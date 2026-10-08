@@ -4686,8 +4686,9 @@ and packet shaping. Replacement preserves unrelated workspace settings. Before t
 or observation, existing workers reconcile generated references against it. It requires no selected
 conversation worker and returns the complete fresh projection.
 
-§question-tool **The native request-user-input tool.** Core registers one
-in-process `question` runtime at boot. Its body is the MCP2 2026-07-28
+§question-tool **The native request-user-input tool.** When enabled, Core registers one
+in-process `question` runtime at boot. It is disabled by default; an explicit
+`PLURNK_EXECS_QUESTION=1` opts in. Its body is the MCP2 2026-07-28
 form-elicitation shape verbatim — `{ message, requestedSchema }`. An
 optional literal target is a descriptive label only: it neither routes the
 question nor changes the body or recipient. The

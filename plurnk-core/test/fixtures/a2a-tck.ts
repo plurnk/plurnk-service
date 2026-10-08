@@ -6,6 +6,8 @@ import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, serviceUrl } from "../
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 
+process.env.PLURNK_EXECS_QUESTION = "1";
+
 const WORKSPACE = "a2a-tck";
 
 class TckProvider extends Mock {

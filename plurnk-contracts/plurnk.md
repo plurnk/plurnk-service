@@ -29,7 +29,7 @@ body?
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU SHOULD answer the user with SEND if continuing, WAIT if waiting, and the KILL turn if final.
+> YOU SHOULD use SEND for progress updates, WAIT to yield to children and streams, and the KILL turn for the final response.
 > YOU SHOULD NOT perform a KILL turn before you have fully resolved all child workers and streams.
 > YOU MAY perform the KILL turn by emitting a parameterless standalone KILL containing the final deliverable response.
 
@@ -37,7 +37,7 @@ body?
 This is an example of a continuing turn progress update for the user.
 ```
 
-```WAIT <60> <!-- wait up to 60 seconds -->
+```WAIT <60> <!-- yield to children and streams for up to 60 seconds -->
 This is an example of a waiting turn progress update for the user.
 ```
 

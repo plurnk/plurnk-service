@@ -19,6 +19,8 @@ import { makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
+process.env.PLURNK_EXECS_QUESTION = "1";
+
 class BlockingMock extends Mock {
     readonly started = Promise.withResolvers<void>();
 

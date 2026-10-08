@@ -10,6 +10,8 @@ import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS } from "./_
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 
+process.env.PLURNK_EXECS_QUESTION = "1";
+
 const completed = (content: string) => makeMockResponse([
     "````KILL", content, "````",
 ].join("\n"));

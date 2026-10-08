@@ -1297,7 +1297,7 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 
 The model may supply WAIT or request completion with parameterless KILL. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
-the human is the native `question` executor tool ({§question-tool}), not a
+the human uses the native `question` executor tool when enabled ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation WAIT is reserved ({§turn-disposition}).

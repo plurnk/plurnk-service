@@ -15,6 +15,8 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
+process.env.PLURNK_EXECS_QUESTION = "1";
+
 const findStatement = (): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
@@ -128,9 +130,12 @@ test("{§worker-tool-admission}: the interaction access class gates known intera
     }
 });
 
-test("{§operator-config-real-model-profile}: the unattended executor switch removes question and its teaching", async () => {
+for (const [name, path] of [
+    ["shipped default", "../../../plurnk-execs/.env.defaults"],
+    ["unattended profile", "../../.env.test"],
+] as const) test(`{§question-tool}: the ${name} removes question and its teaching`, async () => {
     const previous = process.env.PLURNK_EXECS_QUESTION;
-    const profile = parseEnv(readFileSync(new URL("../../.env.test", import.meta.url), "utf8"));
+    const profile = parseEnv(readFileSync(new URL(path, import.meta.url), "utf8"));
     assert.equal(profile.PLURNK_EXECS_QUESTION, "0");
     process.env.PLURNK_EXECS_QUESTION = profile.PLURNK_EXECS_QUESTION;
     try {
