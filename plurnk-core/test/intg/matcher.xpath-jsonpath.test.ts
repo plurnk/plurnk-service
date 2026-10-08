@@ -250,8 +250,8 @@ test("xpath on markdown content with no structural match → 204", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not html");
-        // xpath now runs over the markdown deepXml (any type is queryable); `//h1`
-        // matches no heading → zero results, not an unsupported-dialect rejection.
+        // xpath runs over the markdown deepXml (any type is queryable); `//h1`
+        // matches no heading → zero results.
         const r = await new Worker().find(
             findStmt(urlPath("worker", "/notes"), { dialect: "xpath", raw: "//h1" } as MatcherBody),
             makeSchemeCtx({ db, workspaceId, mimetypes }),

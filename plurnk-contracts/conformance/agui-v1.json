@@ -70,8 +70,11 @@
                                 "model": null,
                                 "loopId": null,
                                 "packetCount": 0,
+                                "waitUntil": null,
                                 "preparation": [],
-                                "activity": null
+                                "activity": null,
+                                "children": 0,
+                                "descendants": { "requests": 0, "usage": null, "knownUsage": null, "costUsd": null, "knownCostUsd": null }
                             }
                         },
                         "budget": {}

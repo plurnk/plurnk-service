@@ -12,6 +12,8 @@ import { parseLogRecords } from "../LogRecords.ts";
 // The reviewed scope projection, in the agnostic ruler the packet budgets in.
 const METADATA_WEIGHT = 308;
 const tok = (s: string): number => Math.ceil(s.length / 4);
+// The exact names a parsed log record carries: its heading's identity and charge, then its facts.
+const facts = (record: Record<string, unknown>): string[] => Object.keys(record).sort();
 
 test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not elapsed time or a re-read default", () => {
     for (const seconds of [300, 600, 0.25]) {
@@ -28,14 +30,9 @@ test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not 
         coordinate: "1/2/3", op: "WAIT", status: 102, tx: { body: "" }, attrs: { waiting: 0 },
     }], tok);
     assert.equal(parseLogRecords(zero)[0]!.waitSeconds, 0, "zero explicitly declines parking");
-    const unbounded = {
-        coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" }, attrs: { waiting: -1 },
-    };
-    assert.equal(parseLogRecords(PacketWire.renderLog([unbounded], tok))[0]!.waitSeconds, undefined,
-        "a released unbounded receipt does not acquire a duration from today's configuration");
-    assert.equal(unbounded.attrs.waiting, -1, "historical evidence is unchanged");
+    const receipt = { coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" } };
     for (const waiting of [-2, "600", null, Number.NaN, Number.POSITIVE_INFINITY]) {
-        assert.throws(() => PacketWire.renderLog([{ ...unbounded, attrs: { waiting } }], tok),
+        assert.throws(() => PacketWire.renderLog([{ ...receipt, attrs: { waiting } }], tok),
             /A WAIT receipt carries a malformed waiting bound\./u);
     }
 });
@@ -286,7 +283,7 @@ test("{§log-readable-projection}: suppressed rows charge only their materialize
     const partial = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, 2]] }], tok))[0]!;
     const gone = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, -1]] }], tok))[0]!;
     for (const row of [whole, partial, gone]) {
-        assert.equal(row.tokensBody, undefined, "hidden content has no separate advertised body charge");
+        assert.deepEqual(facts(row), ["logPath", "tokens"], "hidden content carries its address and one charge");
         assert.ok(Number(row.tokens) > 0);
     }
     assert.equal(whole.tokens, tok(PacketWire.renderLog([entry], tok)), "metadata charge is exact");
@@ -391,7 +388,7 @@ test("log entry: a no-body row omits body, display, model origin, and routine st
     assert.equal(row?.body, undefined, "a none-state row has no coordinate lines");
     assert.equal(row?.origin, undefined, "model is the default origin");
     assert.equal(row?.status, undefined, "200 is the default status");
-    assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
+    assert.deepEqual(facts(row!), ["logPath", "modifiers", "path", "tokens"], "the canonical path does not duplicate its operation in metadata");
 });
 
 test("a successful KILL receipt retains status 200 because destructive completion must be decisive", () => {
@@ -512,7 +509,7 @@ test("{§packet-markdown}: section headings are separated from content without s
     assert.match(packet, /### log:\/\/\/1\/2\/1\/READ → notes\.md · \d+\n1:notes/u);
 });
 
-test("environment-delta provenance renders as source, never a fictitious run entity", () => {
+test("environment-delta provenance renders as source", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "_plurnk",
@@ -525,7 +522,7 @@ test("environment-delta provenance renders as source, never a fictitious run ent
     }], tok);
     assert.match(out, /"source":"file"/);
     assert.match(out, /"git":" M"/, "the causal row carries the exact staged/worktree coordinates");
-    assert.doesNotMatch(out, /"run":/);
+    assert.deepEqual(facts(parseLogRecords(out)[0]!), ["git", "logPath", "modifiers", "origin", "path", "source", "tokens"]);
 });
 
 test("{§fs-namespace} an execution receipt names its working directory project-relative, and never at the root", () => {
@@ -580,7 +577,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
             /stream READ result carries a malformed page/);
     }
     assert.match(out, /^### log:\/\/\/\S+\/READ → sh:\/\/\/1\/1\/3\/sh#stdout · \d+$/m, "automatic and explicit READs identify the read resource identically");
-    assert.doesNotMatch(out, /"stream":|"target":/, "a READ has no alternate resource-address dialect");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["exitCode", "logPath", "modifiers", "origin", "path", "range", "terminal", "tokens"]], "a READ has one resource-address dialect");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
 
@@ -1013,7 +1010,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     assert.equal(meta.status, 500, "the enclosing row owns status");
     assert.equal(meta.logPath, "log:///1/2/1/READ", "the enclosing row owns occurrence identity");
     assert.equal(meta.path, "sh:///1/1/2/sh#stderr", "the enclosing row owns an identical target fact");
-    assert.doesNotMatch(out, /"error":/, "the packet does not flatten Problem Details into a legacy error string");
+    assert.deepEqual(facts(meta!), ["body", "logPath", "modifiers", "origin", "path", "problem", "status", "tokens"], "the Problem Details ride whole beside the row's own facts");
     assert.equal(typeof meta!.body, "string", "an open row carries coordinate lines — presence IS the state (#338)");
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
@@ -1045,7 +1042,7 @@ test("log render: a pattern EDIT carries its matcher and matched count beside th
     }], tok);
     assert.match(out, /^### log:\/\/\/\S+\/EDIT → worker:\/\/\/notes\.md foo · \d+$/m, "a literal pattern is descriptive text, not an OP modifier");
     assert.match(out, /"matched":3/);
-    assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "matched", "matcher", "modifiers", "path", "tokens"]]);
 });
 
 test("log render: a matcher FIND exposes surgical coordinates", () => {
@@ -1288,7 +1285,7 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
-test("log render: model EDIT receipt renders revision and bounded join context verbatim", () => {
+test("log render: model EDIT receipt renders its extent, change, effect and bounded join context verbatim", () => {
     const exactReceipt = receipt("1:one\n2:TWO\n3:2.5\n4:three");
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
@@ -1297,7 +1294,7 @@ test("log render: model EDIT receipt renders revision and bounded join context v
         target: { scheme: "worker", pathname: "/draft" },
         rx: { status: 200, receipt: exactReceipt },
     }], tok);
-    assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "modifiers", "path", "tokens"]]);
     assert.match(out, /"extent":"lines 4->5"/);
     assert.match(out, /"change":"-1 \+2"/);
     assert.match(out, /"effect":"<2> -> <2,3>"/);
@@ -1479,7 +1476,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
     assert.doesNotMatch(out, /````EDIT \(/);
 });
 
-test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
+test("notice render: message and content-offset share one bounded line", () => {
     const notices = [{
         source: "provider:test",
         kind: "output_unaccounted",
@@ -1490,7 +1487,6 @@ test("notice render: message and content-offset share one bounded line, no snipp
     const out = PacketWire.renderNotices(notices);
     assert.match(out, /^\* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 1:0$/m);
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
-    assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });
 
 test("a durable failure pointer is one status+path JSON object", () => {
@@ -1553,11 +1549,9 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
         rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ → ops:\/\/alice\/1\/1 · \d+$/, "the READ receipt identifies the immutable source");
-    assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["logPath", "modifiers", "path", "tokens"]], "the canonical path carries the source identity");
     assert.equal(parseLogRecords(out)[0]?.tokens, tok(out), "the suppressed receipt charges only its metadata");
-    assert.doesNotMatch(out, /tokensBody/);
     assert.equal(parseLogRecords(out)[0]?.body, undefined, "the suppressed body is withheld");
-    assert.doesNotMatch(out, /"op":"turn"/, "turnOps never masquerade as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while suppressed — budget-neutral");
 });
 
@@ -1568,7 +1562,7 @@ test("a rejected emission renders as an addressable /attempt leaf without duplic
         rx: { content: "malformed response", mimetype: "text/plain" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/2\/1\/attempt · \d+$/m);
-    assert.doesNotMatch(out, /"kind":/);
+    assert.deepEqual(parseLogRecords(out).map(facts), [["lines", "logPath", "tokens"]]);
 });
 
 test("a program READ presents exact source, line-numbered", () => {
@@ -1578,7 +1572,7 @@ test("a program READ presents exact source, line-numbered", () => {
         rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ → ops:\/\/alice\/1\/1 · \d+$/m, "the heading owns the canonical address and its charge");
-    assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["body", "logPath", "modifiers", "origin", "path", "tokens"]], "the open source uses the same canonical leaf");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:\n2:````NOTE\n3:Initialized\n4:````/, "the entire source, including the initial blank line, remains line-addressable");
 });
@@ -1633,7 +1627,11 @@ Address the message.
     assert.match(out, /^### log:\/\/\/1\/1\/2\/NOTE · \d+$/m, "the note has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
     assert.match(out, /^### log:\/\/\/1\/1\/3\/READ → ops:\/\/alice\/1\/1 · \d+$/m, "Turn 0's exact program arrives as an ordinary READ");
-    assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
+    assert.deepEqual(parseLogRecords(out).map(facts), [
+        ["logPath", "origin", "tokens"],
+        ["body", "lines", "logPath", "origin", "tokens"],
+        ["body", "logPath", "modifiers", "origin", "path", "tokens"],
+    ], "Turn 0 uses the same address-owned identity");
 });
 
 test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-line JSON metadata", () => {
@@ -1645,7 +1643,11 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
     assert.doesNotMatch(out, /````|"logPath"|"body"/, "the projection needs no fence or duplicate identity/body fields");
     const arr = parseLogRecords(out) as Array<{ body?: string; tokens: number }>;
     assert.deepEqual(arr.map((row) => "body" in row), [false, false, true], "coordinate-line presence determines what is in context");
-    assert.doesNotMatch(out, /tokensBody|"display"/);
+    assert.deepEqual(arr.map(facts), [
+        ["logPath", "modifiers", "path", "tokens"],
+        ["logPath", "modifiers", "path", "tokens"],
+        ["body", "logPath", "modifiers", "path", "tokens"],
+    ]);
     assert.ok(!("body" in arr[0]), "a none row has no body lines");
     assert.ok(!("body" in arr[1]) && arr[1].tokens > 0, "a suppressed row charges its retained metadata");
     assert.equal(arr[2].body, "1:gamma\n", "an open row carries its ordinary addressable projection after metadata");
@@ -1659,22 +1661,18 @@ test("{§packet-token-accounting}: each row exposes one exact current-context ch
         { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/markdown", startLine: 1 } },
     ];
     const rendered = PacketWire.renderLog(entries, tok);
-    const rows = parseLogRecords(rendered) as Array<{
-        body?: string;
-        tokens: number;
-        tokensBody?: number;
-        tokensMetadata?: number;
-        tokensTotal?: number;
-    }>;
+    const rows = parseLogRecords(rendered) as Array<{ body?: string; tokens: number }>;
 
+    assert.deepEqual(rows.map(facts), [
+        ["logPath", "modifiers", "path", "tokens"],
+        ["logPath", "modifiers", "path", "tokens"],
+        ["body", "logPath", "modifiers", "path", "tokens"],
+        ["body", "logPath", "modifiers", "path", "tokens", "trimmed"],
+    ], "one charge per row; the metadata share is derivable, never serialized (#338)");
     for (const [index, row] of rows.entries()) {
-        assert.ok(!Object.hasOwn(row, "tokensTotal"), "the ambiguous former field is absent");
-        assert.ok(!Object.hasOwn(row, "tokensMetadata"), "the metadata share is derivable, never serialized (#338)");
         assert.ok(row.tokens > 0, "every materialized row reports its active cost");
-        assert.equal(row.tokensBody, undefined, "there is no second body charge");
         assert.equal(row.tokens, tok(PacketWire.renderLog([entries[index]], tok)));
     }
-    assert.ok(!("tokensBody" in rows[0]!), "a bodyless row prices nothing to open");
     assert.ok(!("body" in rows[1]!) && rows[1]!.tokens > 0, "suppressed rows charge their metadata");
     for (const row of rows.slice(2)) {
         assert.ok("body" in row, "an open row carries its body");
@@ -1704,7 +1702,6 @@ test("{§context-gauge}: every retained log item is a reclaimable context target
     for (const item of projected.curationTargets) {
         const row = rows.find(({ logPath }) => logPath === item.path);
         assert.ok(row !== undefined);
-        assert.equal(row.tokensBody, undefined, "the inventory needs no second body accounting field");
         assert.equal(row.tokens, item.tokens, "inventory active weight is the rendered row's own accounting");
     }
 });
@@ -1780,7 +1777,7 @@ test("{§body-projection}: NOTE reaches the next model packet as literal authore
     ], tok);
 
     assert.match(out, /1:Verify the baseline schema\./, "the model sees its authored working memory in the durable log");
-    assert.doesNotMatch(out, /"priority"|"entries"/, "ACP framing is absent from model packet materialization");
+    assert.deepEqual(parseLogRecords(out).map(facts), [["body", "lines", "logPath", "tokens"]], "the NOTE carries only its own record facts");
 });
 
 test("{§body-projection}: every body producer renders whole", () => {
@@ -1936,7 +1933,7 @@ test("{§log-wire-format}: a suppressed bounded body does not claim to display a
         tx: { body: long },
     }], tok);
 
-    assert.doesNotMatch(rendered, /tokensBody/);
+    assert.deepEqual(parseLogRecords(rendered).map(facts), [["lines", "logPath", "status", "tokens"]]);
     const [row] = parseLogRecords(rendered);
     assert.equal(row?.tokens, tok(rendered), "the retained metadata is the only charge");
     assert.equal(row?.body, undefined, "the suppressed body is absent");

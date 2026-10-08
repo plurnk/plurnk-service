@@ -22,9 +22,6 @@ test("SchemeRegistry: constructor registers the engine-owned scheme roster", () 
 test("SchemeRegistry: get(name) returns the registered handler instance", () => {
     const r = new SchemeRegistry();
     assert.ok(r.get("worker") instanceof Worker);
-    assert.equal(r.get("plurnk"), undefined, "plurnk:// is retired");
-    assert.equal(r.get("known"), undefined, "known:// is retired");
-    assert.equal(r.get("unknown"), undefined, "unknown:// is retired");
 });
 
 test("SchemeRegistry: get(name) returns undefined for unknown scheme", () => {

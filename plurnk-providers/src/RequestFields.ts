@@ -1,7 +1,7 @@
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import type { ModelReasoningOption } from "@plurnk/plurnk-models";
 import { UnsupportedEffortError } from "./types.ts";
-import { providerEnvPrefix, providerSetting } from "./provider-env.ts";
+import { providerSetting } from "./provider-env.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 
 type ObjectValue = Record<string, unknown>;
@@ -65,16 +65,6 @@ export default class RequestFields {
         "OPTIONS_NAMESPACE", "REASONING_TRANSPORT_EFFORTS",
     ].map((suffix) => `PLURNK_PROVIDERS_${suffix}`));
 
-    static rejectRetired(env: NodeJS.ProcessEnv, keys: readonly string[]): void {
-        const key = keys.find((key) => env[key] !== undefined && env[key] !== "");
-        if (key !== undefined) throw new TypeError(`${key} is retired; use request-field declarations ({§provider-wire-declaration})`);
-    }
-
-    static #assertCurrent(name: string, env: NodeJS.ProcessEnv): void {
-        const prefix = providerEnvPrefix(name);
-        RequestFields.rejectRetired(env, ["PLURNK_PROVIDERS_REASONING_STYLE", `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE`]);
-    }
-
     static namespace(name: string, env: NodeJS.ProcessEnv): string | undefined {
         const [key, value] = providerSetting(name, env, "OPTIONS_NAMESPACE");
         if (value === undefined || value === "") return undefined;
@@ -96,7 +86,6 @@ export default class RequestFields {
     }
 
     static assertNative(name: string, env: NodeJS.ProcessEnv): void {
-        RequestFields.#assertCurrent(name, env);
         for (const key of RequestFields.knobs) {
             if (key === "PLURNK_PROVIDERS_REASONING_EFFORTS") continue;
             const [configured, value] = providerSetting(name, env, key.slice("PLURNK_PROVIDERS_".length));
@@ -123,7 +112,6 @@ export default class RequestFields {
     readonly #facts: Facts | undefined;
 
     constructor(name: string, env: NodeJS.ProcessEnv, facts?: Facts) {
-        RequestFields.#assertCurrent(name, env);
         this.#name = name;
         this.#facts = facts;
         const read = (suffix: string) => providerSetting(name, env, suffix);

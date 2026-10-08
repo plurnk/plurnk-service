@@ -31,15 +31,6 @@ import { SkillsActionError, actionError, messageOf } from "./problems.ts";
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-// {§skills-sources} — the vendor installer's knobs; each names what replaced it.
-const RETIRED_KNOBS: Readonly<Record<string, string>> = Object.freeze({
-    PLURNK_SERVICE_SKILLS_CLI: "add fetches git, folder and file sources itself",
-    PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS: "PLURNK_SKILLS_FETCH_TIMEOUT_MS bounds each fetch",
-    PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS: "use PLURNK_SKILLS_FETCH_TIMEOUT_MS",
-    PLURNK_SERVICE_SKILLS_REGISTRY_URL: "discover takes a source; Agent Skills have no standard registry",
-    PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT: "discover takes a source; Agent Skills have no standard registry",
-    PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS: "discover takes a source; Agent Skills have no standard registry",
-});
 export type SourceSeam = Pick<ModuleSetupSeam, "workspacePaths" | "workspaceStateDirectory" | "operatorEnvironment">
     & WorkspacePluginsSeam & ProvidedSkillsSeam;
 
@@ -117,12 +108,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         this.#source = new SkillSource(() => seam.operatorEnvironment());
     }
 
-    // Refuses the vendor installer's retired knobs, naming what replaced each, and reads the fetch deadline.
+    // Reads the fetch deadline and the configured definitions without opening a source.
     static validateConfiguration(): void {
-        for (const [knob, successor] of Object.entries(RETIRED_KNOBS)) {
-            const stale = process.env[knob];
-            if (stale !== undefined && stale.length > 0) throw new ConfigurationError(knob, `${knob} is retired: ${successor}.`);
-        }
         Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1);
         serviceSkills();
     }

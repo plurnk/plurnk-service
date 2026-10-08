@@ -50,18 +50,6 @@ test("{§provider-effort} adaptive prefers the configured fallback without escal
     }, "missing high preserves activation without selecting xhigh");
 });
 
-test("{§provider-wire-declaration} retired style selectors fail at the selected configuration boundary", () => {
-    for (const key of ["PLURNK_PROVIDERS_REASONING_STYLE", "PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_STYLE"]) {
-        assert.throws(() => new RequestFields("example", { ...declaration, [key]: "thinking_effort" }), /REASONING_STYLE is retired.*request-field declarations/);
-        assert.throws(() => RequestFields.assertNative("example", { [key]: "thinking_effort" }), /REASONING_STYLE is retired.*request-field declarations/);
-    }
-    assert.throws(() => scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING_STYLE_MY_BOX: "effort" }, "my_box"), /REASONING_STYLE_MY_BOX is retired/);
-    assert.doesNotThrow(() => new RequestFields("example", {
-        ...declaration, PLURNK_PROVIDERS_PROVIDER_OTHER_REASONING_STYLE: "effort",
-    }));
-    assert.doesNotThrow(() => scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING_STYLE_OTHER: "effort" }, "my_box"));
-});
-
 test("{§provider-wire-declaration} a declaration, not a provider identity, determines projection", () => {
     const renamed = Object.fromEntries(Object.entries(declaration).map(([key, value]) => [key.replace("EXAMPLE", "UNLISTED"), value]));
     const first = new RequestFields("example", declaration);

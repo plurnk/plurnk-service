@@ -66,8 +66,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
 
 // Set up a workspace whose project_root points at a fresh temp directory,
 // build a real PlurnkSchemeContext against it, run the test, clean up.
-// Workspace root is now per-workspace (F.1 + F.5) — sourced from
-// workspaces.project_root, not an env var.
+// The workspace root is per-workspace, sourced from workspaces.project_root.
 const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-"));
     const db = await openMigrated();
@@ -170,8 +169,8 @@ test("File.read: symlink pointing outside workspace → 404 (never a member)", a
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
             await symlink(join(outside, "secret.txt"), join(root, "link-to-secret"));
             const result = await readFileScheme(readStmt(filePath("link-to-secret")), ctx);
-            // Containment moved to the materialize/edit disk edges: an outside-root
-            // symlink is never materialized → no entry → 404 (not a read-path 403).
+            // Containment lives at the materialize/edit disk edges: an outside-root
+            // symlink is never materialized → no entry → 404.
             assert.equal(result.status, 404, "non-member (outside-root symlink) → no entry → 404");
             assert.equal(result.content, null);
         } finally { await rm(outside, { recursive: true, force: true }); }

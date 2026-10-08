@@ -80,29 +80,26 @@ limit; it may not weaken the framework ceiling.
 flowchart LR
     N["new Mimetypes()"] --> R["ready(): one shared discovery"]
     R --> H["process/query/classify: lazy handler cache"]
-    R --> A["tokenizer calls: lazy artifact caches"]
     H --> D["dispose(): one quiescent teardown"]
-    A --> D
-    D --> X["all handlers + artifacts attempted<br/>failures aggregated; caches cleared"]
+    D --> X["all handlers attempted<br/>failures aggregated; caches cleared"]
     X --> H
-    X --> A
 ```
 
 Every discovery-dependent public method awaits `ready()` internally, and
 concurrent first calls share the same discovery promise. Concurrent first
 handler resolutions likewise construct one instance per mimetype. The
-orchestrator owns every handler instance and artifact it resolves. A structural
+orchestrator owns every handler instance it resolves. A structural
 stateless handler may omit `dispose()`; a resource-owning handler implements it,
 while ordinary subclasses inherit the no-op.
 
 `dispose()` is an idempotent, quiescent boundary: the caller first stops new
 work and awaits active operations. Concurrent disposal calls join one teardown
-attempt. That attempt awaits every cached handler's declared teardown and every
-tokenizer artifact, aggregates their original failures, and clears
-their caches while retaining discovery. A disposed orchestrator may be used
-again after the teardown settles; handlers and artifacts then resolve lazily as
-a new cache generation. Tree-sitter handlers delete their cached query before
-their parser, matching the runtime's explicit resource lifecycle.
+attempt. That attempt awaits every cached handler's declared teardown,
+aggregates their original failures, and clears the caches while retaining
+discovery. A disposed orchestrator may be used again after the teardown
+settles; handlers then resolve lazily as a new cache generation. Tree-sitter
+handlers delete their cached query before their parser, matching the runtime's
+explicit resource lifecycle.
 Failed acquisition is reported by the requesting operation; it is not replayed
 as failure to release a resource that was never acquired. Actual query/parser
 deletion failures remain teardown failures, including when both deletions fail.
@@ -133,7 +130,7 @@ cached grammar fingerprints as well as handler instances.
 
 ## 2. `package.json` `plurnk` discovery block
 
-A package declares one or more mimetype handlers via a uniform `handlers` array. Single-handler and multi-handler packages use the same shape — no primary/alias asymmetry.
+A package declares one or more mimetype handlers via a uniform `handlers` array. Single-handler and multi-handler packages use the same shape.
 
 ```json
 {
@@ -164,7 +161,7 @@ Multi-handler example (one package serving variants of the same content type):
 |---------------|--------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `kind`        | `"mimetype"`       | yes      | Selects this kind ({§extension-kind}).                                                                                                                  |
 | `binary`      | boolean            | no       | `true` when every handler entry consumes `Uint8Array`; default `false`.                                                                                              |
-| `attribution` | string \| string[] | no       | Package declaration normalized once into `Discovery.packageAttributions`; `HandlerInfo.attribution` is its published per-handler projection ({§extension-attribution}). |
+| `attribution` | string \| string[] | no       | Package declaration normalized once into `Discovery.packageAttributions` ({§extension-attribution}). |
 | `handlers`    | `HandlerDecl[]`    | yes      | One or more peer handler entries.                                                                                                                                    |
 
 The containing `package.json` `name` must be a valid current npm package name.
@@ -369,8 +366,7 @@ Current plurnk-service consumers:
 | Search-index structural derivation | `process(..., { channels: ["symbols", "references"], summary: true })` |
 | Content matcher                    | `query(...)`; not a `process()` channel request         |
 
-The framework performs no packet budgeting and renders no preview. `format()`
-is the unbudgeted human/diagnostic renderer for structured symbols.
+`format()` renders structured symbols for human and diagnostic use.
 
 §mimetype-parse-issues **Parser recovery is advisory.** When `process()`
 materializes any structural channel or receives `parseIssues: true`, it awaits
@@ -618,7 +614,7 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. A consumer that needs model-vocabulary counting brings its own counter; the framework exposes no seam for one, so nothing here can be mistaken for the ruler that governs weights.
+Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. A consumer that needs model-vocabulary counting brings its own counter.
 
 ## §mimetype-query 11. Body-matcher query
 
@@ -891,13 +887,13 @@ interface TreeSitterLanguageEntry {
 
 The framework is lean: it owns detection, discovery, projection contracts, and
 the built-in tree-sitter registry, but no runtime dependency on a format
-handler, grammar, or tokenizer artifact. The consumer's
+handler or grammar. The consumer's
 manifest assembles its packages. `@plurnk/plurnk-service` owns its default set in
 {§bundled-set}; a direct framework consumer may choose another set.
 
 | Installation state                         | Behavior                                                                                                                                              |
 |--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Framework only                             | Framework APIs and language detection metadata are present; no format handler, grammar WASM, or tokenizer artifact is implied.                        |
+| Framework only                             | Framework APIs and language detection metadata are present; no format handler or grammar WASM is implied.                                             |
 | Default composed service                   | The service manifest installs every registered grammar package and its standard format handlers.                                                                        |
 | Framework plus selected grammar packages   | Only those language WASM packages add structural parsing; for example the Python and Rust grammar packages.                                                         |
 | Additional third-party handler packages    | Discovery registers and loading resolves their declarations from the same consumer package graph, subject to {§extension-trust-boundary}.                |
@@ -1029,11 +1025,6 @@ assert either exact coordinates in their readable projection or an honest
 locator-only verdict. The harness validates every reported region through the
 shared `TextRegion` contract before comparing it with the declared verdict.
 
-The 1.x `assertQueryLineConformance` export and its `QueryLineCase` and
-`QueryConformanceHandler` types remain as deprecated source compatibility. The
-adapter normalizes the published line-only shape and delegates validation to
-`assertQueryEvidenceConformance`; new coverage uses complete region verdicts.
-
 ## §mimetype-public-api 15. Public API stability
 
 All exports from the `@plurnk/plurnk-mimetypes` package root and its declared
@@ -1122,32 +1113,6 @@ addresses the channel that was queried. Structural queries over a text source
 also retain its parser-backed coordinates; the existence of a separate readable
 projection does not suppress them. Byte-derived or synthetic results without
 a source mapping and computed scalars remain locator-only ({§mimetype-query}).
-
-The exported `TokenizerResolution` type owns the surface:
-
-| Resolution                  | `countTokens(text, { signal? })`  | `tokenizerId`        | `exact` | `notices`                         |
-|-----------------------------|-----------------------------------|----------------------|---------|-----------------------------------|
-| Artifact matches `modelRef` | Matching vocabulary counter.      | Vocabulary identity. | `true`  | Absent.                           |
-| Artifact absent or no match | `ceil(text.length / 2)` estimate. | `heuristic:chars2`   | `false` | One `tokenizer_unavailable` warn. |
-
-The fallback is an empirical estimate, not an exact count or a proven upper
-bound for arbitrary content and vocabularies. Correctness-sensitive consumers
-must branch on `exact`; `{ strict: true }` rejects either degradation instead.
-Hard context-envelope admission uses the provider's separate request-counting
-contract ({§tokenomics-context-envelope-admission}).
-
-`tokenizerId` identifies vocabulary bytes rather than a model name. Exact
-resolutions sharing a vocabulary therefore share the identity. A persisted
-tokenizer-dependent derivation must include it in its derivation key.
-
-The artifact exposes `resolve(modelRef)` and may expose `dispose()`. A `null`
-resolution means no bundled vocabulary matches. A match is exact at both
-layers: the counter executes pinned vocabulary bytes, and selection requires
-the manifest family key or its exact pinned source ref; model-name resemblance
-never establishes vocabulary identity. Artifact availability follows
-{§mimetype-artifact-absence}; an installed module without `resolve()` is an
-incompatible artifact and fails hard. `Mimetypes.dispose()` forwards artifact
-disposal and clears the lazy cache.
 
 ## §mimetype-classification 20. Binary classification
 

@@ -123,20 +123,13 @@ test("{§provider-wire-declaration} SDK construction does not freeze request-loc
     assert.equal(model.settings?.reasoning, undefined);
 });
 
-test("{§openrouter-app-attribution} attribution rejects malformed URLs and the retired knobs", () => {
+test("{§openrouter-app-attribution} attribution rejects malformed URLs", () => {
     assert.throws(
         () => createSdkModel("openrouter", "openai/gpt-5", {
             OPENROUTER_API_KEY: "key",
             PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL: "plurnk",
         }),
         /PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL must be an absolute HTTP\(S\) URL/,
-    );
-    assert.throws(
-        () => createSdkModel("openrouter", "openai/gpt-5", {
-            OPENROUTER_API_KEY: "key",
-            OPENROUTER_HTTP_REFERER: "https://example.test",
-        }),
-        /OPENROUTER_HTTP_REFERER is retired; declare PLURNK_PROVIDERS_PROVIDER_<NAME>_APP_URL and _APP_NAME/,
     );
 });
 

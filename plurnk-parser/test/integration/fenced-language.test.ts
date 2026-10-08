@@ -169,14 +169,6 @@ test("statement lists retain source order without inventing turn boundaries", ()
     assert.deepEqual(ops(unfinished).map(writtenOp), ["KILL", "WAIT", "READ"]);
 });
 
-test("former terminal names are not reserved operations, and draw nothing", () => {
-    for (const name of ["DONE", "FAIL"]) {
-        const parsed = PlurnkParser.parse(frame(name, "Not an operation.") + "\n\n" + frame("SEND", "The answer."));
-        assert.deepEqual(ops(parsed).map(writtenOp), ["SEND"]);
-        assert.deepEqual(errors(parsed), []);
-    }
-});
-
 test("client-only operations use the same fences", () => {
     const parsed = PlurnkParser.parseClient(frame("LOOK (worker:///note.md) <1,20>", "~recent thoughts"));
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
@@ -184,7 +176,7 @@ test("client-only operations use the same fences", () => {
 });
 
 test("prose without executable fences is not a program", () => {
-    const parsed = PlurnkParser.parse("PLAN: consider the request\nSEND 200: done");
+    const parsed = PlurnkParser.parse("First consider the request.\nThen send the answer.");
     assert.equal(ops(parsed).length, 0);
     assert.ok(errors(parsed).length > 0);
 });

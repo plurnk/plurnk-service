@@ -94,7 +94,6 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
 
             const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
             const ops = dispatches.map((s) => s.attributes.op);
-            assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
             assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
             assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
             assert.equal(ops.filter((op) => op === "KILL").length, 1, "the model's completion has its own dispatch span");

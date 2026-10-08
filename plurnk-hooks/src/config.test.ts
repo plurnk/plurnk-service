@@ -36,14 +36,11 @@ test("{§hooks-config} production configuration preserves executable paths with 
     assert.deepEqual(read(selected)?.args, []);
 });
 
-test("{§hooks-selection} selection uses exact supported hook names and diagnoses retired core spellings", () => {
+test("{§hooks-selection} selection uses exact supported hook names and diagnoses any other name", () => {
     const names = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest"];
     assert.deepEqual(read({ ...selected, PLURNK_HOOKS_EVENTS: names.join(",") })?.events, new Set(names));
     for (const events of ["Notice*", "notice", "Stop,", "Pre ToolUse", "Notification,Notification", "SessionStart", "UserPromptSubmit", "constructor", "__proto__"]) {
         assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /requires an exact hook name|more than once/ });
-    }
-    for (const [event, replacement] of [["loop/terminated", "Stop"], ["notice/event", "Notification"], ["loop/proposal", "PermissionRequest"]]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: event }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: new RegExp(`select ${replacement} instead`) });
     }
 });
 

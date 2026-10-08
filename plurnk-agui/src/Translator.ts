@@ -271,7 +271,7 @@ export default class Translator {
         // Family channel — the full terminal truth the core STATE_DELTA can't hold
         // (loopId, turnIds, physical-request accounting, usage meta, attribution) PLUS the daemon workspaceId, so a
         // plurnk client rebuilds its json record from the stream with ONE schema
-        // across transports (WS or bridge) — no second round-trip. Numbers verbatim
+        // and no second round-trip. Numbers verbatim
         // ({§agui-numbers-passthrough}). Generic frontends ignore it; the RUN_FINISHED/
         // RUN_ERROR below is their terminal signal.
         events.push({ type: EventType.CUSTOM, name: "plurnk.terminated", value: { ...n, workspaceId: this.#workspaceId } });

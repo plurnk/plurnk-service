@@ -50,7 +50,6 @@ test("proposal timeout rejects every explicit non-positive or non-finite value a
 });
 
 // #769: the wait is deliberately untimed, but a cancelled loop is not a loop awaiting a decision.
-// Before this, only a human, an opt-in timeout, or daemon shutdown could free it.
 test("a proposal wait ends with its loop, carrying the abort's own reason", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
 

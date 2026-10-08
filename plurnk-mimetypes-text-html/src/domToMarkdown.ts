@@ -1,9 +1,7 @@
-// Markdown serialization over the linkedom DOM already in hand (#344) —
-// replaces turndown, whose hard dependency dragged a third full DOM
-// implementation (domino) into the shipped assembly. Input is always
-// Readability article output or the noise-stripped body, a small closed tag
-// set; unknown elements flatten to their children. Improvement over the
-// GFM-less turndown: tables serialize as pipe tables instead of text runs.
+// Markdown serialization over the linkedom DOM already in hand (#344). Input is
+// always Readability article output or the noise-stripped body, a small closed
+// tag set; unknown elements flatten to their children. Tables serialize as pipe
+// tables.
 
 type AnyNode = { nodeType: number; nodeValue: string | null; childNodes: ArrayLike<AnyNode> };
 type AnyElement = AnyNode & {

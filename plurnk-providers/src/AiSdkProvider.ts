@@ -1,9 +1,9 @@
 // PLURNK adapter over an AI SDK language model. Implements the universal generate()
 // spine — signal merging, the SSE call, usage mapping, finishReason
-// normalization, response assembly — that every sibling had duplicated.
+// normalization, response assembly.
 //
 // Composition, not inheritance: an official AI SDK language model supplies the
-// ordinary vendor protocol. The compatible URL path remains only for PLURNK
+// ordinary vendor protocol. The compatible URL path serves only PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
 import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort } from "./types.ts";

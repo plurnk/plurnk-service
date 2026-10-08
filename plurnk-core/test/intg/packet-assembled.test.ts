@@ -360,7 +360,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(copies[1]?.to, "worker:///slice.md");
         assert.equal(copies[1]?.status, 304);
         assert.equal(copies[1]?.effects, undefined);
-        assert.ok(copies[1] !== undefined && !("body" in copies[1]) && !("tokensBody" in copies[1]), "the whole-channel effect has no text body (#338)");
+        assert.ok(copies[1] !== undefined && !("body" in copies[1]), "the whole-channel effect has no text body (#338)");
 
         assert.match(packetSection(packet, "log"), /1(?:<@[0-9A-Za-z]{5}>|:)two\n2(?:<@[0-9A-Za-z]{5}>|:)three/);
     } finally { await db.close(); }
@@ -526,11 +526,10 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
         const packet = await getPacket(db, result.turnId);
 
         // Policy is the client's foot in the privileged zone — the system slot
-        // carries the operator's authoritative rules. Project guidance now
+        // carries the operator's authoritative rules. Project guidance
         // rides turn 0 as the foisted AGENTS.md entry ({§turn0-agents-stunt}).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.ok(slot("system").includes("system-policy"), "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
-        assert.ok(!slot("system").includes("project-policy"), "the retired project-policy section never renders");
+        assert.deepEqual(slot("system"), ["definition", "system-policy"], "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
         assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "the authored policy content is preserved");
         assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.header, null, "the policy owns its heading");
         const systemMessage = provider.received[0].filter(({ role }) => role === "system").map(({ content }) => content).join("\n");

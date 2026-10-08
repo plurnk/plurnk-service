@@ -36,24 +36,7 @@ export interface HostedAgentConfiguration {
     readonly card: AgentCard;
 }
 
-// {§http-host} — the exposure rides the service listener, so it has no address knobs (#641).
-// A still-set one fails hard naming the successor; it never silently binds nothing, and it never
-// case-folds into an alias definition. Spelled out only here, as the refusal's own evidence.
-const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
-    if (environ.PLURNK_A2A_PROPOSALS !== undefined) {
-        throw new ConfigurationError("PLURNK_A2A_PROPOSALS", "PLURNK_A2A_PROPOSALS is retired: the parent worker's owner reviews operations; PLURNK_SERVICE_PROPOSALS controls server approval.");
-    }
-    for (const name of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"] as const) {
-        if (environ[name] !== undefined) {
-            throw new ConfigurationError(name,
-                `${name} is retired: the A2A exposure is mounted on the service listener, whose address is PLURNK_HOST and PLURNK_PORT ({§http-host}); remove it.`,
-            );
-        }
-    }
-};
-
 const parseEnvironment = (environ: NodeJS.ProcessEnv): ResourceEnvironment => {
-    shedRetiredListener(environ);
     const environment = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: [] }, environ);
     return environment;
 };
@@ -167,7 +150,6 @@ export const hostedAgentConfiguration = (
     const enabled = environ.PLURNK_A2A_EXPOSE;
     if (enabled === undefined || enabled.length === 0 || enabled === "0") return null;
     if (enabled !== "1") throw new ConfigurationError("PLURNK_A2A_EXPOSE", `PLURNK_A2A_EXPOSE must be 0 or 1; got ${JSON.stringify(enabled)}.`);
-    shedRetiredListener(environ);
     const endpointPath = required(environ, "PLURNK_A2A_ENDPOINT_PATH");
     if (!endpointPath.startsWith("/") || endpointPath.includes("?") || endpointPath.includes("#")) {
         throw new ConfigurationError("PLURNK_A2A_ENDPOINT_PATH", "PLURNK_A2A_ENDPOINT_PATH must be an absolute URL pathname without query or fragment.");

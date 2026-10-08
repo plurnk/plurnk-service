@@ -453,8 +453,6 @@ Native SDKs retain their own output field; `OUTPUT_PATH` is incompatible with an
 options namespace. Request-local options are projected after the effective
 envelope is known, never frozen into SDK model construction. Streaming and
 non-streaming calls use the same projection.
-Retired `REASONING_STYLE` selectors fail at the selected provider/alias boundary;
-they neither select a preset nor silently coexist with these declarations.
 
 A native SDK's portable reasoning setting has no `max`, so a native route without
 a namespace cannot send an effort the catalog documents beyond it; construction
@@ -556,12 +554,9 @@ The provider segment of a model route IS the Models.dev id (#459) —
 configurations align with the catalog end to end (`fireworks-ai/…`,
 `cloudflare-workers-ai/@cf/…`, `togetherai/…`), and the
 `PLURNK_PROVIDERS_PROVIDER_<PREFIX>_*` prefix is that id uppercased with
-non-alphanumerics as underscores (`FIREWORKS_AI`). A retired plurnk-local
-segment (`fireworks`, `cloudflare`, `together`, `moonshot`, `dashscope`,
-`zhipu`, `hunyuan`, `bedrock`) refuses loudly, naming the id — it never
-silently resolves. Custom declared providers keep their operator-chosen
-names; the built-in local `ollama` rail keeps its name (the catalog's
-`ollama-cloud` is a different provider).
+non-alphanumerics as underscores (`FIREWORKS_AI`). Custom declared providers
+keep their operator-chosen names; the built-in local `ollama` rail keeps its
+name (the catalog's `ollama-cloud` is a different provider).
 
 `instantiateProvider` resolves in this order:
 
@@ -731,8 +726,7 @@ the optional `APP_NAME` are provider declarations (`PLURNK_PROVIDERS_PROVIDER_<N
 overridable per route or alias); the SDK sends them as `HTTP-Referer` and
 `X-OpenRouter-Title`. The shipped floor declares them for `openrouter` only, so
 another provider on the same SDK package sends none; an empty `APP_URL` suppresses
-both. The retired `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE` and
-`OPENROUTER_X_TITLE` fail construction.
+both.
 
 ## §9 Failures, retries, and cancellation
 
@@ -1021,8 +1015,7 @@ replayed. Missing output usage cannot prove a violation.
 as `35%`. `PLURNK_PROVIDERS_REASONING_BUDGET` is optional; leaving it unset
 preserves provider-adaptive depth. A backend known to decode without a finite
 limit advertises `requiresOutputBudget` and fails construction when no total can
-be resolved. The retired additive reserve knobs fail hard rather than creating
-a second envelope contract.
+be resolved.
 
 ## §13 Inference capacity
 

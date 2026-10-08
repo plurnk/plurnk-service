@@ -202,9 +202,6 @@ export interface ExecInfo {
     resourcesPath?: string;
     expandTools?: boolean;
     packageName: string;
-    // Published per-tag projection of the package-level attribution declaration.
-    // Discovery validates it through {§extension-attribution} before admission.
-    attribution?: string | string[];
 }
 
 // One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`

@@ -113,21 +113,6 @@ test("{§fs-namei} FIND of an absolute path resolves the member", async () => {
     });
 });
 
-test("contract: a hash-shaped target addresses that literal path, never a pathname regex", async () => {
-    await withWorkspaceRoot(async (root, ctx) => {
-        await writeFile(join(root, "#draft.*#i"), "literal hash path\n");
-        await writeFile(join(root, "draft.md"), "would match the retired regex interpretation\n");
-        await addMember(ctx, "#draft.*#i");
-        await addMember(ctx, "draft.md");
-
-        const stmt = parseOp<FindStatement>("````FIND (#draft.*#i)````", "FIND");
-        const result = await new File().find(stmt, ctx);
-
-        assert.equal(result.status, 200);
-        assert.deepEqual(resourcePaths(result), ["#draft.*#i"]);
-    });
-});
-
 // {§find-result-projection}: exact matcher FIND exposes navigation locations.
 
 test("an exact regex FIND returns its flat match location", async () => {

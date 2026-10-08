@@ -164,7 +164,7 @@ test("candidate reaps its daemon when the client is terminated by a signal", { t
 });
 
 
-test("candidate deadline snapshot photographs the project root while the run plays on (bench#18)", { timeout: 30_000 }, async (t) => {
+test("candidate deadline snapshot photographs the project root while the run plays on", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-deadline-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");

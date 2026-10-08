@@ -8,7 +8,7 @@ import type { ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
-import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant, WebMaterializationError, type CacheVariant } from "./WebFetcher.ts";
+import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant, WebMaterializationError } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
 import { requireNonNegativeIntegerEnv as requireNumEnv } from "./Config.ts";
 import { BODY, FETCHED_AT, HEADER, REQUEST_METHOD } from "./http-names.ts";
@@ -408,7 +408,7 @@ export default class Http implements SchemeHandler {
         return Http.#representationComplete(entry)
             && Http.#requestMethod(header.content) === "GET"
             && requestHeaders.length === 0
-            && Http.#cacheVariant(header.content) === "default"
+            && Http.#packageHeaderValue(header.content, CACHE_VARIANT_HEADER) === "default"
             && Http.#storedCachePolicy(header.content).cacheable
             && await Http.#projectionCurrent(header.content, projection);
     }
@@ -713,11 +713,6 @@ export default class Http implements SchemeHandler {
 
     static #materializerIdentity(priorHeader: string): string | undefined {
         return Http.#packageHeaderValue(priorHeader, MATERIALIZER_ID_HEADER);
-    }
-
-    static #cacheVariant(priorHeader: string): CacheVariant | undefined {
-        const value = Http.#packageHeaderValue(priorHeader, CACHE_VARIANT_HEADER);
-        return value === "default" || value === "bypass" ? value : undefined;
     }
 
     static #sourceMimetype(header: string): string {

@@ -8,7 +8,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Two channels:
 //   - symbols (extract): tree-sitter walk surfacing tables/keys as a
-//     module/field outline. Coarse, for the model's preview.
+//     module/field outline.
 //   - deep-json (deepJson): the parsed TOML value via `smol-toml`. This is
 //     what jsonpath queries against — users writing `$.server.host` want
 //     the parsed value tree.

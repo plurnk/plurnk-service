@@ -54,7 +54,7 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
-        assert.equal(r.status, 200, "no more 501 — log speaks the universal FIND");
+        assert.equal(r.status, 200, "log speaks the universal FIND");
         const foundPaths = paths(r);
         // BOTH rows whose projection carries the phrase match: the EDIT's rx echoes the written
         // span, the READ's rx carries the retrieved content — FIND matches exactly what READ shows.

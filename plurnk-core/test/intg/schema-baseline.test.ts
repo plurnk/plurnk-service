@@ -1,21 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
 import { DatabaseSync } from "node:sqlite";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { SqlRiteSync } from "@possumtech/sqlrite";
-import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Validator, type FunctionalityListResult, type KillStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
-import { readStmt } from "./_dsl.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
 // release freezes what it shipped, the previous release is the path an existing database takes, and
@@ -146,51 +145,31 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
     } finally { after.close(); }
 });
 
-test("{§db-migrations} {§skills-module}: extraction preserves bindings and fetched bytes without the former namespace", async (t) => {
+test("{§db-migrations} {§skills-module}: the skills family state moves to its owner exactly", async (t) => {
     const path = await released(RELEASED);
     const home = await mkdtemp(join(tmpdir(), "plurnk-skills-upgrade-"));
     const hostPaths = new HostPaths({ home, env: {} });
-    const key = "a".repeat(32);
     const definition = { name: "review", source: "https://unreachable.invalid/skills.git", commit: "b".repeat(40) };
     const state = JSON.stringify({ version: 1, definitions: {
-        review: { origin: "workspace", enabled: true, definition },
+        review: { origin: "workspace", enabled: false, definition },
         plurnk: { origin: "service", enabled: false },
     } });
-    const sourceKey = createHash("sha256").update(JSON.stringify([
-        definition.name, definition.source, null, definition.commit,
-    ])).digest("hex");
-    const root = join(hostPaths.stateDir, "workspaces", key);
-    const oldDirectory = join(root, encodeURIComponent("@plurnk/plurnk-core/skills"));
-    const directory = join(root, encodeURIComponent("@plurnk/plurnk-skills"));
-    const resource = join(sourceKey, "review", "SKILL.md");
-    const content = "---\nname: review\ndescription: Retained review\n---\nPinned bytes.\n";
-    await mkdir(join(oldDirectory, sourceKey, "review"), { recursive: true });
-    await writeFile(join(oldDirectory, resource), content);
     const before = new DatabaseSync(path);
     try {
         before.exec("INSERT INTO workspaces (id, name) VALUES (1, 'skillsUpgrade')");
-        before.exec("INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'reader', 'client')");
-        const put = before.prepare("INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (1, ?, ?)");
-        put.run("@plurnk/plurnk-core/skills", state);
-        put.run("@plurnk/plurnk-service/storage", JSON.stringify({ key }));
+        before.prepare("INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (1, ?, ?)")
+            .run("@plurnk/plurnk-core/skills", state);
     } finally { before.close(); }
     const db = await openMigrated(path);
-    let daemon = new Daemon({ db, provider: null, hostPaths });
+    const daemon = new Daemon({ db, provider: null, hostPaths });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(home, { recursive: true, force: true }); });
     assert.equal(await db.workspace_module_state_get.get({ workspace_id: 1, namespace_owner: "@plurnk/plurnk-core/skills" }), undefined);
     assert.deepEqual(await db.workspace_module_state_get.get({ workspace_id: 1, namespace_owner: "@plurnk/plurnk-skills" }), { state });
-    const read = () => daemon.dispatchAsClient({ workspaceId: 1, workerId: 1, statement: readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] }) });
     await daemon.start();
-    assert.equal((await read()).content, content.trimEnd(), "the unreachable source is not fetched again");
-    assert.equal(await readFile(join(directory, resource), "utf8"), content);
-    await assert.rejects(stat(oldDirectory), { code: "ENOENT" }, "the old path is not retained as an alias");
     const listed = await daemon.invokeModuleAction("workspace.skills.list", {}, { scope: "workspace", workspaceId: 1 }) as FunctionalityListResult;
     assert.equal(listed.definitions.find(({ alias }) => alias === "plurnk")?.state, "disabled");
+    assert.equal(listed.definitions.find(({ alias }) => alias === "review")?.state, "disabled");
     assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.definition, definition);
-    await daemon.stop();
-    daemon = new Daemon({ db, provider: null, hostPaths });
-    await daemon.start();
-    assert.equal((await read()).content, content.trimEnd(), "a completed upgrade remains stable on restart");
 });
 
 test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
@@ -242,6 +221,68 @@ test("{§db-migrations} {§target-group}: stored groups normalize without rewrit
         assert.equal(after.prepare("SELECT packet FROM turns WHERE id = 2").get()!.packet, unchanged, "a packet without groups is untouched byte-for-byte");
         assert.deepEqual(after.prepare("SELECT kind, content FROM turn_sources ORDER BY kind").all().map((row) => ({ ...row })),
             [{ kind: "ops", content }, { kind: "reasoning", content: reasoning }]);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
+test("{§db-migrations} {§worker-wait-timing} {§log-history-projection}: a released log keeps its rows, its receipts' bounds and its projections", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'logUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'wait for work', '{}', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200), (2, 1, 2, 'model', 'inference', 200);
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs) VALUES
+                (1, 1, 1, 1, 1, 'model', 'WAIT', '{}', 'application/json', '{"status":202}', 'application/json', 202, '{"waiting":-1,"label":"build"}'),
+                (2, 1, 1, 1, 2, 'model', 'WAIT', '{}', 'application/json', '{"status":202}', 'application/json', 202, '{"waiting":300}'),
+                (3, 1, 1, 2, 1, 'model', 'NOTE', '{}', 'application/json', '{"status":200}', 'application/json', 200, '{"waiting":-1}');
+            INSERT INTO log_entry_projections (log_entry_id, active, folded, output_admission_turn_id, output_withheld) VALUES
+                (1, 1, '[]', 2, 1), (2, 0, '[]', NULL, 0), (3, 1, '[[1,2]]', NULL, 0);
+            -- The process triggers that name the projection persist between opens; the rebuild must survive them.
+            CREATE TRIGGER log_entries_initialize_projection AFTER INSERT ON log_entries
+            BEGIN INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES (NEW.id, 1, '[]'); END;
+            CREATE TRIGGER log_entries_apply_curation AFTER INSERT ON log_entries WHEN 0
+            BEGIN UPDATE log_entry_projections SET active = active WHERE 0; END;
+            CREATE TRIGGER workers_fork_copies_history AFTER INSERT ON workers
+            BEGIN UPDATE log_entry_projections SET folded = folded WHERE 0; END;
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual(after.prepare("SELECT id, op, attrs FROM log_entries ORDER BY id").all().map((row) => ({ ...row })), [
+            { id: 1, op: "WAIT", attrs: '{"label":"build"}' },
+            { id: 2, op: "WAIT", attrs: '{"waiting":300}' },
+            { id: 3, op: "NOTE", attrs: '{"waiting":-1}' },
+        ], "a WAIT receipt carries only a seconds bound; other evidence is unchanged");
+        assert.deepEqual(columns(after, "log_entry_projections"), ["log_entry_id", "active", "folded"]);
+        assert.deepEqual(after.prepare("SELECT log_entry_id, active, folded FROM log_entry_projections ORDER BY log_entry_id").all().map((row) => ({ ...row })), [
+            { log_entry_id: 1, active: 1, folded: "[]" },
+            { log_entry_id: 2, active: 0, folded: "[]" },
+            { log_entry_id: 3, active: 1, folded: "[[1,2]]" },
+        ]);
+        assert.deepEqual(after.prepare("SELECT id, folded FROM active_log_entries ORDER BY id").all().map((row) => ({ ...row })), [
+            { id: 1, folded: "[]" },
+            { id: 3, folded: "[[1,2]]" },
+        ], "the view reads the rebuilt projection");
+        assert.deepEqual(
+            (after.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%log_entry_projections%' ORDER BY name").all() as Array<{ name: string }>).map(({ name }) => name),
+            [
+                "log_entries_apply_curation", "log_entries_initialize_projection",
+                "log_entry_projections_delete_with_event_only", "log_entry_projections_emission_whole",
+                "log_entry_projections_folded_valid_insert", "log_entry_projections_folded_valid_update",
+                "log_entry_projections_invalidate_derivation", "log_entry_projections_kill_terminal",
+                "workers_fork_copies_history",
+            ],
+            "the guards are redeclared and the processes are current",
+        );
+        assert.throws(() => after.exec("UPDATE log_entries SET attrs = '{}' WHERE id = 2"), /attrs are immutable/, "the attrs guard is redeclared");
+        assert.throws(() => after.exec("UPDATE log_entry_projections SET active = 1 WHERE log_entry_id = 2"), /cannot re-enter the active projection/);
+        assert.throws(() => after.exec("UPDATE log_entry_projections SET folded = '[[2,1]]' WHERE log_entry_id = 1"), /folded ranges are invalid/);
+        assert.throws(() => after.exec("DELETE FROM log_entry_projections WHERE log_entry_id = 1"), /must retain its projection/);
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
 });

@@ -13,6 +13,7 @@ import { openMigrated } from "./_db.ts";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const TRIGGER = /CREATE TRIGGER(?: IF NOT EXISTS)? (\w+)\s+(BEFORE|AFTER|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)(?:\s+OF\s+[\w,\s]+?)?\s+ON (\w+)[\s\S]*?\nEND;/g;
+const DROPPED = /^DROP TRIGGER(?: IF EXISTS)? (\w+);/gm;
 const WRITES = /\b(INSERT INTO|UPDATE \w+\s+SET|DELETE FROM)\b/i;
 const body = (block: string): string => block.slice(block.indexOf("BEGIN"));
 
@@ -33,7 +34,8 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
     const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).sort();
     assert.ok(chapters.length > 1, "the baseline is chaptered");
     // {§db-migrations}: a chapter that rebuilds a table redeclares that table's guards, so the
-    // latest chapter naming a trigger is its current declaration.
+    // latest chapter naming a trigger is its current declaration, and one it drops without
+    // redeclaring is no longer declared.
     const triggers = new Map<string, { name: string; when: string; writes: boolean }>();
     for (const [index, chapter] of chapters.entries()) {
         const text = await readFile(join(dir, chapter), "utf8");
@@ -41,7 +43,14 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
         assert.equal(version, index + 1, `${chapter}: chapters are numbered consecutively from 1`);
         assert.deepEqual(text.match(/^-- MIGRATE: (\d+)/gm), [`-- MIGRATE: ${version}`], `${chapter}: one MIGRATE block, its version is the file's prefix`);
         assert.equal((text.match(/^-- (INIT|PREP|EXEC|TX): /gm) ?? []).length, 0, `${chapter}: a chapter holds shape only; processes live beside their owners`);
-        for (const m of text.matchAll(TRIGGER)) triggers.set(m[1]!, { name: m[1]!, when: m[2]!, writes: WRITES.test(body(m[0])) });
+        const statements = [
+            ...[...text.matchAll(TRIGGER)].map((m) => ({ index: m.index, name: m[1]!, declared: { name: m[1]!, when: m[2]!, writes: WRITES.test(body(m[0])) } })),
+            ...[...text.matchAll(DROPPED)].map((m) => ({ index: m.index, name: m[1]!, declared: null })),
+        ].sort((a, b) => a.index - b.index);
+        for (const { name, declared } of statements) {
+            if (declared === null) triggers.delete(name);
+            else triggers.set(name, declared);
+        }
     }
     return [...triggers.values()];
 };
@@ -77,7 +86,7 @@ test("{§db-schema-baseline}: every trigger in the baseline guards its table; on
 
 test("{§db-process-triggers}: every INIT trigger writes rows, is named after itself, and is dropped before it is created", async () => {
     const triggers = await initTriggers();
-    assert.ok(triggers.length >= 21, `the 21 processes moved out of the baseline are declared as INIT blocks (found ${triggers.length})`);
+    assert.ok(triggers.length >= 21, `the process triggers are declared as INIT blocks (found ${triggers.length})`);
     for (const t of triggers) {
         assert.equal(t.init, t.name, `${t.file}: INIT block ${t.init} declares trigger ${t.name}; the block is named after its trigger`);
         assert.ok(t.dropsFirst, `${t.file} ${t.name}: DROP TRIGGER IF EXISTS precedes CREATE TRIGGER, so the definition is current on every open`);

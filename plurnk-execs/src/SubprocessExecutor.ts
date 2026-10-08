@@ -19,7 +19,7 @@ const overrideSignal = (reason: unknown): NodeJS.Signals | number | null => {
 };
 
 // Loop-end housekeeping: an abort reason marked `{ housekeeping: true, graceMs }`
-// (the consumer's run-completion teardown) escalates the polite SIGHUP to a hard
+// (the consumer's loop-completion teardown) escalates the polite SIGHUP to a hard
 // SIGKILL after `graceMs` — the consumer's grace, sourced from its config, never
 // a magic number here. Absent → null → no reap (a plain KILL is fire-and-forget).
 const housekeepingGrace = (reason: unknown): number | null => {

@@ -1,7 +1,6 @@
 // NETWORK-gated web functionality (the `live` tier — deliberately run, never CI; non-deterministic,
 // specific-thing tests, not e2e stories). Proves the boot-DISCOVERED web stack works end-to-end:
 //   - http://  (@plurnk/plurnk-schemes-http) — a real fetch, no API key.
-//   - Tavily Extract — a real HTML READ when the operator provides TAVILY_API_KEY.
 //
 // Web discovery is an ordinary MCP attachment ({§web-search-retrieval}); the search-MCP
 // live exercise lives with the demo-tier fixture (test/demo).

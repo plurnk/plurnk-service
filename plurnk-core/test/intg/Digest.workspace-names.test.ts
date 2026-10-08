@@ -35,7 +35,7 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
         }
     } finally { await db.close(); }
     const digestDir = join(dir, "digest");
-    assert.doesNotThrow(() => Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir }), "a path-named workspace no longer refuses the share");
+    assert.doesNotThrow(() => Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir }), "a path-named workspace shares");
     const folders = (await readdir(digestDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
     assert.ok(folders.includes("ptl-plurnk-service"), `the first path-named workspace slugs to ptl-plurnk-service: ${folders.join(", ")}`);
     assert.ok(folders.some((name) => /^ptl-plurnk-service-\d+$/u.test(name)), `the second, slugging alike, carries its id: ${folders.join(", ")}`);

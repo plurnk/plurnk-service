@@ -1,5 +1,5 @@
-// The owned serializer's contract (#344): turndown-parity escaping, structure
-// for the Readability tag set, and the table upgrade turndown never had.
+// The serializer's contract (#344): prose escaping, structure for the
+// Readability tag set, and pipe tables.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseHTML } from "linkedom";
@@ -29,7 +29,7 @@ test("nested lists, blockquotes, and fenced code hold structure", () => {
     );
 });
 
-test("tables serialize as pipe tables — the upgrade over GFM-less turndown", () => {
+test("tables serialize as pipe tables", () => {
     assert.equal(
         md("<table><tr><th>K</th><th>V|p</th></tr><tr><td><strong>b</strong></td><td>2</td></tr></table>"),
         "| K | V\\|p |\n| --- | --- |\n| **b** | 2 |",

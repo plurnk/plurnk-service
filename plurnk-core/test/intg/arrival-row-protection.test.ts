@@ -1,5 +1,4 @@
-// {§message-arrival}, {§context-output-selection}. Arrival rows are ordinary
-// curatable log memory; withholding output does not curate it.
+// {§message-arrival}. Arrival rows are ordinary curatable log memory.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";

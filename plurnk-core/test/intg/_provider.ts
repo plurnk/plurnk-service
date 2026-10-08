@@ -1,7 +1,7 @@
 // Integration harness: provider capacity fixtures and the test-only viable context window.
 
 import { readFile } from "node:fs/promises";
-import { Paths } from "../../src/index.ts";
+import Paths from "../../src/Paths.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { assessRequestCapacity, resolveGenerationEnvelopeFromEnv, type ChatMessage, type ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 

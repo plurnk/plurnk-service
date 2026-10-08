@@ -793,9 +793,7 @@ export default class DrainSupervisor {
         }
 
         // No slept loop. A live loop surfaces the concluded stream ambiently via the
-        // environment-observation injector ({§exec-stream}) on its next turn — there is no prompt
-        // to inject and NO task to overwrite. The obsolete "automated environment update"
-        // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
+        // environment-observation injector ({§exec-stream}) on its next turn; the client is told.
         if (this.#activeDrains.has(payload.workerId)) {
             this.#emit(workspaceId, "stream/concluded", {
                 ...conclusion, wakeAction: "no-op-active-loop",

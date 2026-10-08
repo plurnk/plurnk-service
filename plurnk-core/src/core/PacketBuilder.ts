@@ -10,8 +10,6 @@ import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { parseEnv } from "node:util";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
@@ -28,8 +26,6 @@ import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plu
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import Results, { OperationFailureError } from "./results.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -153,58 +149,6 @@ export default class PacketBuilder {
         this.#functionalityDocuments = documents;
     }
 
-    static #declaredKnobs: readonly string[] | undefined;
-
-    // {§configuration-repair-path} — retired knobs fail naming what replaced them: the context
-    // budget has one rule ({§context-fit}) and one gauge ({§context-gauge}).
-    static validateConfiguration(env: NodeJS.ProcessEnv = process.env): void {
-        // A commented declaration (`# PLURNK_X=`) is an optional knob, declared like any other
-        // ({§operator-config-env-defaults}; the catalog reads it the same way) — only its value is absent.
-        const declared = PacketBuilder.#declaredKnobs ??= (() => {
-            const text = readFileSync(new URL("../../.env.defaults", import.meta.url), "utf8");
-            const optional = [...text.matchAll(/^#\s*([A-Za-z_][A-Za-z0-9_]*)=/gmu)].map((m) => m[1]!);
-            return [...Object.keys(parseEnv(text)), ...optional];
-        })();
-        const oneRule = "a result arrives whole when it fits the budget and as its size otherwise ({§context-fit}); nothing is previewed, projected or paged";
-        const retired: Record<string, string> = {
-            PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
-            PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
-            PLURNK_SERVICE_PROMPT_PROJECTION: oneRule,
-            PLURNK_SERVICE_BUDGET_PRESSURE: "the gauge carries no threshold and no mandate ({§context-gauge})",
-            PLURNK_REASONING_VIEW_LINES: "initialization authors no reasoning and reads none back ({§worker-initialization-entry})",
-            PLURNK_REASONING_EMPTY_TURN_LINES: "an empty turn reads nothing back; its 422 row is the whole receipt ({§empty-turn})",
-        };
-        const retiredKey = new RegExp(`^(${Object.keys(retired).join("|")})(?:_.*)?$`, "u");
-        for (const key of Object.keys(env)) {
-            const match = retiredKey.exec(key);
-            const reason = match === null ? undefined : retired[match[1]!];
-            if (reason !== undefined) throw new ConfigurationError(key, `${key} is retired: ${reason}.`);
-        }
-        const moved: Record<string, string> = {
-            CTX: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
-            CONTEXT_WINDOW: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
-            REASONING: "PLURNK_PROVIDERS_REASONING_BUDGET",
-            ASSISTANT: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
-            COMPLETION: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
-        };
-        for (const key of Object.keys(env)) {
-            if (declared.some((knob) => key === knob || key.startsWith(`${knob}_`))) continue;
-            const match = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/u.exec(key);
-            if (match !== null) throw new ConfigurationError(key, `${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
-        }
-    }
-
-    // {§configuration-repair-path} — the same refusal as an operation failure: a 503 Problem naming the
-    // key, so a loop reports the failed demand instead of dying on an unshaped exception.
-    static assertConfiguration(env: NodeJS.ProcessEnv = process.env): void {
-        try {
-            PacketBuilder.validateConfiguration(env);
-        } catch (cause) {
-            if (!(cause instanceof ConfigurationError)) throw cause;
-            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
-        }
-    }
-
     curationBudgetFor(packet: RequestPacket): number | null {
         return this.#allowanceOf(packet).budget;
     }
@@ -252,8 +196,6 @@ export default class PacketBuilder {
         // {§previous-emission} — omitted whole before the wall takes any result bodies.
         omitPreviousEmission?: boolean;
     }): Promise<RequestPacket> {
-        // {§configuration-repair-path} — a retired packet knob refuses packet construction, never startup.
-        PacketBuilder.assertConfiguration();
         await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -376,8 +318,8 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§previous-emission}: the source is not a transformable draft. The stored section remains
-        // present when empty, identifying this envelope for historical evidence readers.
+        // {§previous-emission}: core owns this section, so it is never a transformable draft; every
+        // packet stores it last, empty when no previous program qualifies.
         if (drafts.some(({ name }) => name === "previous-emission")) throw new Error("previous-emission is a core-owned packet section");
         const previous = omitPreviousEmission ? undefined : await this.#db.engine_previous_emission.get<{ content: string }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         drafts = [...drafts, { name: "previous-emission", slot: "user", header: "Previous Emission", content: previous?.content ?? "" }];

@@ -257,7 +257,7 @@ test("resolveOverlay reports members and the files an exclusion removed", async 
     });
 });
 
-test("membership is the workspace's — one overlay, identical for every worker", async () => {
+test("{§machine-processes-one-overlay} membership is the workspace's — one overlay, identical for every worker", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // ctx.workerId is worker A. Create a second worker on the same workspace.
         const workerB = await insertWorker(db, ctx.workspaceId);

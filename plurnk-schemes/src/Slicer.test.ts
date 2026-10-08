@@ -358,13 +358,12 @@ test("page rejects fractional result positions instead of rounding", () => {
     assert.equal(result.range?.requested[0], 0.5);
 });
 
-test("page rejects text-shaped and threshold-prefixed coordinate lists", () => {
-    for (const marks of [[1, 1, 1, 1], [0.7, 1, 1, 1, 1]]) {
-        const result = Slicer.page(["a", "b"], { marks: marks as [number, ...number[]] });
-        assert.equal(result.status, 416);
-        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
-        assert.deepEqual(result.problem?.requestedPositions, marks);
-    }
+test("page rejects text-shaped coordinate lists", () => {
+    const marks: [number, ...number[]] = [1, 1, 1, 1];
+    const result = Slicer.page(["a", "b"], { marks });
+    assert.equal(result.status, 416);
+    assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
+    assert.deepEqual(result.problem?.requestedPositions, marks);
 });
 
 test("lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
@@ -580,8 +579,7 @@ test("{§slicer-window} an empty byte source returns no coordinates, never the i
     }
 });
 
-// {§range-starts-at-one} Recorded destructive shapes (#853): rtx `EDIT (tests/test_ext_autodoc.py) <0,795>` /
-// `<0,@xb6i9>` (anchor resolved to 795) meant "insert here" and replaced the file head; `<0,-1>` replaced the file.
+// {§range-starts-at-one} (#853)
 const HEAD = Array.from({ length: 800 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
 test("{§range-starts-at-one} {§diagnostic-observation} EDIT <0,795> is refused 416 with the working line forms, never a rebuilt range; the file is untouched", () => {
     const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");

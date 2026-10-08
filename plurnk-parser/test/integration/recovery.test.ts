@@ -103,14 +103,13 @@ test("{§heading-boundary-recovery} a malformed block never downgrades a conclus
     assert.equal(send?.position.line, 5);
 });
 
-// {§legacy-bracket-slot}
+// {§bracket-metadata-slot}
 test("bracket metadata belongs to a target, executor, or targetless SEND", () => {
     for (const [header, op, target, metadata] of [
         ["READ (a.ts) [+diff] <1,-1>", "READ", "a.ts", "+diff"],
         ["KILL (log://**) [memory]", "KILL", "log://**", "memory"],
         ['sh (greet.sh) [{"cwd": "sub"}]', "sh", "greet.sh", '{"cwd": "sub"}'],
         ['SEND [{"attachments":["report.pdf"]}]', "SEND", null, '{"attachments":["report.pdf"]}'],
-        ["SEND [102]", "SEND", null, "102"],
     ] as const) {
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.deepEqual(errors(r), [], header);

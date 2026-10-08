@@ -93,11 +93,6 @@ test("origin is attribution (provenance), never read to hide a row at render", a
     } finally { db.close(); }
 });
 
-// {§actor-boundary-two-doors} is a REAL test now in Engine.env-delta.test.ts (both doors —
-// state-via-delta + message-via-inject). The stale "voice door unbuilt" stub is retired: the
-// voice door (inject), and IRC through it, resume parked workers in place under
-// {§methods-loop-run-fold-consistency}.
-
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in

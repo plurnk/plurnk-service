@@ -75,7 +75,7 @@ test("{§packet-attachment-parts} a picture-only route receives the PDF as text 
     const requests = await runLoop(["image"]);
     const last = requests.at(-1)!;
     assert.ok(last.every((message) => typeof message.content === "string"), "no part rides for a kind the route refuses");
-    assert.doesNotMatch(userText(last), /tokensAttachment|has been ejected from context/);
+    assert.doesNotMatch(userText(last), /tokensAttachment/);
 });
 
 // The specimen exercises results after server admission, not interactive approval.

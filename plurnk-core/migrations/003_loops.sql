@@ -4,7 +4,7 @@
 -- an edit here.
 
 -- loops
--- policy: immutable per-loop proposal disposition ({§loop-policy-effective-read}).
+-- policy: immutable per-loop proposal disposition.
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- NULL means the owning worker itself. Denormalized headline of the loop's
     -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
-    -- {§loop-policy-composition}: every insert states the complete policy; a column default would
+    -- Every insert states the complete policy; a column default would
     -- be a second home for a choice the panel owns. Likewise max_turns below.
     policy   TEXT    NOT NULL CHECK (json_valid(policy)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the

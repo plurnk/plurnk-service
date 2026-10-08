@@ -638,8 +638,6 @@ export default class TurnRunner {
         const createdTurnIds: number[] = [];
         const turnSignal = this.#loopSignal(loopId) ?? signal;
         try {
-            // {§configuration-repair-path} — a retired packet knob refuses inference before any turn opens.
-            PacketBuilder.assertConfiguration();
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
             if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn, gitStatus);

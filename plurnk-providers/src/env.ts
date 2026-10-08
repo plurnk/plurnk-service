@@ -73,15 +73,6 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
-// {§provider-configuration} A still-set retired knob fails
-// hard pointing at its successor — never silently coexists with the new floor.
-// The retired names appear ONLY as this function's ARGUMENTS at the call sites
-// (each lexicon-allow), never as a live identifier.
-const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, label: string, ref: string): void => {
-    const stale = env[oldName];
-    if (stale !== undefined && stale.length > 0) throw new Error(`${label} provider: ${oldName} was renamed to ${newName} (${ref}); update the env`);
-};
-
 export type CacheWritePolicy = "off" | "stable-system";
 
 const cacheAffinitySchema = {
@@ -125,7 +116,6 @@ export const cacheAffinityDeclarationFromEnv = (env: NodeJS.ProcessEnv, provider
 
 export const cacheAffinityFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
     const name = "PLURNK_PROVIDERS_CACHE_AFFINITY";
-    shedRenamed(env, "PLURNK_PROVIDERS_PROMPT_CACHE_KEY", name, label, "{§provider-cache-affinity}"); // lexicon-allow
     const value = env[name];
     if (value !== "0" && value !== "1") {
         throw new Error(`${label} provider: ${name} must be "0" or "1"`);
@@ -152,7 +142,6 @@ export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): 
 //   PLURNK_PROVIDERS_RAWBODY   truthy (not ""/"0") → attach the verbatim wire
 //     body to response.rawBody. Per-alias-scopable.
 export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { topLogprobs: number | null; rawBody: boolean } => {
-    shedRenamed(env, "PLURNK_PROVIDERS_LOGPROB", "PLURNK_PROVIDERS_TOP_LOGPROBS", label, "the OpenAI wire term"); // lexicon-allow
     const topLogprobs = env.PLURNK_PROVIDERS_TOP_LOGPROBS === "off"
         ? null
         : parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label);
@@ -162,10 +151,8 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
     };
 };
 
-// {§model-fact-resolution} — one context-window reader for every provider path;
-// the retired CONTEXT_SIZE spelling fails visibly at the same boundary.
+// {§model-fact-resolution} — one context-window reader for every provider path.
 export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
-    shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "{§model-fact-resolution}"); // lexicon-allow
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
@@ -214,20 +201,6 @@ export type GenerationEnvelope = {
     // {§provider-output-floor}: the least response room any request keeps; never above the output budget.
     readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
-};
-
-const shedRetiredEnvelope = (env: NodeJS.ProcessEnv, label: string): void => {
-    for (const name of ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE"] as const) {
-        // A retired knob is refused in its bare AND per-alias forms: a suffixed leftover
-        // (`…_RESERVE_rtxgemma=20%`) is not a knob, so alias scoping never maps it, and it
-        // sat silently doing nothing while the operator believed a budget rode.
-        const present = Object.entries(env).find(([key, value]) => (key === name || key.startsWith(`${name}_`)) && value !== undefined && value !== "");
-        if (present !== undefined) {
-            throw new Error(
-                `${label} provider: ${present[0]} is retired; reasoning is now a subset of the total generation envelope. Replace the old pair with PLURNK_PROVIDERS_OUTPUT_BUDGET and optional PLURNK_PROVIDERS_REASONING_BUDGET ({§provider-generation-envelope})`,
-            );
-        }
-    }
 };
 
 const optionalTokenBudget = (
@@ -292,7 +265,6 @@ export const generationEnvelopeFromEnv = (
     contextWindow: number | null,
     maxOutputTokens: number | null,
 ): GenerationEnvelope => {
-    shedRetiredEnvelope(env, label);
     return resolveGeneration(
         parseTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", label),
         parseTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_FLOOR, "PLURNK_PROVIDERS_OUTPUT_FLOOR", label),
@@ -308,7 +280,6 @@ export const resolveGenerationEnvelopeFromEnv = (
     contextWindow: number | null,
     maxOutputTokens: number | null = null,
 ): GenerationEnvelope => {
-    shedRetiredEnvelope(env, "mock");
     return resolveGeneration(
         optionalTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", "mock"),
         optionalTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_FLOOR, "PLURNK_PROVIDERS_OUTPUT_FLOOR", "mock"),
@@ -351,24 +322,11 @@ export const reasoningResponseStyleFromEnv = (
     return raw;
 };
 
-// {§provider-effort} The effort knobs were named for reasoning; a leftover, bare or alias-suffixed, fails and names its
-// successor rather than sitting unread. Uppercase suffixes are other knobs (REASONING_BUDGET, REASONING_EFFORT_PATH).
-const RETIRED_EFFORT = /^PLURNK_PROVIDERS_REASONING(_FALLBACK)?(_[a-z0-9][A-Za-z0-9_-]*)?$/u; // lexicon-allow
-const shedRetiredEffort = (env: NodeJS.ProcessEnv, label: string): void => {
-    const present = Object.entries(env).find(([key, value]) => RETIRED_EFFORT.test(key) && value !== undefined && value !== "");
-    if (present === undefined) return;
-    const successor = present[0].replace("_REASONING", "_EFFORT"); // lexicon-allow
-    throw new Error(`${label} provider: ${present[0]} was renamed to ${successor}; update the env`);
-};
-
 export const effortFromEnv = (
     env: NodeJS.ProcessEnv,
     label: string,
     resolvedBudget: number | null = null,
 ): EffortSetting => {
-    shedRetiredEffort(env, label);
-    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_EFFORT", label, "provider configuration contract"); // lexicon-allow
-    shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
     const name = "PLURNK_PROVIDERS_EFFORT";
     const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (${EFFORTS.join(" | ")})`);
@@ -432,7 +390,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // single overlay.
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
-// same parser — e.g. service loop policy or prompt projection — without
+// same parser — e.g. core's `PLURNK_PROVIDERS_GBNF` — without
 // reimplementing the suffix/collision rules. Default stays the
 // providers' knob list; provider call sites pass nothing.
 // {§operator-cost-override} (#461) — Models.dev is the rate starting point; the
@@ -465,18 +423,13 @@ export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): Cost
 
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
-    if (knobs === PROVIDERS_KNOBS) {
-        RequestFields.rejectRetired(env, Object.keys(env).filter((key) =>
-            key.startsWith("PLURNK_PROVIDERS_REASONING_STYLE_")
-            && key.slice("PLURNK_PROVIDERS_REASONING_STYLE_".length).toLowerCase() === folded));
-    }
     const out: NodeJS.ProcessEnv = { ...env };
     for (const knob of knobs) {
         for (const [key, value] of Object.entries(env)) {
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
-            // A bare knob can prefix another bare knob (_REASONING prefixes
-            // _REASONING_BUDGET, _CONTEXT prefixes a hypothetical _CONTEXT_WINDOW): a key
+            // A bare knob can prefix another bare knob (_EFFORT prefixes
+            // _EFFORT_FALLBACK, _CACHE_AFFINITY prefixes _CACHE_AFFINITY_FIELD): a key
             // that IS a known knob is never a suffixed override, whatever the
             // alias is named.
             if (knobs.includes(key)) continue;

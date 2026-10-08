@@ -50,10 +50,6 @@ test("a workspace-commons entry is shared — a second worker updates it rather 
     } finally { db.close(); }
 });
 
-// {§machine-processes-one-overlay} is a REAL test now in contract-workspace.test.ts (two workers on one
-// workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
-// there for the git-fixture deps (withGitWorkspace); the stub here is retired.
-
 test("{§no-visibility} curating the log leaves the entry catalogued and READ-able, for its author and for a sibling", async () => {
     const db = await openMigrated();
     try {

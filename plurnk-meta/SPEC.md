@@ -38,7 +38,7 @@ A file in `docs/` does not declare a capability. Each exported document declares
 its source and an optional owning scheme. Scheme-bound references follow that
 scheme's visibility and capability admission; language references are independent
 of scheme registration. A basename is a document identity, not an invented scheme.
-Plugin documentation remains owned by its manifest: an absent `documentation`
+Plugin documentation is owned by its manifest: an absent `documentation`
 contributes no pull doc; a present field is the fallback when meta owns no
 document of that name. Document exclusions apply to the document and its owning
 scheme, when present.
@@ -47,8 +47,8 @@ scheme, when present.
 
 Meta authors the standard Plurnk `SKILL.md`; Core composes its resource tree
 from package-owned references and generated resources ({§plurnk-skill}). Skill
-discovery and enablement use the same Worker family as installed skills
-({§skills-functionality}). Neither package copies skills into universal roots
+discovery and enablement use the same `skills` Functionality family as installed
+skills ({§skills-functionality}). Neither package copies skills into universal roots
 or invokes an installer merely to expose the service's own reference material.
 
 ## §extension-discovery Installed extension discovery
@@ -82,7 +82,7 @@ installed extensions; they never manufacture package existence.
 ### §extension-kind One package, one kind
 
 The native declaration's `kind` is one exact string, in either manifest location
-at {§extension-manifest-read}. Arrays and other shapes claim no kind. A package may declare multiple named capabilities inside its one
+at {§extension-manifest-read}. A package may declare multiple named capabilities inside its one
 kind-owned collection.
 
 | `plurnk.kind`     | Kind-owned names                                         |
@@ -95,8 +95,7 @@ kind-owned collection.
 | `"module"`        | singular `module` export subpath ({§module-discovery})   |
 
 Coordinated capabilities spanning kinds use explicit daemon-module
-composition ({§module-lifecycle}); a multi-kind manifest is not a parallel
-module mechanism.
+composition ({§module-lifecycle}).
 
 ### §env-knob One environment reader
 
@@ -208,7 +207,6 @@ unreadable directory. No framework reads a manifest any other way.
 | Namespace reservation   | A tag beginning `@plurnk/` is valid only when `packageName` also begins `@plurnk/`; a violating trusted package fails. Other tag vocabularies, collisions, and meanings are deliberately uninterpreted.                                      |
 | Discovery result        | Each kind's discovery returns `packageAttributions`, keyed once by package name. Only non-empty static lists for packages represented after admission are present.                                                                             |
 | Host composition        | The host flattens static and runtime lists from its admitted extension objects, deduplicates and sorts the result, and treats it as an opaque folksonomy. It does not infer contribution, provenance, weight, trustworthiness, or causal value. |
-| Published projections   | Existing per-tag, per-handler, or name-keyed attribution fields may project the validated static declaration for 1.x compatibility; they do not own another policy.                                                                       |
 
 Manifest acquisition and static validation occur once in each kind's discovery
 path. A composed host consumes the admitted package map and loaded extension
@@ -225,8 +223,6 @@ objects without reopening a manifest or tracing tags through produced values.
   gate decides whose panel joins the floor and so is asked before the floor
   exists. A value in code would outrank the panel, so there is none
   ({§operator-config-only-home}).
-
-The setting's retired name, `PLURNK_PLUGINS_TRUSTED_ONLY`, fails hard and names its successor. <!-- lexicon-allow: the retired setting's name -->
 
 Every kind's scanner applies that predicate after reading the inert package
 manifest and before importing or registering extension code. An untrusted package

@@ -10,8 +10,8 @@ instructions in prose. `READ (a2a://<alias>)` shows its card and skills.
 
 `discover` takes `{"source": "<agent base URL>"}`, fetches the Agent Card, and
 returns one inert candidate carrying the exact definition. `add` persists and
-enables it for this workspace; it is a host effect, admitted under the loop's
-policy.
+enables it for this workspace; it is a host effect, reviewed by the worker's
+owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 
 ```a2a (add)
 {"alias": "peer", "definition": {"name": "peer", "url": "https://agents.example.com/peer"}}

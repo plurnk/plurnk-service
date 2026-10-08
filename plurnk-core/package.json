@@ -17,11 +17,6 @@
         "node": ">=26"
     },
     "exports": {
-        ".": {
-            "plurnk-dev": "./src/index.ts",
-            "types": "./dist/index.d.ts",
-            "default": "./dist/index.js"
-        },
         "./launch": {
             "plurnk-dev": "./src/launch/Launch.ts",
             "types": "./dist/launch/Launch.d.ts",

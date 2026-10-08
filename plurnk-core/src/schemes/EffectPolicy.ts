@@ -1,5 +1,5 @@
 import type { Effect } from "@plurnk/plurnk-execs";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export type ExecPolicy = "propose" | "auto";
 
@@ -23,15 +23,6 @@ const KNOBS: Readonly<Record<Effect, string>> = Object.freeze({
     pure: "PLURNK_SERVICE_EFFECT_PURE",
 });
 
-// Refuses the retired composite knob, naming its successors.
-const shedRetiredComposite = (): void => {
-    const composite = "PLURNK_SERVICE_EFFECT_POLICY";
-    const stale = process.env[composite];
-    if (stale !== undefined && stale.length > 0) {
-        throw new ConfigurationError(composite, `${composite} is retired: state ${Object.values(KNOBS).join(", ")} instead, one effect each.`);
-    }
-};
-
 export default class EffectPolicy {
     static isEffect(value: unknown): value is Effect {
         return value === "pure" || value === "read" || value === "host";
@@ -42,7 +33,6 @@ export default class EffectPolicy {
     }
 
     static decide(effect: Effect): ExecPolicy {
-        shedRetiredComposite();
         return Knob.choice(KNOBS[effect], POLICIES);
     }
 }

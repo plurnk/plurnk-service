@@ -1,13 +1,13 @@
 # plurnk-contracts
 
 `@plurnk/plurnk-contracts` is the single authority for the model-facing
-language contract, generated AST and wire types, JSON Schemas, model rail,
+language contract, generated AST and wire types, JSON Schemas,
 runtime-neutral results/failures/notices, and universal text coordinates.
 
 - `SPEC.md` defines accepted model-language syntax; `@plurnk/plurnk-parser`
   implements it and produces diagnostics.
-- No grammar profile is generated or shipped; an operator's own GBNF rides
-  `PLURNK_PROVIDERS_GBNF` to a llama-server route as verbatim text.
+- An operator's own GBNF rides `PLURNK_PROVIDERS_GBNF` to a llama-server
+  route as verbatim text.
 - JSON Schemas are authoritative for shared wire shapes; TypeScript types are
   generated from them.
 - The package root is the one code API for AST and wire types, schemas, and

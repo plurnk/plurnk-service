@@ -77,7 +77,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            // {§send-premature-terminate} — an EDIT's receipt lands next packet, so a same-turn [200] would be refused; [102] carries the turn.
+            // {§send-premature-terminate} — an EDIT's receipt lands next packet, so the turn continues.
             responses: [response([editStmt("/x", "y"), noteStmt("continuing")], "content", 42)],
         });
         const result = await engine.runTurn({
@@ -169,7 +169,6 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
             assert.equal(inferenceSource?.producer, "model");
             assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
             assert.ok(!inferenceRows.some(({ op }) => op === null));
-            assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
             assert.ok(inferenceRows.some(({ op }) => op === "KILL"));
         } finally { await db.close(); }
     } finally {
@@ -1057,6 +1056,5 @@ test("Engine.runTurn: NOTE carries literal working memory separate from provider
         ]);
         const ops = await db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: loopId });
         assert.ok(ops.some((row) => row.op === "NOTE" && JSON.parse(row.tx).body === "Review the edit result."));
-        assert.equal(ops.some((row) => row.op === "PLAN"), false);
     } finally { await db.close(); }
 });

@@ -150,7 +150,6 @@ test("{§execution-output-identity} missing output resources report their exact 
         const ownText = JSON.stringify(own);
         assert.match(ownText, /entry-not-found/);
         assert.match(ownText, /No entry exists at sh:\/\/\/9\/9\/9\/sh/u, "READ reports the actual missing resource");
-        assert.doesNotMatch(ownText, /tool's own ids/u, "a missing resource does not imply misplaced tool arguments");
         const foreign = await dispatch(readStmt({ ...urlPath("sh", "/1/1/1/sh"), hostname: "nobody", raw: "sh://nobody/1/1/1" }), 2);
         assert.equal(foreign.status, 404);
         const foreignText = JSON.stringify(foreign);
@@ -215,7 +214,6 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare target that is a
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /The tool `crm_query` is registered under executor `crm`\."/, "the recovery says where the tool is registered, and builds no fence");
-        assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
 });
@@ -233,7 +231,6 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.match(rendered, /The sh program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
         assert.match(rendered, /"recovery":"The target must name an existing program resource\."/, "the other reading of the fence is not offered");
-        assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
 });

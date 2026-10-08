@@ -27,7 +27,7 @@ test("{§packet-current-turn}: the Worker block carries the loop and turn sequen
         assert.match(block.path, /^worker:\/\//);
         const names = packet.sections.map(({ name }) => name);
         assert.equal(names[names.indexOf("log") + 1], "worker", "first in the status clump, never before the log");
-        assert.equal(names.includes("turn"), false, "there is no separate Turn section");
+        assert.deepEqual(names, ["definition", "system-policy", "log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap", "previous-emission"], "the packet's sections, in order");
     } finally { await db.close(); }
 });
 

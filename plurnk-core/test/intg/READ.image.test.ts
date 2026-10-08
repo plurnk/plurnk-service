@@ -105,11 +105,9 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
-    const ejection = user.content.find((part) => part.type === "text" && part.text.includes("has been ejected from context"));
     assert.match(text, /PNG image, 1×1 px, \d+ bytes/, "the READ row reads as the header line");
     assert.match(text, /"tokensAttachment":\d+/, "the row weighs the picture");
     assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "the picture itself rides as image media in the current file part");
-    assert.equal(ejection, undefined);
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
@@ -162,12 +160,12 @@ test("{§context-fit}: a READ that does not fit is a bodiless receipt; native ou
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§packet-attachment-parts} a blind route receives the same READ as text alone without the reactive sentence", async () => {
+test("{§packet-attachment-parts} a blind route receives the same READ as text alone", async () => {
     const requests = await runLoop([]);
     assert.ok(requests[1]!.every((message) => typeof message.content === "string"), "a blind route receives text alone");
     const text = userText(requests[1]!);
     assert.match(text, /PNG image, 1×1 px, \d+ bytes/);
-    assert.doesNotMatch(text, /tokensAttachment|has been ejected from context/);
+    assert.doesNotMatch(text, /tokensAttachment/);
     const system = requests[1]?.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "no Attachments section on a blind route");
 });
@@ -180,7 +178,6 @@ test("{§packet-attachment-parts} completed responses retain native content alon
     const text = userText(requests[2]!);
     assert.match(text, /PNG image, 1×1 px, \d+ bytes/);
     assert.match(text, /tokensAttachment/);
-    assert.doesNotMatch(text, /has been ejected from context/);
 });
 
 test("{§packet-attachment-parts} repeating READ creates a new native delivery for the following request", async () => {
@@ -188,7 +185,6 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
     const third = requests[2]?.at(-1);
     assert.ok(third !== undefined && Array.isArray(third.content), "the renewed request carries parts");
     assert.equal(third.content.filter((part) => part.type === "file").length, 2, "both retained observations contribute native content");
-    assert.equal(third.content.filter((part) => part.type === "text" && part.text.includes("has been ejected from context")).length, 0);
 });
 
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
@@ -222,7 +218,6 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
     assert.equal(provider.attempts[1], provider.attempts[2], "the response-less retry receives the exact same image-bearing request");
     for (const index of [1, 3]) {
         assert.match(provider.attempts[index]!, /"mediaType":"image\/png"/u);
-        assert.doesNotMatch(provider.attempts[index]!, /has been ejected from context/u);
     }
 });
 
@@ -266,7 +261,6 @@ test("{§packet-attachment-parts} native content survives completed responses un
         assert.ok(Array.isArray(content), `request ${index + 1} retains native content`);
         const image = content.find((part) => part.type === "file");
         assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG));
-        assert.doesNotMatch(JSON.stringify(content), /has been ejected from context/);
     }
     assert.equal(typeof users[3]!.content, "string", "even an irrelevant KILL scope releases the atomic native observation");
     assert.doesNotMatch(userText(requests[3]!), /### log:\/\/\/\d+\/\d+\/\d+\/READ → logo\.png/);

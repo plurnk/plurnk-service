@@ -8,7 +8,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //
 // Two channels:
 //   - symbols (extract): tree-sitter walk surfacing every mapping key as a
-//     field-like outline entry. Coarse but useful for the model's preview.
+//     field-like outline entry.
 //   - deep-json (deepJson): the parsed YAML value via the `yaml` library —
 //     this is the jsonpath query target. Users writing `$.server.host`
 //     expect the parsed value tree, not the AST. The framework projects

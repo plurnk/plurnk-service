@@ -507,7 +507,7 @@ test("normalizeRetryAttemptError preserves the whole-call deadline ({§provider-
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
 
-test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Retry-After, or a directive (#479 supersedes #446)", () => {
+test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Retry-After, or a directive (#479)", () => {
     const garbage = new APICallError({
         message: "Failed to process successful response",
         url: "https://api.example/v1/chat/completions",
@@ -516,7 +516,7 @@ test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Re
         responseBody: "not json",
         isRetryable: false,
     });
-    assert.equal(normalizeRetryAttemptError(garbage), garbage, "2xx invalid-response surfaces at once — no promoted budget (#446 superseded)");
+    assert.equal(normalizeRetryAttemptError(garbage), garbage, "2xx invalid-response surfaces at once");
 
     const directed = new APICallError({
         message: "Failed to process successful response",

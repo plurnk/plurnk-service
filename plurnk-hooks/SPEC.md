@@ -13,9 +13,8 @@ data is serialized at publication, never read later from a mutable payload.
 ## §hooks-selection Event selection
 
 `PLURNK_HOOKS_EVENTS` selects exact comma-separated hook names from
-{§hooks-event-projection}. Unknown, retired core-event spellings and wildcard
-names are configuration diagnostics; retired spellings name their replacement.
-Core event names and the module subscription contract do not change.
+{§hooks-event-projection}. Any other name, including a wildcard, is a
+configuration diagnostic.
 
 | Consumer | Integration |
 |---|---|

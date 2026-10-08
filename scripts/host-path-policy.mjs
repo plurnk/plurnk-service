@@ -5,18 +5,6 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const IGNORED_DIRECTORIES = new Set([".git", ".tmp", "coverage", "dist", "node_modules"]);
 const TEXT_EXTENSIONS = new Set([".cjs", ".js", ".json", ".md", ".mjs", ".sh", ".ts"]);
-const LEGACY_RENDERED_PATH = /(?:~|\$HOME|\$\{HOME\})\/\.plurnk(?=\/|\b)/gu;
-const LEGACY_CONSTRUCTION = /\b(?:join|resolve)\([^;\n]*["']\.plurnk["']/gu;
-
-// These are transition teaching, not active path ownership. Increasing an
-// allowance requires an explicit review of why another legacy mention belongs.
-const LEGACY_REFERENCE_ALLOWANCE = new Map([
-    ["CHANGELOG.md", 1],
-    ["plurnk-core/INSTALL.md", 1],
-    ["plurnk-core/README.md", 1],
-    ["plurnk-core/SPEC.md", 1],
-    ["plurnk-core/src/service.ts", 1],
-]);
 const PATH_OWNER = "plurnk-core/src/core/HostPaths.ts";
 
 const isTest = (name) => /(?:^|\/)(?:test|tests)\//u.test(name) || /\.test\.[^.]+$/u.test(name);
@@ -24,18 +12,8 @@ const isTest = (name) => /(?:^|\/)(?:test|tests)\//u.test(name) || /\.test\.[^.]
 export const hostPathViolations = (sources) => {
     const violations = [];
     for (const { name, content } of sources) {
-        if (isTest(name)) continue;
-
-        const legacyCount = [
-            ...content.matchAll(LEGACY_RENDERED_PATH),
-            ...(name === PATH_OWNER ? [] : content.matchAll(LEGACY_CONSTRUCTION)),
-        ].length;
-        const allowedLegacy = LEGACY_REFERENCE_ALLOWANCE.get(name) ?? 0;
-        if (legacyCount > allowedLegacy) {
-            violations.push(`${name}: ${legacyCount} legacy-home reference(s), allowance ${allowedLegacy}`);
-        }
-
-        if (name !== PATH_OWNER && /\b(?:join|resolve)\(\s*homedir\(\)/u.test(content)) {
+        if (isTest(name) || name === PATH_OWNER) continue;
+        if (/\b(?:join|resolve)\(\s*homedir\(\)/u.test(content)) {
             violations.push(`${name}: reconstructs a host path from homedir() outside ${PATH_OWNER}`);
         }
     }

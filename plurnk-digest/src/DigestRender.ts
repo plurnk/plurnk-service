@@ -232,17 +232,9 @@ export default class DigestRender {
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
         if (packet === null) return null;
-        return packet.messages(DigestRender.#emissionsOf(turn, m))
+        return packet.messages()
             .map(({ role, content }) => `${role}\n${content}`)
             .join("\n");
-    }
-
-    // {§emission-row} — the emissions the turn's worker announced; a stored request places those its log
-    // section carried.
-    static #emissionsOf(turn: TurnRow, m: DigestModel): ReadonlyMap<string, string> {
-        const loop = m.loopsById.get(turn.loop_id);
-        if (loop === undefined) throw new Error(`digest: turn ${turn.id} names loop ${turn.loop_id}, which the digest did not read`);
-        return m.emissionsByWorker.get(loop.worker_id) ?? new Map();
     }
 
     static #commonPrefixLength(left: string, right: string): number {
@@ -841,7 +833,7 @@ export default class DigestRender {
                 // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
                 // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
                 try {
-                    files.push([`${padded}.wire.json`, JSON.stringify(packet.messages(DigestRender.#emissionsOf(turn, m)), null, 2)]);
+                    files.push([`${padded}.wire.json`, JSON.stringify(packet.messages(), null, 2)]);
                 } catch (cause) {
                     files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
                 }

@@ -117,21 +117,11 @@ describe("{§mimetype-channel-selection} — C1: channel selection semantics", (
     });
 });
 
-describe("{§mimetype-channel-selection} — C2: symbols are structured, preview is gone", () => {
+describe("{§mimetype-channel-selection} — C2: symbols are structured", () => {
     it("symbols carry MimeSymbol[] verbatim from extractRaw", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["symbols"] });
         assert.deepEqual(r.symbols, [{ name: "Thing", kind: "class", line: 2, endLine: 9 }]);
-    });
-
-    it("no preview or previewTokens fields exist on any result shape", async () => {
-        const m = makeMimetypes();
-        const ok = await m.process({ path: "a.tst", content: "x" });
-        const err = await m.process({ path: "nope.unknown", content: "x" });
-        for (const r of [ok, err]) {
-            assert.equal("preview" in r, false);
-            assert.equal("previewTokens" in r, false);
-        }
     });
 });
 
@@ -174,18 +164,7 @@ describe("{§mimetype-channel-selection} — C3: references follow the handler c
 });
 
 describe("{§mimetype-public-api} — C4: only outline render primitives are public", () => {
-    it("fitPreview / fitSymbols / fitContent / defaultTokenize are not exported", () => {
-        const dead = ["fitPreview", "fitSymbols", "fitContent", "defaultTokenize"];
-        for (const name of dead) {
-            assert.equal(
-                (api as Record<string, unknown>)[name],
-                undefined,
-                `${name} must not be exported`,
-            );
-        }
-    });
-
-    it("format / buildTree / renderTree remain exported", () => {
+    it("format / buildTree / renderTree are exported", () => {
         assert.equal(typeof api.format, "function");
         assert.equal(typeof api.buildTree, "function");
         assert.equal(typeof api.renderTree, "function");

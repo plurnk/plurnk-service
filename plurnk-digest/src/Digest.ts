@@ -134,12 +134,6 @@ export default class Digest {
         const workersById = new Map(workers.map((r) => [r.id, r]));
         const workerRollups = new Map(workerRollupRows.map((r) => [r.worker_id, r]));
         const environments = new Map(environmentRows.map((row) => [`${row.workspace_id}:${row.stream}`, JSON.parse(row.env) as Record<string, unknown>]));
-        const emissionsByWorker = new Map<number, Map<string, string>>();
-        for (const row of emissionRows) {
-            const map = emissionsByWorker.get(row.worker_id) ?? new Map<string, string>();
-            map.set(row.coordinate, row.content);
-            emissionsByWorker.set(row.worker_id, map);
-        }
         const opMixByWorker = new Map<number, OpMixRow[]>();
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
@@ -148,7 +142,7 @@ export default class Digest {
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
-            logEntriesByTurn, emissionRows, reasoningRows, emissionsByWorker, editRows, editRowsByWorker, environments, loopsById, workersById,
+            logEntriesByTurn, emissionRows, reasoningRows, editRows, editRowsByWorker, environments, loopsById, workersById,
             workerRollups, opMixByWorker, search,
         };
 

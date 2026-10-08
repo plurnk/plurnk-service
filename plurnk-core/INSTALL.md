@@ -33,8 +33,7 @@ or enables the unit.
 | Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
 
 Use `plurnk-service config` for paths and precedence, `config edit` to edit the
-user file, and `config check` to validate it. An old `~/.plurnk` is not read
-implicitly; `plurnk-service paths migrate` relocates it with the daemon stopped.
+user file, and `config check` to validate it.
 
 Invalid optional configuration stays visible without removing the repair environment.
 `config check` is strict; ordinary startup keeps unrelated capabilities and client

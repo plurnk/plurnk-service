@@ -1,6 +1,6 @@
 import type { Db } from "./Db.ts";
 
-// {§runtime-bookkeeping-policy} Turn purpose, not a caller-supplied loop policy, governs bookkeeping.
+// {§runtime-bookkeeping-policy} Turn purpose governs bookkeeping.
 export default class AdministrativeLoop {
     static async open(db: Db, workerId: number): Promise<{ id: number; sequence: number }> {
         const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({

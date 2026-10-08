@@ -37,7 +37,6 @@ export default class HostPaths {
     readonly globalSkillsDir: string;
     readonly plurnkPluginsDir: string;
     readonly globalPluginsDir: string;
-    readonly legacyDir: string;
 
     constructor({ env = process.env, home = homedir() }: HostPathsOptions = {}) {
         this.home = resolve(home);
@@ -101,7 +100,6 @@ export default class HostPaths {
         // {§agent-plugins-hosting} — plugins are configuration, found like skills; their data is data.
         this.plurnkPluginsDir = join(this.configDir, "plugins");
         this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
-        this.legacyDir = join(this.home, ".plurnk");
     }
 
     // {§share-folder}: command defaults use the same host path authority as the daemon.

@@ -26,7 +26,6 @@ import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
-import PacketBuilder from "../core/PacketBuilder.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
 import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -123,7 +122,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         ProposalPolicies.read();
         TurnDispositionHandler.configuredWaitSeconds();
         retentionPolicy();
-        PacketBuilder.validateConfiguration();
         Exec.validateConfiguration();
         ExecutorRegistry.validateConfiguration();
     }
@@ -534,8 +532,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
-        if (Object.hasOwn(args, "policy")) throw daemonFailure("daemon:input", "loop-policy-retired", 400,
-            "Loop policy is retired; the worker's owner handles approval.");
         // {§worker-model-selection} — the worker owns the model. An explicit selector
         // persists onto the worker; an omitted selector resolves the worker's durable model
         // (seeded once from the daemon default). The loop then snapshots the resolved route.
@@ -1633,12 +1629,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
-        await this.#storage.upgrade();
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
-        await this.#configuration.capture("packet", () => PacketBuilder.validateConfiguration());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration());
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#started = true;
@@ -2041,7 +2035,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
                 // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
                 // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
-                // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
+                // is each subscriber's edge concern; the seam hands (workspaceId, method, params) raw.
                 this.#emitTo(target.workspaceId, method, params);
             },
         );

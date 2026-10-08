@@ -128,11 +128,11 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
             const filesProblem = rpcProblem(badMI);
             assert.equal(filesProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(filesProblem.field, "settings.filesItems");
-            // The retired mdDocs channel is an unsupported field, not a silent accept.
-            const retired = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "x", content: "x" }] } });
-            const retiredProblem = rpcProblem(retired);
-            assert.equal(retiredProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-not-supported");
-            assert.equal(retiredProblem.field, "settings.mdDocs");
+            // An unknown setting is refused, not silently accepted.
+            const unknown = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { nosuch: true } });
+            const unknownProblem = rpcProblem(unknown);
+            assert.equal(unknownProblem.type, "https://problems.plurnk.xyz/daemon/input/setting-not-supported");
+            assert.equal(unknownProblem.field, "settings.nosuch");
         } finally { ws.close(); }
     });
 });
@@ -286,10 +286,6 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     "```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
-                for (const removed of ["git", "isogit"]) {
-                    const residue = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${removed}.md`);
-                    assert.equal(residue, undefined, `${removed} is not exposed as a bespoke executor`);
-                }
                 for (const [index, name] of ["https", "worker", "wss"].entries()) {
                     const resource = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${name}.md`);
                     assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",

@@ -1,7 +1,7 @@
 // {§operator-grammar} and {§grammar-configuration-admission} across a real core turn: an
 // operator's GBNF file reaches the provider verbatim, unrelated alias settings never leak, an
 // unreadable or bare-named grammar fails instead of running unconstrained, and the turn records
-// transport as evidence, never a verdict (#588).
+// transport as evidence (#588).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -200,7 +200,7 @@ test("{§operator-grammar} the turn records whether the grammar reached the wire
         const t1 = await engine.runTurn({ provider: transported, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta1.railsAttached, "client", "transport evidence is recorded");
-        assert.equal("railsVerdict" in meta1, false, "no verdict exists any more");
+        assert.deepEqual(Object.keys(meta1), ["railsAttached"], "the turn records transport evidence and nothing else");
 
         const withheld = staticProvider({
             assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },

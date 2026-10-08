@@ -435,7 +435,7 @@ test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or with
     try {
         // The natural whole-turn curation the jumbo model reached for (no trailing slash) resolves.
         const noSlash = await new Log().kill(killStmt(urlPath("log", "/1/1"), WHOLE), ctxOf(context));
-        assert.equal(noSlash.status, 200, "log:///1/1 (no slash) curates turn 1/1 — no more 400");
+        assert.equal(noSlash.status, 200, "log:///1/1 (no slash) curates turn 1/1");
         assert.equal(noSlash.matched, 1, "the turn's row");
         assert.equal(await getFolded(db, workerId), "[[1,-1]]");
         // And the loop prefix: log:///1 selects all of loop 1's rows.

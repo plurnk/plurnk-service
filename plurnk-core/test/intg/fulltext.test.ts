@@ -7,7 +7,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
-import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
+import { matchLocations, resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -47,12 +47,10 @@ test("native FTS5 expressions select visible resources and integer result pages"
             const result = await worker.find(find("*", query), ctx);
             assert.equal(result.status, 200, query);
             assert.deepEqual(resourcePaths(result).sort(), paths.map((path) => `worker:///${path}`), query);
-            assert.ok(resourceGroups(result).every(([row]) => !Object.hasOwn(row, "similarity")));
         }
         const complete = await worker.find(find("*", "connection"), ctx);
         const page = await worker.find(find("*", "connection", [2]), ctx);
         assert.deepEqual(resourcePaths(page), resourcePaths(complete).slice(1, 2));
-        assert.equal((await worker.find(find("*", "connection", [0.8]), ctx)).status, 416);
         assert.equal((await worker.find(find("a.txt", "cake"), ctx)).status, 204);
 
         const otherWorkspace = await insertWorkspace(db, `fts-other-${crypto.randomUUID()}`);

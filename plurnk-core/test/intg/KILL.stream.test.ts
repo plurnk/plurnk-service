@@ -1,4 +1,4 @@
-// KILL cancels a live stream ({§stream-control}); the untaught KILL idiom left with the signal slot.
+// KILL cancels a live stream ({§stream-control}).
 
 import test from "node:test";
 import assert from "node:assert/strict";

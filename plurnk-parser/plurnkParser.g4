@@ -125,7 +125,7 @@ targetGroup
 execModifiers
     : execSlot+
     ;
-// {§exec-executor-slot} — `[{"cwd": …}]` metadata may stand without a program path on EXEC.
+// {§exec-executor-slot} — `[{"cwd": …}]` metadata may stand without a program path on an execution.
 execSlot
     : targetWithMetadata
     | metadata

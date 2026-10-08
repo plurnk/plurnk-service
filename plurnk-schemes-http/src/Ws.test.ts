@@ -4,7 +4,6 @@
 // its own `close` listener, mirroring the real WebSocket.
 
 import test from "node:test";
-import { Validator } from "@plurnk/plurnk-contracts";
 import { strict as assert } from "node:assert";
 import Ws from "./Ws.ts";
 import {
@@ -83,14 +82,14 @@ interface CtxOverrides {
     readonly write?: EntryCaps["write"];
     readonly setState?: ChannelCaps["setState"];
     readonly streamEvent?: NotifyCaps["streamEvent"];
-    readonly notifyChunk?: SubscriptionCaps["notifyChunk"];
-    readonly close?: SubscriptionCaps["close"];
+    readonly notifyChunk?: StreamSubscription["notifyChunk"];
+    readonly close?: StreamSubscription["close"];
 }
 
 const makeCtx = (overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string } | null = null;
-    type ClosedSubscription = { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string };
+    type ClosedSubscription = { result: Parameters<StreamSubscription["close"]>[0]; summary?: string };
     let closed: ClosedSubscription | null = null;
     const settled = Promise.withResolvers<ClosedSubscription>();
     void settled.promise.catch(() => {});
@@ -151,7 +150,6 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         async isBinary() { return false; },
         async parseIssues() { return undefined; },
     };
-    let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         await overrides.notifyChunk?.(channel, chunk, mimetype);
         chunks.push({ channel, chunk, mimetype });
@@ -170,16 +168,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const subscriptions: SubscriptionCaps = {
         async open(pathname) {
             opened = { pathname };
-            current = Object.assign(localAbort.signal, { notifyChunk, close });
-            return current;
-        },
-        async notifyChunk(channel, chunk, mimetype) {
-            if (current === null) throw new Error("no open subscription");
-            await current.notifyChunk(channel, chunk, mimetype);
-        },
-        async close(result, summary) {
-            if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary);
+            return Object.assign(localAbort.signal, { notifyChunk, close });
         },
     };
     const ctx = schemeCtx({
@@ -807,11 +796,6 @@ test("SEND: a socket send throw becomes a structured transport failure", async (
     sock.close(1000);
     await read;
     await awaitClosed();
-});
-test("WebSocket SEND cannot carry an independently supplied lifecycle status", () => {
-    const message = sendStmt(wss(PUB, "/feed"), "x");
-    assert.equal(Validator.validatePlurnkStatement(message).valid, true);
-    assert.equal(Validator.validatePlurnkStatement({ ...message, status: 200 }).valid, false);
 });
 
 test("KILL: closes the claimed socket and settles the READ", async () => {

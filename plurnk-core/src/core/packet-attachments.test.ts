@@ -196,7 +196,6 @@ test("{§packet-attachment-parts} native-only observations are weighed and recla
     assert.equal(charge, weigh(rendered.content) + 410);
     assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", tokens: charge }]);
     assert.equal(rendered.attachments.length, 1);
-    assert.doesNotMatch(rendered.content, /tokensBody|tokensActive/);
     const folded = PacketWire.renderLogWithAccounting([readRow({ ...row, initial_folded: [[1, -1]] })], weigh);
     assert.equal(folded.attachments.length, 1, "a bodyless native row folds nothing: the picture is the row");
 });

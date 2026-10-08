@@ -46,11 +46,11 @@ test("{§executor-runtime-declaration} admits an exact tool-derived summary", ()
     });
 });
 
-test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped metadata", () => {
+test("{§executor-runtime-declaration} refuses misspelled and mistyped metadata", () => {
     const invocation = { body: { role: "query", required: true }, example: { body: "find it" } };
     const cases: Array<[unknown, RegExp]> = [
         [null, /declaration must be an object/],
-        [{ name: "search", summary: "Search.", invocation, example: "````sh````" }, /unknown field 'example'/],
+        [{ name: "search", summary: "Search.", invocation, undeclared: true }, /unknown field 'undeclared'/],
         [{ name: "search", summary: "Search.", invocation, glyph: 1 }, /glyph must be a string/],
         [{ name: "search", invocation }, /summary must be one non-empty line/],
         [{ name: "search", summary: "two\nlines", invocation }, /summary must be one non-empty line/],

@@ -145,7 +145,7 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
     }]);
 });
 
-test("{§a2a-worker-ownership} inbound contexts name a parent, never a proposal policy", () => {
+test("{§a2a-worker-ownership} inbound contexts name a parent worker", () => {
     const hosted = {
         ...floor,
         PLURNK_A2A_EXPOSE: "1",
@@ -158,10 +158,6 @@ test("{§a2a-worker-ownership} inbound contexts name a parent, never a proposal 
     };
     assert.equal(hostedAgentConfiguration(hosted)?.parentWorker, "_plurnk");
     assert.equal(hostedAgentConfiguration({ ...hosted, PLURNK_A2A_PARENT_WORKER: "operator" })?.parentWorker, "operator");
-    assert.throws(
-        () => hostedAgentConfiguration({ ...hosted, PLURNK_A2A_PROPOSALS: "review" }),
-        /PLURNK_A2A_PROPOSALS is retired/,
-    );
     assert.throws(() => hostedAgentConfiguration({ ...hosted, PLURNK_A2A_PARENT_WORKER: "not/a/worker" }), /PLURNK_A2A_PARENT_WORKER must name/);
     const { PLURNK_A2A_PARENT_WORKER: _unset, ...missing } = hosted;
     assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_PARENT_WORKER is required when PLURNK_A2A_EXPOSE=1/);
@@ -180,7 +176,6 @@ test("{§configuration-repair-path} hosted A2A reports typed input failures inde
         ["PLURNK_A2A_PROJECT_ROOT", "relative"],
         ["PLURNK_A2A_ENDPOINT_URL", "file:///agent"],
         ["PLURNK_A2A_NAME", ""],
-        ["PLURNK_A2A_PROPOSALS", "review"],
         ["PLURNK_A2A_SKILLS", "[1]"],
         ["PLURNK_A2A_SKILLS", '[{"id":"x","name":"x","description":"x","tags":[1]}]'],
     ]) {
@@ -255,15 +250,4 @@ test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a 
     const { PLURNK_A2A_TOKEN: _unset, ...missing } = hosted;
     assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_TOKEN is missing from the assembled environment floor/);
     assert.deepEqual(outboundDefinitions({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
-});
-
-test("{§a2a-environment-projection} a retired listener key produces a configuration error naming the service listener", () => {
-    for (const key of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"]) {
-        assert.throws(
-            () => outboundDefinitions({ ...floor, [key]: "4100" }),
-            { name: "ConfigurationError", key, message: new RegExp(`^${key} is retired: .*PLURNK_HOST and PLURNK_PORT .*remove it\\.$`, "u") },
-            key,
-        );
-    }
-    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_HOST: "" }), /PLURNK_A2A_HOST is retired/u);
 });

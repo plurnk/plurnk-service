@@ -124,7 +124,6 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
 // covered by Exec.scheme.test.ts).
 const SELF_CONTAINED = ["sh", "node", "awk", "bc", "perl", "python3", "jq", "sqlite"] as const;
-const REMOVED = ["bash", "python", "php", "wat", "wasm"] as const;
 
 test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
@@ -141,7 +140,6 @@ test("execs batteries: coverage census — every self-contained default-install 
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
     assert.ok(available.has("jq") && available.has("sqlite"), "the core batteries executors (jq and sqlite) are discovered and available");
-    for (const tag of REMOVED) assert.equal(reg.entry(tag), undefined, `removed executor ${tag} is absent from the composed service`);
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
     // so consumers route jsonpath/render correctly — sqlite emits one document and jq is a

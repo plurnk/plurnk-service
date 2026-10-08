@@ -33,9 +33,7 @@ test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any 
     assert.equal(scoped.PLURNK_SERVICE_DB_PATH, undefined);
 });
 
-// {§exec-env-scoped} — the ceiling. Before it, the filter was a denylist: it knew plurnk's
-// credentials and nothing about the operator's, so it handed the ssh agent and the npm token
-// to every command a model wrote.
+// {§exec-env-scoped} — the ceiling: a command receives only the ambient names the policy names.
 test("ExecEnv.scoped admits only the ambient names the policy names", () => {
     const host = {
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,

@@ -83,7 +83,6 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
             assert.equal(stream, invocation.stream, "the receipt carries the exact advertised output address, without adding a channel");
-            assert.doesNotMatch(String(problem.recovery ?? ""), /for the command's stream/u, "{§diagnostic-observation}: the address is a fact on the receipt, never a remedy");
 
             const recovered = await turn(frame(`READ (${String(stream)}) <17,40>`, null));
             assert.equal(recovered.outcomes[0]?.status, 200);

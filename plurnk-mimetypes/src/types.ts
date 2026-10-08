@@ -87,8 +87,6 @@ export interface HandlerInfo {
     binary: boolean;
     // Package-discovered handler or framework tree-sitter registry entry.
     source: "package" | "treesitter";
-    // Published per-handler projection; framework registry entries omit it.
-    attribution?: string | string[];
 }
 
 // Intrinsic presentation declaration exposed without loading handler code.

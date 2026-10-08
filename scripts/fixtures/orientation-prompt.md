@@ -2,7 +2,7 @@ Assess the current state of this PLURNK metaproject for its maintainer.
 
 Investigate before answering. Cover:
 
-1. the product architecture and the boundaries among daemon, grammar, plugins, and clients;
+1. the product architecture and the boundaries among daemon, grammar, extensions, and clients;
 2. the repository topology, including the platform monorepo and outside repositories;
 3. the current stabilization or housekeeping goal, when current forge evidence is available;
 4. missing, stale, or contradictory context that limits confidence.

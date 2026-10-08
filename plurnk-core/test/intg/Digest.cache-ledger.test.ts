@@ -162,7 +162,6 @@ test("{§digest-cache-ledger}: measured cache ratios include first requests, cro
     assert.ok(requests[2]!.adjacentPrefixTokensEstimate! < 95, "the local prefix estimate is not a cache-read limit");
     assert.equal(requests[3]!.adjacentPrefixTokensEstimate, 0, "a new loop resets only the adjacent-prefix diagnostic");
     assert.equal(requests[4]!.adjacentPrefixTokensEstimate, null, "missing packets affect only the optional prefix estimate");
-    assert.ok(requests.every((request) => !Object.hasOwn(request, "cacheableTokens")), "the misleading machine-readable name is retired");
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /Cache: 424 of 500 reported input tokens read from cache \(84.8%\) over 6 requests · 3 missing input or cache usage \(excluded\)/u);
     assert.match(markdown, /cache=170\/200/u, "same-turn physical requests sum both measured quantities");

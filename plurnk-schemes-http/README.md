@@ -68,8 +68,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
   query, and explicit empty query; a fragment selects a channel.
 - Handler-owned socket state follows the shared readiness, drain,
   and aggregate-shutdown lifecycle.
-- All storage and streaming work uses `SchemeCtx` capabilities rather than a
-  raw database handle.
+- All storage and streaming work uses `SchemeCtx` capabilities.
 
 The same package registers `wss` (with `ws` routing to it) for
 workspace-scoped full-duplex connections. See [`docs/wss.md`](docs/wss.md) for

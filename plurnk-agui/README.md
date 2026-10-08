@@ -32,9 +32,9 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Packet and terminal usage | State updates and `plurnk.terminated`; daemon quantities pass through unchanged. |
 
 READ of `reasoning://<worker>/…` is an operation receipt, not another reasoning stream.
-On reattach, the durable conversation snapshot restores accepted reasoning,
-SENDs, and the latest PLAN. `forwardedProps.plurnk.mode="sync"` obtains that
-state without a prompt or model inference ({§agui-conversation-sync}).
+On reattach, the durable conversation snapshot restores accepted reasoning and
+SENDs. `forwardedProps.plurnk.mode="sync"` obtains that state without a prompt
+or model inference ({§agui-conversation-sync}).
 
 Pending proposals and user interactions use standard AG-UI interrupts and
 resume Runs. Core decides their owner and disposition, including delegated

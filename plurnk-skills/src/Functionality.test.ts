@@ -73,29 +73,3 @@ test("{§skills-configuration} invalid disabled definitions still fail validatio
         });
     }
 });
-
-test("{§skills-sources} a retired vendor-installer knob fails validation, naming what replaced it", (t) => {
-    const saved = process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;
-    t.after(() => {
-        if (saved === undefined) delete process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;
-        else process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL = saved;
-    });
-    process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL = "https://registry.example";
-    assert.throws(() => SkillsFunctionality.validateConfiguration(),
-        /PLURNK_SERVICE_SKILLS_REGISTRY_URL is retired: discover takes a source; Agent Skills have no standard registry\./u);
-    process.env.PLURNK_SERVICE_SKILLS_REGISTRY_URL = "";
-    assert.doesNotThrow(() => SkillsFunctionality.validateConfiguration(), "an empty retired knob states nothing");
-});
-
-test("{§skills-module} the former core fetch knob is rejected, never used as an alias", (t) => {
-    const key = "PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS";
-    const previous = process.env[key];
-    t.after(() => {
-        if (previous === undefined) delete process.env[key];
-        else process.env[key] = previous;
-    });
-    process.env[key] = "1000";
-    assert.throws(() => SkillsFunctionality.validateConfiguration(), {
-        message: `${key} is retired: use PLURNK_SKILLS_FETCH_TIMEOUT_MS.`,
-    });
-});

@@ -127,7 +127,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
             await daemon.engine.cancelSubscription(subscriptions[0]!.id);
             const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
             assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
-            assert.equal(Object.hasOwn(events[0]!, "wakeLoopId"), false, "no singular future recipient is predicted");
+            assert.deepEqual(Object.keys(events[0]!).sort(), ["entryId", "loop_seq", "result", "scheme", "sequence", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workerId", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
             assert.equal(await lifecycle.status(accepted.loopId), 202, "publication cannot claim execution while the task is parked");
             await daemon.cancelWorker({ workspaceId, workerId });
             release.resolve();
@@ -420,7 +420,7 @@ test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN P
             assert.match(wake.summary, /^sh:\/\/\/[a-f0-9]{8} completed \(exit 0\)/,
                 "summary references the workspace-stable stream address");
             assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
-            assert.equal(Object.hasOwn(wake, "wakeLoopId"), false);
+            assert.deepEqual(Object.keys(wake).sort(), ["entryId", "loop_seq", "result", "scheme", "sequence", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workerId", "workspaceId"]);
 
             assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 3],
                 "stream/concluded carries causal coordinates independently of its output URI");

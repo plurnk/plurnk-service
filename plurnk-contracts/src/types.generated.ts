@@ -202,14 +202,13 @@ export type ParsedPath = (LocalPath | UrlPath)
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody | UnreadableBody)
 /**
- * Universal PLURNK operation result. Producer-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.
+ * Universal PLURNK operation result. Producer-owned metadata is open, but failures always carry one RFC 9457 Problem Details object.
  */
 
 export type OperationResult = ({
 status: number
 problem?: ProblemDetails
 range?: RangeExtent
-error?: never
 [k: string]: unknown
 } & {
 status?: number

@@ -17,7 +17,7 @@ export interface EvidencePacket {
     readonly weight: number;
     readonly budget: number | null;
     slot(name: "system" | "user"): string;
-    messages(emissions: ReadonlyMap<string, string>): Array<ChatMessage & { content: string }>;
+    messages(): Array<ChatMessage & { content: string }>;
 }
 
 export interface EvidenceRows {

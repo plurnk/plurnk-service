@@ -318,8 +318,7 @@ export default class PacketWire {
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
     // the model line refs for free (`READ (...) <42-46>`), while the absence of any separator means a
-    // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
-    // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
+    // reproduced line has nothing between `N:` and the content to copy. The content's OWN leading whitespace is
     // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
     // keeps one stable content column; FIND rows pass the complete result-set width so their pages
     // share a column with the whole set.
@@ -748,10 +747,10 @@ export default class PacketWire {
         // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
         if (op === "WAIT" && e.attrs !== null && typeof e.attrs === "object" && "waiting" in e.attrs) {
             const seconds = (e.attrs as { waiting: unknown }).waiting;
-            if (typeof seconds !== "number" || !Number.isFinite(seconds) || (seconds < 0 && seconds !== -1)) {
+            if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
                 throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
             }
-            if (seconds >= 0) meta.waitSeconds = seconds;
+            meta.waitSeconds = seconds;
         }
         // An execution's output is a separate stream entry ({§exec-stream}); its address rides in a
         // `stream` link, distinct from the runtime-owned invocation target.

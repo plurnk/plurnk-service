@@ -18,8 +18,7 @@ export default class BudgetReadout {
         return `{"tokens":${TOKENS_PLACEHOLDER},"budget":${budget}}`;
     }
 
-    // The budget a stored gauge showed the model; null when it showed none, or when the packet predates
-    // the one-object gauge and records its room in another shape.
+    // The budget a stored gauge showed the model; null when it shows none.
     static budgetOf(content: string): number | null {
         let gauge: unknown;
         try {

@@ -18,6 +18,9 @@ test("MetadataOptions.parse fails malformed blocks as the owner's 400 without ec
     assert.ok("failure" in read);
     assert.equal(read.failure.status, 400);
     assert.equal(read.failure.problem?.detail, "[metadata] must be a JSON array of option objects."); // {§pinned-wording-schemes}
+    const scalar = MetadataOptions.parse(['"cwd"'], "scheme:test");
+    assert.ok("failure" in scalar);
+    assert.match(String(scalar.failure.problem?.type), /metadata-invalid$/);
     const repeated = MetadataOptions.parse(['{"a": 1}', '{"b": 2}'], "scheme:test");
     assert.ok("failure" in repeated);
     assert.match(String(repeated.failure.problem?.type), /metadata-repeated$/);

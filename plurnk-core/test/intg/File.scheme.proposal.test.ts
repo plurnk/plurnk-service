@@ -61,7 +61,6 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 // Set up a temp workspace + a workspace whose project_root points at it.
-// F.1 added the column; F.5 made File read it instead of an env var.
 // Returns the temp root for body assertions + a cleanup fn.
 const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-test-"));
@@ -201,7 +200,7 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, target), "hello\n", "utf8");
         // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
-        // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
+        // exactly as the production reconcile (#materializeMember) does. EDIT bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
         const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${target}` });
         await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "hello\n", mimetype: "text/plain" });
@@ -442,9 +441,7 @@ test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipt
 });
 
 test("{§membership-create-parents}: accepted file creation creates missing parent directories", async () => {
-    // The fan-out digest's write_failed: applyResolution wrote with no mkdir, so any accepted
-    // proposal into a fresh subdir died on ENOENT — the model saw a bare 400 and parked on a
-    // worker that never existed. The write-back edge owns its parents now.
+    // The write-back edge creates the target's missing parent directories.
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "tasks/nested/extract_config_values.md";
         const stmt = fileEditStmt(target, "# task\n");
@@ -533,11 +530,11 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
     });
 });
 
-test("file.read: still works alongside the new edit path", async () => {
+test("file.read: reads the materialized entry beside the edit path", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "read-me.txt";
         await writeFile(join(root, target), "content\n", "utf8");
-        // File.read serves the materialized entry now — materialize the content
+        // File.read serves the materialized entry — materialize the content
         // (production's git-membership pass does this), not just a membership marker.
         const writeCtx: PlurnkSchemeContext = {
             db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,

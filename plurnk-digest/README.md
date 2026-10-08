@@ -18,14 +18,7 @@ Neither path overwrites existing reports. An interview additionally requires an 
 `provider`: `Digest.requiem({ dbPath, digestDir, openEvidence, provider })`; `Share.write`
 accepts that provider as `requiem`. No route is selected and no inference occurs implicitly.
 
-The service CLI remains `plurnk-service share [database] [folder] [--requiem]`.
-See [SPEC.md](./SPEC.md) for evidence ownership, artifact fidelity and reader lifetime;
-[.env.defaults](./.env.defaults) owns interview allowances.
-
-## Upgrading
-
-The former service `/digest` and `/share` exports are removed. Import this package and explicitly
-supply the service's `/evidence` reader. The interview settings are
-`PLURNK_DIGEST_REQUIEM_MAX_TOKENS` and `PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS`; the former
-`PLURNK_SERVICE_REQUIEM_*` names are refused, not aliases. Database and share-directory selection
-remain service-owned.
+The service CLI is `plurnk-service share [database] [folder] [--requiem]`; database and
+share-directory selection are service-owned. See [SPEC.md](./SPEC.md) for evidence ownership,
+artifact fidelity and reader lifetime. [.env.defaults](./.env.defaults) owns the interview
+allowances, `PLURNK_DIGEST_REQUIEM_MAX_TOKENS` and `PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS`.

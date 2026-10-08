@@ -56,12 +56,7 @@ const supportedSdkPackages = new Set(
 
 // {§openrouter-app-attribution}: an OpenRouter-SDK route's application attribution is its provider's declaration,
 // handed to the SDK, which owns the headers.
-const RETIRED_ATTRIBUTION = ["OPENROUTER_HTTP_REFERER", "OPENROUTER_APP_TITLE", "OPENROUTER_X_TITLE"] as const;
 const openRouterAttribution = (provider: string, env: NodeJS.ProcessEnv): { appUrl?: string; appName?: string } => {
-    const retired = RETIRED_ATTRIBUTION.find((key) => env[key] !== undefined);
-    if (retired !== undefined) {
-        throw new Error(`${provider} provider: ${retired} is retired; declare PLURNK_PROVIDERS_PROVIDER_<NAME>_APP_URL and _APP_NAME.`);
-    }
     const [urlKey, rawUrl] = providerSetting(provider, env, "APP_URL");
     const url = rawUrl?.trim();
     if (url === undefined || url === "") return {};

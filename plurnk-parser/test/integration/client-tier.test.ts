@@ -12,23 +12,23 @@ const clientStatementsOf = (input: string) =>
 // -------------------------------------------------------------------------
 
 test("client: parseClient parses a bare LOOK", () => {
-    const stmts = clientStatementsOf("````LOOK (known://philosophy/meaning)````");
+    const stmts = clientStatementsOf("````LOOK (worker:///philosophy/meaning)````");
     assert.equal(stmts.length, 1);
     assert.equal(stmts[0].statement.op, "LOOK");
 });
 
 test("client: parseClient admits protocol statements alongside client ops", () => {
-    const input = "````READ (known://a)````\n````LOOK (known://b)````";
+    const input = "````READ (worker:///a)````\n````LOOK (worker:///b)````";
     const ops = clientStatementsOf(input).map((i) => i.statement.op);
     assert.deepEqual(ops, ["READ", "LOOK"]);
 });
 
 test("client: LOOK is read-shaped — target, lineMarker, matcher body", () => {
-    const stmts = clientStatementsOf("````LOOK (known://notes) <1-20>\n~recent thoughts\n````");
+    const stmts = clientStatementsOf("````LOOK (worker:///notes) <1-20>\n~recent thoughts\n````");
     assert.equal(stmts.length, 1);
     const s: any = stmts[0].statement;
     assert.equal(s.op, "LOOK");
-    assert.equal(s.target.scheme, "known");
+    assert.equal(s.target.scheme, "worker");
     assert.deepEqual(s.lineMarker.marks, [1, 20]);
     assert.equal(s.body.dialect, "fts");
 });
@@ -44,14 +44,14 @@ test("client: LOOK accepts line anchors", () => {
 
 // An unregistered fence name is an executor tag, never a client statement (#625).
 test("client: an unregistered tag with a slot opens nothing and says so ({§quotation}, #625)", () => {
-    const result = PlurnkParser.parseClient("````BUFF (known://drafts/letter)````");
+    const result = PlurnkParser.parseClient("````BUFF (worker:///drafts/letter)````");
     assert.deepEqual(result.items.filter((item) => item.kind === "statement"), []);
     assert.deepEqual(result.items.map((item) => item.kind === "error" ? [item.error.severity, item.error.line] : "statement"), [["warning", 1]]);
 });
 
 test("client: LOOK has single-line matcher admission", () => {
     for (const op of ["LOOK"] as const) {
-        const result = PlurnkParser.parseClient(PlurnkParser.frame(`${op} (known://notes)`, "first line\nsecond line"));
+        const result = PlurnkParser.parseClient(PlurnkParser.frame(`${op} (worker:///notes)`, "first line\nsecond line"));
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
         const look = result.items.find((item) => item.kind === "statement");
         const body = look?.kind === "statement" && look.statement.op === "LOOK" ? look.statement.body : null;
@@ -63,7 +63,7 @@ test("client: LOOK has single-line matcher admission", () => {
 // {§empty-section}
 test("client: an empty LOOK section normalizes to a null body", () => {
     for (const op of ["LOOK"] as const) {
-        const statements = clientStatementsOf(PlurnkParser.frame(`${op} (known://x)`, null));
+        const statements = clientStatementsOf(PlurnkParser.frame(`${op} (worker:///x)`, null));
         assert.equal(statements.length, 1, op);
         const statement = statements[0]?.statement;
         assert.equal(statement && "body" in statement ? statement.body : undefined, null, op);
@@ -114,13 +114,13 @@ test("client: ordinary Markdown headings are ignored, not operations", () => {
 // -------------------------------------------------------------------------
 
 test("Validator: ClientStatement accepts a LOOK statement", () => {
-    const s = clientStatementsOf("````LOOK (known://x)\n~q\n````")[0].statement;
+    const s = clientStatementsOf("````LOOK (worker:///x)\n~q\n````")[0].statement;
     const { valid, errors } = Validator.validateClientStatement(s);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
 test("Validator: ClientStatement accepts a protocol READ statement", () => {
-    const s = PlurnkParser.parseStatements("````READ (known://x)````").items
+    const s = PlurnkParser.parseStatements("````READ (worker:///x)````").items
         .filter((i) => i.kind === "statement")[0].statement;
     const { valid, errors } = Validator.validateClientStatement(s);
     assert.equal(valid, true, JSON.stringify(errors));
@@ -133,7 +133,7 @@ test("Validator: ClientStatement rejects an unknown op", () => {
 });
 
 test("Validator: protocol PlurnkStatement rejects a LOOK (client op stays out of the closed set)", () => {
-    const s = clientStatementsOf("````LOOK (known://x)````")[0].statement;
+    const s = clientStatementsOf("````LOOK (worker:///x)````")[0].statement;
     const { valid } = Validator.validatePlurnkStatement(s);
     assert.equal(valid, false);
 });

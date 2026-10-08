@@ -49,10 +49,10 @@ const editable: SchemeHandler = {
     },
 };
 
-const callerOwned: SchemeHandler = {
+const addressable: SchemeHandler = {
     async resolveEntryAddress(target) {
         return target.kind === "url"
-            ? { authority: "", pathname: target.pathname, owner: "worker" }
+            ? { authority: "", pathname: target.pathname }
             : null;
     },
 };
@@ -75,6 +75,6 @@ test("SchemeHandler: editBatch exposes the typed aggregate receipt contract", ()
     assert.equal(editResult.editReceipt.effects[0]?.requested, "<1,2,1,2>");
 });
 
-test("SchemeHandler: entry address resolution uses semantic owners instead of storage ids", () => {
-    assert.equal(typeof callerOwned.resolveEntryAddress, "function");
+test("SchemeHandler: entry address resolution returns the resource coordinate", () => {
+    assert.equal(typeof addressable.resolveEntryAddress, "function");
 });

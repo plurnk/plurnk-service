@@ -34,18 +34,14 @@ test("lookup: route-specific reasoning controls survive the Models.dev projectio
     ]);
 });
 
-test("(#459) the segment IS the Models.dev id; retired plurnk-local names refuse, naming the id", () => {
+test("(#459) the segment IS the Models.dev id", () => {
     const snap = catalogSnapshot();
     const first = (id: string) => Object.keys(snap[id])[0];
     for (const id of ["togetherai", "fireworks-ai", "cloudflare-workers-ai", "moonshotai", "alibaba", "zai", "tencent-tokenhub", "amazon-bedrock"]) {
         assert.ok(id in snap, `${id} missing from snapshot`);
         assert.equal(lookup(id, first(id))?.contextWindow, snap[id][first(id)].contextWindow, id);
     }
-    for (const [name, id] of [["together", "togetherai"], ["fireworks", "fireworks-ai"], ["cloudflare", "cloudflare-workers-ai"], ["moonshot", "moonshotai"], ["dashscope", "alibaba"], ["zhipu", "zai"], ["hunyuan", "tencent-tokenhub"], ["bedrock", "amazon-bedrock"]]) {
-        assert.throws(() => lookup(name, "any"), new RegExp(`'${name}' was retired.*'${id}'`), name);
-        assert.throws(() => lookupProvider(name), new RegExp(`'${name}' was retired`), name);
-    }
-    // `ollama` is the built-in local rail, never retired; the cloud catalog is ollama-cloud.
+    // `ollama` names the built-in local rail, which has no catalog id; the cloud catalog is ollama-cloud.
     assert.equal(lookupProvider("ollama"), null);
     assert.notEqual(lookupProvider("ollama-cloud"), null);
 });

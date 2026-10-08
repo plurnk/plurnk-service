@@ -95,7 +95,6 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     assert.equal(m.category, "data");
     assert.deepEqual(m.writableBy, []);
     assert.equal(m.volatile, true);
-    assert.equal(Object.hasOwn(m, "foldedByDefault"), false, "executor manifests do not advertise obsolete entry-folding policy");
 });
 
 test("BaseExecutor: defaultChannel is the first declared channel, overridable", () => {

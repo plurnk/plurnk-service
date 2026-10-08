@@ -78,11 +78,6 @@ export default class RunHandler {
         }
         const input: RunAgentInput = parsed.data;
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
-        if (forwarded !== undefined && Object.hasOwn(forwarded, "policy")) {
-            throw new HttpProblemError(httpProblem("loop-policy-retired", 400,
-                "Loop policy is retired; advertise client tools and let the worker's owner handle approvals.",
-                { stage: "request-validation", retryable: false }));
-        }
         if (forwarded?.control !== undefined && typeof forwarded.control !== "boolean") {
             throw new HttpProblemError(httpProblem("control-invalid", 400, "control must be a boolean.",
                 { stage: "request-validation", retryable: false }));

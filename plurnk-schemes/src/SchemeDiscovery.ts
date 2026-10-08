@@ -1,10 +1,6 @@
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
-import type {
-    PackageAttributions,
-    ExtensionAttribution,
-    ExtensionAttributionDeclaration,
-} from "@plurnk/plurnk-meta";
+import type { PackageAttributions, ExtensionAttribution } from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed scheme-handler packages — the scheme
 // framework's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
@@ -22,7 +18,7 @@ import type {
 // Returns DESCRIPTORS, not instantiated handlers: this package is contract-only
 // and must never import a scheme package (that would nest extensions under the
 // framework and break the top-level scan). The consumer imports each
-// `packageName` and registers `new mod.default()` — exactly as the exec scheme
+// `packageName` and registers `new mod.default()` — exactly as the consumer
 // loads executor packages from plurnk-execs' ExecInfo.
 //
 // {§extension-trust-boundary} PLURNK_EXTENSIONS_TRUSTED_ONLY filters the scan:
@@ -38,9 +34,6 @@ export interface SchemeInfo {
     // names one export per scheme, so a package may own several names — one class
     // per name, while one name still has exactly one owner ({§scheme-discovery}).
     readonly exportName?: string;
-    // Published per-scheme projection of the package declaration. Discovery
-    // validates it through {§extension-attribution} before admission.
-    readonly attribution?: string | readonly string[];
 }
 
 export interface SchemeDiscoveryResult {
@@ -77,8 +70,7 @@ export default class SchemeDiscovery {
             // this package-level gate ({§extension-trust-boundary}).
             if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
             const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
-            const attribution = SchemeDiscovery.#attributionProjection(manifest.plurnk.attribution, tags);
-            const infos = SchemeDiscovery.#readSchemeInfos(manifest, attribution);
+            const infos = SchemeDiscovery.#readSchemeInfos(manifest);
             let admitted = false;
             for (const info of infos) {
                 const existing = byName.get(info.name);
@@ -131,14 +123,7 @@ export default class SchemeDiscovery {
     // entry per scheme it owns) OR `plurnk.name: "<scheme>"` (sugar for exactly
     // one, default export). A malformed `plurnk.schemes` is an authoring
     // contract violation and fails hard (locality of error), not a silent skip.
-    static #readSchemeInfos(
-        { packageName, plurnk: plurnkRec }: SchemePackage,
-        attribution: ExtensionAttributionDeclaration | undefined,
-    ): SchemeInfo[] {
-        // Only carry the key when credit is actually present — an absent
-        // attribution leaves the property off entirely (not `undefined`).
-        const withAttr = (info: SchemeInfo): SchemeInfo => attribution === undefined ? info : { ...info, attribution };
-
+    static #readSchemeInfos({ packageName, plurnk: plurnkRec }: SchemePackage): SchemeInfo[] {
         const declared = plurnkRec.schemes;
         if (declared !== undefined) {
             if (!Array.isArray(declared) || declared.length === 0) {
@@ -149,20 +134,12 @@ export default class SchemeDiscovery {
                 const e = entry as Record<string, unknown>;
                 if (typeof e.name !== "string" || e.name === "") throw new Error(`${packageName}: a plurnk.schemes entry is missing a non-empty name`);
                 if (typeof e.export !== "string" || e.export === "") throw new Error(`${packageName}: plurnk.schemes entry '${e.name}' is missing a non-empty export`);
-                return withAttr({ name: e.name, packageName, exportName: e.export });
+                return { name: e.name, packageName, exportName: e.export };
             });
         }
         if (typeof plurnkRec.name === "string" && plurnkRec.name !== "") {
-            return [withAttr({ name: plurnkRec.name, packageName })]; // sugar: single scheme, default export
+            return [{ name: plurnkRec.name, packageName }]; // sugar: single scheme, default export
         }
         return [];
-    }
-
-    static #attributionProjection(
-        raw: unknown,
-        tags: ExtensionAttribution,
-    ): ExtensionAttributionDeclaration | undefined {
-        if (raw === undefined || raw === null) return undefined;
-        return typeof raw === "string" ? raw : [...tags];
     }
 }

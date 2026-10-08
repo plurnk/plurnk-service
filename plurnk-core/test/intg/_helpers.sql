@@ -378,8 +378,7 @@ SET status = $status,
 WHERE id = $id;
 
 -- PREP: test_set_workspace_project_root
--- Sets workspaces.project_root for File-scheme intg tests. F.1 added the
--- column; F.5 made the File scheme read from it instead of an env var.
+-- Sets workspaces.project_root for File-scheme intg tests.
 UPDATE workspaces SET project_root = $project_root WHERE id = $id;
 
 -- PREP: test_read_log_entries_for_turn_by_op

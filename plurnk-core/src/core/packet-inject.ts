@@ -27,6 +27,3 @@ export const readSystemPolicy = async (): Promise<string | null> => {
     const env = raw?.trim();
     return readPolicy(env ? resolveInjectPath(env) : new HostPaths().policyFile, !!env);
 };
-
-// Project policy is retired from the system slot: the project AGENTS.md now
-// rides turn 0 as the foisted AGENTS.md entry ({§turn0-agents-stunt}).

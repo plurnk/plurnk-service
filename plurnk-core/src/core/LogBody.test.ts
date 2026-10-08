@@ -206,11 +206,6 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
         "",
         "whole-channel effects have no invented textual receipt",
     );
-    assert.equal(
-        LogBody.resolve({ op: "COPY", tx: "", rx: { span: "legacy" } }).content,
-        "",
-        "COPY/MOVE do not retain a second legacy body contract",
-    );
 });
 
 test("{§kill-scope-entry}: LogBody projects scoped entry KILL through the ordinary EDIT receipt", () => {

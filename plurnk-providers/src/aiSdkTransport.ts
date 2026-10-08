@@ -641,7 +641,7 @@ export const transportFailureEvidence = (
     };
 };
 
-const RETAINED_FIELDS = new Set(["content", "reasoning_content", "reasoning", "thinking", "role"]); // lexicon-allow: backend wire fields
+const RETAINED_FIELDS = new Set(["content", "reasoning_content", "reasoning", "thinking", "role"]);
 
 // {§provider-wire-emission} — the emission as the wire carried it: field counts, chunks that
 // carried nothing, merged tool calls, and the verbatim text of every channel the normalized record
@@ -743,7 +743,7 @@ const extractEvidence = (values: unknown[]): {
         const delta = recordOf(choice.delta);
         const message = delta ?? recordOf(choice.message) ?? {};
         if (typeof message.content === "string") content += message.content;
-        for (const key of ["reasoning_content", "reasoning", "thinking"]) { // lexicon-allow: backend wire fields
+        for (const key of ["reasoning_content", "reasoning", "thinking"]) {
             if (typeof message[key] === "string") {
                 reasoningProjected = true;
                 reasoning += message[key];

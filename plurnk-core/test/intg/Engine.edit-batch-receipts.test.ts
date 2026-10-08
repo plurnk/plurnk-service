@@ -66,7 +66,7 @@ const cases: readonly {
 for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async (t) => {
     serverProposals(t, "accept");
     if (fixture.hashCollision) {
-        // {§line-anchor-disambiguation}: ordinary repetitions now resolve;
+        // {§line-anchor-disambiguation}: ordinary repetitions resolve;
         // force a residual truncated-hash collision at the derivation boundary.
         const tokens = LineAnchors.tokens.bind(LineAnchors);
         t.mock.method(LineAnchors, "tokens", (identity: string, content: string) => {
@@ -147,14 +147,12 @@ replacement
                     assert.equal(problem.applied, 0);
                     assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates."); // {§problems-dispatch}
                     assert.equal(problem.retryable, false);
-                    assert.equal("staleAnchors" in problem, false, "absence is not evidence of earlier validity");
                 }
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
                 const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")?.content;
                 assert.ok(typeof log === "string", "the next model packet contains the refused EDIT receipts");
                 for (const anchor of unresolved) assert.ok(log.includes(JSON.stringify(anchor)), "the current-state diagnosis reaches the model");
                 assert.ok(log.includes("0 of 1 edits applied."), "the packet reports only this operation's lack of effect");
-                assert.doesNotMatch(log, /no longer resolves|since the READ|collided with another change|staleAnchors/);
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), ["ONE", "TWO", "THREE", ...fixture.current.split("\n").slice(3)].join("\n"), "only the valid EDITs landed");
             } finally { ws.close(); }
         });

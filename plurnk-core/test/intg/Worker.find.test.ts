@@ -75,7 +75,7 @@ test("Worker.find returns the scheme's catalog groups (JSON), filtered to matche
         assert.equal(typeof first[0].mimetype, "string");
         assert.equal(first[0].lines, 1, "\"alpha\" is one line");
         assert.equal(typeof first[0].weight, "number");
-        assert.ok(!("extent" in first[0]), "a catalog channel carries no legacy extent");
+        assert.deepEqual(Object.keys(first[0]).sort(), ["lines", "mimetype", "path", "weight"], "a catalog channel carries exactly its path, mimetype, lines and weight");
     } finally { db.close(); }
 });
 
@@ -232,11 +232,7 @@ test("Worker.find preserves an invalid matcher's parser cause and recovery facts
         assert.equal(r.problem?.dialect, "jsonpath");
         assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
         assert.equal(r.problem?.retryable, false);
-        assert.doesNotMatch(
-            r.problem?.detail ?? "",
-            /could not resolve the requested selection/,
-            "the parser's actual cause survives the FIND boundary",
-        );
+        assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid.", "the parser's actual cause survives the FIND boundary");
     } finally {
         db.close();
     }

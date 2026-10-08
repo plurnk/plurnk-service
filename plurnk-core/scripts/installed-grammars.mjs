@@ -9,7 +9,7 @@ export function installedGrammars(cwd) {
         import { dirname, resolve } from "node:path";
         import { pathToFileURL } from "node:url";
         const require = createRequire(resolve("package.json"));
-        const { Mimetypes } = await import("@plurnk/plurnk-service");
+        const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");
         const framework = dirname(require.resolve("@plurnk/plurnk-mimetypes/package.json"));
         const { TREE_SITTER_REGISTRY } = await import(pathToFileURL(resolve(framework, "dist/treesitter/registry.js")));
         const sources = {
@@ -31,7 +31,7 @@ export function installedGrammars(cwd) {
                     }, { channels: ["symbols"] });
                     assert.equal(result.ok, true, mimetype + " degrades");
                     assert.equal(result.mimetype, mimetype, mimetype + " keeps its detected mimetype");
-                    assert.equal(result.grammarMissing, "@plurnk/plurnk-mimetypes-grammar-" + slug, mimetype + " names its absent leaf");
+                    assert.equal(result.grammarMissing, "@plurnk/plurnk-mimetypes-grammar-" + slug, mimetype + " names its absent grammar package");
                     degraded.push(slug);
                     continue;
                 }

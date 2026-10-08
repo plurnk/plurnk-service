@@ -64,7 +64,7 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
 
     // Channels this executor writes to. The consuming scheme seeds the exec
     // entry from this declaration ({§executor-channels}): subprocess runtimes
-    // declare `{ stdout, stderr }`; the search sibling declares `{ results }`.
+    // declare `{ stdout, stderr }`; structured runtimes such as sqlite declare `{ results }`.
     // Implemented as a getter so executors may branch on `this.runtime` when a
     // tag dictates a different shape; most return a constant map.
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;

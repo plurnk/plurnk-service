@@ -2,7 +2,7 @@
 // exercise its singular code entrypoint.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as SourceContracts from "../src/index.ts";
@@ -52,15 +52,6 @@ try {
     }
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
 
-    const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-contracts");
-    const installedPackage = JSON.parse(await readFile(join(installedRoot, "package.json"), "utf8"));
-    if (Object.hasOwn(installedPackage.exports, "./grammar")) {
-        throw new Error("installed package retains a second grammar code entrypoint");
-    }
-    if (Object.keys(installedPackage.exports).some((entry) => entry.endsWith(".gbnf"))) {
-        throw new Error("installed package ships a bundled GBNF profile; grammars are operator files, never package exports");
-    }
-
     await writeFile(join(tempDir, "consume.js"), `
 import * as Contracts from "@plurnk/plurnk-contracts";
 
@@ -100,7 +91,7 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     || PathSyntax.unescapeTarget(escapedTarget) !== "https://example.test/x?literal=)&encoded=%29") {
     throw new Error("PathSyntax target escape failed");
 }
-if (!["NOTE", "WAIT", "SEND"].every((op) => PLURNK_OPS.includes(op)) || ["TASK", "PLAN", "DONE", "FAIL"].some((op) => PLURNK_OPS.includes(op))) throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
+if (PLURNK_OPS.join(",") !== "FIND,READ,EDIT,COPY,MOVE,SEND,BARE,WORK,FORK,KILL,NOTE,WAIT") throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
 if (!WORKER_NAME.test("worker-1")) throw new Error("WORKER_NAME rejects a legal worker name");
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");

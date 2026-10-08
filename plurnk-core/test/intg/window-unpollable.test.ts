@@ -2,12 +2,10 @@
 // null after the provider tier's env/probe/catalog all miss) is genuinely-unknown — nobody chose an
 // envelope — and is treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the
 // gauge omits its headline (never a stand-in the operator never chose; a probe blip degrades, never
-// crashes). The deliberate-window arm lives in the PROVIDER tier (PLURNK_PROVIDERS_CONTEXT_WINDOW);
-// core's retired per-alias spelling refuses packet construction naming the successor.
+// crashes). The deliberate-window arm lives in the provider tier (PLURNK_PROVIDERS_CONTEXT_WINDOW).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { Problems } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
@@ -31,32 +29,4 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         assert.ok(budget, "the budget section still ships");
         assert.doesNotMatch(budget.content, /budget/, "no maximum — the window is unbounded, there is no percent to show");
     } finally { await db.close(); }
-});
-
-test("{§configuration-repair-path} the retired per-alias window knob refuses inference, not engine construction", async () => {
-    // The deliberate-stand-in arm moved to the provider tier (PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>);
-    // a stale core-prefixed pin must never silently lose the operator's window to the move.
-    process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const workspaceId = await insertWorkspace(db, `retired-window-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        const provider = new Mock({ contextWindow: null, responses: [] });
-        await assert.rejects(
-            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] }),
-            (cause: unknown) => {
-                const problem = Problems.fromError(cause);
-                assert.equal(problem?.status, 503);
-                assert.equal(problem?.key, "PLURNK_SERVICE_CONTEXT_WINDOW_mocktest");
-                assert.match(problem?.detail ?? "", /PLURNK_PROVIDERS_CONTEXT_WINDOW_mocktest/u);
-                return true;
-            },
-        );
-        assert.equal(provider.received.length, 0, "invalid capacity never reaches inference");
-    } finally {
-        delete process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest;
-        await db.close();
-    }
 });

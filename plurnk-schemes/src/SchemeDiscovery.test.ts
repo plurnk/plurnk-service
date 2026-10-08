@@ -50,7 +50,7 @@ test("discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscop
     assert.equal(skipped.length, 0);
 });
 
-test("discover: normalizes attribution once per package and preserves the published scheme projection", async () => {
+test("discover: normalizes attribution once per package; descriptors carry identity only", async () => {
     const cwd = await makeTree([
         ["one-credit", { name: "one-credit", plurnk: { kind: "scheme", name: "one", attribution: "Ada Lovelace" } }],
         ["many-credit", { name: "many-credit", plurnk: { kind: "scheme", name: "many", attribution: ["Ada", "Grace"] } }],
@@ -58,10 +58,9 @@ test("discover: normalizes attribution once per package and preserves the publis
     ]);
     const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
     const by = (n: string) => schemes.find((s) => s.name === n);
-    assert.equal(by("one")?.attribution, "Ada Lovelace");
-    assert.deepEqual(by("many")?.attribution, ["Ada", "Grace"]);
+    assert.deepEqual(by("one"), { name: "one", packageName: "one-credit" });
+    assert.deepEqual(by("many"), { name: "many", packageName: "many-credit" });
     assert.deepEqual(by("none"), { name: "none", packageName: "no-credit" });
-    assert.equal("attribution" in by("none")!, false);
     assert.deepEqual([...packageAttributions], [
         ["many-credit", ["Ada", "Grace"]],
         ["one-credit", ["Ada Lovelace"]],
@@ -123,24 +122,18 @@ test("discover: plurnk.name sugar omits exportName (consumer defaults to \"defau
     assert.equal("exportName" in schemes.find((s) => s.name === "solo")!, false);
 });
 
-test("discover: a package's schemes each carry one package attribution fact", async () => {
+test("discover: a multi-scheme package contributes one package attribution fact", async () => {
     const cwd = await makeTree([["p", {
         name: "p",
         plurnk: { kind: "scheme", attribution: "Grace", schemes: [{ name: "a", export: "default" }, { name: "b", export: "B" }] },
     }]]);
     const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
-    assert.equal(schemes.find((s) => s.name === "a")?.attribution, "Grace");
-    assert.equal(schemes.find((s) => s.name === "b")?.attribution, "Grace");
+    assert.deepEqual(schemes.map((s) => s.name).sort(), ["a", "b"]);
     assert.deepEqual([...packageAttributions], [["p", ["Grace"]]]);
 });
 
-test("discover: an array kind declares no scheme extension", async () => {
+test("discover: a package of another kind declares no scheme extension", async () => {
     const cwd = await makeTree([
-        ["multi-kind", {
-            name: "multi-kind",
-            plurnk: { kind: ["exec", "scheme"], schemes: [{ name: "records", export: "RecordsScheme" }] },
-        }],
-        ["exec-only", { name: "exec-only", plurnk: { kind: ["exec"], runtimes: [{ name: "node" }] } }],
         ["other-kind", { name: "other-kind", plurnk: { kind: "exec", name: "nope" } }],
     ]);
     const { schemes } = await SchemeDiscovery.discover({ cwd });

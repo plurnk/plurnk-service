@@ -11,15 +11,15 @@ const cite = (tag) => `{${"§"}${tag}}`;
 const declare = (tag) => `${"§"}${tag}`;
 const issueShorthand = (repository, number) => `${repository}${"#"}${number}`;
 
-test("legacy repository issue shorthands are distinct from valid citation forms", () => {
-    const serviceReference = issueShorthand("service", 240);
+test("a repository issue shorthand is distinct from the valid citation forms", () => {
+    const serviceReference = issueShorthand("plurnk-service", 240);
     const packageReference = issueShorthand("plurnk-mimetypes", 41);
     const files = [
         {
             name: "alpha/SPEC.md",
             text: [
                 `${declare("current-law")} **Current law.**`,
-                `Historical shorthand ${serviceReference} is ambiguous.`,
+                `The shorthand ${serviceReference} is ambiguous.`,
                 `Inline code \`${packageReference}\` is an inert example.`,
                 "```md",
                 packageReference,

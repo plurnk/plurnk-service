@@ -17,7 +17,7 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip('````FIND (known://docs) <1-20> [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip('````FIND (worker:///docs) <1-20> [{"pattern": "*.xml"}]````');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -27,7 +27,7 @@ test("PlurnkStatement: READ with bare local path and empty body", () => {
 });
 
 test("PlurnkStatement: KILL with regex matcher", () => {
-    const r = validateRoundTrip('````KILL (known://**) [{"pattern": "/error|fail/i"}]````');
+    const r = validateRoundTrip('````KILL (worker:///**) [{"pattern": "/error|fail/i"}]````');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -65,26 +65,26 @@ test("PlurnkStatement: KILL admits log-body line markers", () => {
 });
 
 test("PlurnkStatement: EDIT with raw markdown body", () => {
-    const r = validateRoundTrip("````EDIT (known://meaning)\nThe meaning of life is 42\n````");
+    const r = validateRoundTrip("````EDIT (worker:///meaning)\nThe meaning of life is 42\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: EDIT with an anchored line scope", () => {
-    const r = validateRoundTrip("````EDIT (known://meaning) <@aZ09b>\nThe meaning of life is 42\n````");
+    const r = validateRoundTrip("````EDIT (worker:///meaning) <@aZ09b>\nThe meaning of life is 42\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: COPY with destination resource selection", () => {
-    const r = validateRoundTrip("````COPY (known://draft) (known://archive/draft)````");
+    const r = validateRoundTrip("````COPY (worker:///draft) (worker:///archive/draft)````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: MOVE with destination resource selection", () => {
-    const r = validateRoundTrip("````MOVE (known://draft) (known://final)````");
+    const r = validateRoundTrip("````MOVE (worker:///draft) (worker:///final)````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: SEND with integer signal and JSON body", () => {
+test("PlurnkStatement: SEND with JSON body", () => {
     const r = validateRoundTrip("````SEND\n{\"answer\":\"Paris\"}\n````\n````WAIT\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
@@ -114,17 +114,7 @@ test("PlurnkStatement: BARE carries inline or resource prompt input, but no scop
 });
 
 test("PlurnkStatement parser preserves a decimal marker for runtime validation", () => {
-    const r = validateRoundTrip("````EDIT (known://plan) <2.5>\n- [ ] new step\n````");
-    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
-});
-
-test("PlurnkStatement: FIND with decimal threshold and semantic matcher", () => {
-    const r = validateRoundTrip('````FIND (known://**) <0.7> [{"pattern": "~territorial concessions"}]````');
-    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
-});
-
-test("PlurnkStatement: FIND with threshold-prefixed result range", () => {
-    const r = validateRoundTrip('````FIND (known://**) <0.7,10,20> [{"pattern": "~concessions"}]````');
+    const r = validateRoundTrip("````EDIT (worker:///checklist.md) <2.5>\n- [ ] new step\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -288,7 +278,7 @@ test("PlurnkStatement: COPY operands independently accept metadata and text scop
     const stmt = {
         ...transferFields("COPY"),
         source: {
-            target: parsePath("known://draft/source")!,
+            target: parsePath("worker://draft/source")!,
             metadata: ["source metadata"],
             lineMarker: { marks: [1, 4] },
             matcher: { dialect: "glob", raw: "needle" },
@@ -296,8 +286,8 @@ test("PlurnkStatement: COPY operands independently accept metadata and text scop
         destination: {
             target: {
                 kind: "url",
-                raw: "known://archive/draft",
-                scheme: "known",
+                raw: "worker://archive/draft",
+                scheme: "worker",
                 username: null,
                 password: null,
                 hostname: "archive",
@@ -316,7 +306,7 @@ test("PlurnkStatement: COPY operands independently accept metadata and text scop
 });
 
 test("PlurnkStatement: SEND body must be SendBody shape (raw + json)", () => {
-    const stmt = { ...baseFields("SEND"), status: 200, body: "just a string" };
+    const stmt = { ...baseFields("SEND"), body: "just a string" };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
@@ -357,11 +347,11 @@ test("PlurnkStatement: rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip('````FIND (known://docs) <1> [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip('````FIND (worker:///docs) <1> [{"pattern": "*.xml"}]````');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip('````FIND <1-5> (known://docs) [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip('````FIND <1-5> (worker:///docs) [{"pattern": "*.xml"}]````');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

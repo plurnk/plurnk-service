@@ -26,8 +26,6 @@ test("{§worker-ownership}: injecting a message preserves the owner's pending re
             const folded = await rpcCall(ws, 3, "loop.run", { prompt: "also do this" });
             assert.equal((folded.result as { action: string }).action, "injected_next_turn");
             assert.equal((await daemon.readWorker({ workspaceId, identity: { id: modelWorkerId } }))?.owner, TEST_OWNER);
-            const refused = await rpcCall(ws, 4, "loop.run", { prompt: "change authority", policy: { proposals: "accept" } });
-            assert.equal(rpcProblem(refused).type, "https://problems.plurnk.xyz/daemon/input/loop-policy-retired");
             assert.equal((await daemon.pendingProposals(workspaceId)).length, 1);
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0]!.logEntryId, decision: "reject" });
         } finally { ws.close(); }

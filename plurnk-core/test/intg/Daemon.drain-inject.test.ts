@@ -94,7 +94,7 @@ test("{§worker-ownership}: a fresh injection preserves the worker owner", async
         responses: [sendOnly("````KILL\ndone\n````")],
     });
     await withDaemon(mock, async (db, daemon) => {
-        const workspace = await daemon.createWorkspace({ name: `fresh-loop-policy-${crypto.randomUUID()}` });
+        const workspace = await daemon.createWorkspace({ name: `fresh-loop-${crypto.randomUUID()}` });
         const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
         await ownWorker(db, workspace.workspaceId, workerId);
         const accepted = await daemon.inject({

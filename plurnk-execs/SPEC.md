@@ -273,10 +273,8 @@ Core owns startup diagnostics and demand refusal in {§configuration-repair-path
 
 ## §executor-output-address Tag-addressed output
 
-`exec` is the consumer's internal execution dispatcher; it is not a model-facing
-output namespace. Every available runtime receives one derived read-only
-scheme face from its tag, channels, and default channel. The executor authors
-no second scheme manifest.
+Every available runtime receives one derived read-only scheme face from its tag,
+channels, and default channel. The executor authors no second scheme manifest.
 
 | Output                    | Model-facing address                                               |
 | ------------------------- | ------------------------------------------------------------------ |
@@ -380,7 +378,6 @@ at boot; changing package membership or configuration requires a restart.
 | `summary`     | Required one-line description, or `{ from: "tools", description?: string }` for an exact tool inventory with an optional one-line purpose. |
 | `invocation`  | Required body and target contract, validated and normalized below.                                 |
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
-| `attribution` | Published per-tag projection of the validated package declaration ({§extension-attribution}).         |
 | `packageName` | Package that owns and default-exports the executor implementation.                                 |
 
 The framework validates and carries the summary source, invocation, and supplemental

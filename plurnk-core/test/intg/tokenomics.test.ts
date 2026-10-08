@@ -117,21 +117,6 @@ test("{§context-gauge} the gauge carries populated tokens, budget and largest f
     } finally { await db.close(); }
 });
 
-test("(#482) overflow tolerance is never advertised: the disclosed allowance stays the configured floor", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `tok-flex-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        assert.doesNotMatch(budget, /tokensResponseMax/, "no allowance is advertised, neither the floor nor the wire grant (#826)");
-    } finally { await db.close(); }
-});
-
-
 test("context token budget carries active total and maximum without a percent", async () => {
     const db = await openMigrated();
     try {

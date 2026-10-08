@@ -344,8 +344,7 @@ export default class ClientInput {
         }
     }
 
-    // {§operator-config} — validate and serialize the client open-context bag. filesItems is a scalar (replace);
-    // mdDocs is [{alias, content}] (union'd with env at turn-0). A module may
+    // {§operator-config} — validate and serialize the client open-context bag. A module may
     // serialize the object at its edge; core still parses and validates it here.
     static parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";

@@ -690,7 +690,7 @@ export default class Ws implements SchemeHandler {
     }
 
     static #metadataUnsupported(): PassthroughResult & ChannelProducerResult {
-        return Ws.#bad(400, "metadata-unsupported", "WebSocket does not accept the {metadata} modifier.", {
+        return Ws.#bad(400, "metadata-unsupported", "WebSocket does not accept the [metadata] modifier.", {
             retryable: false,
         });
     }

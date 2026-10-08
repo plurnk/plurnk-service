@@ -116,9 +116,8 @@ batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-
 
 The runtime tag is also the output scheme. A subprocess result is therefore
 read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
-be `sqlite:///f2c49a10#results`. `exec://` is not an output address. Executors only
-produce channels; the consumer owns storage and every later READ/FIND. See
-{§executor-output-address}.
+be `sqlite:///f2c49a10#results`. Executors only produce channels; the consumer
+owns storage and every later READ/FIND. See {§executor-output-address}.
 
 ## Discovery and policy
 

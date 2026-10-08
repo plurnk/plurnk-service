@@ -1,9 +1,6 @@
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
-import type {
-    ExtensionAttribution,
-    ExtensionAttributionDeclaration,
-} from "@plurnk/plurnk-meta";
+import type { ExtensionAttribution } from "@plurnk/plurnk-meta";
 import MimetypeExtensionError from "./MimetypeExtensionError.ts";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
@@ -50,8 +47,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
             continue;
         }
         const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
-        const attribution = attributionProjection(manifest.plurnk.attribution, tags);
-        const infos = readHandlerInfos(manifest, attribution);
+        const infos = readHandlerInfos(manifest);
         if (tags.length > 0) discoveredAttributions.set(manifest.packageName, tags);
         for (const info of infos) {
             handlers.set(info.mimetype, info);
@@ -170,10 +166,7 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
 }
 
 // Produce one HandlerInfo per valid entry from one trusted kind claim.
-function readHandlerInfos(
-    manifest: MimetypeManifest,
-    attribution: ExtensionAttributionDeclaration | undefined,
-): HandlerInfo[] {
+function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
     const { manifestPath, packageName, plurnk } = manifest;
     const fail = (reason: string, mimetype?: string): never => {
         throw new MimetypeExtensionError({
@@ -230,15 +223,6 @@ function readHandlerInfos(
             extensions: (extensions ?? []) as string[],
             binary,
             source: "package",
-            ...(attribution !== undefined && { attribution }),
         } satisfies HandlerInfo;
     });
-}
-
-function attributionProjection(
-    raw: unknown,
-    tags: ExtensionAttribution,
-): ExtensionAttributionDeclaration | undefined {
-    if (tags.length === 0) return undefined;
-    return typeof raw === "string" ? raw : [...tags];
 }

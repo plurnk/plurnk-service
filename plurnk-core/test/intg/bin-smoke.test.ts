@@ -427,7 +427,6 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
                 PLURNK_SERVICE_DB_PATH: dbPath,
                 PLURNK_HOST: "127.0.0.1",
                 PLURNK_PORT: "0",
-                PLURNK_WS_PORT: "0",
                 PLURNK_MODEL: "dbguard",
                 PLURNK_MODEL_dbguard: "missing/model",
             };

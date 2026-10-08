@@ -184,11 +184,27 @@ root never contributes code.
 | The worker graph | WORK, FORK, WAIT and SEND are the delegation story |
 | The Functionality coordinator | One management grammar for every family |
 
+## Vocabulary by audience
+
+Vocabulary follows the standard of its audience.
+
+| Layer | Rule |
+| --- | --- |
+| Operator, wire, storage | Use the applicable industry term. Provider quantities follow the OpenAI vocabulary where it is standard: `contextWindow`, `reasoning`, `completion`, `finish_reason`, and usage nouns. |
+| Core lifecycle | Use the exact Workspace → Worker → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An AG-UI Run or thread is always protocol-qualified. |
+| Model-facing packet | Use the model's training distribution: operations mirror HTTP and shell, while log records use ordinary Markdown headings, strict JSON metadata, and text coordinates. Renaming this vocabulary to internal API terminology would discard useful resonance for a standard the model never sees. |
+
+| PLURNK-native term | Why it is its own |
+| --- | --- |
+| `worker` / `loop` / `turn` | The process hierarchy in {§lifecycle-terms}; unqualified `run` names no internal entity. |
+| `packet` | The assembled address space, a kernel concept rather than merely a provider request. |
+| `costUsd` | No standard cost field exists; the explicit currency avoids implied units, and the value remains an exact decimal string. |
+| `curationWeight` / `curationBudget` | Explicitly distinguish Core's model-independent context-shaping facts from physical provider tokens. |
+| the `chars/2` curation ruler | Model-agnostic by design ({§tokenomics-agnostic-ruler}); it is never presented as a tokenizer. |
+
 ## Extension vocabulary
 
-One word per concept, defined here and enforced by the root lint, which refuses every retired form
-by name with its successor (#1009). A quotation that must name a retired form carries
-`lexicon-allow`.
+One word per concept, defined here.
 
 | Term | Meaning | Not |
 | --- | --- | --- |

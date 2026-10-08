@@ -1,7 +1,5 @@
 // {§operator-config-flag-parity} — every PLURNK_SERVICE_* flag the code reads has a matching
-// .env.defaults line and vice versa. A half-landed rename (code moved, template didn't, or a
-// script-glob missed a file) fails HERE instead of silently at a user's boot — the exact class
-// that let PLURNK_GBNF_DEBUG and the package.json prefixes drift during the family-prefix sweep.
+// .env.defaults line and vice versa, so a half-landed rename fails here instead of at a user's boot.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -13,21 +11,9 @@ import EnvFlags from "../../src/core/EnvFlags.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 
-// Alias-scoped packet-policy flags are read through one scoped key list, and MD_* via a
-// startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
+// The live-tier deadline is read by the test harness, not by src, so the src scan cannot see it.
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
-// Named by the source only to be refused: a retired key is declared nowhere, by design.
-const RETIRED = new Set([
-    "PLURNK_SERVICE_ATTENDED", "PLURNK_SERVICE_UNATTENDED_PROPOSALS",
-    "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_EFFECT_POLICY",
-    // {§context-fit} {§context-gauge} — the projection and pressure knobs; the page's two knobs stand ({§markerless-first-page}).
-    "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE",
-    "PLURNK_SERVICE_EXEC_POLL_SEC", "PLURNK_SERVICE_EXEC_POLL_TURNS",
-    // {§skills-sources} — the vendor installer's knobs.
-    "PLURNK_SERVICE_SKILLS_CLI", "PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS",
-    "PLURNK_SERVICE_SKILLS_REGISTRY_URL", "PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT", "PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS",
-]);
-const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_SAFETY_"];
+const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_"];
 
 test("every shipped service flag has an adjacent description for CLI help", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");
@@ -62,8 +48,6 @@ test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa"
     assert.deepEqual(declaredNotRead, [], `declared in .env.defaults but never read by src (dead flags?): ${declaredNotRead.join(", ")}`);
 
     // Every literal read has a declared line (a code reader with no template entry = no CLI flag, no floor).
-    const readNotDeclared = [...read].filter((f) => !declared.has(f) && !DYNAMIC_READS.has(f) && !RETIRED.has(f) && !underDynamicPrefix(f));
+    const readNotDeclared = [...read].filter((f) => !declared.has(f) && !DYNAMIC_READS.has(f) && !underDynamicPrefix(f));
     assert.deepEqual(readNotDeclared, [], `read by src but missing from .env.defaults (no floor, no --flag): ${readNotDeclared.join(", ")}`);
-    const retiredDeclared = [...RETIRED].filter((f) => declared.has(f));
-    assert.deepEqual(retiredDeclared, [], `retired yet still declared: ${retiredDeclared.join(", ")}`);
 });

@@ -18,16 +18,3 @@ test("{§worker-wait-timing} the maximum park has one positive configured durati
         assert.throws(() => TurnDispositionHandler.configuredWaitSeconds(), ConfigurationError);
     }
 });
-
-for (const key of ["PLURNK_SERVICE_EXEC_POLL_SEC", "PLURNK_SERVICE_EXEC_POLL_TURNS"]) {
-    test(`{§worker-wait-timing} ${key} names its replacement instead of silently retaining a second policy`, (t) => {
-        const previous = process.env[key];
-        t.after(() => {
-            if (previous === undefined) delete process.env[key];
-            else process.env[key] = previous;
-        });
-        process.env[key] = "1";
-        assert.throws(() => TurnDispositionHandler.configuredWaitSeconds(), (error: unknown) =>
-            error instanceof ConfigurationError && error.message.includes(key) && error.message.includes("PLURNK_SERVICE_WAIT_SEC"));
-    });
-}

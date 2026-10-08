@@ -19,7 +19,7 @@ const fixture = async (t: test.TestContext): Promise<string> => {
     return base;
 };
 
-test("{§skills-sources} a git remote is a full https or ssh URL; other schemes and owner/repo shorthand are refused", async () => {
+test("{§skills-sources} a git remote is a full https or ssh URL; other schemes are refused", async () => {
     const context = { projectRoot: null, home: "/home/ada" };
     for (const remote of ["https://forge.example/acme/skills.git", "ssh://git@forge.example/acme/skills.git", "git@forge.example:acme/skills.git"]) {
         assert.deepEqual(await SkillSource.locate(remote, context), { kind: "git", location: remote });
@@ -31,9 +31,9 @@ test("{§skills-sources} a git remote is a full https or ssh URL; other schemes 
         (error: { problem?: { type?: string; detail?: string; source?: string } }) =>
             problemType("source-invalid")(error) && error.problem!.source === undefined && !error.problem!.detail!.includes("token"),
         "a credential in a source URL is refused without being echoed");
-    await assert.rejects(() => SkillSource.locate("acme/skills", { projectRoot: "/nowhere", home: "/home/ada" }),
-        (error: { problem?: { type?: string; detail?: string } }) => problemType("source-missing")(error) && error.problem!.detail === "No folder or file is at 'acme/skills'.",
-        "owner/repo is read as a project path, and its refusal names only what is absent ({§diagnostic-observation})");
+    await assert.rejects(() => SkillSource.locate("skills/review", { projectRoot: "/nowhere", home: "/home/ada" }),
+        (error: { problem?: { type?: string; detail?: string } }) => problemType("source-missing")(error) && error.problem!.detail === "No folder or file is at 'skills/review'.",
+        "a relative source is read as a project path, and its refusal names only what is absent ({§diagnostic-observation})");
     await assert.rejects(() => SkillSource.locate("skills", context), problemType("source-invalid"), "a relative source needs a project root");
 });
 

@@ -35,7 +35,6 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     assert.equal(paths.globalPluginsDir, "/home/ada/.agents/plugins");
     assert.equal(paths.projectPluginsDir("/work/repo"), "/work/repo/.agents/plugins");
     assert.match(paths.pluginDataDir("devtools", "/plugins/devtools"), /^\/home\/ada\/\.local\/share\/plurnk\/plugins\/devtools\/[a-f0-9]{64}$/);
-    assert.equal(paths.legacyDir, "/home/ada/.plurnk");
 });
 
 test("{§host-path-layout} honors absolute XDG homes without moving the shared Agent Skills root", () => {

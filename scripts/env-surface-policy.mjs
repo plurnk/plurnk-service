@@ -49,17 +49,11 @@ const NOT_A_KNOB = new Map([
     ["PLURNK_VISIBLE_TOKEN_COUNT_UNAVAILABLE", "a provider diagnostic code"],
 ]);
 
-// A key the code names only in order to refuse it. The house says "shed": `shedRenamed(env, "OLD",
-// …)` retires its first name, and a function named `shed…` retires every key it spells out.
-const RETIRED_CALL = /\bshedRenamed\(\s*[\w.]+\s*,\s*["'`](PLURNK_[A-Z0-9_]+)["'`]/gu;
-const RETIRED_RECORD = /\bretired\b[^=\n]*=\s*\{([^}]*)\}/gu;
-const RETIRING_FUNCTION = /#?\bshed[A-Z]\w*\s*(?:=\s*)?\([^)]*\)[^{;]*\{([\s\S]{0,1600}?)\n\}/gu;
-
 const isTest = (name) => /(?:^|\/)(?:test|tests|fixtures)\//u.test(name) || /\.test\.[^.]+$/u.test(name);
 const isShipped = (name) => /^plurnk-[^/]+\/src\//u.test(name) && SOURCE_EXTENSIONS.test(name)
     && !isTest(name) && !/\.generated\./u.test(name);
 
-// Comments carry history, not behaviour: a retired name mentioned in prose is not a read.
+// A name in a comment is prose, not a read.
 export const stripComments = (text) => {
     let out = "";
     let quote = null;
@@ -119,20 +113,11 @@ export const measure = ({ panels, sources, corpus, manifests = [] }) => {
     const findings = new Map();
     const count = (rule, key, by = 1) => findings.set(`${rule}\t${key}`, (findings.get(`${rule}\t${key}`) ?? 0) + by);
 
-    const retired = new Set();
     const families = new Set();
     const named = new Map();
     for (const { name, content } of sources) {
         if (!isShipped(name)) continue;
         const code = stripComments(content);
-        for (const match of code.matchAll(RETIRED_CALL)) retired.add(match[1]);
-        for (const match of code.matchAll(RETIRED_RECORD)) {
-            for (const key of match[1].matchAll(/\b(PLURNK_[A-Z0-9_]+)\s*:/gu)) retired.add(key[1]);
-        }
-        for (const match of code.matchAll(RETIRING_FUNCTION)) {
-            if (/^\s*shedRenamed\b/u.test(match[0])) continue;
-            for (const key of match[1].matchAll(/["'`](PLURNK_[A-Z0-9_]*[A-Z0-9])["'`]/gu)) retired.add(key[1]);
-        }
         // A computed name — `PLURNK_EXECS_${runtime}` — is a family, covered by one declared example.
         for (const match of code.matchAll(/["'`](PLURNK_[A-Z0-9_]*_)(?:\$\{|["'`]\s*\+)/gu)) families.add(match[1]);
         // A knob is named where it is read: a property, a bracket, or the exact string a reader is handed.
@@ -172,10 +157,9 @@ export const measure = ({ panels, sources, corpus, manifests = [] }) => {
     const covered = (name) => declared.has(name) || [...families].some((prefix) =>
         name.startsWith(prefix) && [...declared].some((key) => key.startsWith(prefix)));
     for (const [name] of named) {
-        if (NOT_A_KNOB.has(name) || retired.has(name) || covered(name)) continue;
+        if (NOT_A_KNOB.has(name) || covered(name)) continue;
         count("undeclared", name);
     }
-    for (const name of retired) if (declared.has(name)) count("retired-declared", name);
 
     // "The floor is always assembled" has to be true where the code is exercised, or a strict read
     // is impossible and a fallback creeps back in: a package that ships a panel tests on it.

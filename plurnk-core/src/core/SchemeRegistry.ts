@@ -436,11 +436,10 @@ export default class SchemeRegistry {
         return current;
     }
 
-    // Discover external scheme siblings — delegated to the framework's SchemeDiscovery
-    // (schemes 0.9+): the scope-agnostic node_modules scan for plurnk.kind:"scheme" +
-    // plurnk.name AND the PLURNK_EXTENSIONS_TRUSTED_ONLY trust gate (untrusted → `skipped`,
-    // never crashed) both live there now, single-sourced across the kinds
-    // (the "delegate upstream" rule — execs/mimetypes/providers already ship discover()).
+    // Discover external scheme extensions through the framework's SchemeDiscovery: the
+    // scope-agnostic node_modules scan for plurnk.kind:"scheme" + plurnk.name and the
+    // PLURNK_EXTENSIONS_TRUSTED_ONLY trust gate (untrusted → `skipped`, never crashed) live
+    // there, as for every kind.
     // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
     // is left as-is) and importing + registering the trusted descriptors.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {

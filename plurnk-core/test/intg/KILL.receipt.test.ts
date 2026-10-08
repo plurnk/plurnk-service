@@ -105,7 +105,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
             assert.ok(receipt);
             assert.equal(receipt.status, 200);
             assert.equal(receipt.path, "worker:///doomed");
-            for (const field of ["body", "extent", "change", "removed", "range", "tokensBody"]) {
+            for (const field of ["body", "extent", "change", "removed", "range"]) {
                 assert.equal(receipt[field], undefined, `whole-entry deletion has no ${field}`);
             }
         } finally { ws.close(); }

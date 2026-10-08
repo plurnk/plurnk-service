@@ -21,7 +21,6 @@ export interface SchemeResult {
     readonly status: number;
     readonly problem?: ProblemDetails;
     readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
-    readonly error?: never;
     readonly [field: string]: unknown;
 }
 

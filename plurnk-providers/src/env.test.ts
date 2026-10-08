@@ -59,7 +59,7 @@ test("effortFromEnv: durable policy is independent from an optional explicit bud
     assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "high" }, "openai", 4096), { mode: "high", budget: 4096 });
     assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "adaptive" }, "openai", 4096), { mode: "adaptive", budget: 4096 });
     assert.throws(() => effortFromEnv({}, "openai"), /PLURNK_PROVIDERS_EFFORT must be set/);
-    assert.throws(() => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/); // the old numeric habit fails loudly
+    assert.throws(() => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/);
 });
 
 test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
@@ -116,16 +116,6 @@ test("{§provider-cache-affinity} declarations follow alias precedence and refus
     }
 });
 
-test("the generic prompt-cache-key knob is retired rather than retained as a compatibility path", () => {
-    assert.throws(
-        () => cacheAffinityFromEnv({
-            PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
-            PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
-        }, "fireworks-ai"),
-        /PLURNK_PROVIDERS_PROMPT_CACHE_KEY was renamed to PLURNK_PROVIDERS_CACHE_AFFINITY/,
-    );
-});
-
 // — per-alias knob scoping ({§provider-configuration}) —
 
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
@@ -159,11 +149,11 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
         PLURNK_PROVIDERS_OPERATION_TIMEOUT: "2700000",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT_my_box: "15000",
         PLURNK_PROVIDERS_EFFORT: "off",
-        PLURNK_PROVIDERS_REASONING_BUDGET: "4096", // bare budget — NOT a "_capacity" alias override of REASONING
+        PLURNK_PROVIDERS_EFFORT_FALLBACK: "high", // a bare knob — NOT a "_fallback" alias override of EFFORT
     } as NodeJS.ProcessEnv;
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_OPERATION_TIMEOUT, "15000");
-    assert.equal(scopeEnvToAlias(env, "budget").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
+    assert.equal(scopeEnvToAlias(env, "fallback").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
 });
 
 test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
@@ -175,22 +165,10 @@ test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS =
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
 });
 
-test("OpenAI-lexicon shed: a still-set PLURNK_PROVIDERS_LOGPROB fails hard with the rename pointer", async () => {
-    const { dataCaptureFromEnv } = await import("./env.ts");
-    assert.throws(
-        () => dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "3" } as NodeJS.ProcessEnv, "openai"),
-        /PLURNK_PROVIDERS_LOGPROB was renamed to PLURNK_PROVIDERS_TOP_LOGPROBS/,
-    );
-});
-
-test("contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null when unset", async () => {
+test("contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when unset", async () => {
     const { contextWindowFromEnv } = await import("./env.ts");
     assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" } as NodeJS.ProcessEnv, "openai"), 131072);
     assert.equal(contextWindowFromEnv({} as NodeJS.ProcessEnv, "openai"), null);
-    assert.throws(
-        () => contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_SIZE: "131072" } as NodeJS.ProcessEnv, "openai"),
-        /PLURNK_PROVIDERS_CONTEXT_SIZE was renamed to PLURNK_PROVIDERS_CONTEXT_WINDOW/,
-    );
 });
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
@@ -233,20 +211,6 @@ test("every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async (
     const missing = PROVIDERS_KNOBS.filter((k) => !defaults.includes(k));
     assert.deepEqual([...missing], [], "knobs read by code but undeclared in .env.defaults");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
-    assert.equal(defaults.includes("PLURNK_PROVIDERS_GBNF_DEBUG"), false, "the debug knob is gone with the generator (#588)");
-});
-
-// The family word is REASONING (industry standard). Old names fail hard
-// with the migration pointer — never silently coexist with the new floor.
-test("still-set old THINKING names fail hard with the rename pointer", () => {
-    assert.throws(
-        () => effortFromEnv({ PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_EFFORT: "adaptive" }, "openai"),
-        /PLURNK_PROVIDERS_THINKING was renamed to PLURNK_PROVIDERS_EFFORT \(provider configuration contract\)/,
-    );
-    assert.throws(
-        () => effortFromEnv({ PLURNK_PROVIDERS_THINKING_CAPACITY: "4096", PLURNK_PROVIDERS_EFFORT: "adaptive" }, "openai"),
-        /PLURNK_PROVIDERS_THINKING_CAPACITY was renamed to PLURNK_PROVIDERS_REASONING_BUDGET \(provider configuration contract\)/,
-    );
 });
 
 test("effort accepts only the exact portable durable vocabulary", () => {
@@ -256,9 +220,9 @@ test("effort accepts only the exact portable durable vocabulary", () => {
             budget: null,
         });
     }
-    for (const retired of ["on", "minimal", "ultra"]) {
+    for (const invalid of ["ultra", "HIGH", "medium-high"]) {
         assert.throws(
-            () => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: retired }, "openai"),
+            () => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: invalid }, "openai"),
             /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/,
         );
     }
@@ -267,7 +231,7 @@ test("effort accepts only the exact portable durable vocabulary", () => {
 test("the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
-    assert.ok(defaults.includes("PLURNK_PROVIDERS_EFFORT=adaptive"), "floor must ship REASONING=adaptive");
+    assert.ok(defaults.includes("PLURNK_PROVIDERS_EFFORT=adaptive"), "floor must ship EFFORT=adaptive");
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — provider-adaptive depth remains unpinned");
 });
 
@@ -356,24 +320,6 @@ test("envelope knobs are per-alias scopable (measured envelope per box)", () => 
     assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, outputFloor: 10_000, reasoningBudget: 10_000 });
 });
 
-test("retired additive reserve knobs fail rather than creating a dual contract", () => {
-    assert.throws(() => generationEnvelopeFromEnv({
-        PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
-        PLURNK_PROVIDERS_REASONING_RESERVE: "10%",
-    }, "x", 100_000, null), /PLURNK_PROVIDERS_REASONING_RESERVE is retired/);
-    assert.throws(() => generationEnvelopeFromEnv({
-        PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
-        PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
-    }, "x", 100_000, null), /PLURNK_PROVIDERS_COMPLETION_RESERVE is retired/);
-});
-
-test("a retired envelope knob is refused in its per-alias form too, naming the key ({§provider-output-budget-conformance})", () => {
-    assert.throws(
-        () => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%", PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma: "20%" }, "x", 100_000, null),
-        /PLURNK_PROVIDERS_REASONING_RESERVE_rtxgemma is retired/,
-    );
-});
-
 test("{§operator-cost-override} costOverrideFromEnv parses the catalog vocabulary and refuses drift", () => {
     assert.equal(costOverrideFromEnv({}, "x"), null);
     assert.deepEqual(
@@ -387,18 +333,4 @@ test("{§operator-cost-override} costOverrideFromEnv parses the catalog vocabula
     // Alias-scoped like every provider knob.
     const scoped = scopeEnvToAlias({ PLURNK_PROVIDERS_COST_deepdumb: "input=0.44,output=1.32" }, "deepdumb");
     assert.deepEqual(costOverrideFromEnv(scoped, "x"), { input: 0.44, output: 1.32 });
-});
-
-test("{§provider-effort} a retired reasoning-named effort knob, bare or alias-suffixed, fails and names its successor", () => {
-    for (const [key, successor] of [
-        ["PLURNK_PROVIDERS_REASONING", "PLURNK_PROVIDERS_EFFORT"],
-        ["PLURNK_PROVIDERS_REASONING_qmax", "PLURNK_PROVIDERS_EFFORT_qmax"],
-        ["PLURNK_PROVIDERS_REASONING_FALLBACK", "PLURNK_PROVIDERS_EFFORT_FALLBACK"],
-        ["PLURNK_PROVIDERS_REASONING_FALLBACK_qmax", "PLURNK_PROVIDERS_EFFORT_FALLBACK_qmax"],
-    ]) {
-        assert.throws(() => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "high", [key]: "medium" }, "x"),
-            { message: `x provider: ${key} was renamed to ${successor}; update the env` });
-    }
-    assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "high", PLURNK_PROVIDERS_REASONING_BUDGET: "2048" }, "x", 2048), { mode: "high", budget: 2048 },
-        "the reasoning budget is a different knob and stays");
 });

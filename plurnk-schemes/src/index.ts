@@ -115,10 +115,7 @@ export type {
 // statement + path types are re-exported from grammar here so a sibling depends
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
-export type {
-    ResolvedEditStatement,
-    ResolvedEditStatement as EditStatement,
-} from "./edit-statement.ts";
+export type { ResolvedEditStatement } from "./edit-statement.ts";
 export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
 export type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "./module-slice.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";

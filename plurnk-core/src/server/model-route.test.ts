@@ -16,7 +16,7 @@ test("{§worker-effort} projectModelRoute carries the durable policy; a dimensio
     );
     // An uncataloged (custom rail) model keeps the operator's configured policy.
     assert.equal(projectModelRoute({ provider: "openai", model: "custom.gguf" }, "adaptive").effort, "adaptive");
-    // No policy given (legacy caller) — nothing attaches.
+    // No policy given — nothing attaches.
     assert.equal("effort" in projectModelRoute({ provider: "deepseek", model: "deepseek-v4-flash" }), false);
 });
 

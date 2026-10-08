@@ -98,11 +98,6 @@ export type TeachingCorpusSource =
 
 
 const TRUSTED_ONLY = "PLURNK_EXTENSIONS_TRUSTED_ONLY";
-
-// {§extension-trust-boundary} — a renamed setting's old name fails hard and names its successor.
-const shedRenamed = (env: Record<string, string | undefined>, oldName: string, newName: string): void => {
-    if (env[oldName] !== undefined) throw new ConfigurationError(oldName, `${oldName} is retired: ${newName} is the extension trust setting.`);
-};
 const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
 const EMPTY_ATTRIBUTION: ExtensionAttribution = Object.freeze([] as string[]);
 
@@ -210,7 +205,6 @@ export default class Meta {
     // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
     //                    allowlist; "1" (naming no real package) = on, zero third-party.
     static isTrusted(packageName: string, env: Record<string, string | undefined> = process.env): boolean {
-        shedRenamed(env, "PLURNK_PLUGINS_TRUSTED_ONLY", TRUSTED_ONLY); // lexicon-allow: the shed names the retired setting
         const stated = env[TRUSTED_ONLY];
         const value = (stated === undefined ? Meta.#panelTrust() : stated).trim();
         if (value === "" || value === "0") return true;

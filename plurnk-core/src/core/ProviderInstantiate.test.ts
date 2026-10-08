@@ -43,9 +43,8 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
 });
 
 test("an alias-scoped provider knob binds at construction — the per-alias CONTEXT_WINDOW pin is promoted, not dropped", async () => {
-    // {§operator-config-precedence}: #construct once passed raw env, so
-    // PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>
-    // never reached the factory and min(cap, served) could not bind on any path.
+    // {§operator-config-precedence}: PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias> reaches the
+    // factory, so min(cap, served) binds.
     const provider = await ProviderInstantiate.instantiateProvider(
         { alias: "pinbox", provider: "openai", model: "test-model", baseUrl: "http://127.0.0.1:9" },
         { ...process.env, OPENAI_API_KEY: "k", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500", PLURNK_PROVIDERS_CONTEXT_WINDOW_PINBOX: "8000", PLURNK_PROVIDERS_PROBE_NCTX: "0" },

@@ -10,12 +10,6 @@ import StoredPacket from "../../src/core/StoredPacket.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
-test("{§digest-programmatic-surface}: removed service report exports have no compatibility path", async () => {
-    for (const path of ["@plurnk/plurnk-service/digest", "@plurnk/plurnk-service/share"]) {
-        await assert.rejects(import(path), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
-    }
-});
-
 test("{§digest-evidence-reader}: the public reader supplies canonical packets to the independent report package", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-boundary-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -42,45 +36,12 @@ test("{§digest-evidence-reader}: the public reader supplies canonical packets t
     const [turn] = evidence.rows().turns;
     const view = evidence.packet(turn).packet;
     assert.ok(view);
-    assert.deepEqual(view.messages(new Map()), PacketWire.packetToWireMessages(packet));
+    assert.deepEqual(view.messages(), PacketWire.packetToWireMessages(packet));
     assert.equal(view.slot("user"), PacketWire.renderSlot(packet.sections, "user"));
     assert.equal(view.assistant?.reasoning, "independent report witness");
     assert.deepEqual(view.assistantRaw, { retained: "provider bytes" });
     const digestDir = join(root, "digest");
     Digest.run({ dbPath, digestDir, openEvidence: EvidenceReader.open });
     assert.match(await readFile(join(digestDir, "reasoning.md"), "utf8"), /independent report witness/);
-    assert.deepEqual(JSON.parse(await readFile(join(digestDir, "witness-1-1.wire.json"), "utf8")), view.messages(new Map()));
-});
-
-test("{§packet-wire-envelope} {§digest-forensic-fidelity}: old captures retain their released assistant envelope, including redacted bodies", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-legacy-packet-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const dbPath = join(root, "plurnk.db");
-    const db = await openMigrated(dbPath);
-    const record = "### log:///1/1/1/emission → ops://witness/1/1 · 30";
-    const packet = StoredPacket.assert({ weight: 1, attributions: [], sections: [
-        { name: "definition", slot: "system", header: null, content: "Language", weight: 1 },
-        { name: "log", slot: "user", header: "Log", content: record, weight: 1 },
-        { name: "worker", slot: "user", header: "Worker", content: "{}", weight: 1 },
-    ] });
-    try {
-        const workspaceId = await insertWorkspace(db, "legacy-envelope");
-        const workerId = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, workerId, 1, "Historical request");
-        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-        await Turn.recordInference(db, turn.id, { packet: StoredPacket.stringify(packet), sections: StoredPacket.sections(packet), usageCurationBudget: null, finishReason: "stop", model: "fixture", meta: "{}" });
-        await Turn.complete(db, turn.id, 200);
-    } finally { await db.close(); }
-    using evidence = EvidenceReader.open(dbPath);
-    const [turn] = evidence.rows().turns;
-    const view = evidence.packet(turn).packet;
-    assert.ok(view);
-    const frozen = "```EDIT (a.md)\nActual body.\n```\n\n```NOTE\nMemory.\n```";
-    assert.deepEqual(view.messages(new Map([["1/1/1", frozen]])), [
-        { role: "system", content: "Language" },
-        { role: "user", content: `## Log\n\n${record}` },
-        { role: "assistant", content: "```EDIT (a.md)\n```" },
-        { role: "user", content: "## Worker\n{}" },
-    ], "forensics must not turn the old empty-body evidence into the repaired program");
-    assert.equal(view.slot("user"), PacketWire.renderSlot(packet.sections, "user"));
+    assert.deepEqual(JSON.parse(await readFile(join(digestDir, "witness-1-1.wire.json"), "utf8")), view.messages());
 });

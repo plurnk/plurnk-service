@@ -60,7 +60,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");
         const provider = new Mock({
             contextWindow: 100000,
-            // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues with [102].
+            // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues.
             responses: [response([editStmt("/france/capital", "Paris"), noteStmt("answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -158,5 +158,3 @@ test("e2e: Mock queue exhaustion throws after the expected provider call", async
         await assert.rejects(() => dispatchTurn(engine, provider, db, env), /Mock provider exhausted/);
     } finally { await db.close(); }
 });
-
-// (e2e visibility test removed — entries carry no visibility)

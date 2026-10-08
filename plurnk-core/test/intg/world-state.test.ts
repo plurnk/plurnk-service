@@ -36,13 +36,11 @@ test("the detector CATCHES: a non-canon stored key and an alien grantor both sel
         const workspaceId = await insertWorkspace(db, `ws-bad-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
 
-        // A pre-canon legacy key smuggled in raw (the class the v3 heal folds).
-        await db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: "/legacy.md" });
-        // An alien grantor cannot even be MANUFACTURED — the schema CHECK is the wall
-        // (stronger than detection); ws_alien_origin stays in the harness as the belt for
-        // pre-wall specimens bench may sweep.
+        // A non-canon key stored raw.
+        await db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: "/noncanon.md" });
+        // An alien grantor cannot be written: the schema CHECK refuses it.
         await assert.rejects(
-            () => db.test_set_origin.run({ workspace_id: workspaceId, pathname: "/legacy.md", membership_origin: "plurnk-decided" }),
+            () => db.test_set_origin.run({ workspace_id: workspaceId, pathname: "/noncanon.md", membership_origin: "plurnk-decided" }),
             /CHECK constraint failed/,
             "the closed admission set is enforced at the schema wall",
         );

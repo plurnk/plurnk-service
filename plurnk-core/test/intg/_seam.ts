@@ -30,12 +30,12 @@ export default class SeamSocket {
     constructor(daemon: Daemon) {
         this.#daemon = daemon;
         // The one event pipe: seam events arrive (workspaceId | null, method, params) and re-emit as
-        // JSON-RPC notifications, filtered the way the WS connection was — my workspace's + globals.
+        // JSON-RPC notifications, filtered to my workspace's events and the global ones.
         this.#unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => {
             if (this.#closed) return;
             if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
             if (workspaceId !== null && this.#workspace === null) return;
-            // {§notifications-envelope-carries-workspaceid} — the envelope stamps the scope, as the WS did.
+            // {§notifications-envelope-carries-workspaceid} — the envelope stamps the scope.
             const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
         });
@@ -114,7 +114,6 @@ export default class SeamSocket {
                 const loop = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...("policy" in p ? { policy: p.policy } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
@@ -144,7 +143,6 @@ export default class SeamSocket {
                 const result = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...("policy" in p ? { policy: p.policy } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });

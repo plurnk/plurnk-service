@@ -94,7 +94,7 @@ try {
     });
     const address = { host: daemon.host, port: String(daemon.port) };
 
-    // bench#18 deadline snapshot: at the official budget, photograph the project
+    // The deadline snapshot: at the official budget, photograph the project
     // root and let the run play on — the harness grades both states afterwards.
     const gradeDeadlineSec = process.env.PLURNK_CANDIDATE_GRADE_DEADLINE_SEC;
     if (gradeDeadlineSec !== undefined) {

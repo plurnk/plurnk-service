@@ -403,7 +403,6 @@ Plurnk stores one representation per canonical URL rather than a variant set:
 | No explicit request metadata; no `Vary`      | `default`       | Eligible        |
 | Any explicit request metadata                | `bypass`        | Ineligible      |
 | No explicit request metadata; any `Vary`     | `bypass`        | Ineligible      |
-| Stored response lacks authoritative evidence | Marker absent   | Ineligible      |
 
 This conservative selection avoids persisting request values or fabricating a
 multi-variant store. Exact FIND passes request metadata through acquisition but

@@ -532,7 +532,6 @@ test("a literal nested NOTE remains data and the next packet receives only the a
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
         assert.match(log, /example\.md/u, "the next model turn receives the EDIT receipt");
-        assert.doesNotMatch(log, /No tasks were supplied/u, "no omission feedback is injected");
     } finally {
         await db.close();
     }
@@ -1069,7 +1068,6 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
         const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
         assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
         assert.ok(provider.packets[1]?.includes(message), "the next packet carries the parser-owned boundary diagnosis");
-        assert.doesNotMatch(provider.packets[1]!, /No tasks were supplied/, "the unfinished SEND is not misreported as an absent lifecycle declaration");
         const replyAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: replyTurn });
         assert.deepEqual(replyAttempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ worker_id: workerId });
@@ -1224,7 +1222,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
 test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape now that prose is an empty turn.
+        // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape.
         const cut = { assistant: { content: "````READ (worker:///no-ops-here", reasoning: null } };
         const good = (body: string) => ({ assistant: { content: `
 \`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
@@ -1811,7 +1809,6 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
             /output_truncated: emission truncated at the output allowance \(\d+ tokens\)$/m,
             "the ceiling cut names its cause and the number",
         );
-        assert.doesNotMatch(notices, /incomplete grammar sentence/, "no grammar blame for a capacity cut");
     } finally { await db.close(); }
 });
 
@@ -1837,7 +1834,6 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
             /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no authored operations were performed/,
             "the next packet names the engine's cut and the recovery fact",
         );
-        assert.doesNotMatch(provider.packets[1]!, /emit in smaller pieces/, "the fact rides without steering");
         assert.doesNotMatch(provider.packets[1]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
 });

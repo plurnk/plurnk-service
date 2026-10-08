@@ -852,7 +852,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
         assert.equal(calls.length, 1);
-        // plurnk#68 — the segment is the connection's own worker; the READ resolves as the conversation.
+        // plurnk/plurnk#68 — the segment is the connection's own worker; the READ resolves as the conversation.
         assert.equal(calls[0].workerId, 10, "the observation segment belongs to the connection's worker");
         assert.equal(calls[0].perspectiveWorkerId, 77, "the look resolves as the thread's own conversation worker");
         const expected = PlurnkParser.parseClient(source).items.find((item) => item.kind === "statement")?.statement;
@@ -2007,7 +2007,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
             { id: "1/1/1/SEND", role: "user", content: "Prior question." },
             { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
         ]);
-        // The bridge asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
+        // Sync asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
         assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: Number.MAX_SAFE_INTEGER }]);
         assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
     } finally {
@@ -2850,7 +2850,7 @@ test("{§agui-run-endpoint} the prompt is the last textual user message, and a n
     } finally { await mod.close(); }
 });
 
-test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection without per-loop authority", async () => {
+test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
@@ -2869,7 +2869,6 @@ test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model sel
         assert.equal(loopRuns.length, 1, "the message drove one runLoop");
         assert.equal(loopRuns[0].selector, "fireslow", "the parent selector forwards off forwardedProps.plurnk");
         assert.equal(loopRuns[0].childSelector, "firefast", "the child selector rides the same per-loop wire");
-        assert.equal(Object.hasOwn(loopRuns[0], "policy"), false, "input does not carry permission authority");
     } finally { await mod.close(); }
 });
 

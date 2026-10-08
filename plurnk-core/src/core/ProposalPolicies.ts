@@ -2,17 +2,9 @@ import { PROPOSAL_POLICIES, type ProposalDisposition, type ProposalPolicy } from
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
-const shedRetiredPolicy = (): void => {
-    for (const key of ["PLURNK_SERVICE_ATTENDED", "PLURNK_SERVICE_UNATTENDED_PROPOSALS"]) {
-        if (process.env[key] !== undefined) throw new ConfigurationError(key,
-            `${key} is retired: the worker's owner handles review; use PLURNK_SERVICE_PROPOSALS for server approval.`);
-    }
-};
-
-// {§worker-owner-resolution} Messages do not supply policy; connection presence is irrelevant.
+// {§worker-owner-resolution} The server's approval disposition; review routes to the worker's owner.
 export default class ProposalPolicies {
     static read(): ProposalPolicy {
-        shedRetiredPolicy();
         return Knob.choice("PLURNK_SERVICE_PROPOSALS", PROPOSAL_POLICIES);
     }
 

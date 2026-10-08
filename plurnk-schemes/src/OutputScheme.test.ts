@@ -18,7 +18,6 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.deepEqual(m.writableBy, []);
     assert.equal(m.volatile, true);
     assert.equal(m.modelVisible, true);
-    assert.equal(Object.hasOwn(m, "foldedByDefault"), false, "output manifests do not advertise obsolete entry-folding policy");
 });
 
 test("manifestFromRuntime: presentation is optional", () => {

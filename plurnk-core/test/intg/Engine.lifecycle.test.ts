@@ -46,7 +46,8 @@ for (const [name, first, detail] of [
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
         assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "KILL").length, 1);
-        assert.ok(rows.every(({ op }) => !["DONE", "FAIL"].includes(op)), "no terminal operation is invented");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/^`+(\w+)/u.exec(first)![1], "KILL"],
+            "the model's rows are exactly its program and its conclusion");
     });
 }
 

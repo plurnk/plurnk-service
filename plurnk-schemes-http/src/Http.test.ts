@@ -8,7 +8,6 @@ import test, { after, before, beforeEach, mock } from "node:test";
 import { buffer } from "node:stream/consumers";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { Validator } from "@plurnk/plurnk-contracts";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -157,7 +156,6 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
     const notify: NotifyCaps = { streamEvent() {} };
     const projection = overrides.projection ?? projectionCaps();
-    let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         chunks.push({ channel, chunk, mimetype });
     };
@@ -169,16 +167,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         async open(pathname, handle) {
             opened = { pathname, handle };
             seq.push("open");
-            current = Object.assign(localAbort.signal, { notifyChunk, close });
-            return current;
-        },
-        async notifyChunk(channel, chunk, mimetype) {
-            if (current === null) throw new Error("no open subscription");
-            await current.notifyChunk(channel, chunk, mimetype);
-        },
-        async close(result, summary, channelResults) {
-            if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary, channelResults);
+            return Object.assign(localAbort.signal, { notifyChunk, close });
         },
     };
     const ctx = schemeCtx({
@@ -965,7 +954,7 @@ test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset meta
         "content-type": "text/plain; charset=windows-1252",
     }), async () => {
         assert.equal(
-            (await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/legacy.txt", "/legacy.txt")), ctx)).status,
+            (await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/plain.txt", "/plain.txt")), ctx)).status,
             200,
         );
     });
@@ -1734,14 +1723,9 @@ test("{§http-replay} SEND: an uncertain POST failure never recommends automatic
         assert.equal(result.problem?.retryable, false, "the origin may already have accepted the POST");
     });
 });
-test("HTTP SEND cannot carry an independently supplied lifecycle status", () => {
-    const message = sendStmt(urlTarget("http://example.com/x", "/x"));
-    assert.equal(Validator.validatePlurnkStatement(message).valid, true);
-    assert.equal(Validator.validatePlurnkStatement({ ...message, status: 200 }).valid, false);
-});
 
 // ── request headers and method operations {§op-surface} ───────────────────
-test("READ: {metadata} headers are threaded into the fetch", async () => {
+test("READ: [metadata] headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -2021,12 +2005,12 @@ const priorEntry = (
 const stampedHeader = (
     ageMs: number,
     extra = "",
-    variant: "default" | "bypass" | null = "default",
+    variant: "default" | "bypass" = "default",
 ) => [
     `HTTP 200 OK${extra}`,
     "x-plurnk-request-method: GET",
     `x-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`,
-    ...(variant === null ? [] : [`${CACHE_VARIANT_HEADER}: ${variant}`]),
+    `${CACHE_VARIANT_HEADER}: ${variant}`,
 ].join("\n");
 
 test("revalidation: a mutation response cannot satisfy a later GET", async () => {
@@ -2498,29 +2482,25 @@ test("cache variant: explicit request metadata also bypasses stale validators", 
     assert.equal(conditional, false);
 });
 
-for (const [name, header] of [
-    ["bypass", stampedHeader(1000, "\nvary: Accept-Language\netag: \"variant\"", "bypass")],
-    ["missing legacy", stampedHeader(1000, '\netag: "legacy"', null)],
-] as const) {
-    test(`cache variant: a ${name} marker cannot supply TTL content or validators`, async () => {
-        const { ctx, inspect } = makeCtx(priorEntry("wrong representation", "text/plain", header));
-        let fetched = false;
-        let conditional = false;
-        await withTtl("60000", async () => {
-            await withFetch(async (_url, init) => {
-                fetched = true;
-                const headers = new Headers(init?.headers);
-                conditional = headers.has("if-none-match") || headers.has("if-modified-since");
-                return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
-            }, async () => {
-                await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
-            });
+test("cache variant: a bypass marker cannot supply TTL content or validators", async () => {
+    const header = stampedHeader(1000, "\nvary: Accept-Language\netag: \"variant\"", "bypass");
+    const { ctx, inspect } = makeCtx(priorEntry("wrong representation", "text/plain", header));
+    let fetched = false;
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            fetched = true;
+            const headers = new Headers(init?.headers);
+            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+            return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
         });
-        assert.equal(fetched, true);
-        assert.equal(conditional, false);
-        assert.equal(inspect().storedEntry?.channels.body?.content, "current representation");
     });
-}
+    assert.equal(fetched, true);
+    assert.equal(conditional, false);
+    assert.equal(inspect().storedEntry?.channels.body?.content, "current representation");
+});
 
 test("cache variant: a 304 that introduces Vary retires default reuse", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(

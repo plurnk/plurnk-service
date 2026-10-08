@@ -206,7 +206,7 @@ test("{§context-wall}: an impossible window terminates the loop without provide
         const turn = await db.test_get_turn.get<{ packet: string | null }>({ id: result.turnIds.at(-1)! });
         assert.equal(turn!.packet, null, "a request that was never submitted is not provider evidence");
         const rows = await db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: result.turnIds.at(-1)! });
-        assert.ok(rows.every(({ op }) => !["WAIT", "DONE", "FAIL", "KILL"].includes(op)), "no recovery disposition or curation program is manufactured");
+        assert.ok(rows.every(({ op }) => !["WAIT", "KILL"].includes(op)), "no recovery disposition or curation program is manufactured");
     } finally {
         await db.close();
         if (output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = output;

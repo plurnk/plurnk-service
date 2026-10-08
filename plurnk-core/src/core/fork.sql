@@ -93,8 +93,7 @@ BEGIN
     WHERE e.worker_id = NEW.parent_worker_id
     ORDER BY e.id;
 
-    -- Current projection: membership and folded intervals. The retired admission columns
-    -- ({§context-output-selection}) stay at their defaults on the fork.
+    -- Current projection: membership and folded intervals.
     UPDATE log_entry_projections
     SET active = source.active,
         folded = source.folded

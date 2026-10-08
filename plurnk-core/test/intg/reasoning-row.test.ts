@@ -1,4 +1,4 @@
-// {§reasoning-row} — the model's own thinking as a row immediately before its emission row, whole when the
+// {§reasoning-row} — the model's own reasoning as a row immediately before its emission row, whole when the
 // room allows, absent otherwise, and nothing else in the turn changed by it.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -60,7 +60,7 @@ test("{§reasoning-row} {§previous-emission}: reasoning precedes its emission r
             const emissionHeading = log.indexOf(`/${emissionRow.sequence}/emission`);
             assert.ok(heading >= 0, `the packet names the row by its own leaf and address: ${log.slice(0, 400)}`);
             assert.ok(emissionHeading > heading, "the reasoning row precedes the emission row in the packet");
-            assert.match(log, /converter raises before the view is named/u, "the thinking is in the packet, not a page of it");
+            assert.match(log, /converter raises before the view is named/u, "the reasoning is in the packet, not a page of it");
             assert.deepEqual(envelope.map(({ role }) => role), ["system", "user"]);
             const [before, previous] = chatMessageText(envelope[1]!).split("\n\n## Previous Emission\n\n");
             assert.match(before!, /reasoning:\/\/alice\/1\/2/u);

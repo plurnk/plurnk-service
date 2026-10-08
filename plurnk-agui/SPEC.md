@@ -12,8 +12,7 @@ does not recompute them.
   ({§module-discovery}); nothing composes it by hand. It claims only `/agui` on the daemon's
   listener ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
   registers the `agui` message scheme, and its start seam is `AguiPort`, the slice of
-  {§application-port} it calls. A daemon without a listener leaves it out. No WebSocket, no
-  separate process.
+  {§application-port} it calls. A daemon without a listener leaves it out.
 - §agui-listener-admission **Bound is not ready.** The socket is core's
   ({§startup-listener-admission}): bound before durable-state admission and answering a
   retryable `503 service-starting` until daemon activation admits it after every module has
@@ -86,7 +85,7 @@ Runs. Unrelated operation Runs do not receive it.
 Resurfacing a gate preserves its originating Run's continuation. Successful resume emits
 the standard `TOOL_CALL_RESULT` for each settled interrupt before continuing; this acknowledges
 the decision, not completion of the approved operation.
-Server approval policy belongs to Core, not message ingress.
+Server approval policy belongs to Core.
 
 ## §agui-owner-connection Persistent observation
 
@@ -129,11 +128,11 @@ or ACP plan is inferred from prose.
 
 | Projection | Standard representation |
 | ---------- | ----------------------- |
-| NOTE | Ordinary tool-call operation and durable row, not assistant speech, PLAN activity, or a substitute reasoning stream |
+| NOTE | Ordinary tool-call operation and durable row, not assistant speech or a substitute reasoning stream |
 | WAIT | Durable row and lifecycle signal; its text does not become a response |
 | SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
 | Completion | Standard run lifecycle without an invented message |
-| Replay | Delivered messages in chronological order; no synthetic latest-plan replacement |
+| Replay | Delivered messages in chronological order |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
@@ -247,8 +246,8 @@ every other daemon surface.
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
   to its existing workspace by name→id and opens ORIENTED: durable
-  arrival rows replay as user messages, named by their source when another actor caused them ({§message-causal-source}), the model worker's current PLAN activity and SEND speech
-  replay chronologically, and the one validated current Run user message follows them under a
+  arrival rows replay as user messages, named by their source when another actor caused them ({§message-causal-source}), the model worker's SEND speech
+  replays chronologically, and the one validated current Run user message follows them under a
   Run-owned identity in the authoritative `MESSAGES_SNAPSHOT`. Client-claimed earlier history is not
   imported. A client already carrying any durable assistant identity receives no repeated snapshot.
   Everything else stays
@@ -271,7 +270,7 @@ every other daemon surface.
 §agui-official-client-conformance The ordinary integration gate runs the official
 `@ag-ui/client` 0.0.59 against the real daemon and a deterministic HTTP model fixture.
 Its verifier and message builder exercise lifecycle, state, streaming reasoning,
-assistant speech, PLAN activity, and provider refusals. The optional real-model test adds provider
+assistant speech, and provider refusals. The optional real-model test adds provider
 evidence; it does not substitute for the deterministic gate. Wire shapes derive
 from the installed `@ag-ui/core` schemas ({§agui-run-authority}).
 
@@ -283,7 +282,7 @@ host owns; decoration and layout are not cross-client protocol facts.
 | Shared semantic fact | One-shot CLI | Interactive terminal | Intentional host-owned divergence |
 | -------------------- | ------------ | -------------------- | --------------------------------- |
 | lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | process and terminal lifecycle idioms |
-| PLAN and reasoning | structured record and trace | streaming waterfall blocks | host-native persistence and navigation |
+| reasoning | structured record and trace | streaming waterfall blocks | host-native persistence and navigation |
 | operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | Unix streams versus visual surfaces |
 | cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | each host owns human interaction |
 | Problems and Notices | RFC 9457 JSON or stderr | terminal rows | presentation only; exact semantics survive |
@@ -370,8 +369,7 @@ selection.
 ## §agui-management-plane The action surface
 
 PLURNK has three inputs through the one AG-UI Run endpoint. A normal user message
-and a standard interrupt resume are not management actions and have no invented
-`loop.run` or `loop.resolve` action names.
+and a standard interrupt resume are not management actions.
 
 ```mermaid
 flowchart LR
@@ -717,7 +715,6 @@ reconstruct one from `RUN_ERROR`.
 | `interrupt-set-incomplete` | 409 | The resume does not address every pending interrupt for worker *id*. Recovery: Resolve every pending interrupt for this worker in one resume. |
 | `invalid-json` | 400 | The request body is not valid JSON. |
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
-| `loop-policy-retired` | 400 | Loop policy is retired; advertise client tools and let the worker's owner handle approvals. |
 | `control-invalid` | 400 | control must be a boolean. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |

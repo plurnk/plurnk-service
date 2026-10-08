@@ -11,10 +11,9 @@ import type { Provider, ProviderSpec, Effort } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     // One provider per complete route+tuning projection for the process lifetime: a provider is
-    // stateless per the contract, and runLoop instantiating fresh per aliased call re-probed
-    // the backend (latency) and re-fired providers' construction warnings on every loop (the
-    // owner's boot log: one heuristic warning per runLoop request). Cache identity includes every
-    // provider-owned knob because operator tuning can change while a process remains alive.
+    // stateless per the contract, so one instance serves every loop without re-probing the backend
+    // or repeating its construction warnings. Cache identity includes every provider-owned knob
+    // because operator tuning can change while a process remains alive.
     static #instances = new Map<string, Promise<Provider>>();
     static #registeredInstances = new Map<string, Provider>();
     // {§provider-instantiation-alias-resolution} — provider handle → the alias name that produced it,

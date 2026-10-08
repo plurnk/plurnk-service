@@ -135,10 +135,8 @@ const packedMaterializerInventory = () => {
 
 const packedPublicSurface = () => {
     const program = `
-        const root = await import("@plurnk/plurnk-service");
         const digest = await import("@plurnk/plurnk-digest");
         process.stdout.write(JSON.stringify({
-            root: Object.keys(root).sort(),
             digest: typeof digest.Digest,
         }));
     `;
@@ -262,31 +260,14 @@ ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanlin
 
 const publicSurface = packedPublicSurface();
 ok(
-    JSON.stringify(publicSurface.root) === JSON.stringify([
-        "Daemon",
-        "Engine",
-        "EnvFlags",
-        "Exec",
-        "File",
-        "Log",
-        "Mimetypes",
-        "Mock",
-        "Paths",
-        "SchemeRegistry",
-    ]),
-    "the packed root exports match {§service-package-exports} exactly",
+    JSON.stringify(Object.keys(installedPackage.exports ?? {})) === JSON.stringify(["./launch", "./package.json", "./evidence"]),
+    "the packed export paths match {§service-package-exports} exactly",
 );
 ok(publicSurface.digest === "function", "the packed forensic package is importable");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
-const rootDeclarations = readFileSync(resolve(installedRoot, "dist", "index.d.ts"), "utf8");
-ok(
-    !/DaemonModule|ModuleActionHandler|ModuleSetupSeam|RuntimeRegistration|StartedModule/.test(rootDeclarations),
-    "never-published daemon-composition types do not become root API promises",
-);
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
 ok(!serviceDependencies.includes(tavilyPackage) && !existsSync(resolve(mods, ...tavilyPackage.split("/"))), "the default service install does not bundle the opt-in Tavily showcase plugin");
-ok(!existsSync(resolve(mods, "@plurnk", "plurnk-schemes-http-tavily")), "the retired Tavily package is absent from the clean composition");
 const materializerInventory = packedMaterializerInventory();
 ok(!materializerInventory.owners.includes(tavilyPackage) && materializerInventory.id === undefined, "the absent showcase plugin contributes neither configuration nor a materializer");
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
@@ -308,7 +289,7 @@ ok(optionalGrammars.includes("fsharp") && optionalGrammars.includes("fsharp-sign
 const imageRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-image");
 ok(existsSync(resolve(imageRoot, "package.json")), "the image handler ships in the clean service composition");
 for (const mimetype of ["image/png", "image/jpeg", "image/gif", "image/webp"]) {
-    ok(mimetypeInventory.owners[mimetype] === imagePackage, `${mimetype} is discovered from the packed image leaf`);
+    ok(mimetypeInventory.owners[mimetype] === imagePackage, `${mimetype} is discovered from the packed image extension`);
 }
 ok(
     mimetypeInventory.image.ok === true
@@ -316,14 +297,14 @@ ok(
         && /^PNG image, 1×1 px, \d+ bytes$/u.test(mimetypeInventory.image.content)
         && mimetypeInventory.image.facts?.width === 1
         && mimetypeInventory.image.facts?.height === 1,
-    "the packed image leaf validates and projects native attachment facts",
+    "the packed image extension validates and projects native attachment facts",
 );
 for (const packageName of defaultMimetypePackages) {
     const manifest = installedManifest(packageName);
     for (const handler of manifest.plurnk?.handlers ?? []) {
         ok(
             mimetypeInventory.owners[handler.name] === packageName,
-            `${handler.name} is discovered from the service-owned ${packageName} leaf`,
+            `${handler.name} is discovered from the service-owned ${packageName} extension`,
         );
     }
 }
@@ -332,16 +313,15 @@ ok(
     "a packed default handler loads through the composed service module graph",
 );
 
-// {§mimetype-pdf-facts} (#542) — the PDF owner is a header-only leaf that ships by default like
+// {§mimetype-pdf-facts} (#542) — the PDF owner is a header-only extension that ships by default like
 // the image owner; no extraction or rendering stack rides with it.
 const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
 ok(existsSync(resolve(pdfRoot, "package.json")), "the header-only PDF owner ships in the clean service composition");
-ok(mimetypeInventory.owners["application/pdf"] === pdfPackage, "application/pdf is discovered from the packed PDF leaf");
+ok(mimetypeInventory.owners["application/pdf"] === pdfPackage, "application/pdf is discovered from the packed PDF extension");
 for (const heavy of ["pdfjs-dist", "@napi-rs/canvas"]) {
     ok(!existsSync(resolve(mods, heavy)), `${heavy} is absent from a clean service install`);
 }
 
-ok(!existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "search ships without an embedding runtime or model artifact");
 for (const [providerPackage, provider] of [
     ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
     ["@ai-sdk/google", "Google"],
@@ -843,11 +823,9 @@ for (const [tag, packageName] of declaredRuntimes) {
     }
     ok(
         enabledExecs.owners[tag] === packageName && enabledExecs.registered.includes(tag),
-        `runtime ${tag} explicitly enables and loads from the service-owned ${packageName} leaf`,
+        `runtime ${tag} explicitly enables and loads from the service-owned ${packageName} extension`,
     );
 }
-ok(!("git" in enabledExecs.owners) && !("isogit" in enabledExecs.owners),
-    "the installed executor inventory contains no bespoke Git dialect");
 const restrictedExecs = packedExecInventory({ ...optIn, PLURNK_EXECS_ONLY: "node,sqlite", PLURNK_EXECS_SQLITE: "0" });
 ok(
     isDeepStrictEqual(Object.keys(restrictedExecs.owners), ["node"])

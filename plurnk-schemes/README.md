@@ -85,7 +85,7 @@ static manifest: SchemeManifest = {
   lineAnchors: true,                    // publish stable line anchors without EDIT
   textEditScopes: true,                 // use the standard text-edit capability
   glyph: "🦊",                          // optional client-only display marker
-  documentation,                        // deep doc from docs/foo.md, pulled through the skills catalog
+  documentation,                        // deep doc from docs/foo.md, READ on demand
 };
 ```
 
@@ -103,7 +103,7 @@ collision guard.
 
 ### 4. Discoverable references
 
-Put operation contracts and examples in `documentation`. Its `## Summary` orients the model during FIND; the model READs the reference when it needs the details. No second catalog is injected into every packet.
+Put operation contracts and examples in `documentation`. Its `## Summary` orients the model during FIND; the model READs the reference when it needs the details.
 
 That's the whole contract: declare, `implements SchemeHandler`, manifest with self-doc. Publish, install, discovered.
 
@@ -112,7 +112,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 ### Types
 
 - Manifest: `SchemeManifest` (including capability `traits`, `documentation`, and client-only `glyph`) and `WriterTier`.
-- Behavior contract: `SchemeHandler`, numeric-only `ResolvedEditStatement` (also exported as `EditStatement`), and optional `PacketSectionTransformer` (`PacketSectionDraft`); the remaining re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
+- Behavior contract: `SchemeHandler`, numeric-only `ResolvedEditStatement`, and optional `PacketSectionTransformer` (`PacketSectionDraft`); the remaining re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, matcher navigation `MatchEvidence`, and target-shaped standard `EntryFindResult` pagination/count metadata.
 - Capability ctx: `SchemeCtx` and its entry, channel, notification, projection, and subscription domains. Entry schemes reuse typed standard operations at canonical workspace addresses.
 

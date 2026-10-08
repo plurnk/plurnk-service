@@ -344,7 +344,6 @@ const matrix = async (family: Family): Promise<void> => {
         assert.ok(managerDoc.content.indexOf("## Tools") < managerDoc.content.search(family.teaching), "the generated verb table precedes the authored body");
         const addSchema = JSON.parse(addDoc.content);
         assert.deepEqual(addSchema.required, ["definition"], "alias remains optional as the coordinator actually admits it");
-        assert.doesNotMatch(managerDoc.content, /\| Field \| Type \| Required \| Meaning \|/);
         assert.equal(await documentPresent(context(), `${managerPath}/add.json`), 200,
             "the full schema is materialized in the model Worker's private namespace");
         if (family.family === "mcp") {

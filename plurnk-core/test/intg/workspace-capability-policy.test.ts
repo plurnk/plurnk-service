@@ -115,7 +115,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
-        const workspaceId = await insertWorkspace(db, `loop-policy-init-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `capability-init-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "finish without external capabilities");
         await db.test_set_workspace_settings.run({
@@ -148,7 +148,6 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null; attrs: string }>({ loop_id: loopId });
         const harnessOps = rows.filter((row) => row.origin === "_plurnk" && !LogEntryProjection.isEmission(row)).map(({ op }) => op);
-        assert.equal(harnessOps.includes("PLAN"), false);
         assert.deepEqual(
             harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
             [],

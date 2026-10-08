@@ -47,8 +47,7 @@ Configuration follows XDG at `$XDG_CONFIG_HOME/plurnk` (normally
 `plurnk-service config defaults` for
 the complete installed option catalog and `plurnk-service config check` to
 validate without contacting a provider. **[`INSTALL.md`](./INSTALL.md) is the
-configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit
-`plurnk-service paths migrate` command.
+configuration guide.**
 
 Protect durable history with a [consistent database backup](./INSTALL.md#backup-and-restore).
 The `share` command exports diagnostic reports, not a restorable database.

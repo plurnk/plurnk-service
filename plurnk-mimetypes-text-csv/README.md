@@ -14,7 +14,7 @@ npm i @plurnk/plurnk-mimetypes-text-csv
 - `extractRaw(content)` emits one `field` symbol per header column, spanning the first record.
 - `deepJson(content)` projects rows keyed by header. JSONPath and XPath retain real source regions, including records containing quoted newlines ({§csv-records}).
 
-CSV's structural signal is the header row's column names — that's what surfaces in `symbols`. The actual data body is best previewed via the framework's raw-content fallback.
+CSV's structural signal is the header row's column names — that's what surfaces in `symbols`. The data body stays readable as raw content.
 
 ## why no parser dependency
 

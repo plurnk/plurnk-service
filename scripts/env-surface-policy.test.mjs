@@ -40,18 +40,6 @@ test("a constant named DEFAULT is, by its own name, a default living in code", (
     );
 });
 
-test("a retired key is named only to be refused, and is declared nowhere", () => {
-    const retiring = source("shedRenamed(env, \"PLURNK_X_OLD\", \"PLURNK_X_NEW\", label);\nconst retired: Record<string, string> = { PLURNK_X_GONE: \"why\" };");
-    assert.deepEqual(run({ panels: [panel("PLURNK_X_NEW=1\n")], sources: [retiring] }), []);
-    // The house convention: a function named shed… retires every key it spells out.
-    const shedding = source("const shedRetiredEnvelope = (env: NodeJS.ProcessEnv, label: string): void => {\n    for (const name of [\"PLURNK_X_RESERVE\", \"PLURNK_X_OTHER\"] as const) refuse(env, name, label);\n};");
-    assert.deepEqual(run({ sources: [shedding] }), []);
-    assert.deepEqual(
-        run({ panels: [panel("PLURNK_X_NEW=1\nPLURNK_X_OLD=1\n")], sources: [retiring] }),
-        ["retired-declared: PLURNK_X_OLD — 1 found, allowance 0"],
-    );
-});
-
 test("a live declaration nothing consumes means the panel lies", () => {
     assert.deepEqual(
         run({ panels: [panel("PLURNK_X_UNUSED=1\n")], sources: [source("export const nothing = 1;")] }),
@@ -66,7 +54,7 @@ test("one package owns a key", () => {
 
 test("prose is not a read: comments, messages that merely begin with a name, tests and fixtures", () => {
     const prose = source([
-        "// PLURNK_X_HISTORIC was the old spelling",
+        "// PLURNK_X_COMMENT named in prose",
         "/* PLURNK_X_BLOCK */",
         "throw new Error(\"PLURNK_X_MESSAGE configuration has companions\");",
         "const url = \"https://example.test//PLURNK_X_IN_URL\";",

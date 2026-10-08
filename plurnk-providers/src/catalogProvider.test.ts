@@ -1118,8 +1118,7 @@ test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, 
     ]);
 });
 
-// {§provider-monetary-evidence} Recorded native Z.ai usage (#853 zai sweep, run137 turns 1 and 3), which the sweep's
-// service (38f585914, before #856 landed) reported as cost unknown on every trial.
+// {§provider-monetary-evidence} Recorded native Z.ai usage (#853 zai sweep, run137 turns 1 and 3).
 for (const [name, usage, expected] of [
     ["uncached turn", { prompt_tokens: 4118, completion_tokens: 89, total_tokens: 4207, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 20 } }, "0.0006622"],
     ["implicit-cache turn", { prompt_tokens: 6359, completion_tokens: 7188, total_tokens: 13547, prompt_tokens_details: { cached_tokens: 1216 }, completion_tokens_details: { reasoning_tokens: 6191 } }, "0.00440193"],

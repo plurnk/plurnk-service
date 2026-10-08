@@ -247,8 +247,8 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
     serverProposals(approvalContext, "accept");
     // A channel written in one final burst can be complete while its process is still active; the
     // close then arrives with no new content. The model must still see the stream conclude. Turn 1:
-    // execution a slow-close command + [102]. Turn 2: the stream is active and represented only by Child
-    // Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
+    // a slow-close command executes and the turn continues. Turn 2: the stream is active and represented
+    // only by Child Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\necho burst-payload && sleep 2\n````\n\n````NOTE\nspawned\n````", 10),
         makeMockResponse("````NOTE\nwaiting\n````", 10),

@@ -49,7 +49,7 @@ test("parsePath: authority-less scheme uses three slashes — empty authority, l
 });
 
 test("parsePath: two-slash URL parses the first segment as its host", () => {
-    const p = AstBuilder.parsePath("known://philosophy/meaning");
+    const p = AstBuilder.parsePath("worker://philosophy/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.hostname, "philosophy");
     assert.equal(p.pathname, "/meaning");
@@ -163,16 +163,16 @@ test("parsePath: a bare local path with literal braces is left untouched (no spl
 });
 
 test("parsePath: schemed brace globs remain path syntax and encoded braces remain literal", () => {
-    const glob = AstBuilder.parsePath("log:///1/[1-7]/*/{PLAN,READ}");
+    const glob = AstBuilder.parsePath("log:///1/[1-7]/*/{NOTE,READ}");
     assert.equal(glob?.kind, "url");
     if (glob?.kind !== "url") return;
-    assert.equal(glob.pathname, "/1/[1-7]/*/{PLAN,READ}");
+    assert.equal(glob.pathname, "/1/[1-7]/*/{NOTE,READ}");
     assert.equal(PathSyntax.hasGlob(glob.pathname), true);
 
-    const literal = AstBuilder.parsePath("log:///1/%7BPLAN,READ%7D");
+    const literal = AstBuilder.parsePath("log:///1/%7BNOTE,READ%7D");
     assert.equal(literal?.kind, "url");
     if (literal?.kind !== "url") return;
-    assert.equal(literal.pathname, "/1/%7BPLAN,READ%7D");
+    assert.equal(literal.pathname, "/1/%7BNOTE,READ%7D");
     assert.equal(PathSyntax.hasGlob(literal.pathname), false);
 });
 

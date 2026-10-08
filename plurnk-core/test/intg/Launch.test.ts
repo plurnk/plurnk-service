@@ -25,7 +25,6 @@ const daemonEnv = (home: string): NodeJS.ProcessEnv => {
         XDG_DATA_HOME: join(home, ".local", "share"),
         XDG_STATE_HOME: join(home, ".local", "state"),
         XDG_CACHE_HOME: join(home, ".cache"),
-        PLURNK_WS_PORT: "0",
     };
     delete env.PLURNK_MODEL;
     delete env.PLURNK_SERVICE_DB_PATH;

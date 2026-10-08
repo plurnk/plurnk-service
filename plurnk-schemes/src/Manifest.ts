@@ -61,9 +61,6 @@ export default class Manifest {
             throw new Error(`scheme '${name}' manifest.category must be data, logging, or control`);
         }
         const writableBy = manifest.writableBy;
-        if (Array.isArray(writableBy) && writableBy.includes("plugin")) {
-            throw new Error(`scheme '${name}' manifest.writableBy names the retired writer tier 'plugin': [] declares a scheme no operation writes, and in-process code writes as '_plurnk'`);
-        }
         if (!Array.isArray(writableBy)
             || !writableBy.every((writer): writer is WriterTier => typeof writer === "string" && WRITERS.has(writer as WriterTier))
             || new Set(writableBy).size !== writableBy.length) {

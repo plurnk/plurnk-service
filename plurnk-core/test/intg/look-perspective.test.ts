@@ -1,6 +1,6 @@
 // {§op-look} — a look resolves as its perspective worker while the closed observation
 // segment stays on the acting worker: a client sees the conversation's private scratch as
-// the model does, and the conversation gains no loop from being looked at (plurnk#68).
+// the model does, and the conversation gains no loop from being looked at.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";

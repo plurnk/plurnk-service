@@ -202,7 +202,6 @@ export interface DigestModel {
     emissionRows: EmissionRow[];
     // {§reasoning-row} — each worker's landed reasoning rows by row coordinate, retired ones included.
     reasoningRows: ReasoningRow[];
-    emissionsByWorker: Map<number, ReadonlyMap<string, string>>;
     editRows: EditRow[];
     editRowsByWorker: Map<number, EditRow[]>;
     // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})

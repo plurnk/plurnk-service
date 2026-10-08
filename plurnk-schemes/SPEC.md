@@ -39,7 +39,7 @@ class Notes {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (owns no entries). |
-| `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes, such as a runtime's output, which its execution writes through its own stream. The retired `plugin` tier fails validation and names `[]`. Consumer returns 403 for outside-set writes. |
+| `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes, such as a runtime's output, which its execution writes through its own stream. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
@@ -53,8 +53,7 @@ class Notes {
 
 The manifest is closed: unknown top-level fields fail admission. Every entry
 belongs to the operation's workspace. Resource coordinates and intrinsic
-mutability are resolved through {§entry-address-resolution}; manifests do not
-declare per-worker ownership, visibility, or inheritance policy.
+mutability are resolved through {§entry-address-resolution}.
 
 {§manifest-metadata-modifier} is the scheme's explicit opt-in to
 {§scheme-metadata-modifier}. Core never parses or moves metadata into the
@@ -82,10 +81,11 @@ tool, and these declared facts into its general capability descriptor; the
 same decision governs dispatch and teaching visibility.
 
 Proposal behavior is orthogonal to capabilities. A handler proposes by
-returning 202; the consumer's proposal lifecycle decides whether the client or
-the loop's proposal disposition resolves it, with timeout as a lifecycle bound.
+returning 202; the consumer's proposal lifecycle routes it to the worker
+owner's review unless the server disposition `PLURNK_SERVICE_PROPOSALS` accepts
+or rejects it, with timeout as a lifecycle bound.
 
-§manifest-self-doc **Discoverable scheme references.** `documentation` contains the scheme's operation contracts and examples. The consumer materializes it as **`worker:///_plurnk/plurnk/<name>.md`**: FIND projects its exact H2 `Summary`, and READ retrieves its body on demand. There is no separate injected example catalog. Reference availability follows the registered capabilities, not illustrative operations. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
+§manifest-self-doc **Discoverable scheme references.** `documentation` contains the scheme's operation contracts and examples. The consumer materializes it as **`worker:///_plurnk/plurnk/<name>.md`**: FIND projects its exact H2 `Summary`, and READ retrieves its body on demand. Reference availability follows the registered capabilities, not illustrative operations. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker:///_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
 
@@ -165,9 +165,6 @@ only. Core resolves the model-facing {§text-line-anchor-syntax} before invoking
 anchor crossing that boundary is an internal contract violation. Core also
 prepares authored body syntax before this boundary ({§zero-width-column-one-insert});
 handlers apply the supplied replacement literally, including at zero-width spans.
-The barrel's
-compatibility export named `EditStatement` aliases this resolved shape, so
-existing extensions do not inherit the model parser's anchor representation.
 The anchor precondition remains core-private. A public handler declaring
 `textEditScopes: true` MUST route its standard textual mutation through
 `ctx.entries.operations.editBatch`, which rechecks that precondition at the
@@ -219,7 +216,7 @@ is selected from the same channels used by READ and exact FIND. A selected
 channel's producer failure aborts before destination mutation; successful
 non-`200` content remains eligible for transfer.
 
-§entry-address-resolution `resolveEntryAddress?` defines canonical addresses for client and model operations. Core removes the channel fragment and target-slot escapes {§path-parentheses} before invocation; other identity components remain exact. The hook receives capability-free `SchemeAddressCtx` and returns only the resource coordinate, never a storage principal. The optional access argument defaults to `read`; `write` checks intrinsic mutability before a mutation or proposal. Resolution is observational and has no effects.
+§entry-address-resolution `resolveEntryAddress?` defines canonical addresses for client and model operations. Core removes the channel fragment and target-slot escapes {§path-parentheses} before invocation; other identity components remain exact. The hook receives capability-free `SchemeAddressCtx` and returns only the resource coordinate. The optional access argument defaults to `read`; `write` checks intrinsic mutability before a mutation or proposal. Resolution is observational and has no effects.
 
 | Return | Meaning |
 |---|---|
@@ -345,11 +342,11 @@ does not reverse a landed mutation.
 - Manifest: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, and `WriterTier`.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `ContinuationStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `ContinuationStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement` under {§resolved-edit-statement}.
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only execution-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
-- Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
+- Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, `itemsWeightTotal` / `returnedItemsWeightTotal`, and typed range. `EntryCatalogChannel.weight` and `EntryCatalogScope.weight` are model-independent curation weights; model-facing JSON may project them under its own vocabulary. Each resource-mode `EntryCatalogItem` is a nonempty, default-first array of flat `EntryCatalogChannel` objects; a scope is the one-element `EntryCatalogScopeGroup`. Exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no path-owning channel wrapper, hidden `matches`, `pathnames`, or overflow-only result collection exists.
 - §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, `EntryAddress`, and typed standard-operation results. `editBatch` receives the numeric splices of one operation for one canonical resource and channel; it validates against one snapshot and commits one revision or none ({§edit-batch}). Core calls it separately for each authored EDIT, in execution order.
@@ -450,11 +447,11 @@ the pure helper core applies where a fenced EDIT body becomes inserted content
 without a trailing newline at a zero-width column-1 region, and returns every other body unchanged.
 
 §range-starts-at-one A two-coordinate range starts at 1. `<0>` is a single-position
-prepend anchor, never a range start: `<0,M>` — including `<0,-1>`, which is not a
-whole-content alias — is refused 416 by `lines()`, `linesRaw()`, `textReplacement()`,
-`lineMarkerEdit[Batch]()`, `window()` and `page()`, on empty content and empty result sets
-too, and never clamped to `<1,M>`. The refusal's detail states the zero start in the range's
-unit; its `recovery` never rebuilds the refused range ({§diagnostic-observation}):
+prepend anchor, never a range start: `<0,M>` is refused 416 by `lines()`,
+`linesRaw()`, `textReplacement()`, `lineMarkerEdit[Batch]()`, `window()` and
+`page()`, on empty content and empty result sets too, and never clamped to
+`<1,M>`. The refusal's detail states the zero start in the range's unit; its
+`recovery` never rebuilds the refused range ({§diagnostic-observation}):
 
 | Unit | `recovery` |
 |---|---|
@@ -559,7 +556,7 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus capability namespaces replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus capability namespaces:
 
 §scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 
@@ -596,7 +593,6 @@ its implementation.
 | --------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
 | `open(pathname, handle)`          | Operation  | Bind durable and live identity, return the exact object, and route cancellation through its signal/handle. |
 | Returned `StreamSubscription`     | Retainable | `AbortSignal` plus fused chunk publication and terminal settlement; the only retainable capability.        |
-| `subscriptions.notifyChunk/close` | Operation  | Forward to the exact returned object; own no second state or persistence path.                             |
 
 `notifyChunk` appends and emits one stream event. Its optional stateless
 `mimetype` retypes the channel only when the stored type differs.
@@ -692,9 +688,9 @@ name, readiness, capability and lifecycle rules as other schemes.
 
 A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
 
-- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§extension-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this family; each name has exactly one owner.
-- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?, attribution?}[], packageAttributions, skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list; two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_EXTENSIONS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by all four family-head scanners; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
-- **Attribution is package-authored.** `packageAttributions` carries one canonical validated static tag list per admitted package. `SchemeInfo.attribution` remains the published per-scheme projection when a declaration exists; a loaded handler may additionally implement the shared runtime `attributions` function ({§extension-attribution}). Neither the descriptor nor the consumer owns another policy.
+- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§extension-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this kind; each name has exactly one owner.
+- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?}[], packageAttributions, skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list; two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_EXTENSIONS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by every kind's scanner; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
+- **Attribution is package-authored.** `packageAttributions` carries one canonical validated static tag list per admitted package; a loaded handler may additionally implement the shared runtime `attributions` function ({§extension-attribution}). The consumer owns no other attribution policy.
 - **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme extensions. The daemon declares its bundled extensions as direct dependencies, and additional scheme extensions are installed at the application root. Each declares the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
 - **The default bundle is the daemon's own `dependencies`**, not an aggregator package. Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
 - **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§extension-trust-boundary}).

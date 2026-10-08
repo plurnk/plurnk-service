@@ -178,18 +178,6 @@ describe("discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("treats an array kind as no mimetype-kind declaration", async () => {
-        const dir = await makePackage(tmpRoot, "pkg-array-kind", {
-            name: "array-kind",
-            plurnk: {
-                kind: ["mimetype", "scheme"],
-                handlers: [{ name: "text/array", extensions: [".array"] }],
-            },
-        });
-        const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(result.handlers.size, 0);
-    });
-
     it("rejects a mimetype declaration missing the handlers array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-no-handlers", {
             name: "@plurnk/plurnk-mimetypes-bad",

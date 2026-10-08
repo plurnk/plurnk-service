@@ -186,14 +186,14 @@ before importing handler code.
 
 | Area                | Root exports                                                                                                               |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------|
-| Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, projection identity, artifact seams, lifecycle.   |
+| Orchestration       | `Mimetypes`: discovery, detection, processing, querying, classification, projection identity, lifecycle.                   |
 | Handler authoring   | `BaseHandler`, parser extractors, `withExtractor`, parser-coordinate materializers, and tree/reference primitives.         |
 | Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypeExtensionError`.                                                              |
 | Query/projection    | Matcher and dialect primitives, JSON/XML projection, text coordinates, and typed query/coordinate failures.                |
 | Classification      | `classifyMimetype`.                                                                                                        |
 | Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
 | Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |
-| Types               | Public handler, discovery, projection, reference, coordinate, Notice, and tokenizer types.                      |
+| Types               | Public handler, discovery, projection, reference, coordinate, and Notice types.                                 |
 
 The `@plurnk/plurnk-mimetypes/conformance` subpath exports the handler and
 query-evidence conformance harnesses without pulling `node:assert` into the

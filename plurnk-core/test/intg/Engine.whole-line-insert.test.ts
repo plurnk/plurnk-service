@@ -1,7 +1,6 @@
-// {§zero-width-column-one-insert} — the recorded rtx intent (#853): `EDIT (tests/test_ext_autodoc.py) <0,795>` /
-// `<0,@xb6i9>` meant "insert a test before line 795" and replaced the file head; the working form
-// `<795,1,795,1>` (or its anchored `<@h,1,@h,1>`) must insert whole lines from a fenced body that ends
-// without a newline, while a region off column 1 stays byte-exact and an empty body inserts nothing.
+// {§zero-width-column-one-insert} (#853) — `<L,1,L,1>` (or its anchored `<@h,1,@h,1>`) inserts whole
+// lines from a fenced body that ends without a newline, while a region off column 1 stays byte-exact
+// and an empty body inserts nothing.
 import assert from "node:assert/strict";
 import test, { beforeEach, type TestContext } from "node:test";
 import { serverProposals } from "./_approval.ts";

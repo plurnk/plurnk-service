@@ -1,11 +1,11 @@
 // {§effect-policy-tunable} — one knob per effect and the panel is the whole map; an invalid value
-// and the retired composite both fail loudly at validation.
+// fails loudly at validation.
 
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import EffectPolicy from "./EffectPolicy.ts";
 
-const KNOBS = ["PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_EFFECT_READ", "PLURNK_SERVICE_EFFECT_PURE", "PLURNK_SERVICE_EFFECT_POLICY"] as const;
+const KNOBS = ["PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_EFFECT_READ", "PLURNK_SERVICE_EFFECT_PURE"] as const;
 const shipped = Object.fromEntries(KNOBS.map((name) => [name, process.env[name]]));
 
 afterEach(() => {
@@ -37,12 +37,4 @@ test("{§effect-policy-tunable} an invalid or missing knob fails validation by i
     process.env.PLURNK_SERVICE_EFFECT_READ = "auto";
     delete process.env.PLURNK_SERVICE_EFFECT_PURE;
     assert.throws(() => EffectPolicy.validateConfiguration(), /PLURNK_SERVICE_EFFECT_PURE is missing from the assembled environment floor/u);
-});
-
-test("{§effect-policy-tunable} the retired composite fails hard, naming its successors", () => {
-    process.env.PLURNK_SERVICE_EFFECT_POLICY = "read:propose";
-    assert.throws(
-        () => EffectPolicy.validateConfiguration(),
-        /PLURNK_SERVICE_EFFECT_POLICY is retired: state PLURNK_SERVICE_EFFECT_HOST, PLURNK_SERVICE_EFFECT_READ, PLURNK_SERVICE_EFFECT_PURE instead/u,
-    );
 });

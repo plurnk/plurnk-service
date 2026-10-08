@@ -481,8 +481,8 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("an exact HTTPS semantic FIND cannot leak or retarget a match from another authority", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-semantic-scope" });
+test("an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
     try {
         await engine.dispatch({
             statement: execStmt(tag, "turkeys"),

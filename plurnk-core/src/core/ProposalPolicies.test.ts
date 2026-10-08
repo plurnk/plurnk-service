@@ -42,22 +42,3 @@ test("{§configuration-repair-path}: invalid server disposition is diagnosed wit
         return true;
     });
 });
-
-for (const key of ["PLURNK_SERVICE_ATTENDED", "PLURNK_SERVICE_UNATTENDED_PROPOSALS"] as const) {
-    test(`{§worker-owner-resolution}: ${key} cannot silently retain message-scoped authority`, (t) => {
-        const previous = process.env[key];
-        t.after(() => {
-            if (previous === undefined) delete process.env[key];
-            else process.env[key] = previous;
-        });
-        process.env[key] = key.endsWith("ATTENDED") ? "1" : "accept";
-        assert.throws(() => ProposalPolicies.read(), ConfigurationError);
-        assert.throws(() => ProposalPolicies.disposition(["request_approval"], false), (error: unknown) => {
-            assert.ok(error instanceof OperationFailureError);
-            assert.equal(error.result.status, 503);
-            assert.equal(error.result.problem.key, key);
-            assert.match(error.result.problem.detail, /retired.*owner.*PLURNK_SERVICE_PROPOSALS/u);
-            return true;
-        });
-    });
-}

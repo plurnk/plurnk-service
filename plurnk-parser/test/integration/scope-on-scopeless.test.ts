@@ -1,6 +1,5 @@
 // {§scope-on-scopeless} — a scope on an operation that takes none is dropped with one advisory naming the
-// operation's slots; the heading runs. Replayed from zai run426 (deprecation-impl), where the bare grammar
-// diagnostic had left a dead turn (#853).
+// operation's slots; the heading runs. The recorded zai run426 emission is the witness (#853).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";

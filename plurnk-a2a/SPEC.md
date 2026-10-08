@@ -158,7 +158,7 @@ attached to the runtime actor during migration; their task identities and eviden
 The caller is a conversation partner, not a client: A2A carries no answer schema, so the
 model asks it in a reply and its answer arrives as a later message, normally a later Task
 in the same Context. A Task never enters `INPUT_REQUIRED`.
-`PLURNK_A2A_PROPOSALS` is retired; the adapter defines no parallel approval policy.
+The adapter defines no approval policy of its own.
 
 §a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,

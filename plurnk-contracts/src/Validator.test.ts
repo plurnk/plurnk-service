@@ -270,9 +270,8 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
     for (const definition of definitions) assert.equal(Validator.assertMcpServerDefinition(definition), definition);
     for (const invalid of [
         { name: "legacy", type: "sse", url: "https://legacy.example.com/sse" },
-        { name: "old", transport: "stdio", command: "npx" },
-        { name: "plugin", plugin: { name: "tools", root: "/srv/tools", data: "/srv/data" }, type: "stdio", command: "npx" },
-        { name: "scoped", scope: "project", type: "stdio", command: "npx" },
+        { name: "untyped", command: "npx" },
+        { name: "extra", type: "stdio", command: "npx", undeclared: true },
         { name: "mixed", type: "stdio", command: "npx", url: "https://example.com/mcp" },
         { name: "local", type: "stdio", command: "npx", authorization: { type: "bearer", token: "${T}" } },
         { name: "secret", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "literal-secret" } },
@@ -605,7 +604,6 @@ test("{§operation-result} OperationResult discriminates successes and RFC 9457 
                 detail: "A success cannot carry a problem.",
             },
         },
-        { status: 404, error: "legacy" },
         { status: 200, range: { unit: "line", total: 2, requested: [1, 16], complete: true } },
     ]) {
         assert.equal(Validator.validateOperationResult(invalid).valid, false);
@@ -660,7 +658,7 @@ test("CapabilityPolicy accepts only its canonical wire shape", () => {
     for (const invalid of [
         { deny: [{}] },
         { only: [{ operation: "LOOK" }] },
-        { deny: [{ operation: "PLAN" }] },
+        { deny: [{ operation: "JUMP" }] },
         { extra: [] },
     ]) {
         assert.equal(Validator.validateCapabilityPolicy(invalid).valid, false);
@@ -673,7 +671,7 @@ test("{§worker-ownership}: owner declarations require an address, explicit supp
         const owner = { address: "agui://anonymous/threads/main", tools: [...tools], interactive };
         assert.equal(Validator.assertWorkerOwner(owner), owner);
     }
-    for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], attended: true }, null, []]) {
+    for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], interactive: false, undeclared: true }, null, []]) {
         assert.equal(Validator.validateWorkerOwner(invalid).valid, false);
         assert.throws(() => Validator.assertWorkerOwner(invalid as never), InvalidWorkerOwnerError);
     }

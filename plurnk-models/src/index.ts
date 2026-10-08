@@ -64,32 +64,6 @@ export type ProviderInfo = {
     readonly api?: string;
 };
 
-// (#459) The provider segment IS the Models.dev id — configurations align with the
-// catalog, one vocabulary end to end. The plurnk-local names these ids once hid
-// behind are retired: a retired segment refuses loudly, naming the id, so an old
-// declaration can never silently resolve. Custom (_NPM/env-declared) providers
-// keep their operator-chosen names — they have no catalog id.
-const RETIRED_PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
-    together: "togetherai",
-    fireworks: "fireworks-ai",
-    cloudflare: "cloudflare-workers-ai",
-    // `ollama` is NOT retired: it names the built-in local rail, which has no
-    // catalog id; the cloud catalog is ollama-cloud.
-    moonshot: "moonshotai",
-    dashscope: "alibaba",
-    zhipu: "zai",
-    hunyuan: "tencent-tokenhub",
-    bedrock: "amazon-bedrock",
-});
-
-const assertCatalogSegment = (provider: string): string => {
-    const id = RETIRED_PROVIDER_NAMES[provider];
-    if (id !== undefined) {
-        throw new Error(`provider segment '${provider}' was retired; declarations use the Models.dev id '${id}'`);
-    }
-    return provider;
-};
-
 const data = catalog as Record<string, Record<string, ModelInfo>>;
 const providerData = providers as Record<string, ProviderInfo>;
 
@@ -97,13 +71,13 @@ const providerData = providers as Record<string, ProviderInfo>;
 // precedence. `provider` is the PLURNK alias-cascade segment and `model` is the
 // provider-native id (for relays, `publisher/model`).
 export const lookup = (provider: string, model: string): ModelInfo | null =>
-    data[assertCatalogSegment(provider)]?.[model] ?? null;
+    data[provider]?.[model] ?? null;
 
 export const resolveModel = (
     provider: string,
     model: string,
 ): { readonly id: string; readonly info: ModelInfo } | null => {
-    const models = data[assertCatalogSegment(provider)];
+    const models = data[provider];
     if (models === undefined) return null;
     const exact = models[model];
     if (exact !== undefined) return { id: model, info: exact };
@@ -115,15 +89,11 @@ export const resolveModel = (
 };
 
 export const lookupProvider = (provider: string): ProviderInfo | null =>
-    providerData[assertCatalogSegment(provider)] ?? null;
+    providerData[provider] ?? null;
 
 // The raw snapshot, for a consumer that wants to enumerate (e.g. a client's
 // model picker). Read-only; do not mutate.
 export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => data;
-
-// (#459) Retired plurnk-local name → Models.dev id, for surfaces that teach the
-// migration (error text, docs); never for resolution.
-export const retiredProviderNames = (): Readonly<Record<string, string>> => RETIRED_PROVIDER_NAMES;
 
 // (#459) The route segment IS the Models.dev id; the mapping is identity.
 export const providerNameFromCatalogId = (id: string): string => id;

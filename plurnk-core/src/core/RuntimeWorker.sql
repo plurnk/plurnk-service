@@ -1,7 +1,6 @@
 -- PREP: runtime_worker_get
 -- {§actor-boundary-self-hosting} The workspace's runtime actor is its one worker of origin
--- `_plurnk`. The name is not the key: a database created before the actor took the name
--- `_plurnk` carries `plurnk`, and stays found by origin until it is recreated.
+-- `_plurnk`, found by that origin.
 SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin = '_plurnk';
 
 -- PREP: runtime_worker_ensure

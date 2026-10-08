@@ -82,7 +82,7 @@ const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture
 const budgetOf = (packet: RequestPacket): {
     tokens: number;
     budget: number;
-    largest?: Array<{ path: string; tokensBody: number; tokens: number }>;
+    largest?: Array<{ path: string; tokens: number }>;
 } => JSON.parse(packetSection(packet, "budget").split("\n")[0]!);
 
 test("{§packet-token-accounting} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
@@ -109,7 +109,6 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     for (const item of state.largest!) {
         const row = rows.find(({ logPath: path }) => path === item.path)!;
         assert.equal(item.tokens, row.tokens, "the same row has the same cost in the pressure inventory");
-        assert.equal(item.tokensBody, row.tokensBody);
     }
     assert.equal(f.packets.curationOverflow(packet), null);
 });
@@ -247,7 +246,6 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
         .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)} `))!;
     assert.equal(read.tokens, contentWeight(renderedRead(before)));
-    assert.equal(read.tokensBody, undefined);
     assert.equal(Number(read.tokens) - Number(trimmedRead.tokens),
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");

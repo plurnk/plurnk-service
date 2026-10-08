@@ -182,7 +182,7 @@ test("{§schedule-bound} admission canonicalizes the rule in the workspace's zon
     const invalid = await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." } }, { workspaceId: 1 }));
     assert.equal(invalid.type, "https://problems.plurnk.xyz/schedule/functionality/definition-invalid");
     assert.ok(Array.isArray(invalid.errors) && invalid.errors.length > 0, "the schema errors ride along");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "worker://bot", prompt: "Beat.", policy: { proposals: "maybe" } } }, { workspaceId: 1 }))).status, 400);
+    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "worker://bot", prompt: "Beat.", extra: true } }, { workspaceId: 1 }))).status, 400);
 });
 
 test("{§schedule-residency} preparation publishes one outcome per rule, commit arms, teardown leaves the timers armed", async () => {

@@ -384,7 +384,6 @@ for (const built of [false, true]) {
             PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid",
             PLURNK_SERVICE_PROPOSALS: "invalid",
             PLURNK_SERVICE_RETAIN_PACKET_TURNS: "invalid",
-            PLURNK_SERVICE_PROMPT_BUDGET: "1024",
             PLURNK_SERVICE_EXEC_CONCURRENCY: "invalid",
             PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS: "invalid",
         };
@@ -419,7 +418,6 @@ for (const built of [false, true]) {
             ["file-creation", "PLURNK_SERVICE_FILE_CREATE_SCOPE"],
             ["proposal-policy", "PLURNK_SERVICE_PROPOSALS"],
             ["retention", "PLURNK_SERVICE_RETAIN_PACKET_TURNS"],
-            ["packet", "PLURNK_SERVICE_PROMPT_BUDGET"],
             ["execution", "PLURNK_SERVICE_EXEC_CONCURRENCY"],
             ["executor:sh", "PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS"],
         ]) {
@@ -521,8 +519,6 @@ test("{§configuration-repair-path} config check rejects optional startup errors
         { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
         { key: "PLURNK_SERVICE_PROPOSALS", env: { PLURNK_SERVICE_PROPOSALS: "invalid" } },
         { key: "PLURNK_SERVICE_RETAIN_PACKET_TURNS", env: { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "invalid" } },
-        { key: "PLURNK_SERVICE_PROMPT_BUDGET", env: { PLURNK_SERVICE_PROMPT_BUDGET: "1024" } },
-        { key: "PLURNK_SERVICE_PROMPT_PROJECTION", env: { PLURNK_SERVICE_PROMPT_PROJECTION: "invalid" } },
         ...["PLURNK_SERVICE_EXEC_CONCURRENCY", "PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS", "PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "PLURNK_SERVICE_EXEC_SCRATCH"]
             .map((key) => ({ key, env: { [key]: "invalid" } })),
     ];
@@ -634,31 +630,3 @@ for (const built of [false, true]) {
         } finally { await rm(fx.root, { recursive: true, force: true }); }
     });
 }
-
-test("legacy mixed state blocks ordinary startup until the explicit one-way path migration", async () => {
-    const fx = await fixture();
-    try {
-        const legacy = join(fx.home, ".plurnk");
-        await mkdir(legacy, { recursive: true });
-        await writeFile(join(legacy, ".env"), "PLURNK_MODEL=legacy\n");
-        await writeFile(join(legacy, "plurnk.db"), "fixture");
-
-        const refused = await runService(fx, ["migrate"]);
-        assert.equal(refused.code, 1);
-        assert.match(refused.stderr, /run plurnk-service paths migrate/);
-
-        const transitioned = await runService(fx, ["paths", "migrate"]);
-        assert.equal(transitioned.code, 0, transitioned.stderr);
-        assert.match(transitioned.stdout, /paths migrated:[\s\S]*\.plurnk\/\.env -> .*\/plurnk\/\.env/);
-        assert.equal(
-            await readFile(join(fx.configHome, "plurnk", ".env"), "utf8"),
-            "PLURNK_MODEL=legacy\n",
-        );
-        assert.equal(
-            await readFile(join(fx.dataHome, "plurnk", "plurnk.db"), "utf8"),
-            "fixture",
-        );
-    } finally {
-        await rm(fx.root, { recursive: true, force: true });
-    }
-});

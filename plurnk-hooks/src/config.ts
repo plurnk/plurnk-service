@@ -31,10 +31,8 @@ const hookEvents = (raw: string | undefined): ReadonlySet<string> => {
     const selected = new Set<string>();
     for (const event of raw.split(",").map((value) => value.trim())) {
         if (!EventProjection.names.has(event)) {
-            const replacement = EventProjection.sources.get(event);
-            throw new ConfigurationError("PLURNK_HOOKS_EVENTS", replacement === undefined
-                ? `PLURNK_HOOKS_EVENTS requires an exact hook name; got '${event}'. Choose ${[...EventProjection.names].join(", ")}.`
-                : `PLURNK_HOOKS_EVENTS '${event}' is a core event; select ${replacement.join(", ")} instead.`);
+            throw new ConfigurationError("PLURNK_HOOKS_EVENTS",
+                `PLURNK_HOOKS_EVENTS requires an exact hook name; got '${event}'. Choose ${[...EventProjection.names].join(", ")}.`);
         }
         if (selected.has(event)) {
             throw new ConfigurationError("PLURNK_HOOKS_EVENTS", `PLURNK_HOOKS_EVENTS selects '${event}' more than once.`);

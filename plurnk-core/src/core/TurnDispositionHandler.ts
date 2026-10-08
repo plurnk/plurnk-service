@@ -4,7 +4,7 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import type { DispositionStatement } from "@plurnk/plurnk-contracts";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export interface PacketBoundaries {
     operations: Array<{ op: string; tx: string | null }>;
@@ -21,12 +21,6 @@ type TurnContext = { workerId: number; loopId: number; turnId: number; origin: W
 
 export default class TurnDispositionHandler {
     static configuredWaitSeconds(): number {
-        const retired = { PLURNK_SERVICE_EXEC_POLL_SEC: true, PLURNK_SERVICE_EXEC_POLL_TURNS: true };
-        for (const key of Object.keys(retired)) {
-            if (process.env[key]) {
-                throw new ConfigurationError(key, `${key} is retired: use PLURNK_SERVICE_WAIT_SEC for the maximum park duration.`);
-            }
-        }
         return Knob.integer("PLURNK_SERVICE_WAIT_SEC", 1);
     }
 

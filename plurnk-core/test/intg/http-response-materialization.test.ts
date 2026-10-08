@@ -264,19 +264,19 @@ const emptyStatement = (): ReadStatement => ({
     position: { line: 1, column: 0 },
 });
 
-const legacyTextStatement = (): ReadStatement => ({
+const plainTextStatement = (): ReadStatement => ({
     metadata: null,
     op: "READ",
     aside: null,
     target: {
         kind: "url",
-        raw: "https://93.184.216.34/legacy.txt",
+        raw: "https://93.184.216.34/plain.txt",
         scheme: "https",
         username: null,
         password: null,
         hostname: "93.184.216.34",
         port: null,
-        pathname: "/legacy.txt",
+        pathname: "/plain.txt",
         query: null,
         fragment: null,
     },
@@ -405,9 +405,9 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
         const manifest = { ...Http.manifest, name: "https" };
         const handlerCtx = await makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
-        assert.equal((await readHttp(http, legacyTextStatement(), ctx)).status, 200);
+        assert.equal((await readHttp(http, plainTextStatement(), ctx)).status, 200);
 
-        const entry = await handlerCtx.entries.read("/legacy.txt");
+        const entry = await handlerCtx.entries.read("/plain.txt");
         assert.equal(entry.entry?.channels.body.content, "caf�");
         assert.equal(entry.entry?.channels.body.mimetype, "text/plain");
         assert.equal(entry.entry?.channels.body.state, "static");
@@ -692,7 +692,7 @@ test("{§revalidation} a strong response tag after a stored weak tag reacquires 
             if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
-                return new Response("legacy body v1", {
+                return new Response("plain body v1", {
                     status: 200,
                     headers: { "content-type": "text/plain", etag: 'W/"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
                 });
@@ -716,12 +716,12 @@ test("{§revalidation} a strong response tag after a stored weak tag reacquires 
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
-        const acquired = await readHttp(http, legacyTextStatement(), ctx);
+        const acquired = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(acquired.status, 200, "the weak-etag representation materializes");
-        assert.equal(acquired.content, "legacy body v1");
+        assert.equal(acquired.content, "plain body v1");
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
-        const refreshed = await readHttp(http, legacyTextStatement(), ctx);
+        const refreshed = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(refreshed.status, 200, "an unvalidated body remains recoverable through ordinary acquisition");
         assert.equal(refreshed.content, "reacquired body");
         assert.equal(requests, 3, "one conditional revalidation followed by one unconditional acquisition");
@@ -823,7 +823,7 @@ test("{§revalidation} #288: a 304 that cannot identify the stored representatio
             if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
-                return new Response("legacy body v1", {
+                return new Response("plain body v1", {
                     status: 200,
                     headers: { "content-type": "text/plain", etag: 'W/"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
                 });
@@ -837,7 +837,7 @@ test("{§revalidation} #288: a 304 that cannot identify the stored representatio
                 });
             }
             assert.equal(new Headers(init?.headers).get("if-none-match"), null, "the genuine-mismatch fallback re-issues unconditionally");
-            return new Response("legacy body v2", {
+            return new Response("plain body v2", {
                 status: 200,
                 headers: { "content-type": "text/plain", etag: 'W/"opaque-2"' },
             });
@@ -847,14 +847,14 @@ test("{§revalidation} #288: a 304 that cannot identify the stored representatio
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
-        const acquired = await readHttp(http, legacyTextStatement(), ctx);
+        const acquired = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(acquired.status, 200);
-        assert.equal(acquired.content, "legacy body v1");
+        assert.equal(acquired.content, "plain body v1");
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
-        const refreshed = await readHttp(http, legacyTextStatement(), ctx);
+        const refreshed = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(refreshed.status, 200, "a genuine etag mismatch reacquires unconditionally instead of surfacing an unrecoverable 502");
-        assert.equal(refreshed.content, "legacy body v2");
+        assert.equal(refreshed.content, "plain body v2");
         assert.equal(requests, 3, "conditional revalidation, mismatch, one unconditional fallback");
     } finally {
         globalThis.fetch = originalFetch;

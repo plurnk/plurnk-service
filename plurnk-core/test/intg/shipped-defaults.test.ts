@@ -33,26 +33,18 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
     // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (the EXTENSIONS
-    // trust gate, the two reasoning views, and the members/skills Functionality families, which core
-    // itself implements). HOST and PORT are shared with every client, so contracts declares them
+    // trust gate and the members Functionality family, which core itself implements). HOST and
+    // PORT are shared with every client, so contracts declares them
     // ({§operator-config-shared-keys}). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_(?:MEMBERS|SKILLS)_)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_MEMBERS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
-    // Provider physics and generation policy ship in the provider package.
-    // Core has no parallel token budget or packing-margin contract.
-    assert.equal(env.get("PLURNK_SERVICE_PROMPT_BUDGET"), undefined);
-    assert.equal(env.get("PLURNK_SERVICE_SAFETY"), undefined);
     assert.equal(env.get("PLURNK_SERVICE_MAX_TURNS"), "-1", "model-call ceilings are opt-in, not a lifetime allowance");
     // {§markerless-first-page} — the page's two knobs ship: 100 lines, 16000 characters.
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");
-    // {§context-fit} {§context-gauge} — one rule, no projections, thresholds or read-backs.
-    for (const retired of ["PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_BUDGET_PRESSURE", "PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"]) {
-        assert.equal(env.get(retired), undefined, `${retired} is retired: nothing ships it`);
-    }
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the gauge names the five largest retained rows");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
@@ -76,30 +68,9 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
         const carriers = packet.sections.filter((section) => section.content !== "" && section.content === policy).map((section) => section.name);
         assert.deepEqual(carriers, policy === "" ? [] : ["system-policy"], "nonempty policy content appears only in its owned section");
         assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
-        assert.doesNotMatch(
-            packetSection(packet, "system-policy"),
-            /READ the row an error points at/,
-            "the permanent policy does not prescribe retrieval for already-inline errors",
-        );
-        const rendered = packet.sections.map((s) => s.content).join("\n");
-        assert.doesNotMatch(
-            rendered,
-            /You curate your own context|preserve headroom|KILLing irrelevant|KILL irrelevant/i,
-            "the assembled packet contains no ambient context-curation command",
-        );
-        assert.doesNotMatch(
-            packetSection(packet, "system-policy"),
-            /keep implementation, specification, documentation, and coverage aligned/i,
-            "the general worker policy does not expand every task into a four-lane maintenance obligation",
-        );
-        assert.doesNotMatch(
-            packetSection(packet, "system-policy"),
-            /commit completed repository changes|plurnk@pm\.me/i,
-            "the general worker policy neither orders commits nor assigns Git authorship",
-        );
-        // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
-        assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted POLICY document READ");
+        assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "SEND", pathname: null }, { op: "KILL", pathname: null }],
+            "the turn holds the message arrival and the conclusion; the policy rides only its section");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
         await db.close();

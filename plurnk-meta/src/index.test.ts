@@ -62,7 +62,6 @@ test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else
 test("declaresKind: one exact string identifies one kind", () => {
     assert.equal(Meta.declaresKind({ kind: "exec" }, "exec"), true);
     assert.equal(Meta.declaresKind({ kind: "scheme" }, "exec"), false);
-    assert.equal(Meta.declaresKind({ kind: ["exec", "scheme"] }, "exec"), false);
     assert.equal(Meta.declaresKind(null, "exec"), false);
 });
 
@@ -226,7 +225,6 @@ test("readManifest: the kind claim of one package.json, or null for anything tha
         assert.equal(await Meta.readManifest(await pkg("broken", "{"), "exec"), null, "malformed JSON");
         assert.equal(await Meta.readManifest(await pkg("scalar", "42"), "exec"), null, "not an object");
         assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "plain" })), "exec"), null, "no plurnk object");
-        assert.equal(await Meta.readManifest(await pkg("array", JSON.stringify({ plurnk: { kind: ["exec"] } })), "exec"), null, "a kind array claims no kind");
         const controller = new AbortController();
         controller.abort();
         await assert.rejects(Meta.readManifest(exec, "exec", { signal: controller.signal }), { name: "AbortError" }, "an abort surfaces");
@@ -360,10 +358,4 @@ test("{§extension-manifest-read} a linked npm bundle resolves native files agai
     const manifest = await Meta.readManifest(linked, "http-materializer");
     assert.ok(manifest);
     assert.equal(await Meta.moduleFile(manifest, "ai.plurnk/native.mjs"), join(plugin, "ai.plurnk/native.mjs"));
-});
-
-test("{§extension-trust-boundary} the trust setting's retired name fails hard and names its successor", () => {
-    const retired = "PLURNK_PLUGINS_TRUSTED_ONLY"; // lexicon-allow: the witness names the retired setting
-    assert.throws(() => Meta.isTrusted("@acme/anything", { [retired]: "1" }), (error: Error & { key?: string }) =>
-        error.key === retired && /is retired: PLURNK_EXTENSIONS_TRUSTED_ONLY is the extension trust setting/u.test(error.message));
 });

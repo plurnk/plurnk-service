@@ -1,9 +1,8 @@
 # @plurnk/plurnk-contracts
 
 The single authority for PLURNK's model-facing language contract, its AST,
-generated model rail, shared schemas and types, runtime-neutral Problems,
-operation results, Notices, and text coordinates. See SPEC
-{§root-value-api}.
+shared schemas and types, runtime-neutral Problems, operation results,
+Notices, and text coordinates. See SPEC {§root-value-api}.
 
 ## Install
 
@@ -27,8 +26,7 @@ Requires Node.js 26 or newer.
 JSON Schema owns shared wire shapes, generated TypeScript projects those
 shapes, and ANTLR owns accepted model-language syntax. See SPEC
 {§contract-representations}. An operator who wants constrained sampling on a
-llama-server route writes their own GBNF and points `PLURNK_PROVIDERS_GBNF` at
-it; this package ships no grammar profile.
+llama-server route writes their own GBNF and points `PLURNK_PROVIDERS_GBNF` at it.
 
 ## Parser
 

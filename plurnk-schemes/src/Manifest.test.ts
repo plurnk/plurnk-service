@@ -39,11 +39,6 @@ test("Manifest.of validates dispatch-critical fields", () => {
         "an empty writer set declares a scheme no operation writes",
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...manifest("retired"), writableBy: ["plugin"] } }, "retired"), // lexicon-allow: the retired tier's witness
-        /retired writer tier 'plugin': \[\] declares a scheme no operation writes, and in-process code writes as '_plurnk'/,
-        "the retired writer tier fails hard and names its successors",
-    );
-    assert.throws(
         () => Manifest.of({ manifest: { ...manifest("channels"), defaultChannel: "missing" } }, "channels"),
         /defaultChannel/,
     );
@@ -56,10 +51,6 @@ test("Manifest.of validates dispatch-critical fields", () => {
         /storedScheme/,
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...manifest("stale-affinity"), flags: { proposes: true } } }, "stale-affinity"),
-        /unknown field 'flags'/,
-    );
-    assert.throws(
         () => Manifest.of({ manifest: { ...manifest("invalid-traits"), traits: ["WEB"] } }, "invalid-traits"),
         /traits.*lowercase/,
     );
@@ -70,9 +61,6 @@ test("Manifest.of validates dispatch-critical fields", () => {
     assert.doesNotThrow(
         () => Manifest.of({ manifest: { ...manifest("traits"), traits: ["web", "interaction"] } }, "traits"),
     );
-    for (const field of ["entryOwner", "inherit"]) {
-        assert.throws(() => Manifest.of({ manifest: { ...manifest("resource"), [field]: "worker" } }), /unknown field/);
-    }
     assert.doesNotThrow(() => Manifest.of({ manifest: manifest("resource") }));
 });
 
@@ -108,12 +96,8 @@ test("{§manifest} Manifest.of admits only declared top-level fields", () => {
         /metadataModifier.*boolean/,
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...ownerManifest, scope: "worker" } }, "owner"),
-        /unknown.*scope/,
-    );
-    assert.throws(
-        () => Manifest.of({ manifest: { ...ownerManifest, foldedByDefault: true } }, "owner"),
-        /unknown field 'foldedByDefault'/,
+        () => Manifest.of({ manifest: { ...ownerManifest, undeclared: true } }, "owner"),
+        /unknown field 'undeclared'/,
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, glyph: "" } }, "owner"),

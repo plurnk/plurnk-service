@@ -1,8 +1,7 @@
 // {§agui-daemon-client} The go-live smoke: the in-process client interface, discovered by the
 // daemon and mounted at /agui on its listener, drives
-// a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
-// process, no DaemonClient. Gated on a configured model supplied to the runner;
-// skips clean when absent.
+// a REAL model worker through the AG-UI+ single interface. Gated on a configured model
+// supplied to the runner; skips clean when absent.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

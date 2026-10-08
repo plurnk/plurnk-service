@@ -256,9 +256,9 @@ surprise mutation is a failure in this tier even when the final text is right.
   | Current external work       | Full canonical Forge issue URL                                          | Never abbreviate another repository to `repo#N`.                     |
   | Archived GitHub history     | Full `https://github.com/plurnk/<repo>/issues/N` or `/pull/N` URL        | Retain only when the historical evidence adds value beyond the tag. |
 
-  Legacy shorthands such as `service#N`, `grammar#N`, or
-  `plurnk-mimetypes#N` are ambiguous and forbidden. Once a ruling is stable,
-  prefer its owning `{§tag}` and leave chronology in the issue or Git history.
+  A repository shorthand such as `plurnk-mimetypes#N` is ambiguous and
+  forbidden. Once a ruling is stable, prefer its owning `{§tag}` and leave
+  chronology in the issue or Git history.
 - Give every new forge issue one appropriate Conventional type label when the
   issue is created; labels are part of issue creation, not later cleanup.
 - README material teaches concise usage derived from the specification. Do not

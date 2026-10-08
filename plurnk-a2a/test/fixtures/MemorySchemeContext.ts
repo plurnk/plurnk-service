@@ -91,8 +91,6 @@ export default class MemorySchemeContext {
             },
             subscriptions: {
                 open: async (pathname, handle) => this.#open(pathname, handle),
-                async notifyChunk() { throw new Error("retain the returned subscription"); },
-                async close() { throw new Error("retain the returned subscription"); },
             },
         });
     }

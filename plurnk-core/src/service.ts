@@ -14,7 +14,6 @@ import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import HostPaths from "./core/HostPaths.ts";
-import LegacyHome from "./core/LegacyHome.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute } from "@plurnk/plurnk-providers";
@@ -128,7 +127,6 @@ export default class Service {
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
-        await LegacyHome.assertCanonical(Service.#hostPaths);
         if (Service.#hostPaths.invalidXdg.length > 0) {
             process.stderr.write(
                 `plurnk-service: ignored relative XDG variable(s): ${Service.#hostPaths.invalidXdg.join(", ")}; `
@@ -362,15 +360,6 @@ export default class Service {
         });
     }
 
-    static async #pathsMigrate(): Promise<void> {
-        const moves = await LegacyHome.migrate(Service.#hostPaths);
-        if (moves.length === 0) {
-            process.stdout.write(`paths canonical: no legacy home remains at ${Service.#hostPaths.legacyDir}\n`);
-            return;
-        }
-        process.stdout.write(`paths migrated:\n${moves.map(({ source, destination }) => `  ${source} -> ${destination}`).join("\n")}\n`);
-    }
-
     static async main(): Promise<void> {
         // loadEnvFile is set-if-unset, so every service-owned layer loads high→low. Within the
         // repeatable env-file tier, loading last→first preserves Node's later-file-wins order.
@@ -398,7 +387,6 @@ export default class Service {
        plurnk-service [options] config [edit|defaults|check]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
-       plurnk-service paths migrate
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
 
@@ -412,7 +400,6 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                                of PLURNK_SERVICE_SHARE_FOLDER); --workspace=<id> limits it to one
                                workspace; --requiem adds the forensic interview (calls a model)
   requiem                      add the forensic interview to a digest <folder> of <file.db> (calls a model)
-  paths migrate               move a legacy ~/.plurnk into canonical XDG paths
   -v, --version                show executable provenance
   -h, --help                   show this help
 `;
@@ -467,16 +454,13 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                     process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles));
                     for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
                 };
-            } else {
-                await LegacyHome.assertCanonical(Service.#hostPaths);
-                if (action === "edit") {
-                    await Service.#ensureOperatorConfig();
-                    handler = Service.#configEdit;
-                } else if (action === "check") {
-                    handler = Service.#configCheck;
-                } else if (action === null) {
-                    handler = Service.#configStatus;
-                }
+            } else if (action === "edit") {
+                await Service.#ensureOperatorConfig();
+                handler = Service.#configEdit;
+            } else if (action === "check") {
+                handler = Service.#configCheck;
+            } else if (action === null) {
+                handler = Service.#configStatus;
             }
         } else if (command === "share") {
             if (positionals.length > 3) Service.#die(64, `unexpected arguments: ${positionals.slice(3).join(" ")}`);
@@ -500,10 +484,6 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                 const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1] as string, digestDir: positionals[2] as string, provider: await ProviderInstantiate.loadActiveProvider() });
                 process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
             };
-        } else if (command === "paths" && action === "migrate") {
-            if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
-            name = "paths migrate";
-            handler = Service.#pathsMigrate;
         }
         if (handler === null) Service.#die(64, `unknown command: ${positionals.join(" ")}\n\n${usage}`);
 

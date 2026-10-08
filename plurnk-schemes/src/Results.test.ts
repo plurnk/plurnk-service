@@ -93,13 +93,6 @@ test("assert rejects a bare failure and a mismatched problem status", () => {
     );
 });
 
-test("assert rejects the legacy top-level error envelope", () => {
-    assert.throws(
-        () => Results.assert({ status: 500, error: "legacy failure" } as never),
-        /invalid operation result/,
-    );
-});
-
 test("representation preparation distinguishes ready, live, and terminal outcomes", () => {
     for (const result of [
         { status: 200 },

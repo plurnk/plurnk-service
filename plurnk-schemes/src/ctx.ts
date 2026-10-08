@@ -224,11 +224,10 @@ export interface StreamSubscription extends AbortSignal {
 
 // The streaming lifecycle (service SPEC: streaming). The registered-vs-content
 // split is hidden here: a sibling acquires and retains one lifecycle object,
-// not the consumer's persistence substrates or its per-dispatch context.
-// The inherited methods are operation-scoped compatibility forwarders to the
-// exact StreamSubscription returned by open; only that returned object may be
-// retained after the handler returns ({§scheme-ctx-lifetime}).
-export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk" | "close"> {
+// not the consumer's persistence substrates or its per-dispatch context. Only
+// the StreamSubscription returned by open may be retained after the handler
+// returns ({§scheme-ctx-lifetime}).
+export interface SubscriptionCaps {
     // Register the subscription for cancel routing and return the signal the
     // sibling should await for teardown. The returned AbortSignal is the worker
     // signal COMPOSED WITH this subscription's own teardown — it fires on
@@ -244,7 +243,7 @@ export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk"
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's
-// cancel router invokes it to tear down from outside (SEND signal 499 → here).
+// cancel router invokes it to tear down from outside.
 export interface SubscriptionHandle {
     cancel(): void | Promise<void>;
 }
@@ -252,14 +251,14 @@ export interface SubscriptionHandle {
 // ── the context ──────────────────────────────────────────────────────────
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
 // ({§scheme-ctx-lifetime}). Identity/lifecycle fields carry the engine's per-dispatch
-// coordinates; capability namespaces replace raw `db`.
+// coordinates.
 export interface SchemeAddressCtx {
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;
-    // Run-scoped abort. Streaming schemes await the composed signal from
+    // Loop-scoped abort. Streaming schemes await the composed signal from
     // `subscriptions.open` instead, which subsumes this.
     readonly signal: AbortSignal | undefined;
 }

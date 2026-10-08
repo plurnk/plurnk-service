@@ -19,8 +19,8 @@ test("{§schemes-directory}: scheme references preserve documentation without re
 
     const docs = await registry.docs();
     const stub = docs.find((d) => d.name === "docstub");
-    assert.equal(stub?.content, "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.", "docs() carries the content for materialization through the shared skills catalog");
-    assert.equal(docs.some(({ name }) => name === "log" || name === "prompt"), false, "self-evident log and prompt resources add no redundant pull docs");
+    assert.equal(stub?.content, "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.", "docs() carries the content the scheme reference materializes");
+    assert.equal(docs.some(({ name }) => name === "log"), false, "the self-evident log resource adds no redundant pull doc");
 
     assert.equal(docs.some(({ name }) => name === "skill"), false, "an unregistered scheme contributes no reference");
 });

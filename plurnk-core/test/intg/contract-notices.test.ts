@@ -107,7 +107,6 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
-        assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
         assert.match(wire, /^\* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3$/m);
 
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
@@ -325,7 +324,7 @@ test("provider error: a terminal kind is durable product truth, never a notices 
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
 
         // {§provider-recovery} — a transient infra failure never ends the loop: the turn retries with
-        // backoff (the Mock tier's budget is 1.5 s) and, still failing, parks as a [202] wait.
+        // backoff (the Mock tier's budget is 1.5 s) and, still failing, parks as a 202 wait.
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(turn.status, 202, "the turn parks instead of failing the loop");
         assert.equal(turn.providerParked, true);
@@ -363,7 +362,7 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        // The two beats bracket the provider call, in order — so a client flips "thinking… → working…"
+        // The two beats bracket the provider call, in order — so a client flips "reasoning… → working…"
         // across the one long opaque window (submit → first committed op) instead of a static screen
         // that reads as a hang. Live-broadcast, info-level, scoped to the loop.
         const lifecycle = broadcasts.filter((b) => b.payload.notice.source === "engine:turn");

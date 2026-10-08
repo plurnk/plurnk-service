@@ -1,5 +1,5 @@
 // {§agui-broadcast-fan} An operation Run owns an execution from the row that announces it. A
-// client command that writes late still concludes inside the Run that launched it, so a bridge
+// client command that writes late still concludes inside the Run that launched it, so the
 // client receives the conclusion before the action result, never a result for a command whose
 // output is still to come. The real daemon executes the command; nothing is simulated.
 import { test } from "node:test";

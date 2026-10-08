@@ -100,7 +100,6 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             12,
             "distinct materialization targets remain distinct Markdown evidence",
         );
-        assert.doesNotMatch(markdown, /materialized entr(?:y|ies)\[200\] ×12/, "target partitioning replaces the targetless aggregate");
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=worker:\/\/researcher ×2 \(seq 65–66\)/);
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=worker:\/\/researcher\n/, "an absent query has its own group");
         assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");

@@ -49,12 +49,6 @@ const requiemResponseEvidence = (response: unknown): unknown => {
     const { rawBody: _nestedRawBody, ...assistantRaw } = withoutRawBody.assistantRaw;
     return { ...withoutRawBody, assistantRaw };
 };
-const readPositiveInt = (name: string): number => {
-    const retired = name.replace("PLURNK_DIGEST_", "PLURNK_SERVICE_");
-    if (process.env[retired] !== undefined) throw new Error(`${retired} is retired: use ${name}`);
-    return Knob.integer(name, 1);
-};
-
 const writeJsonDurably = (path: string, value: unknown): void => {
     const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
     const descriptor = openSync(temporary, "wx", 0o666);
@@ -91,22 +85,15 @@ export default class DigestRequiem {
 
         const provider = opts.provider;
         if (provider === null) throw new Error("requiem: no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
-        const maxTokens = readPositiveInt("PLURNK_DIGEST_REQUIEM_MAX_TOKENS");
-        const retryMaxTokens = readPositiveInt("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS");
+        const maxTokens = Knob.integer("PLURNK_DIGEST_REQUIEM_MAX_TOKENS", 1);
+        const retryMaxTokens = Knob.integer("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS", 1);
         if (retryMaxTokens < maxTokens) {
             throw new Error("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_DIGEST_REQUIEM_MAX_TOKENS");
         }
 
         const { workers, byWorker, finalPacketsByWorker } = (() => {
             using evidence = opts.openEvidence(dbPath);
-            const { workers, emissionRows, loops, turnAttempts, turns } = evidence.rows();
-            // {§emission-row}: the worker's final request is its transcript, emissions in place.
-            const emissionsByWorker = new Map<number, Map<string, string>>();
-            for (const row of emissionRows) {
-                const map = emissionsByWorker.get(row.worker_id) ?? new Map<string, string>();
-                map.set(row.coordinate, row.content);
-                emissionsByWorker.set(row.worker_id, map);
-            }
+            const { workers, loops, turnAttempts, turns } = evidence.rows();
             const loopById = new Map(loops.map((l) => [l.id, l]));
             const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
             for (const attempt of turnAttempts) {
@@ -122,7 +109,6 @@ export default class DigestRequiem {
                 loopSeq: number;
                 turnSeq: number;
                 turnId: number;
-                assistant: string;
                 providerAttempts: Array<{
                     sequence: number;
                     state: TurnAttemptRow["state"];
@@ -144,7 +130,6 @@ export default class DigestRequiem {
                     loopSeq: loop.sequence,
                     turnSeq: t.sequence,
                     turnId: t.id,
-                    assistant: packet.assistant?.content ?? "",
                     providerAttempts: (attemptsByTurn.get(t.id) ?? [])
                         .map((attempt) => ({
                             sequence: attempt.sequence,
@@ -163,7 +148,7 @@ export default class DigestRequiem {
             for (const [workerId, entries] of byWorker) {
                 const last = entries.toSorted((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq).at(-1)!;
                 const packet = evidence.packet(turnsById.get(last.turnId)!).packet!;
-                finalPacketsByWorker.set(workerId, packet.messages(emissionsByWorker.get(workerId) ?? new Map()));
+                finalPacketsByWorker.set(workerId, packet.messages());
             }
             return { workers, byWorker, finalPacketsByWorker };
         })();
@@ -185,7 +170,6 @@ export default class DigestRequiem {
             const entries = byWorker.get(worker.id);
             if (entries === undefined || entries.length === 0) continue;
             entries.sort((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq);
-            const last = entries[entries.length - 1];
             const providerAttempts = entries.flatMap((entry) =>
                 entry.providerAttempts.map((attempt) => ({
                     loop: entry.loopSeq,
@@ -214,9 +198,6 @@ export default class DigestRequiem {
                         messages: finalPacketsByWorker.get(worker.id)!,
                     },
                     providerAttempts: quoted,
-                    ...(providerAttempts.length === 0 && last.assistant !== ""
-                        ? { legacyAdmittedEmissionOnFinalTurn: last.assistant }
-                        : {}),
                 };
                 return `# Verbatim worker evidence\n\n${JSON.stringify(evidence, null, 2)}\n\n# Audit request\n\n${REQUIEM_PROMPT}`;
             };

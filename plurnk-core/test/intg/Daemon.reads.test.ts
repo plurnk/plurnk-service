@@ -70,7 +70,7 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
             await rpcCall(ws, 1, "workspace.create", { name: "entry-read-offset" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///doc", content: "Hello, World" });
 
-            // Full read now reports contentLength on every channel (the unit offset uses).
+            // A full read reports contentLength on every channel (the unit offset uses).
             const full = await rpcCall(ws, 3, "entry.read", { target: "worker:///doc" });
             const fullResult = entryRead(full);
             assert.ok(fullResult.entry !== null);
@@ -258,9 +258,8 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
             assert.equal(r.status, 200);
             assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
             assert.equal(r.entries[0].id, send!.id, "the coordinate resolves the SEND entry");
-            // THE GAP: a SEND's rx is just {status} — the model's message ('Paris') lives in tx,
-            // which op.read(log:///L/T/S) (rx-only, for matcher-chaining) can't reach. By coordinate
-            // through log.read it now is, server-resolved — no client fetch-all + match.
+            // A SEND's rx is just {status}; the model's message ('Paris') lives in tx, which
+            // log.read resolves by coordinate on the server.
             assert.match(JSON.stringify(r.entries[0].tx), /Paris/, "the SEND tx body is reachable by coordinate");
         } finally { ws.close(); }
     });

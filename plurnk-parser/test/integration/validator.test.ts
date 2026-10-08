@@ -72,11 +72,6 @@ test("Validator: LineMarker accepts negative range", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker accepts a thresholded triple", () => {
-    const { valid } = Validator.validateLineMarker({ marks: [0.7, 10, 20] });
-    assert.equal(valid, true);
-});
-
 test("Validator: LineMarker rejects empty marks", () => {
     const { valid } = Validator.validateLineMarker({ marks: [] });
     assert.equal(valid, false);
@@ -179,8 +174,8 @@ test("Validator: ParsedPath accepts url with full decomposition", () => {
 test("Validator: ParsedPath accepts url with null authority fields", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
-        raw: "known://philosophy",
-        scheme: "known",
+        raw: "worker://philosophy",
+        scheme: "worker",
         username: null,
         password: null,
         hostname: "philosophy",

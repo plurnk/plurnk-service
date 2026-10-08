@@ -9,8 +9,7 @@ subprocess environment, operational storage, plugin components and host-composed
 through published module seams. Invalid configuration leaves the family inspectable but unavailable
 under {§configuration-repair-path}; the module reports it for offline validation too.
 
-The durable namespace is `@plurnk/plurnk-skills`; existing state follows
-{§skills-storage-upgrade}.
+The durable namespace is `@plurnk/plurnk-skills`.
 
 ## Workspace family
 
@@ -91,14 +90,10 @@ outside their skill; live resources retain {§agent-skills-directory} containmen
 | A file named `SKILL.md` | Live reference to its skill directory and supporting resources |
 | A `.zip`, `.tar`, `.tgz`, `.tar.gz`, `.tar.bz2`, `.tar.xz`, or `.tar.zst` archive | Unpacked into private staging with `unzip` or `tar`; a lone top-level directory is the source's root |
 
-Any other scheme, plain `http`, `owner/repo` shorthand, and an https URL carrying
-credentials are refused with `source-invalid` or `source-missing`: shorthand names no
-forge, and a recorded source is listed to every client. Git runs with the
+Any other scheme, plain `http`, and an https URL carrying credentials are refused
+with `source-invalid`: a recorded source is listed to every client. Git runs with the
 operator's configuration, credentials, and SSH agent, never plurnk's secrets, and
-never prompts; `PLURNK_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch. The
-retired vendor-installer knobs (`PLURNK_SERVICE_SKILLS_CLI`, `_CLI_TIMEOUT_MS`,
-`_REGISTRY_URL`, `_REGISTRY_LIMIT`, `_REGISTRY_TIMEOUT_MS`) make the skills family
-unavailable when set, each naming what replaced it ({§configuration-repair-path}).
+never prompts; `PLURNK_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch.
 
 A source's skills are the directories holding a `SKILL.md`, found by walking
 from its root without entering `.git` or a skill already found. A fetched skill at

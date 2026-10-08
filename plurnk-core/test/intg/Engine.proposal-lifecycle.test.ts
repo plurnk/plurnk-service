@@ -536,9 +536,8 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
 });
 
 test("the shipped empty default is indefinite — a stopped world waits for its human", async (t) => {
-    // The AG-UI migration's first surfaced decision: absence is not an answer. With the knob
-    // unset, a pending proposal outlives any would-be window and resolves only when the human
-    // does — the [202]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.
+    // Absence is not an answer: with the knob unset, a pending proposal outlives any would-be
+    // window and resolves only when the human does. The operator-bounded lane above keeps its test.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;

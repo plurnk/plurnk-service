@@ -40,11 +40,7 @@ export const schemeCtx = (overrides: Partial<SchemeCtx> = {}): SchemeCtx => ({
         parseIssues: outside("projection.parseIssues"),
     },
     interactions: { request: outside("interactions.request") },
-    subscriptions: {
-        open: outside("subscriptions.open"),
-        notifyChunk: outside("subscriptions.notifyChunk"),
-        close: outside("subscriptions.close"),
-    },
+    subscriptions: { open: outside("subscriptions.open") },
     resources: { capture: outside("resources.capture") },
     messages: {
         prepare: outside("messages.prepare"),

@@ -49,10 +49,6 @@ try {
     }
 
     const installedRoot = join(tempDir, "node_modules", "@plurnk", "plurnk-parser");
-    const installedPackage = JSON.parse(await readFile(join(installedRoot, "package.json"), "utf8"));
-    if (Object.keys(installedPackage.exports).some((entry) => entry.endsWith(".gbnf"))) {
-        throw new Error("installed package ships a bundled GBNF profile; grammars are operator files, never package exports");
-    }
 
     await writeFile(join(tempDir, "consume.js"), `
 import * as Parser from "@plurnk/plurnk-parser";
@@ -76,7 +72,7 @@ const program = PlurnkParser.frame("NOTE", "smoke");
 assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
 assertClean("statement sequence", result);
-assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
+assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (worker:///foo)", null)));
 
 const reasoning = PlurnkParser.frame("READ (worker:///fact.txt)", null);
 if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {

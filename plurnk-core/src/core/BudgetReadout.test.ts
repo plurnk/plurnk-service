@@ -111,10 +111,11 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
     assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(100), () => 10, [{ path: "file:///a", tokens: 1 }]), /one log:\/\/\/ URI/);
 });
 
-test("{§output-allowance-notice} (#826) the readout carries curation state and no output allowance", () => {
+test("{§output-allowance-notice} (#826) the readout carries curation state alone", () => {
     const drafted = BudgetReadout.draft(1000);
     assert.match(drafted, /"budget":1000\}$/);
-    assert.doesNotMatch(BudgetReadout.resolve(drafted, (candidate) => candidate.length), /tokensResponseMax|allowance|grant/u);
+    assert.deepEqual(Object.keys(JSON.parse(BudgetReadout.resolve(drafted, (candidate) => candidate.length))), ["tokens", "budget", "largest"],
+        "the readout's facts are exactly its curation state");
     assert.equal(BudgetReadout.draft(null), '{"tokens":{{tokens}}}');
 });
 

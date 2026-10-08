@@ -32,7 +32,7 @@ describe("discover attribution", () => {
         await fs.rm(tmpRoot, { recursive: true, force: true });
     });
 
-    it("a single-string attribution surfaces through both representations", async () => {
+    it("a single-string attribution becomes one canonical package fact", async () => {
         const dir = await makePackage(tmpRoot, "c1", {
             name: "@acme/acme-mime-foo",
             plurnk: {
@@ -42,11 +42,11 @@ describe("discover attribution", () => {
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.equal(handlers.get("application/x-foo")?.attribution, "acme");
+        assert.equal("attribution" in handlers.get("application/x-foo")!, false, "the handler descriptor carries identity only");
         assert.deepEqual(packageAttributions.get("@acme/acme-mime-foo"), ["acme"]);
     });
 
-    it("one canonical package attribution projects onto every published handler descriptor", async () => {
+    it("a multi-handler package contributes one canonical attribution fact", async () => {
         const dir = await makePackage(tmpRoot, "c2", {
             name: "@acme/acme-mime-multi",
             plurnk: {
@@ -59,12 +59,11 @@ describe("discover attribution", () => {
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.deepEqual(handlers.get("application/x-a")?.attribution, ["acme", "acme-pro"]);
-        assert.deepEqual(handlers.get("application/x-b")?.attribution, ["acme", "acme-pro"]);
+        assert.deepEqual([...handlers.keys()].sort(), ["application/x-a", "application/x-b"]);
         assert.deepEqual([...packageAttributions], [["@acme/acme-mime-multi", ["acme", "acme-pro"]]]);
     });
 
-    it("an absent attribution produces no package fact or handler projection", async () => {
+    it("an absent attribution produces no package fact", async () => {
         const dir = await makePackage(tmpRoot, "c3", {
             name: "@acme/acme-mime-bare",
             plurnk: {
@@ -73,10 +72,7 @@ describe("discover attribution", () => {
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        const info = handlers.get("application/x-bare");
-        assert.ok(info);
-        assert.equal(info.attribution, undefined);
-        assert.equal("attribution" in info, false);
+        assert.ok(handlers.get("application/x-bare"));
         assert.equal(packageAttributions.size, 0);
     });
 
@@ -131,7 +127,6 @@ describe("discover attribution", () => {
         const { handlers, packageAttributions } = await discover({ packageDirs: [] });
         const treesitter = [...handlers.values()].find((h) => h.source === "treesitter");
         assert.ok(treesitter, "expected at least one tree-sitter handler");
-        assert.equal(treesitter.attribution, undefined);
         assert.equal(packageAttributions.size, 0);
     });
 });

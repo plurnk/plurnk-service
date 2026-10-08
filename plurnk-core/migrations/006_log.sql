@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS log_entry_projections (
 -- {§db-fk-indexes} Opening a turn checks admissions that cite a turn; without this every projection row is read.
 CREATE INDEX IF NOT EXISTS log_entry_projections_output_admission_turn ON log_entry_projections (output_admission_turn_id) WHERE output_admission_turn_id IS NOT NULL;
 
--- {§context-output-selection} Admission is a durable projection decision, not
+-- Admission is a durable projection decision, not
 -- deletion or proof of provider delivery. It cannot be reset to replay output.
 CREATE TRIGGER IF NOT EXISTS log_output_admission_immutable
 BEFORE UPDATE OF output_admission_turn_id, output_withheld ON log_entry_projections

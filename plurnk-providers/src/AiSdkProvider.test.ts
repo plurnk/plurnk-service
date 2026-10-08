@@ -1521,7 +1521,7 @@ test("the family temperature default rides every request; caller sampling overri
     await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.7 } });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.7);
     mock.restoreAll();
-    // temperature is now the UNIVERSAL default: present without a grammar too
+    // temperature is the UNIVERSAL default: present without a grammar too
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);

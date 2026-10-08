@@ -28,8 +28,8 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
-syntax. No generation grammar is generated or shipped; an operator's own GBNF
-is carried verbatim to a llama-server route by the providers package.
+syntax. An operator's own GBNF is carried verbatim to a llama-server route by
+the providers package.
 
 §agui-discovery-contract `AguiDiscovery` is the complete installed AG-UI+
 surface at one instant. `schemaVersion` identifies its discovery shape;
@@ -128,7 +128,7 @@ meaning, including registered scheme resolution, target existence, tag
 selection, text-region bounds, result ordering, full-text ranking, mutation
 effects, and executor behavior.
 
-### §contract-proposal-projection Loop policy and stopped-world projection
+### §contract-proposal-projection Admission policy and stopped-world projection
 
 The schemas own the runtime-neutral shapes; core owns their stateful values.
 
@@ -718,10 +718,7 @@ naming the operation's slots and the dropped scope — `` `WORK` takes a target 
 scope; … ``, `` `SEND` without a recipient takes no scope; … ``). An aside is never a scope, a
 recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT follows
 {§send-wait-scope}. There is no ambiguity: the operation has one reading with or without
-the slot. Before this, the heading drew the grammar's expected-token diagnostic and the turn was
-dead; in the distinct recorded emissions one heading carried the form (zai run426,
-```` ```WORK (worker://deprecation-implementer) <1,-1> ````), beside two recipient SENDs whose scope
-the recipient refuses at runtime.
+the slot.
 
 §heading-inline-body Nonempty body text belongs below the fence header. Text after the slots
 on the heading line is read by the operation's shape, by the builder that reads that operation,
@@ -787,8 +784,8 @@ Worker; the shared reader withholds both from the owner's options.
 
 §matcher-option **`pattern` is the matcher, and it lives in the heading.** On
 FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option
-`[{"pattern": "<matcher>"}]` carries the matcher string exactly as a body once
-did: the leading prefix claims its dialect under {§matcher-prefix-claims}, and
+`[{"pattern": "<matcher>"}]` carries the matcher string: the leading prefix
+claims its dialect under {§matcher-prefix-claims}, and
 AstBuilder lifts it into the statement's `matcher` (`MatcherBody | null`),
 positioned dialect errors included. A block that carries only `pattern`
 leaves `metadata: null` for the owner; beside other keys the block stays with
@@ -849,10 +846,10 @@ repetition and strike rules still apply.
 
 §reasoning-operations The shared fence parser admits complete, line-leading NOTE,
 FIND and READ statements from exposed provider reasoning. Admission is part of
-the language, not an optional compatibility mode. Other backtick or tilde
-code blocks are opaque; heading and missing-closer recovery cannot escape them or
-complete an unfinished reasoning operation. Blockquoted and inline examples are
-not headings. Other reasoned operations never execute.
+the language. Other backtick or tilde code blocks are opaque; heading and
+missing-closer recovery cannot escape them or complete an unfinished reasoning
+operation. Blockquoted and inline examples are not headings. Other reasoned
+operations never execute.
 
 Operations are admitted only after the provider response completes; their
 presence never interrupts generation. Selected operations precede the content
@@ -920,12 +917,11 @@ Without a scope, KILL retires or deletes the whole target; with one, it removes 
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
 
-§legacy-bracket-slot Brackets are the metadata modifier, never an executor
-selector: the runtime or MCP service is the fence name, and tool input belongs
-in the body. A bracket block that leads an executor fence or follows a target
-is metadata, so a legacy `[node]` selector reaches its owner as metadata text
-and is refused there; a bracket before the target of a non-executor OP is one
-bounded header diagnostic that selects nothing.
+§bracket-metadata-slot Brackets are the owner's metadata modifier: the runtime
+or MCP service is the fence name, and tool input belongs in the body. A bracket
+block that leads an executor fence or follows a target is metadata for that
+owner; a bracket before the target of a non-executor OP is one bounded header
+diagnostic that selects nothing.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. Executions and SEND scope owner-defined timing. READ, EDIT, COPY,
@@ -982,7 +978,7 @@ same bare spelling the receipt used: a model that appends the channel to the pat
 shown addresses the same entry, and so does one that writes it after the parenthesis,
 `(page.html) #readable`, which {§naked-pattern} reads as the channel. `raw` is therefore always the path alone; a
 bare path never contains a literal `#`, and `PlurnkParser.stringify` renders the channel back.
-Without a `#` the field is absent, so an older `LocalPath` literal stays valid.
+Without a `#` the field is absent.
 
 §read-exact-target READ targets one exact resource (a local path or scheme
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
@@ -1559,8 +1555,8 @@ schema, this suffix invariant, and Problem status equality.
 | 100–399 | `problem` is forbidden                    |
 | 400–599 | One RFC 9457 `problem` object is required |
 
-The legacy top-level `error` field is forbidden. Producer-specific success
-fields and Problem Details extension members remain open. A malformed result is
+Producer-specific success fields and Problem Details extension members remain
+open. A malformed result is
 an internal producer contract violation; it is not converted into a second
 model-facing failure envelope.
 
@@ -1871,15 +1867,9 @@ diagnostics are:
   `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`. `^` claims the regex
   dialect without slashes or flags: the whole text is the pattern, so
   `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`.
-  `^` is deliberately absent from `plurnk.md`'s dialect table and belongs here instead
-  (#804). It is carried because `^` meaning "anchor" is among the
-  strongest instincts a model arrives with: it will write `^Decision:.*` whether or not it
-  was taught to, and the engine honours what it will reach for anyway. Teaching it would
-  spend hot-path weight on a line that changes no behaviour. The omission is therefore not
-  drift between the teaching and the engine, and closing it in either direction is a
-  regression: restoring the row pays for nothing, and retiring the prefix makes the
-  pretrained spelling a glob that matches a literal caret — silence in place of the
-  selection the model asked for.
+  `^` is deliberately absent from `plurnk.md`'s dialect table: a model writes the anchor
+  whether or not it is taught, so the engine honours it without spending hot-path teaching
+  on it. The omission is not drift between the teaching and the engine.
 - §trailing-slots **Slots after the matcher peel off the right.** The heading text after
   the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the
   shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a

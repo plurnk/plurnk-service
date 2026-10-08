@@ -2,7 +2,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
-import type { ExtensionAttribution, ExtensionAttributionDeclaration } from "@plurnk/plurnk-meta";
+import type { ExtensionAttribution } from "@plurnk/plurnk-meta";
 import DocFile from "./DocFile.ts";
 import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
@@ -31,8 +31,8 @@ interface ExecManifest {
 //   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted runtimes function that
 //     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
 // Each decl registers its tag separately; one package can claim many tags
-// backed by the same default export. Summary, invocation, details, and attribution
-// projection are defined by {§executor-runtime-declaration}.
+// backed by the same default export. Summary, invocation, and details are
+// defined by {§executor-runtime-declaration}.
 //
 // Tags occupy one flat namespace. Two packages claiming one tag are a fail-hard
 // installation ambiguity.
@@ -54,9 +54,8 @@ export default class Discover {
                 continue;
             }
             const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
-            const attribution = Discover.#attributionProjection(manifest.plurnk.attribution, tags);
             let admitted = false;
-            for (const info of await Discover.#readExecInfos(dir, manifest, attribution)) {
+            for (const info of await Discover.#readExecInfos(dir, manifest)) {
                 // Boot policy removes a tag before registration; consumer-owned
                 // layers can reuse the same parser ({§executor-policy}).
                 if (!Policy.isEnabled(info.runtime)) {
@@ -95,11 +94,7 @@ export default class Discover {
     }
 
     // Produce one ExecInfo per static or dynamic runtime declaration.
-    static async #readExecInfos(
-        dir: string,
-        { packageName, plurnk }: ExecManifest,
-        attribution: ExtensionAttributionDeclaration | undefined,
-    ): Promise<ExecInfo[]> {
+    static async #readExecInfos(dir: string, { packageName, plurnk }: ExecManifest): Promise<ExecInfo[]> {
         const infos: ExecInfo[] = [];
         for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
             const decl = RuntimeDeclaration.assert(raw, packageName);
@@ -115,21 +110,10 @@ export default class Discover {
                 packageName,
                 ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
                 ...(decl.expandTools === undefined ? {} : { expandTools: decl.expandTools }),
-                ...(attribution !== undefined ? { attribution } : {}),
             });
         }
 
         return infos;
-    }
-
-    // The package map is canonical. This preserves the shipped descriptor shape
-    // without preserving a second validation policy.
-    static #attributionProjection(
-        raw: unknown,
-        tags: ExtensionAttribution,
-    ): ExtensionAttributionDeclaration | undefined {
-        if (raw === undefined || raw === null) return undefined;
-        return typeof raw === "string" ? raw : [...tags];
     }
 
     // Static declarations win over a dynamic export when both are present

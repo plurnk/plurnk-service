@@ -332,7 +332,6 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(worker.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
         assert.deepEqual(worker.json.model_calls.map(({ kind }) => kind), ["emission", "bare"]);
         assert.ok(worker.json.model_calls[1]?.log_entry_id !== null);
-        assert.equal(Object.hasOwn(worker.json, "embedding_calls"), false);
         assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
         assert.equal(worker.json.provider_requests.length, 3);
         assert.equal(worker.json.provider_requests[2]?.turn_attempt_id, null);
@@ -351,7 +350,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
             /^Owner: _plurnk$/mu,
             "the digest projects durable worker ownership",
         );
-        assert.doesNotMatch(worker.markdown, /Flags:|\[object Object\]/u);
+        assert.doesNotMatch(worker.markdown, /\[object Object\]/u);
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);

@@ -67,7 +67,8 @@ model-provider keys. Workspace `env` entries apply on top, then the definition's
 server keeps its launch environment; disable then enable it to pick up changes.
 
 A tool marked `annotations.readOnlyHint` runs with the `read` effect;
-other tools retain the `host` effect and the loop's proposal policy.
+other tools retain the `host` effect: each call is reviewed by the worker's
+owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 
 ## Manage a workspace's servers
 
@@ -99,8 +100,9 @@ exact RFC 9457 Problem Details:
 ```
 
 The model manages the same family through ````` ````mcp (list|discover|add|enable|disable|remove) `````,
-each change a proposal under the loop's policy. Disabling is durable and workspace-shared; enabling an
-unavailable server retries its connection.
+each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
+rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
+connection.
 
 Tool discovery uses ordinary `FIND (worker:///_plurnk/tools/*.md)` and READ.
 Each server's document lists enabled tool calls with required-field previews

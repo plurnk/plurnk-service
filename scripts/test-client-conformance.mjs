@@ -52,7 +52,7 @@ const home = join(temp, "home");
 
 // {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so
 // every client presents it. The real client reads it through its own env cascade; this harness
-// drives BridgeTransport directly, so it reads the same file the daemon just seeded.
+// drives AguiTransport directly, so it reads the same file the daemon just seeded.
 const seededToken = async () => {
     const file = join(home, ".config", "plurnk", ".env");
     const text = await readFile(file, "utf8").catch(() => "");
@@ -222,10 +222,8 @@ try {
         XDG_STATE_HOME: join(home, ".local", "state"),
         XDG_CACHE_HOME: join(home, ".cache"),
         PLURNK_PORT: String(port),
-        PLURNK_WS_PORT: "0",
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
-        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
         PLURNK_MCP_sourcecheck: JSON.stringify({ name: "sourcecheck", type: "stdio", command: "node" }),
         PLURNK_MCP_sourcecheck_ENABLED: "0",
         ...fixture.env,
@@ -310,12 +308,11 @@ try {
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
     // accounting and the gauge's model. With no live children ({§agui-status-children}),
-    // the client omits the ant. Since plurnk#58 the lifecycle glyph stands alone — the word
-    // repeated it — and the place (workspace, loop, turn, worker) is the prompt prefix's,
-    // asserted separately below.
+    // the client omits the ant. The lifecycle glyph stands alone, and the place (workspace,
+    // loop, turn, worker) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph (plurnk#67); the model leads (plurnk#104)
-    // {plurnk#58} — the prompt prefix names the place: [workspace/~worker(loop/turn)].
+    await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
+    // The prompt prefix names the place: [workspace/~worker(loop/turn)].
     await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("🐜")) throw new Error(`installed TUI displayed a child indicator with no live children\n${tuiOutput}`);
@@ -337,10 +334,10 @@ try {
     ], clientEnv);
     await tui.waitFor(/workspace: installed-rejected/);
     tui.write("Exercise the rejected provider request.\r");
-    // The Problem rides the alert's title line (plurnk#104); at this width the terminal wraps it at a
+    // The Problem rides the alert's title line; at this width the terminal wraps it at a
     // word boundary that moves with the title, and the renderer may repaint between the rows.
     await tui.waitFor(wrapped("The requested model is unavailable; select an available model."));
-    // {plurnk#58} — the glyph is the lifecycle and the turn count left the status line.
+    // The glyph is the lifecycle; the status line carries no turn count.
     await tui.waitFor(/❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     tui.write("/workers\r");
     await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
@@ -398,12 +395,12 @@ try {
 
     fixture.assertComplete();
 
-    const { BridgeTransport } = await import(pathToFileURL(join(
+    const { AguiTransport } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
     )).href);
-    const bridgeToken = await seededToken();
-    const terminal = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
+    const aguiToken = await seededToken();
+    const terminal = new AguiTransport(
+        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
         world,
         { workspace: world },
     );
@@ -441,8 +438,8 @@ try {
         }
     }
 
-    const observer = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
+    const observer = new AguiTransport(
+        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
         "independent-observer",
         { workspace: world },
     );
@@ -463,8 +460,8 @@ try {
 
     await daemon.stop();
     daemon = await boot();
-    const afterRestart = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}/agui`, token: bridgeToken },
+    const afterRestart = new AguiTransport(
+        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
         world,
         { workspace: world },
     );
@@ -485,7 +482,7 @@ try {
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({
         host: "127.0.0.1", port, method: "POST", path: "/agui",
-        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: `Bearer ${bridgeToken}` },
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: `Bearer ${aguiToken}` },
     });
     const disconnected = new Promise((accept) => unfinished.on("error", accept));
     try {

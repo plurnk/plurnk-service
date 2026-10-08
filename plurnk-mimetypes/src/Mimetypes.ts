@@ -149,8 +149,7 @@ export const binaryInputMaximum = (): number => {
     return value;
 };
 
-// Top-level discovery, projection, and artifact orchestrator
-// ({§mimetype-lifecycle}).
+// Top-level discovery and projection orchestrator ({§mimetype-lifecycle}).
 export default class Mimetypes {
     readonly #discoverOptions: DiscoverOptions;
     readonly #loader: HandlerLoader;
@@ -552,7 +551,7 @@ export default class Mimetypes {
         });
     }
 
-    // Release artifact resources and handler instances ({§mimetype-lifecycle}).
+    // Release handler instances and cached grammar fingerprints ({§mimetype-lifecycle}).
     async dispose(): Promise<void> {
         if (this.#disposePromise !== null) return this.#disposePromise;
         const disposal = this.#disposeResources();

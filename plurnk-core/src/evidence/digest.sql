@@ -1,8 +1,7 @@
 -- Forensic read queries for bin/digest.ts. Opened via SqlRiteSync against an
 -- existing plurnk*.db initialized from the schema baseline — NO `-- INIT:` blocks, these
 -- compile against its schema and never alter it. The digest reads a quiescent
--- DB (a kept test .db or a post-workspace plurnk.db), so each PREP is its own read
--- — sqlrite 5 dropped the JS transaction composer and these never needed it.
+-- DB (a kept test .db or a post-workspace plurnk.db), so each PREP is its own read.
 
 -- PREP: digest_workspaces
 SELECT * FROM workspaces ORDER BY id;

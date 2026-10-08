@@ -16,9 +16,6 @@ test("{§send-resource-attachments}: message metadata validates before acquisiti
     assert.ok("failure" in unknown);
     assert.match(unknown.failure.problem!.type, /metadata-unsupported$/u);
     assert.deepEqual(calls, [], "invalid options never acquire a resource");
-    const retiredStatus = await MessageAttachments.capture(["102"], resources, "scheme:test");
-    assert.ok("failure" in retiredStatus);
-    assert.match(retiredStatus.failure.problem!.type, /metadata-invalid$/u, "the old SEND status is not message metadata");
     assert.deepEqual(await MessageAttachments.capture(null, resources, "scheme:test"), { attachments: [] });
     await MessageAttachments.capture(['{"attachments":["a"]},{"attachments":["b","a#readable"]}'], resources, "scheme:test");
     assert.deepEqual(calls, [["b", "a#readable"]]);

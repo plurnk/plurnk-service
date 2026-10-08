@@ -28,7 +28,6 @@ test("{§schedule-environment} complete declarations sort by canonical alias and
     });
     assert.deepEqual([...definitions.keys()], ["heart-beat", "nightly"]);
     assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heart_beat" } });
-    assert.equal(Object.hasOwn(definitions.get("nightly")!.definition, "policy"), false);
     assert.equal(definitions.get("nightly")?.enabled, false, "disabling retains the complete definition");
     assert.deepEqual([...serviceDefinitions({ PLURNK_SCHEDULE_ENABLED: "1" })], []);
     assert.throws(() => serviceDefinitions({}), /PLURNK_SCHEDULE_ENABLED is missing from the assembled environment floor\./u);

@@ -50,9 +50,8 @@ readable text; `413 projection-input-limit` is input above the configured byte
 ceiling; `404 channel-not-found` lists the available channels and does not
 mean the URL is missing. A binary response keeps its original bytes in `body`;
 READ shows their hex and, on a supporting model, attaches the native media;
-`#bytes` selects the hex view explicitly. A SEND signal is never the remote
-HTTP status; a failed mutation's response evidence is in `#header`, and a
-retry re-executes the mutation.
+`#bytes` selects the hex view explicitly. A failed mutation's response evidence
+is in `#header`, and a retry re-executes the mutation.
 
 For SSE, READ returns `102` while events continue; origin close settles the
 subscription at `200`, and later cancellation or transfer failure settles it

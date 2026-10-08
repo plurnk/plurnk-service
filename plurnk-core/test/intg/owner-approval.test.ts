@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { EditStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { viableWindow } from "./_provider.ts";
-import { rpcCall, rpcProblem, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor, flush } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor, flush } from "./_rpc.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -144,26 +144,6 @@ test("{§notifications-loop-proposal} proposal notification projects the durable
             assert.deepEqual(proposal.disposition, { decision: "review" });
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: proposal.logEntryId, decision: "accept" });
             await run;
-        } finally { ws.close(); }
-    });
-});
-
-test("{§worker-owner-resolution}: loop.run rejects retired policy parameters before admitting input", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "bad-policy" });
-            for (const policy of [
-                { proposals: "accept" },
-                { proposals: "sometimes" },
-                { capabilities: { deny: [{}] } },
-                { automatic: true },
-                "accept",
-            ]) {
-                const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", policy });
-                const problem = rpcProblem(response);
-                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/loop-policy-retired");
-            }
         } finally { ws.close(); }
     });
 });
