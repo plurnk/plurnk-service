@@ -114,7 +114,7 @@ test("{§worker-ownership}: parking requires either an obligation or an interact
     assert.equal(await lifecycle.park(owned, { wakenBy: null }), true);
 });
 
-test("{§workspace-capability-policy}: owner capabilities do not create a resource-policy ring", async () => {
+test("{§owner-interaction-ring}: the workspace layers carry no owner ring; ownership shapes only what an asking worker is offered", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "capability-rings");
     const workerId = await insertWorker(db, workspaceId);

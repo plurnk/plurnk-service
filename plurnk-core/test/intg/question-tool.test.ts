@@ -18,8 +18,6 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { executionAddress } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
-process.env.PLURNK_EXECS_QUESTION = "1";
-
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
     runtime: "question", aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },

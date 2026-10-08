@@ -190,6 +190,13 @@ export default class ToolResources {
         return `${generatedPathname(resourcesPath ?? "/plurnk")}/${runtime}.md`;
     }
 
+    // Every document `render` writes for a runtime: its page, its tool catalog, and its children.
+    static documents(runtime: string, resourcesPath?: string): (pathname: string) => boolean {
+        const page = ToolResources.documentPath(runtime, resourcesPath);
+        const root = page.slice(0, -".md".length);
+        return (pathname) => pathname === page || pathname === `${root}.json` || pathname.startsWith(`${root}/`);
+    }
+
     static targetSegment(target: string): string {
         return encodeURIComponent(target).replaceAll(/[!'()*]/gu, (character) =>
             `%${character.codePointAt(0)?.toString(16).toUpperCase()}`);

@@ -10,6 +10,8 @@ import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
+import WorkerOwners from "./WorkerOwners.ts";
+import ToolResources from "./ToolResources.ts";
 import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
@@ -17,7 +19,12 @@ import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-s
 import { isExecution, isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // {§capability-policy-cascade} A denial names the ring that refused.
-type CapabilityScope = "service" | "workspace";
+type CapabilityScope = "service" | "workspace" | "owner";
+
+export interface CapabilityLayer {
+    readonly scope: CapabilityScope;
+    readonly policy: CapabilityPolicy;
+}
 
 export interface CapabilityDenial {
     readonly descriptor: CapabilityDescriptor;
@@ -25,6 +32,10 @@ export interface CapabilityDenial {
 }
 
 export default class CapabilityResolver {
+    // {§pinned-wording-core} The owner ring is the one refusal the model can act on.
+    static readonly UNATTENDED_RECOVERY =
+        "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.";
+
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
     readonly #executors: () => ExecutorRegistry | undefined;
@@ -135,11 +146,39 @@ export default class CapabilityResolver {
         }
     }
 
+    // {§owner-interaction-ring} The interaction runtimes this worker's owner would not receive.
+    async #unreceived(workspaceId: number, workerId: number): Promise<readonly string[]> {
+        const interactions = (this.#executors()?.availableRuntimes(workspaceId) ?? [])
+            .filter((runtime) => this.#runtimeDescriptor(runtime, null, workspaceId).access === "interact");
+        if (interactions.length === 0) return [];
+        const owner = await WorkerOwners.read(this.#db, workerId);
+        return interactions.filter((runtime) => !WorkerOwners.receives(owner, runtime));
+    }
+
+    // {§owner-interaction-ring} An asking worker adds its owner's ring inside the shared cascade.
+    async layers(workspaceId: number, workerId?: number): Promise<readonly CapabilityLayer[]> {
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
+        const unreceived = workerId === undefined ? [] : await this.#unreceived(workspaceId, workerId);
+        return unreceived.length === 0 ? layers : [...layers, {
+            scope: "owner",
+            policy: { deny: unreceived.map((runtime) => ({ access: "interact", runtime })) },
+        }];
+    }
+
+    // {§owner-interaction-ring} The worker's face of the shared reserved tree: the documents of a
+    // runtime its owner ring denies are absent.
+    async referenceVisibility(workspaceId: number, workerId: number): Promise<(pathname: string) => boolean> {
+        const hidden = (await this.#unreceived(workspaceId, workerId)).map((runtime) =>
+            ToolResources.documents(runtime, this.#executors()?.entry(runtime, workspaceId)?.resourcesPath));
+        return (pathname) => !hidden.some((documents) => documents(pathname));
+    }
+
     async denial(
         statement: PlurnkStatement,
         workspaceId: number,
         writer: WriterTier = "model",
         resolveResource?: (target: ParsedPath) => Promise<SchemeManifest | undefined>,
+        workerId?: number,
     ): Promise<CapabilityDenial | null> {
         const manifests = new Map<ParsedPath, SchemeManifest | undefined>();
         if (resolveResource !== undefined) {
@@ -151,9 +190,12 @@ export default class CapabilityResolver {
             });
             for (const target of manifests.keys()) manifests.set(target, await resolveResource(target));
         }
-        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
-        for (const descriptor of this.descriptors(statement, workspaceId, writer,
-            resolveResource === undefined ? undefined : (target) => manifests.get(target))) {
+        const descriptors = this.descriptors(statement, workspaceId, writer,
+            resolveResource === undefined ? undefined : (target) => manifests.get(target));
+        // The owner ring subtracts only interaction; other demands never read the owner.
+        const asker = descriptors.some(({ access }) => access === "interact") ? workerId : undefined;
+        const layers = await this.layers(workspaceId, asker);
+        for (const descriptor of descriptors) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));
             if (denied !== undefined) return { descriptor, scope: denied.scope };
         }

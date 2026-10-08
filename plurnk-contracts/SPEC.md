@@ -164,9 +164,11 @@ than hidden policy behavior.
 
 §capability-policy-projection A `CapabilityProjection` reports every durable
 workspace layer and their normalized intersection: `service`, `workspace`, and
-`effective`. Only `workspace` is client-mutable. Workers and loops have no
-capability policy or inherited bound; every actor uses the same live workspace
-policy. A client never derives effective authority from the mutable layer alone.
+`effective`. Only `workspace` is client-mutable. Workers and loops store no
+capability policy and inherit no bound; every actor uses the same live workspace
+policy. Core derives one further ring per asking worker from its owner, and it only
+removes interaction runtimes ({§owner-interaction-ring}). A client never derives
+effective authority from the mutable layer alone.
 
 §proposal-policy `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES`
 is its schema-owned vocabulary. `WorkerOwner` carries an address, the client-tool
@@ -1298,8 +1300,8 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 
 The model may supply WAIT or request completion with parameterless KILL. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
-the human uses the native `question` executor tool when enabled ({§question-tool}), not a
-disposition. The shape rules ARE structural:
+the human uses the native `question` executor tool, offered only when a person attends the
+worker's owner ({§owner-interaction-ring}), not a disposition. The shape rules ARE structural:
 
 - §send-mid-reservation WAIT is reserved ({§turn-disposition}).
   A turn admits any number of lifecycle declarations, anywhere among its

@@ -66,6 +66,9 @@ export interface PlurnkSchemeContext {
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;
+    // {§owner-interaction-ring} — the asking worker's face of the shared reserved tree. Absent in
+    // bare fixtures, which register no interaction runtime to hide.
+    readonly referenceVisibility?: () => Promise<(pathname: string) => boolean>;
     // Standard client-owned interaction, bound to this exact operation by
     // Engine. Public handlers receive it through SchemeCtx.interactions.
     readonly requestInteraction?: (

@@ -34,6 +34,11 @@ export default class WorkerOwners {
         return (await WorkerOwners.forLoop(db, loopId)).interactive;
     }
 
+    // {§client-interaction-routing} Only a person answers: the owner must be attended and declare the tool.
+    static receives(owner: WorkerOwner, toolName: string): boolean {
+        return owner.interactive && owner.tools.includes(toolName);
+    }
+
     static async registered(db: Db, workspaceId: number, address: string): Promise<WorkerOwner> {
         const row = await db.worker_owner_registered.get<OwnerRow>({ workspace_id: workspaceId, address });
         if (row === undefined) throw new OperationFailureError(Results.failure(

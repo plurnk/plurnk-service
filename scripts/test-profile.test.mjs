@@ -21,7 +21,6 @@ const expectedProfile = {
     PLURNK_MCP_ENABLED: "0",
     PLURNK_A2A_ENABLED: "0",
     PLURNK_SCHEDULE_ENABLED: "0",
-    PLURNK_EXECS_QUESTION: "0",
 };
 
 const parseProfile = (source) => Object.fromEntries(source

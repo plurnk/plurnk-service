@@ -71,7 +71,6 @@ import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import WorkerName from "./WorkerName.ts";
 import TurnOps from "./TurnOps.ts";
-import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
@@ -705,7 +704,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
         const initializationPolicies = initializationTurn === null
             ? []
-            : (await CapabilityPolicies.layers(this.#db, workspaceId)).map((layer) => layer.policy);
+            : (await this.#capabilities.layers(workspaceId, workerId)).map((layer) => layer.policy);
         const modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;

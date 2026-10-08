@@ -37,6 +37,7 @@ export interface CoreSchemeServices {
     ) => Promise<EntryAddressResolution | null>;
     readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<ExecSource>;
     readonly capabilityDenial: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<SchemeResult | null>;
+    readonly referenceVisibility: (ctx: PlurnkSchemeContext) => Promise<(pathname: string) => boolean>;
     readonly requestInteraction: (
         request: ClientInteractionRequest,
         ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
@@ -108,6 +109,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workspaceId),
             settleDerivations: () => services.settleDerivations(this.coreContext(ctx)),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.workerId, ctx.loopId, notice),
+            referenceVisibility: () => services.referenceVisibility(this.coreContext(ctx)),
             requestInteraction: (request, signal = ctx.signal) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,
                 workerId: ctx.workerId,

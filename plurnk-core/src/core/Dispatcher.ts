@@ -1179,6 +1179,7 @@ export default class Dispatcher {
             ctx.workspaceId,
             ctx.writer,
             async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
+            ctx.workerId,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;
@@ -1196,6 +1197,8 @@ export default class Dispatcher {
             {
                 ...descriptor,
                 policyScope: scope,
+                // {§owner-interaction-ring} Every other ring is operator configuration and speaks for itself.
+                ...(scope === "owner" ? { recovery: CapabilityResolver.UNATTENDED_RECOVERY } : {}),
                 retryable: false,
             },
         );
@@ -1204,6 +1207,10 @@ export default class Dispatcher {
     capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
         return ResourceBindings.using(this.#schemes, ctx,
             (boundCtx) => this.#checkCapabilities(statement, boundCtx));
+    }
+
+    referenceVisibility(ctx: PlurnkSchemeContext): Promise<(pathname: string) => boolean> {
+        return this.#capabilities.referenceVisibility(ctx.workspaceId, ctx.workerId);
     }
 
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body

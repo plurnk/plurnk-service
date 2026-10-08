@@ -341,6 +341,7 @@ export default class Engine {
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             capabilityDenial: (statement, ctx) => this.#dispatcher.capabilityDenial(statement, ctx),
+            referenceVisibility: (ctx) => this.#dispatcher.referenceVisibility(ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions });
         this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, acquireWorkspaceTurn: this.#acquireWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });

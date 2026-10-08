@@ -244,7 +244,9 @@ export default class Worker extends CoreSchemeAdapterBase {
                 retryable: false,
             }) as FindResult;
         }
-        return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, { authority });
+        // {§owner-interaction-ring} The shared reserved tree, as this worker may see it.
+        const visible = authority === "" ? await core.referenceVisibility?.() : undefined;
+        return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, { authority, ...(visible === undefined ? {} : { visible }) });
     }
 
     // Bound contexts carry the exact resource authority through transfers.

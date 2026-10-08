@@ -4000,7 +4000,7 @@ the policy renders in exactly one packet section. Every other tier runs the
 test cascade, so shipped-default regressions are otherwise invisible by
 construction.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP/A2A and schedules default disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), server approval set to accept ({§worker-owner-resolution}), and ambient MCP/A2A and schedules default disabled. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -4591,7 +4591,7 @@ Core's behavior behind them.
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
-| Worker ownership | `registerWorkerOwner(workspaceId, { address, tools })` | Declares or replaces an owner's supported client-tool names in that workspace; `_plurnk` is reserved. |
+| Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
@@ -4671,7 +4671,8 @@ independent demands, and harness-authored initialization obeys workspace policy.
 `workspaces.settings.capabilities` is the one mutable access policy under the
 service ceiling. Every actor, including an existing child, uses the current
 workspace policy; neither creation nor delegation snapshots authority. Workers
-own their log and scratchpad, not tools or resource grants. Intrinsic source
+own their log and scratchpad, not tools or resource grants; their owner decides only
+which interaction runtimes they are offered ({§owner-interaction-ring}). Intrinsic source
 mutability, workspace separation, and proposal approval remain distinct
 contracts. Input is validated before persistence; malformed stored policy fails
 at its reader with the workspace coordinate and cause.
@@ -4684,9 +4685,9 @@ and packet shaping. Replacement preserves unrelated workspace settings. Before t
 or observation, existing workers reconcile generated references against it. It requires no selected
 conversation worker and returns the complete fresh projection.
 
-§question-tool **The native request-user-input tool.** When enabled, Core registers one
-in-process `question` runtime at boot. It is disabled by default; an explicit
-`PLURNK_EXECS_QUESTION=1` opts in. Its body is the MCP2 2026-07-28
+§question-tool **The native request-user-input tool.** Core registers one
+in-process `question` runtime at boot and offers it only to a worker whose owner
+would receive it ({§owner-interaction-ring}). Its body is the MCP2 2026-07-28
 form-elicitation shape verbatim — `{ message, requestedSchema }`. An
 optional literal target is a descriptive label only: it neither routes the
 question nor changes the body or recipient. The
@@ -4714,6 +4715,20 @@ reconciler runs before operation turns and observation requests, so FIND counts,
 weights, and catalog text agree. Turn0 surveys that same catalog. Dispatch evaluates that
 same descriptor and policy cascade at the operation boundary, never at
 registration; there is no separate per-tool availability system.
+
+§owner-interaction-ring **An interaction tool is offered only where an answer can come
+from.** An asking worker adds one ring inside that cascade, derived live from its owner
+and never stored. It denies each interaction runtime whose tool the owner would not
+receive under {§client-interaction-routing}; an interaction runtime asks under its own
+tag, as `question` does.
+
+| Surface | With the ring |
+| --- | --- |
+| Turn 0 survey and the worker's FIND of the shared reserved tree | The runtime's documents are absent, from counts and folder summaries too. |
+| Dispatch | 403 `capability-denied` naming scope `owner`, with the recovery pinned in {§pinned-wording-core}. |
+| Workspace capability projection and reserved-tree materialization | Unaffected: they take no worker. |
+
+A FIND or READ by exact path is not filtered.
 
 §model-catalog **Model discovery is a bounded local projection, not provider
 activity.** Core composes the release-pinned Models.dev snapshot with
@@ -6106,6 +6121,7 @@ the sentence.
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
 | Context window overflow: the packet cannot fit the model's window even as receipts. | the wall ({§context-wall}) |
 | No recipient implements the requested interaction. | The worker's owner is not interactive or does not declare the required client tool ({§client-interaction-routing}). |
+| Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the worker's owner would not receive ({§owner-interaction-ring}) |
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | The stream was cancelled by KILL. | a stream terminal after KILL |

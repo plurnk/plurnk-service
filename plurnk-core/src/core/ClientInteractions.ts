@@ -77,11 +77,10 @@ export default class ClientInteractions {
         this.#listeners.push(listener);
     }
 
-    // {§client-interaction-routing} Clarification needs a person: the worker's owner receives it only
-    // while it is interactive and implements the requested tool.
+    // {§client-interaction-routing} The worker's owner, while it receives the tool.
     async recipient(workerId: number, toolName: string): Promise<string | null> {
         const owner = await WorkerOwners.read(this.#db, workerId);
-        return owner.interactive && owner.tools.includes(toolName) ? owner.address : null;
+        return WorkerOwners.receives(owner, toolName) ? owner.address : null;
     }
 
     async request(

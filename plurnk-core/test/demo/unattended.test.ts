@@ -1,15 +1,11 @@
-// {§client-interaction-routing} — the conversational half of the unattended contract. A unit test can prove
-// the daemon refuses to ask; only a live model can answer the question that actually matters:
-// having been told nobody is there, does the model RECOVER — conclude on what it has and say what
-// it could not resolve — or does it re-ask, spiral, and burn its strikes?
+// {§owner-interaction-ring} — the conversational half of the unattended contract. A harness worker is
+// owned by the runtime, which nobody attends, so it is never offered a way to ask. Integration tests
+// prove the tool is absent; only a live model can show what matters: given an ambiguous task and
+// nobody to ask, does it decide, say what it could not resolve, and finish, or does it improvise a
+// wait for a person that no operation provides?
 //
-// This is the tier the operator has named repeatedly: a refusal the model cannot act on is worse
-// than the hang it replaced, because it looks like progress. The first version of this behaviour
-// handed the model "The 'question' executor failed outside its operation result contract", which is
-// exactly the shape that gets tolerated in a benchmark and is intolerable in a conversation.
-//
-// Strict by design: a strike, an empty turn, a fabricated answer, or a second attempt to ask is a
-// failure here even when the final text reads well.
+// Strict by design: a strike, an empty turn, an attempt to ask, a WAIT with nothing in flight, or a
+// guess stated as fact is a failure here even when the final text reads well.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
@@ -18,12 +14,11 @@ import { seedDemoFixture } from "./_fixture.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
 
-// A task that genuinely invites asking: the fixture does not say which branch, and no amount of
-// reading will tell it. An attended run may reasonably ask; an unattended one must decide and say so.
-const AMBIGUOUS = "Update the project so it targets the right release branch, then tell me what you did."
-    + " If anything is ambiguous, ask me before guessing.";
+// Genuinely ambiguous: the fixture does not say which branch, and no amount of reading will tell it.
+// Nothing in the prompt invites asking; the model has to notice the gap itself.
+const AMBIGUOUS = "Update the project so it targets the right release branch, then tell me what you did.";
 
-test("conversation: told nobody is there, plurnk decides and says what it could not resolve", { timeout: 600_000 }, async (t) => {
+test("conversation: with nobody to ask, plurnk decides and says what it could not resolve", { timeout: 600_000 }, async (t) => {
     const fixture = await seedDemoFixture("unattended-recovery");
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);
@@ -38,7 +33,6 @@ test("conversation: told nobody is there, plurnk decides and says what it could 
 
         const rows = await s.db.test_log_entries_by_worker.all<{ op: string | null; origin: string; status_rx: number }>({ worker_id: loop.modelWorkerId });
         const model = rows.filter(({ origin }) => origin === "model");
-        const asked = model.filter(({ op }) => op === "question");
 
         assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
 
@@ -47,20 +41,18 @@ test("conversation: told nobody is there, plurnk decides and says what it could 
         assert.equal(loop.hitMaxTurns, false, "and does so without exhausting its turns");
         assert.ok(loop.lastContent.length > 0, "an answer actually arrives");
 
-        // The heart of it: asking is refused once and understood, never retried into a spiral.
-        for (const attempt of asked) {
-            assert.equal(attempt.status_rx, 501, "every attempt to ask is refused with the reason, not an executor contract error");
-        }
-        assert.ok(asked.length <= 1, `the refusal is understood on the first reading; the model asked ${asked.length} times`);
+        // Nothing offered a way to ask, so nothing asks, and nothing waits for a person:
+        // WAIT joins children and streams, and with nothing in flight it only continues (102).
+        assert.deepEqual(model.filter(({ op }) => op === "question"), [], "an unattended worker is never offered the question tool");
+        assert.deepEqual(model.filter(({ op, status_rx }) => op === "WAIT" && status_rx === 102), [],
+            "the model never waits with nothing in flight");
 
-        // Having been refused, it must say what it could not settle rather than inventing a fact.
-        if (asked.length === 1) {
-            assert.match(
-                loop.lastContent,
-                /could not|couldn't|unable|no one|nobody|unattended|assumed|chose|picked|defaulted/i,
-                "the reply names the unresolved choice or the assumption it made instead of stating one as fact",
-            );
-        }
+        // The choice was the model's to make, so the reply must say it made one.
+        assert.match(
+            loop.lastContent,
+            /could not|couldn't|unable|unclear|ambiguous|no one|nobody|assumed|assuming|chose|picked|defaulted/i,
+            "the reply names the unresolved choice or the assumption it made instead of stating one as fact",
+        );
     } catch (error) {
         return await failAfterCleanup(error, cleanup);
     } finally { await cleanup(); }
