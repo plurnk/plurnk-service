@@ -163,6 +163,12 @@ type MaterializedModelRequest = {
     readonly nativeInputs: readonly string[];
 };
 
+// {§context-admission} — a request through the room: the wire the provider assessed, or the overflow
+// that ends the loop.
+type AdmittedRequest =
+    | { readonly request: TurnRequest; readonly wire: MaterializedModelRequest; readonly overflow: null }
+    | { readonly request: TurnRequest; readonly wire: null; readonly overflow: WindowOverflow };
+
 type EngineTurnResult = {
     createdTurnIds: number[];
     turnId: number;
@@ -298,7 +304,7 @@ type PacketFacts = {
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
-// the packet, which the attempt loop re-attributes per call and capacity recovery rebuilds.
+// the packet, which admission rebuilds ({§context-admission}) and the attempt loop re-attributes per call.
 type TurnRequest = PacketFacts & {
     // {§context-fit} — the measure every row this turn lands is tested against.
     readonly fit: ContextFit;
@@ -642,7 +648,7 @@ export default class TurnRunner {
             // {§context-wall} — only the window ends a loop.
             if (admitted.overflow !== null) return await this.#failCuration(admitted.request, admitted.overflow);
             const request = admitted.request;
-            const attempts = await this.#prepareProviderAttempts(args, request);
+            const attempts = await this.#prepareProviderAttempts(args, request, admitted.wire);
             let emission: ProviderEmission;
             try {
                 emission = await this.#attemptProvider(args, request, attempts);
@@ -1119,37 +1125,56 @@ export default class TurnRunner {
         return { ...request, nextActionIndex: request.nextActionIndex + 1, packet };
     }
 
-    // The packet against the wall and the budget: the newest rows go bodiless until it fits the window
-    // ({§context-own-rows-fit}); a packet still over budget then says so in a row ({§context-over-budget-row}),
-    // whose own weight takes the same wall. The overflow is returned only when the packet cannot fit even
-    // as receipts.
-    async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<{ request: TurnRequest; overflow: WindowOverflow | null }> {
-        const fitted = await this.#fitOwnRows(args, request);
-        if (fitted.overflow !== null) return fitted;
-        if (this.#packets.curationOverflow(fitted.request.packet) === null) return fitted;
-        return await this.#fitOwnRows(args, await this.#noteOverBudget(args, fitted.request));
+    // {§context-admission} — one request through the room: over the wall by the estimate, it sheds; over
+    // budget, it carries one row whose own weight takes the same wall ({§context-over-budget-row}); then the
+    // provider assesses the exact wire request, and an exact refusal sheds by its excess
+    // ({§context-wall-measure}). Only a packet that cannot fit even as receipts returns its overflow.
+    async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<AdmittedRequest> {
+        const { provider, loopId, signal } = args;
+        let current = request;
+        let noted = false;
+        for (;;) {
+            const estimated = this.#packets.windowOverflow(current.packet, provider);
+            if (estimated !== null) {
+                const shed = await this.#shed(args, current, estimated);
+                if (shed === null) return { request: current, wire: null, overflow: estimated };
+                current = shed;
+                continue;
+            }
+            if (!noted && this.#packets.curationOverflow(current.packet) !== null) {
+                current = await this.#noteOverBudget(args, current);
+                noted = true;
+                continue;
+            }
+            const wire = await this.#wireMessages(current.packet, current.systemCtx, provider);
+            const capacity = await provider.assessRequestCapacity(wire.messages, undefined, this.#loopSignal(loopId) ?? signal);
+            const refused = this.#packets.exactOverflow(current.packet, capacity);
+            if (refused === null) return { request: current, wire, overflow: null };
+            const shed = await this.#shed(args, current, refused);
+            if (shed === null) return { request: current, wire: null, overflow: refused };
+            current = shed;
+        }
     }
 
-    // {§context-own-rows-fit} — while the packet is over the wall ({§context-wall}), the newest rows still
-    // carrying a body are taken, enough of them by their rendered tokens to shed the excess, and the packet
-    // is rebuilt with them bodiless; every body stays stored. The rebuilt packet is measured again until
-    // it fits, or until no row is left to take.
-    async #fitOwnRows(args: TurnArgs, request: TurnRequest): Promise<{ request: TurnRequest; overflow: WindowOverflow | null }> {
-        let current = request;
-        for (;;) {
-            const overflow = this.#packets.windowOverflow(current.packet, args.provider);
-            if (overflow === null) return { request: current, overflow: null };
+    // {§context-own-rows-fit} — one shedding step for whichever measure found the request over the wall: the
+    // previous program goes whole first ({§previous-emission}), then the newest rows still carrying a body,
+    // enough of them by their rendered tokens to shed the excess; every body stays stored. Null when nothing
+    // is left to take.
+    async #shed(args: TurnArgs, request: TurnRequest, overflow: WindowOverflow): Promise<TurnRequest | null> {
+        if (!request.projection.omitPreviousEmission && PacketWire.sectionContent(request.packet, "previous-emission").length > 0) {
+            request.projection.omitPreviousEmission = true;
+        } else {
             let shed = 0;
             let taken = 0;
-            for (const { id, tokens } of this.#packets.bodiedRowsOf(current.packet).toReversed()) {
+            for (const { id, tokens } of this.#packets.bodiedRowsOf(request.packet).toReversed()) {
                 if (shed >= overflow.excessWeight) break;
-                current.projection.bodiless.add(id);
+                request.projection.bodiless.add(id);
                 shed += tokens;
                 taken += 1;
             }
-            if (taken === 0) return { request: current, overflow };
-            current = { ...current, packet: await this.#buildPacket(args, current) };
+            if (taken === 0) return null;
         }
+        return { ...request, packet: await this.#buildPacket(args, request) };
     }
 
     // {§context-wall} — the packet cannot fit the window even as receipts: the turn completes on the
@@ -1162,8 +1187,7 @@ export default class TurnRunner {
 
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the worker's provider identity.
-    async #prepareProviderAttempts({ provider, workspaceId, workerId, loopId, signal }: TurnArgs, request: TurnRequest): Promise<ProviderAttempts> {
-        const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
+    async #prepareProviderAttempts({ workerId, loopId, signal }: TurnArgs, request: TurnRequest, wire: MaterializedModelRequest): Promise<ProviderAttempts> {
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
         const recoveryBudget = ProviderRecovery.budget();
@@ -1196,9 +1220,8 @@ export default class TurnRunner {
     }
 
     // Phase 4 — the provider attempt loop. Each iteration is one logical call: a
-    // recoverable failure or a capacity rebuild re-issues the same emission attempt,
-    // an invalid emission spends one, and a valid emission ends the loop
-    // ({§invalid-emission-attempts}).
+    // recoverable failure re-issues the same emission attempt, an invalid emission
+    // spends one, and a valid emission ends the loop ({§invalid-emission-attempts}).
     async #attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
         const { provider, workspaceId, workerId, loopId, signal } = args;
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
@@ -1255,16 +1278,15 @@ export default class TurnRunner {
     }
 
     // One logical provider call: its durable model call and attempt row, the exchange
-    // under the reasoning observer, and its classification. Capacity recovery and
-    // {§provider-recovery} re-issue the same emission attempt; the parser's admission
-    // is the one verdict on a completed exchange.
+    // under the reasoning observer, and its classification. {§provider-recovery}
+    // re-issues the same emission attempt; the parser's admission is the one verdict
+    // on a completed exchange.
     async #issueProviderCall(
         args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, attempt: number, strikeStreak: number,
     ): Promise<"admitted" | "rejected" | "reissued"> {
         const { provider, workspaceId, workerId, loopId } = args;
-        // Capacity recovery may rebuild and resend the request without
-        // consuming a grammar-emission attempt. Every logical provider
-        // call still receives its own durable sequence and accounting.
+        // A recovery re-issue does not consume a grammar-emission attempt. Every
+        // logical provider call still receives its own durable sequence and accounting.
         attempts.currentEmissionAttempt = attempt;
         attempts.modelCallSequence++;
         const attributionContext: ExtensionAttributionContext = Object.freeze({
@@ -1302,8 +1324,8 @@ export default class TurnRunner {
                 await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
                 return "reissued";
             }
-            // {§context-wall} — a provider capacity rejection after the provider's own retries is this
-            // turn's failure; nothing is withheld to make the request smaller.
+            // {§context-wall-measure} — admission already shed for an exact refusal of this wire request;
+            // an upstream refusal is the provider's own 413.
             throw error;
         } finally {
             reasoning.end();

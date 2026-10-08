@@ -1,4 +1,4 @@
-// SPEC {§context-wall} {§context-budget} — the wall before and at the provider. The model "behaves" here (a clean SEND each
+// SPEC {§context-wall-measure} {§tokenomics-context-envelope-admission} — the provider's own admission. The model "behaves" here (a clean SEND each
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
@@ -139,7 +139,7 @@ test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additi
     } finally { await db.close(); }
 });
 
-test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measurement} an exact prompt over the reservation but under the wall is admitted with its grant flexed; one over the wall is the provider's own 413, distinct from curation", async () => {
+test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measurement} an exact prompt over the reservation but under the wall is admitted with its grant flexed", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -184,56 +184,10 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
             && typeof evidence.responseMax === "number" && typeof evidence.outputBudget === "number" && typeof evidence.outputFloor === "number"
             && evidence.responseMax < evidence.outputBudget && evidence.responseMax >= evidence.outputFloor),
         "the grant is flexed down from the budget and never below the floor");
-
-        // Over the wall: a window whose wall sits just under the exact count, while the curation ruler
-        // still admits the packet — the provider's own rejection, not a curation outcome.
-        const window = Math.floor(exactChars / 0.9) - 10;
-        const walled = exactCharAt(capacity, [response([concludeStmt("unreachable")])], window);
-        assert.ok(walled.inputWall !== null && walled.inputWall < exactChars && walled.inputCapacity! > probe.weight, "the wall sits under the exact count; the reservation still holds the packet");
-        const result = await engine.runTurn({ provider: walled, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
-        assert.equal(result.status, 413);
-        assert.equal(result.capacityHardStop, true);
-        assert.equal(walled.remaining, 1, "exact preflight rejection consumes no generated response");
-        const turnId = result.turnId;
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-        const packet = JSON.parse(row!.packet) as Record<string, unknown>;
-        assert.equal("assistant" in packet, false, "terminal capacity failure preserves only the attempted request");
-        const errRow = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const failure = errRow
-            .map((entry) => JSON.parse(entry.rx) as {
-                problem?: {
-                    type?: string;
-                    status?: number;
-                    detail?: string;
-                    capacityStage?: string;
-                    capacity?: {
-                        decision?: string;
-                        inputCapacity?: number;
-                        inputWall?: number;
-                        prompt?: { kind?: string; tokens?: number; source?: string };
-                    };
-                    retryable?: boolean;
-                };
-            })
-            .findLast((entry) => entry.problem?.type?.endsWith("/capacity-exceeded") === true)
-            ?.problem;
-        assert.ok(failure !== undefined);
-        assert.equal(failure.status, 413);
-        assert.equal(failure.retryable, false);
-        assert.equal(failure.capacityStage, "preflight");
-        assert.equal(failure.capacity?.decision, "reject");
-        assert.equal(failure.capacity?.inputCapacity, capacity);
-        assert.equal(failure.capacity?.inputWall, walled.inputWall);
-        assert.equal(failure.capacity?.prompt?.kind, "exact");
-        assert.ok((failure.capacity?.prompt?.tokens ?? 0) > walled.inputWall!);
-        assert.equal(failure.capacity?.prompt?.source, "test:exact-chars");
-        assert.match(failure.detail ?? "", /exceeds its input wall/);
-        const calls = await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: turnId });
-        assert.ok(calls.length >= 1 && calls.every(({ capacity: evidence }) => evidence !== null), "every failed logical request retains its request-shaped capacity evidence");
     } finally { await db.close(); }
 });
 
-test("{§context-budget}: an upstream capacity rejection is a provider failure — one request, no resend, durable evidence", async () => {
+test("{§context-wall-measure}: an upstream capacity refusal is the provider's own 413 — one request, no resend, durable evidence", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prompt-capacity-${crypto.randomUUID()}`);

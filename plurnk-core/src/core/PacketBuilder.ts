@@ -24,7 +24,7 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
+import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
@@ -103,11 +103,11 @@ const compactDefinitionTables = (markdown: string): string => {
 
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
-// {§context-wall} — the packet's tokens against the provider's input wall, in provider tokens, and
-// the curation weight the packet must shed to fit it ({§context-own-rows-fit}).
+// {§context-wall} — the packet's tokens against the provider's input wall, in provider tokens, by either
+// measure ({§context-wall-measure}), and the curation weight the packet must shed to fit it ({§context-own-rows-fit}).
 export interface WindowOverflow {
     readonly tokens: number;
-    readonly budget: number;
+    readonly budget: number | null;
     readonly wall: number;
     readonly excess: number;
     readonly excessWeight: number;
@@ -123,11 +123,9 @@ export interface CurationOverflow {
 // curation stays in scoped KILL; what fits was decided where each row landed ({§context-fit}).
 export default class PacketBuilder {
     #db: Db;
-    // {§tokenomics-calibrated-readout} — admission and client gauges consume
-    // the allowance captured before this request can change model evidence.
-    readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
-    // {§context-budget} — each loop's high-water budget, for the input capacity it was derived from.
-    readonly #loopBudgets = new Map<number, { readonly inputCapacity: number; readonly budget: number }>();
+    // {§tokenomics-calibrated-readout} — admission and client gauges consume the allowance and the factor
+    // captured before this request can change model evidence.
+    readonly #allowances = new WeakMap<readonly StoredPacketSection[], { readonly budget: number | null; readonly factor: number }>();
     // {§context-own-rows-fit} — the rows of each built packet the wall may still take, newest last.
     readonly #bodiedRows = new WeakMap<readonly StoredPacketSection[], readonly BodiedLogRow[]>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
@@ -208,9 +206,13 @@ export default class PacketBuilder {
     }
 
     curationBudgetFor(packet: RequestPacket): number | null {
-        const budget = this.#curationBudgets.get(packet.sections);
-        if (budget === undefined) throw new Error("curationBudgetFor: the packet was not built by this PacketBuilder");
-        return budget;
+        return this.#allowanceOf(packet).budget;
+    }
+
+    #allowanceOf(packet: RequestPacket): { readonly budget: number | null; readonly factor: number } {
+        const allowance = this.#allowances.get(packet.sections);
+        if (allowance === undefined) throw new Error("the packet was not built by this PacketBuilder");
+        return allowance;
     }
 
     // {§context-own-rows-fit} — the packet's rows still carrying a body or a native part, in row order.
@@ -285,8 +287,8 @@ export default class PacketBuilder {
         // {§context-budget} — one room: the provider's input capacity in curation weight, bounding the
         // whole packet. Nothing here sizes a part of it.
         const inputCapacity = provider.inputCapacity;
-        const calibration = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
-        const curationBudget = this.#loopBudget(loopId, inputCapacity, TokenCalibration.capacity(inputCapacity, calibration));
+        const factor = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
+        const curationBudget = TokenCalibration.capacity(inputCapacity, factor);
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
@@ -405,7 +407,7 @@ export default class PacketBuilder {
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
         // {§packet-attachment-parts}: text, including the previous program, is already in the slots.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
-        this.#curationBudgets.set(packet.sections, curationBudget);
+        this.#allowances.set(packet.sections, { budget: curationBudget, factor });
         // {§context-own-rows-fit} — a transformed log is one item the wall cannot take row by row.
         this.#bodiedRows.set(packet.sections, drafts.find((section) => section.name === "log")?.content === renderedLog.content ? renderedLog.bodied : []);
         this.#streamObservations.set(packet.sections, openChannels);
@@ -463,17 +465,6 @@ export default class PacketBuilder {
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
-    // {§context-budget} — the room never shrinks within a loop: the budget is the greater of the
-    // calibrated capacity and the loop's high-water for the same input capacity, so a refined conversion
-    // can enlarge the room but never turns a packet the model already answered into an overflow.
-    #loopBudget(loopId: number, inputCapacity: number | null, calibrated: number | null): number | null {
-        if (inputCapacity === null || calibrated === null) return null;
-        const prior = this.#loopBudgets.get(loopId);
-        const budget = prior !== undefined && prior.inputCapacity === inputCapacity ? Math.max(prior.budget, calibrated) : calibrated;
-        this.#loopBudgets.set(loopId, { inputCapacity, budget });
-        return budget;
-    }
-
     // {§context-over-budget-row} — measurement never mutates visibility; an over-budget packet is a row
     // and a request, never a silent cut.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
@@ -484,16 +475,32 @@ export default class PacketBuilder {
         return { weight, budget, excess: weight - budget };
     }
 
-    // {§context-wall} — the packet's tokens through the loop's conversion (the budget is the capacity
-    // over the factor, so tokens are weight × capacity ÷ budget) against the provider's input wall;
-    // null without a wall or a budget: an unknown window has no wall.
-    windowOverflow(packet: RequestPacket, provider: { readonly inputCapacity: number | null; readonly inputWall: number | null }): WindowOverflow | null {
-        const budget = this.curationBudgetFor(packet);
-        if (budget === null || provider.inputCapacity === null || provider.inputWall === null) return null;
-        const tokens = Math.ceil(packet.weight * provider.inputCapacity / budget);
+    // {§context-wall-measure} — the estimate: the packet's weight through its own calibration factor against
+    // the provider's input wall; null without a wall or a budget: an unknown window has no wall.
+    windowOverflow(packet: RequestPacket, provider: { readonly inputWall: number | null }): WindowOverflow | null {
+        const { budget, factor } = this.#allowanceOf(packet);
+        if (budget === null || provider.inputWall === null) return null;
+        const tokens = Math.ceil(packet.weight * factor);
         if (tokens <= provider.inputWall) return null;
-        const excessWeight = packet.weight - Math.floor(provider.inputWall * budget / provider.inputCapacity);
+        const excessWeight = packet.weight - Math.floor(provider.inputWall / factor);
         return { tokens, budget, wall: provider.inputWall, excess: tokens - provider.inputWall, excessWeight };
+    }
+
+    // {§context-wall-measure} — the provider's exact refusal of the wire request, in the packet's own terms:
+    // the excess it names, shed at the ratio it measured for this packet. Null unless the provider refused.
+    exactOverflow(packet: RequestPacket, capacity: ProviderRequestCapacity): WindowOverflow | null {
+        if (capacity.decision !== "reject") return null;
+        const { prompt, inputWall } = capacity;
+        // {§provider-capacity-admission}: only an exact count over a known wall refuses.
+        if (prompt.kind !== "exact" || inputWall === null) throw new Error(`a capacity refusal measured ${prompt.kind} against ${inputWall} carries no exact excess`);
+        const excess = prompt.tokens - inputWall;
+        return {
+            tokens: prompt.tokens,
+            budget: this.curationBudgetFor(packet),
+            wall: inputWall,
+            excess,
+            excessWeight: Math.ceil(excess * packet.weight / prompt.tokens),
+        };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

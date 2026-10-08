@@ -103,7 +103,9 @@ the upstream provider as capacity oracle. The curation reservation's intersectio
 exposed as `inputCapacity`, the line Core packs the room against; the wall's, as `inputWall`; `null` means the available limits cannot establish
 one. A known combined context and output budget must leave positive input
 capacity. Consumers may display or use that fact as policy, but MUST NOT
-substitute their own content heuristic for request-shaped admission.
+substitute their own content heuristic for request-shaped admission. A consumer
+may assess a request before sending it; `generate` repeats the assessment as its
+own guard.
 
 `tokenize` is the separate content-token capability and exists only when the
 endpoint exposes its real vocabulary. Content tokenization does not substitute
