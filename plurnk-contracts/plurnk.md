@@ -1,7 +1,7 @@
 # Plurnk State Machine
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
+> YOU MUST ONLY emit valid Plurnk OP Syntax operations, with parameters, the pattern, and the terse aside on one fenced OP line.
 
 > [!IMPORTANT]
 > YOU MUST NOT emit anything except whitespace outside valid Plurnk OP Syntax fences.
@@ -20,7 +20,7 @@ body?
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: Copy files, entries, streams, or text regions.
 * MOVE: Move files, entries, streams, or text regions.
-* KILL: Kill things. Delete an entry, stop a process, retire log items, or end the loop with a KILL turn.
+* KILL: Kill things. Delete an entry, stop a process, retire log items, or end the loop.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams.
@@ -28,21 +28,22 @@ body?
 
 ## Workflow Management
 
-> [!IMPORTANT]
-> YOU SHOULD use SEND for progress updates, WAIT to yield to children and streams, and the KILL turn for the final response.
-> YOU SHOULD NOT perform a KILL turn before you have fully resolved all child workers and streams.
-> YOU MAY perform the KILL turn by emitting a parameterless standalone KILL containing the final deliverable response.
+> [!TIP]
+> A parameterless KILL with the final deliverable response ends the loop.
 
-```SEND <!-- parameterless send messages user -->
+> [!IMPORTANT]
+> YOU MUST NOT emit any other OP when you end the loop, and all child workers and streams must be resolved.
+
+```SEND <!-- example: a parameterless send messages user -->
 This is an example of a continuing turn progress update for the user.
 ```
 
-```WAIT <60> <!-- yield to children and streams for up to 60 seconds -->
+```WAIT <60> <!-- example: yield to children and streams for up to 60 seconds -->
 This is an example of a waiting turn progress update for the user.
 ```
 
-```KILL <!-- parameterless standalone KILL turn is the final deliverable response -->
-This is an example of the complete, final deliverable response.
+```KILL
+This is an example of the final deliverable response that ends the loop.
 ```
 
 ## `pattern` (worker:///_plurnk/plurnk/pattern.md)
