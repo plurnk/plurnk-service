@@ -1,21 +1,5 @@
 # @plurnk/plurnk-execs
 
-## 2.0.1
-
-### Patch Changes
-
-- 0b21165: Disable the native question tool by default through the existing executor switch;
-  explicit opt-in preserves its implementation and client-interaction lifecycle.
-  Clarify that SEND carries progress updates and WAIT yields to children and streams,
-  without changing either operation's behavior.
-- Updated dependencies [36277b1]
-- Updated dependencies [0d5480b]
-- Updated dependencies [0b21165]
-- Updated dependencies [8461082]
-- Updated dependencies [0d5480b]
-  - @plurnk/plurnk-contracts@3.0.0
-  - @plurnk/plurnk-parser@3.0.0
-
 ## 2.0.0
 
 ### Major Changes

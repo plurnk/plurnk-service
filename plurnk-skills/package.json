@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-skills",
-    "version": "2.0.1",
+    "version": "2.0.0",
     "description": "Agent Skills workspace management and read-only resource trees for Plurnk",
     "type": "module",
     "license": "MIT",
@@ -32,7 +32,7 @@
     },
     "peerDependencies": {
         "@plurnk/plurnk-agent-plugins": "^2.0.0",
-        "@plurnk/plurnk-contracts": "^3.0.0",
+        "@plurnk/plurnk-contracts": "^2.0.0",
         "@plurnk/plurnk-modules": "^2.0.0",
         "@plurnk/plurnk-schemes": "^2.0.0"
     },

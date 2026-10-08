@@ -1,16 +1,5 @@
 # @plurnk/plurnk-mimetypes
 
-## 2.0.1
-
-### Patch Changes
-
-- Updated dependencies [36277b1]
-- Updated dependencies [0d5480b]
-- Updated dependencies [0b21165]
-- Updated dependencies [8461082]
-- Updated dependencies [0d5480b]
-  - @plurnk/plurnk-contracts@3.0.0
-
 ## 2.0.0
 
 - Retire family-wide dependency freshness scanning; packages declare independent compatibility.

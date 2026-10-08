@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-hooks",
-    "version": "2.0.1",
+    "version": "2.0.0",
     "description": "Deliver selected Plurnk lifecycle events to exact local commands.",
     "keywords": [
         "plurnk",
@@ -24,7 +24,7 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^3.0.0",
+        "@plurnk/plurnk-contracts": "^2.0.0",
         "@plurnk/plurnk-meta": "^2.0.0"
     },
     "peerDependencies": {

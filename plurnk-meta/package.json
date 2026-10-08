@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-meta",
-    "version": "2.0.1",
+    "version": "2.0.0",
     "description": "Extension discovery and trust primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, Recap, the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",
