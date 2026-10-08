@@ -8,6 +8,7 @@ import {
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { PlurnkParseError } from "@plurnk/plurnk-contracts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
+import StatementShape from "./StatementShape.ts";
 
 export default class RecordingListener extends BaseErrorListener {
     readonly errors: PlurnkParseError[];
@@ -34,7 +35,7 @@ export default class RecordingListener extends BaseErrorListener {
         const open = this.source === "lexer"
             ? { op: (recognizer as plurnkLexer).getOpenOp(), exec: (recognizer as plurnkLexer).isExecFence() }
             : PlurnkErrorStrategy.parserOpenOp(recognizer as Parser);
-        const recovery = open === null || open.op === "" ? undefined : PlurnkErrorStrategy.canonicalForm(open.op, open.exec);
+        const recovery = open === null || open.op === "" ? undefined : StatementShape.workingForm(open.op, open.exec);
         this.errors.push(new PlurnkParseError(line, column, this.source, translated, "error", recovery));
     }
 }

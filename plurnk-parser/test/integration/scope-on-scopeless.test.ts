@@ -26,17 +26,17 @@ test("{§scope-on-scopeless} zai run426: `WORK (worker://…) <1,-1>` runs the W
     assert.ok((work.op === "WORK" ? work.body : "").length > 200, "the child's complete task is the body");
     const line = text.split("\n").findIndex((entry) => entry.startsWith("```WORK (worker://deprecation-implementer) <1,-1>")) + 1;
     assert.ok(line > 0);
-    assert.ok(diagnostics(text).includes("warning: `WORK` takes a target only; the scope `<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL."), diagnostics(text).join("\n"));
+    assert.ok(diagnostics(text).includes("warning: `WORK` takes a target only; the scope `<1,-1>` was ignored."), diagnostics(text).join("\n"));
     assert.ok(!diagnostics(text).some((entry) => entry.startsWith("error:")), "no hard diagnostic, no dead turn");
 });
 
 test("{§scope-on-scopeless} FORK, BARE, NOTE and a recipientless SEND drop a scope in any position; a recipient SEND keeps its scope", () => {
     for (const [input, op, message] of [
-        ["```FORK (worker://x) <@abcde,@fghij>\nTask.\n```", "FORK", "`FORK` takes a target only; the scope `<@abcde,@fghij>` was ignored. A scope selects lines in READ, EDIT and KILL."],
-        ["```BARE <3> <!-- why -->\nPrompt.\n```", "BARE", "`BARE` takes a target only; the scope `<3>` was ignored. A scope selects lines in READ, EDIT and KILL."],
-        ["```WORK <1,-1> (worker://x)\nTask.\n```", "WORK", "`WORK` takes a target only; the scope `<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL."],
-        ["```NOTE <3>\nRemember.\n```", "NOTE", "`NOTE` takes no target or scope; the scope `<3>` was ignored. A scope selects lines in READ, EDIT and KILL."],
-        ["```SEND <3>\nhi\n```", "SEND", "`SEND` without a recipient takes no scope; the scope `<3>` was ignored. A scope selects lines in READ, EDIT and KILL."],
+        ["```FORK (worker://x) <@abcde,@fghij>\nTask.\n```", "FORK", "`FORK` takes a target only; the scope `<@abcde,@fghij>` was ignored."],
+        ["```BARE <3> <!-- why -->\nPrompt.\n```", "BARE", "`BARE` takes a target only; the scope `<3>` was ignored."],
+        ["```WORK <1,-1> (worker://x)\nTask.\n```", "WORK", "`WORK` takes a target only; the scope `<1,-1>` was ignored."],
+        ["```NOTE <3>\nRemember.\n```", "NOTE", "`NOTE` takes no target or scope; the scope `<3>` was ignored."],
+        ["```SEND <3>\nhi\n```", "SEND", "`SEND` without a recipient takes no scope; the scope `<3>` was ignored."],
     ] as const) {
         const [statement] = statements(input);
         assert.equal(statement?.op, op, input);

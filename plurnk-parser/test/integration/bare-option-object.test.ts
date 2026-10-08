@@ -7,7 +7,7 @@ const statements = (result: ParseResult<ClientStatement>) => result.items.flatMa
 const warnings = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
 const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
 const RECEIPT = (tag: string) => `\`${tag}\` took a bare option object; the taught form is \`[{…}]\`.`;
-const MATCHER_ADVISORY = "`{…}` was read as the matcher; an option block is `[{…}]`.";
+const MATCHER_ADVISORY = "`{…}` was read as the matcher.";
 
 test("{§bare-option-object}: SEND reads one JSON object after the target as its option block, the body beneath intact", () => {
     const result = PlurnkParser.parse("````SEND (node:///40968898) {\"eof\": true}\noranges\n````\n");
@@ -57,7 +57,7 @@ test("{§bare-option-object}: a heading that already carries a block keeps the o
     assert.match(warnings(notJson).join("\n"), /body text was on the OP line/);
 });
 
-test("{§bare-option-object}: on FIND and READ the object is the matcher, and the advisory names the option form", () => {
+test("{§bare-option-object} {§diagnostic-observation}: on FIND and READ the object is the matcher, and the advisory says so", () => {
     for (const heading of ["FIND (src/**) {\"debug\": true}", "READ (notes.md) {\"debug\": true}"]) {
         const result = PlurnkParser.parse(`\`\`\`\`${heading}\n\`\`\`\`\n`);
         const [statement] = statements(result);

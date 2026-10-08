@@ -51,27 +51,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.BODY_TEXT]: "body content",
     };
 
-    // {§parse-recovery} — the working form of an operation, for a diagnostic that refused its heading.
-    static canonicalForm(op: string, exec: boolean): string | undefined {
-        if (exec) return `\`${op} (program)? [{"cwd": "…"}]?\` on the opening fence line, the input on the lines below, then the closing fence.`;
-        const forms: Readonly<Record<string, string>> = {
-            FIND: "`FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line; FIND takes no body.",
-            READ: "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body.",
-            EDIT: "`EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence.",
-            COPY: "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body.",
-            MOVE: "`MOVE (from) <scope>? (to) <scope>?` on the opening fence line; MOVE takes no body.",
-            KILL: "`KILL (path) <L,M>?` on the opening fence line, or a parameterless `KILL` with the final answer on the lines below.",
-            SEND: "`SEND (recipient)?` on the opening fence line, the message on the lines below, then the closing fence.",
-            WORK: "`WORK (worker://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
-            FORK: "`FORK (worker://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
-            BARE: "`BARE (path)?` on the opening fence line, the prompt on the lines below, then the closing fence.",
-            NOTE: "`NOTE` alone on the opening fence line, the note on the lines below, then the closing fence.",
-            WAIT: "`WAIT (path)? <seconds>?` on the opening fence line, any body on the lines below, then the closing fence.",
-            LOOK: "`LOOK (path) <scope>?` on the opening fence line, the matcher on the line below.",
-        };
-        return forms[op];
-    }
-
     // The operation whose heading the parser was reading when it failed: the nearest statement's opener.
     static parserOpenOp(recognizer: Parser): { op: string; exec: boolean } | null {
         for (let ctx: ParserRuleContext | null = recognizer.context; ctx !== null; ctx = ctx.parent) {
@@ -89,14 +68,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const modeName = lexer.modeNames[lexer.mode] ?? "DEFAULT_MODE";
         const context = PlurnkErrorStrategy.#LEXER_MODE_CONTEXT[modeName] ?? "between statements";
         const ch = PlurnkErrorStrategy.#extractOffendingChar(originalMsg);
-        if (modeName === "SLOTS" && ch.startsWith("'[")) {
-            return ["NOTE", "WAIT"].includes(lexer.getOpenOp())
-                ? `${lexer.getOpenOp()}'s body begins below the header`
-                : "unexpected bracket modifier; the fence name selects the executor";
-        }
-        // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
-        // regex and XPath redirect only once the heading has closed a `(target)` — before
-        // that, `/` may instead be a target whose `(...)` wrap was omitted.
+        if (modeName === "SLOTS" && ch.startsWith("'[")) return `unrecognized character ${ch} in the ${lexer.getOpenOp()} header`;
         // A `<…>` slot that opened after its own space is a scope whose CONTENT is wrong —
         // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
         // the previous slot keeps the spacing message below.
@@ -111,13 +83,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
                         : lexer.isTextCoordinateOp()
                             ? "use numeric coordinates or `@hash` line anchors"
                             : "this operation takes no scope";
-            const excerpt = PlurnkErrorStrategy.#scopeExcerpt(lexer);
-            const marked = lexer.isTextCoordinateOp() ? PlurnkErrorStrategy.#markedAnchors(excerpt) : null;
-            return `invalid ${op} scope ${JSON.stringify(excerpt)}; ${marked === null ? constraint : `every line anchor carries its \`@\`: \`${marked}\``}`;
-        }
-        if (modeName === "SLOTS" && (/^'[$~@]'$/.test(ch)
-            || (ch === "'/'" && PlurnkErrorStrategy.#headingClosedTarget(lexer)))) {
-            return `unrecognized character ${ch} in operation heading - a matcher belongs in the heading as [{"pattern": "…"}]`;
+            return `invalid ${op} scope ${JSON.stringify(PlurnkErrorStrategy.#scopeExcerpt(lexer))}; ${constraint}`;
         }
         // A backtick run in the slot region IS the closing fence; the error is the text after it
         // on the line. Listing "the closing fence" as still expected names the thing the model
@@ -151,14 +117,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return trailing.trim().length === 0 ? null : trailing.trim();
     }
 
-    // A hash copied without its `@` beside one that carries it (`<@WFYC2,tXN17>`): the scope as it
-    // reads with every anchor marked, or null when nothing in it is an unmarked anchor (#1005).
-    static #markedAnchors(excerpt: string): string | null {
-        if (!/@[0-9A-Za-z]{5}/u.test(excerpt)) return null;
-        const marked = excerpt.replace(/(?<=[<,] ?)(?=[0-9A-Za-z]{5}[,>])(?=[0-9]{0,4}[A-Za-z])/gu, "@");
-        return marked === excerpt ? null : marked;
-    }
-
     static #scopeExcerpt(lexer: plurnkLexer): string {
         const stream = lexer.inputStream;
         const start = lexer.tokenStartCharIndex;
@@ -172,17 +130,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             if (char === ">") break;
         }
         return excerpt;
-    }
-
-    // True when the current heading line already closed a `(...)` target.
-    static #headingClosedTarget(lexer: plurnkLexer): boolean {
-        const stream = lexer.inputStream;
-        for (let i = stream.index - 1; i >= 0; i -= 1) {
-            const char = stream.getTextFromRange(i, i);
-            if (char === "\n") return false;
-            if (char === ")") return true;
-        }
-        return false;
     }
 
     static #extractOffendingChar(msg: string): string {

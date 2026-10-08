@@ -41,7 +41,7 @@ test("{§kill-scope} {§log-kill-distillation} a bodyless KILL's advisory names 
         const source = PlurnkParser.frame(heading, "stop it");
         const [kill] = statements(source);
         assert.equal(kill?.op === "KILL" ? kill.body : "?", null, heading);
-        assert.deepEqual(advisories(source), ["This KILL takes no body; the body was ignored. A pattern belongs on the opening fence line after the path."], heading);
+        assert.deepEqual(advisories(source), ["This KILL takes no body; line 2 was not used."], heading);
     }
     for (const heading of ["KILL", "KILL (log:///1/2/3)", "KILL (log://alice/1/2/3)"]) {
         const source = PlurnkParser.frame(heading, "Retained information.");

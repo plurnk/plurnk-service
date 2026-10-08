@@ -660,7 +660,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string; line: number; source: string }>;
         assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
-                assert.equal(parseErrors[0]?.message, "NOTE's body begins below the header");
+                assert.equal(parseErrors[0]?.message, "unrecognized character '[' in the NOTE header");
         assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "lexer" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
@@ -737,7 +737,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
         assert.equal(refusal.problem?.stage, "matcher");
         // {§parse-recovery}: the parser's working form rides as the Problem's recovery.
         assert.equal(refusal.problem?.recovery,
-            "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`.");
+            "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`.");
 
         const recovery = await engine.runTurn({
             provider,
@@ -821,7 +821,7 @@ ${renderedRead}
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(JSON.stringify(packet), /READ takes no body; the body was ignored/, "the advisory reaches the next packet");
+        assert.match(JSON.stringify(packet), /READ takes no body; lines? \d+(–\d+)? (was|were) not used\./u, "the advisory reaches the next packet");
         assert.doesNotMatch(
             log,
             /@et6xE/,

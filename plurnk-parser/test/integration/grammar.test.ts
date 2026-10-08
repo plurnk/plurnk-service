@@ -221,16 +221,16 @@ test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borr
         const error = firstError(section(op, " (a.md) <line number>"));
         assert.equal(error.message, `invalid ${op} scope "<line number>"; use numeric coordinates or \`@hash\` line anchors`);
     }
-    // A hash copied without its `@` beside one that carries it names the scope with every anchor marked (#1005).
+    // {§diagnostic-observation} — a hash written without its `@` is said as read, never rewritten into the anchor it might be.
     assert.equal(firstError(section("EDIT", " (sympy/utilities/iterables.py) <@WFYC2,tXN17>", "x")).message,
-        "invalid EDIT scope \"<@WFYC2,tXN17>\"; every line anchor carries its `@`: `<@WFYC2,@tXN17>`");
+        "invalid EDIT scope \"<@WFYC2,tXN17>\"; use numeric coordinates or `@hash` line anchors");
     assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
     // {§scope-on-scopeless} — an operation that takes no scope drops it and runs, with one advisory naming its slots.
     for (const op of ["BARE", "WORK", "FORK"] as const) {
         const result = PlurnkParser.parse(section(op, " <result range>"));
         assert.deepEqual(result.items.map((item) => item.kind === "error" ? `${item.error.severity}: ${item.error.message}` : item.kind === "statement" ? item.statement.op : item.kind),
-            [op, `warning: \`${op}\` takes a target only; the scope \`<result range>\` was ignored. A scope selects lines in READ, EDIT and KILL.`]);
+            [op, `warning: \`${op}\` takes a target only; the scope \`<result range>\` was ignored.`]);
     }
     const wait = PlurnkParser.parse(section("WAIT", " <result range>"));
     assert.deepEqual(wait.items.map((item) => item.kind === "error" ? `${item.error.severity}: ${item.error.message}` : item.kind === "statement" ? item.statement.op : item.kind),
@@ -670,7 +670,7 @@ test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a 
     const advisories = word.items.filter((item) => item.kind === "error");
     assert.equal(advisories.length, 1);
     assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
-    assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /READ takes no body; the body was ignored/u);
+    assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /^READ takes no body; line \d+ was not used\.$/u);
     assert.deepEqual(word.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
     // The inline-heading spelling is the grep spelling and lifts the same way.
     const inline = PlurnkParser.parse("\n````FIND (Engine.ts) /resolveWorkerPrimary/\n````\n\n````NOTE\nnext\n````");
@@ -1327,5 +1327,5 @@ test("the fence name selects the execution while its modifiers retain their cont
     const executorCwd = oneStatement('````node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n````');
     if (!isExecution(executorCwd)) assert.fail("expected an execution");
     assert.deepEqual(executorCwd.metadata, ['{"cwd": "sub"}']);
-    assert.match(firstError("````READ [python3] (tool.py)````").message, /unexpected bracket modifier; the fence name selects the executor/);
+    assert.equal(firstError("````READ [python3] (tool.py)````").message, "unrecognized character '[' in the READ header");
 });

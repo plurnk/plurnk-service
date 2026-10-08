@@ -62,19 +62,38 @@ test("{§naked-pattern}: on EDIT a heading-line sigil is the matcher and the lin
     assert.equal(literal.diagnostics[0]?.severity, "warning");
 });
 
-test("{§matcher-body-redirect}: text beneath a FIND, READ or KILL heading is still an ignored body with one gentle advisory; the heading line lifts regardless", () => {
+test("{§matcher-body-redirect} {§diagnostic-observation}: text beneath a FIND, READ or KILL heading is not used, and one advisory names its lines; the heading line lifts regardless", () => {
     const below = one("````FIND (worker:///src)\nTODO\n````\n");
     assert.equal(below.op.matcher, null);
     assert.equal(below.diagnostics.length, 1);
     assert.equal(below.diagnostics[0]!.severity, "warning");
-    assert.equal(below.diagnostics[0]!.message, "FIND takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.");
+    assert.equal(below.diagnostics[0]!.message, "FIND takes no body; line 2 was not used.");
     const sigilBelow = one("````FIND (worker:///src)\n/TODO/\n````\n");
     assert.deepEqual(sigilBelow.diagnostics, []);
     assert.equal(sigilBelow.op.matcher?.raw, "/TODO/", "one sigil line beneath the heading is the bare form written a line low");
     const both = one("````FIND (worker:///src) TODO\nand a stray second line\n````\n");
     assert.deepEqual(both.op.matcher, { dialect: "glob", raw: "TODO" });
     assert.equal(both.diagnostics.length, 1);
-    assert.match(both.diagnostics[0]!.message, /^FIND takes no body/u);
+    assert.equal(both.diagnostics[0]!.message, "FIND takes no body; line 2 was not used.", "the heading-line pattern was read; only the line beneath was not");
+});
+
+test("{§matcher-body-redirect} {§diagnostic-observation}: a block whose closer was lost names the lines it did not use, and nothing about what they held (dogfood, glm-5p3)", () => {
+    // A reasoning token glued between a closer and the next opener keeps the second READ open to the end.
+    const source = [
+        "```READ (README.md) <!-- the project's own summary -->",
+        "```",
+        "```READ (AGENTS.md) <101,301> <!-- the rest of the field guide -->",
+        "```</think>```NOTE <!-- assembling the description -->",
+        "```</think>```KILL",
+        "# PLURNK",
+        "",
+        "The answer.",
+        "```",
+    ].join("\n");
+    const result = PlurnkParser.parse(source);
+    assert.deepEqual(statements(result).map((statement) => "op" in statement ? statement.op : null), ["READ", "READ"]);
+    assert.deepEqual(diagnostics(result).map(({ line, severity, message }) => ({ line, severity, message })),
+        [{ line: 3, severity: "warning", message: "READ takes no body; lines 4–8 were not used." }]);
 });
 
 test("{§matcher-option}: the option form is still read, and it is the rendered escape when the bare form could not read back", () => {

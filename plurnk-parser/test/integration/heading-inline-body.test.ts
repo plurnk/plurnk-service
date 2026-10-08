@@ -18,15 +18,16 @@ type Reading = { matcher?: string; body?: string; metadata?: string[]; advisory?
 type Read = (kind: Kind, text: string, inline: boolean) => Reading;
 
 const inlineBody = (name: string) => `\`${name}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line.`;
-const ignored = (name: string) => `${name} takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.`;
-const objectMatcher = "`{…}` was read as the matcher; an option block is `[{…}]`.";
+// {§diagnostic-observation} — every source here opens on line 1: unread text stands beside the heading or on line 2.
+const ignored = (name: string, inline: boolean) => `${name} takes no body; ${inline ? "the text after its heading on line 1" : "line 2"} was not used.`;
+const objectMatcher = "`{…}` was read as the matcher.";
 const optionObject = (name: string) => `\`${name}\` took a bare option object; the taught form is \`[{…}]\`.`;
 const PATTERN = ' [{"pattern": "/p/"}]';
 
 // The heading line is the matcher's; beneath it, only one sigil line lifts and anything else is ignored.
 const matcherOp = (name: string): Read => (kind, text, inline) => inline
     ? { matcher: text, ...(kind === "object" ? { advisory: objectMatcher } : {}) }
-    : kind === "sigil" ? { matcher: text } : { advisory: ignored(name) };
+    : kind === "sigil" ? { matcher: text } : { advisory: ignored(name, false) };
 // Heading text is the body's first line, named; text beneath is the body.
 const bodied = (name: string): Read => (_kind, text, inline) => ({ body: text, ...(inline ? { advisory: inlineBody(name) } : {}) });
 // One JSON object on the heading line is the option block; any other heading text is the body.
@@ -40,8 +41,8 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["KILL (a.md)", "KILL", matcherOp("This KILL")],
     ["KILL (log:///1/2/3)", "KILL", (kind, text, inline) => inline ? matcherOp("KILL")(kind, text, inline) : { body: text }],
     ["EDIT (a.md) <1>", "EDIT", (kind, text, inline) => inline && kind === "sigil" ? { matcher: text } : bodied("EDIT")(kind, text, inline)],
-    ["COPY (a.md) (b.md)", "COPY", () => ({ advisory: "COPY takes no body; the body was ignored." })],
-    ["MOVE (a.md) (b.md)", "MOVE", () => ({ advisory: "MOVE takes no body; the body was ignored." })],
+    ["COPY (a.md) (b.md)", "COPY", (_kind, _text, inline) => ({ advisory: ignored("COPY", inline) })],
+    ["MOVE (a.md) (b.md)", "MOVE", (_kind, _text, inline) => ({ advisory: ignored("MOVE", inline) })],
     ["SEND", "SEND", optioned("SEND", undefined)],
     ["SEND (worker://x)", "SEND", optioned("SEND", undefined)],
     // BARE, WORK and FORK take an option block only after their target.
@@ -56,9 +57,9 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["WAIT", "WAIT", bodied("WAIT")],
     ["KILL", "KILL", bodied("KILL")],
     // Beside an option block's pattern the heading text is not the matcher.
-    [`FIND (a.md)${PATTERN}`, "FIND", () => ({ matcher: "/p/", advisory: ignored("FIND") })],
-    [`READ (a.md)${PATTERN}`, "READ", () => ({ matcher: "/p/", advisory: ignored("READ") })],
-    [`KILL (a.md)${PATTERN}`, "KILL", () => ({ matcher: "/p/", advisory: ignored("This KILL") })],
+    [`FIND (a.md)${PATTERN}`, "FIND", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("FIND", inline) })],
+    [`READ (a.md)${PATTERN}`, "READ", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("READ", inline) })],
+    [`KILL (a.md)${PATTERN}`, "KILL", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("This KILL", inline) })],
     [`KILL (log:///1/2/3)${PATTERN}`, "KILL", (kind, text, inline) => ({ matcher: "/p/", ...bodied("KILL")(kind, text, inline) })],
     [`EDIT (a.md) <1>${PATTERN}`, "EDIT", (kind, text, inline) => ({ matcher: "/p/", ...bodied("EDIT")(kind, text, inline) })],
 ];

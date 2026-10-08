@@ -43,7 +43,8 @@ for (const op of ["READ", "KILL"] as const) {
         const errors = parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error");
         assert.equal(errors.length, 1);
         assert.ok(errors[0]?.kind === "error");
-        assert.match(errors[0].error.message, /scope.*path|path.*scope/iu);
+        assert.equal(errors[0].error.message, "The scope `<1,3>` follows the shared pattern of a target group.");
+        assert.equal(errors[0].error.recovery, "In a target group each `(path)` carries its own scope and option block, and the one shared pattern comes last.");
         assert.equal(parsed.items.some((item) => item.kind === "error" && item.error.severity === "warning"), false, "no false claim that the scope was applied");
     });
 

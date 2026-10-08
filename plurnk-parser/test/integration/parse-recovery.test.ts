@@ -65,7 +65,7 @@ test("{§trailing-slots} valid flags, scopes and asides do not become trailing-r
     }
 });
 
-test("{§regex-dialect-readings} {§parse-recovery} a glob-shaped regex is read as its glob over each line with one advisory; a broken regex carries the regex sentence (run429)", () => {
+test("{§regex-dialect-readings} {§parse-recovery} a glob-shaped regex is read as its glob over each line with one advisory; a broken regex carries the regex's working form", () => {
     for (const [input, pattern] of [
         ["```FIND (tests/*) /*url*/ <!-- test modules mentioning url -->\n```", ".*url.*"],
         ["```READ (django) /*.py/\n```", ".*\\.py"],
@@ -82,7 +82,7 @@ test("{§regex-dialect-readings} {§parse-recovery} a glob-shaped regex is read 
     assert.deepEqual(advisories("```FIND (tests/*) /*url*/ <!-- test modules mentioning url -->\n```"),
         ["`/*url*/` was read as the glob `*url*` over each line, the regex `/.*url.*/`; a pattern is a regex, and `*` repeats what precedes it."]); // {§pinned-wording-parser}
     assert.equal(refusedMatcher("```READ (a.py) /(unclosed/\n```").recovery,
-        "A pattern is a regex written `/pattern/flags`; escape a literal `*`, `+`, `?`, `(`, `[` or `.` with `\\`.", "not glob-shaped: the regex sentence alone"); // {§pinned-wording-parser}
+        "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.", "{§diagnostic-observation}: the dialect's form, never a reading of the input"); // {§pinned-wording-parser}
 });
 
 test("{§parse-recovery} every grammar-level refusal names its working form", () => {
@@ -90,8 +90,8 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         ["```READ (a.py) <+1>\n```", "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`."],
         ["```READ (http://exa mple.com/x)\n```", "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`."],
         ["```READ (a.py) [{\"pattern\": 3}]\n```", "Write the matcher as a string, `[{\"pattern\": \"/needle/i\"}]`, or bare on the opening fence line after the path."],
-        ["```sh (a) (b)\n```", "Write one `(program)` path on the `sh` heading, and the rest below it as the input."],
-        ["```EDIT (a.py) <1> <2>\nx\n```", "Write one scope with both ends, such as `<1,2>`."],
+        ["```sh (a) (b)\n```", "`sh (program)? [{\"cwd\": \"…\"}]?` on the opening fence line, the input on the lines below, then the closing fence."],
+        ["```EDIT (a.py) <1> <2>\nx\n```", "One scope per selection, such as `<12,40>` or `<@abcde,+5>`."],
         ["```READ (a.py) <line number>\n```", "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body."],
         ["```COPY (a.py)\n```", "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body."],
         ["```WAIT (worker://unfinished\n```", "`WAIT (path)? <seconds>?` on the opening fence line, any body on the lines below, then the closing fence."],
@@ -108,8 +108,8 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
 test("{§matcher-refusal} {§parse-recovery} every refused matcher carries its working form on the admitted statement", () => {
     for (const [input, recovery] of [
         ["```READ (a.md) /\n```", "Write `/pattern/flags`, flags optional, such as `/timeout/i`."],
-        ["```READ (a.md) //[bad\n```", "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`; a text search is a regex, `/needle/`."],
-        ["```READ (a.json) $.[\n```", "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`."],
+        ["```READ (a.md) //[bad\n```", "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`."],
+        ["```READ (a.json) $.[\n```", "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`."],
         ["```READ (a.py) &\n```", "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls."],
         ["```READ (a.py) /a/i extra\n```", "Write only `/pattern/flags` in the matcher; flags are optional."],
     ] as const) {

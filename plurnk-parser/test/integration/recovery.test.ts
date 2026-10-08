@@ -125,7 +125,7 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
         const r = PlurnkParser.parse(turn(frame(header, "body")));
         assert.equal(errors(r).length, 1, header);
         assert.equal(errors(r)[0].line, 1, header);
-        assert.equal(errors(r)[0].message, "unexpected bracket modifier; the fence name selects the executor", header);
+        assert.equal(errors(r)[0].message, `unrecognized character '[' in the ${header.split(" ")[0]} header`, header);
         assert.equal(r.unparsedTail, undefined, header);
         assert.deepEqual(statements(r).map(writtenOp), ["WAIT"], header);
     }

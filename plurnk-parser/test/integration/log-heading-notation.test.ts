@@ -76,18 +76,18 @@ test("{§log-heading-notation} a middle-dot note before a comment is stray text:
     assert.equal(statements("```READ (a.py) \u00B7 first lines\n```")[0]?.aside, "first lines", "a dot note with no comment is still the aside");
 });
 
-test("{§bare-target} a target written without parentheses is refused with the line that runs (recorded headings)", () => {
+test("{§bare-target} {§diagnostic-observation} a target written without parentheses is refused with the operation's working form (recorded headings)", () => {
     assert.deepEqual(errors("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"), [
         "`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes.",
         PlurnkParser.NO_VALID_OPERATION,
     ]);
-    // {§parse-recovery} — the corrected line is the recovery.
+    // {§parse-recovery} — the recovery is the operation's working form, never the input rewritten.
     assert.deepEqual(refusal("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"),
-        ["`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. Write the target in parentheses: `READ (sphinx/ext/autodoc/__init__.py) <682,695>`."]);
+        ["`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. `READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body."]);
     assert.deepEqual(refusal("```FIND tests/migrations/test_writer.py /gettext_lazy|^import|^from/\n```"),
-        ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. Write the target in parentheses: `FIND (tests/migrations/test_writer.py) /gettext_lazy|^import|^from/`."]);
+        ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. `FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line; FIND takes no body."]);
     assert.deepEqual(refusal("```EDIT a.py <1,4>\nnew\n```"),
-        ["`EDIT` has no target: `a.py` stands where the target goes. Write the target in parentheses: `EDIT (a.py) <1,4>`."]);
+        ["`EDIT` has no target: `a.py` stands where the target goes. `EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence."]);
     const [kill] = statements("```KILL The answer is 42.\n```");
     assert.equal(kill?.op === "KILL" ? kill.body : null, "The answer is 42.", "a targetless KILL's heading text stays its deliverable");
 });
@@ -104,12 +104,12 @@ test("{§bare-anchor-scope} an EDIT's bare `@hash` or `@start,@end` is its scope
     const read = statements("```READ (tests/test_mock.py) @patch\n```")[0];
     assert.equal(read?.op === "READ" ? read.matcher?.raw : null, "@patch", "on READ it stays the literal search");
     assert.deepEqual(refusal("```EDIT (requests/sessions.py) <91> @HecMB\nx\n```"),
-        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. Write one scope, such as `<@HecMB>`: the anchor names its line."]);
+        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
 });
 
-test("{§bare-anchor-scope} two scopes on one resource: two ends are one range, two ranges are two operations (#1005)", () => {
+test("{§slot-order} {§diagnostic-observation} two scopes on one resource are refused with the scope's working form, never a reading of the pair", () => {
     assert.deepEqual(refusal("```READ (doc/usage.rst) <@wC8Pt> <-1>\n```"),
-        ["A resource selection takes one scope, and `<@wC8Pt>` and `<-1>` both stand here. Write one scope with both ends, such as `<@wC8Pt,-1>`."]);
+        ["A resource selection takes one scope, and `<@wC8Pt>` and `<-1>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
     assert.deepEqual(refusal("```READ (sklearn/model_selection/_split.py) <105,106> <1066,1300>\n```"),
-        ["A resource selection takes one scope, and `<105,106>` and `<1066,1300>` both stand here. Write one scope; select each of `<105,106>` and `<1066,1300>` with its own operation."]);
+        ["A resource selection takes one scope, and `<105,106>` and `<1066,1300>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
 });

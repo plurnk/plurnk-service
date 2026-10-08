@@ -357,7 +357,7 @@ export default class PlurnkParser {
         const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
             : op === "SEND" ? "`SEND` without a recipient takes no scope"
                 : `\`${op}\` takes a target only`;
-        return `${slots}; the scope \`${scope}\` was ignored. A scope selects lines in READ, EDIT and KILL.`;
+        return `${slots}; the scope \`${scope}\` was ignored.`;
     }
 
     // {§response-text}: only the lexer's outside-text channel is recoverable; a malformed

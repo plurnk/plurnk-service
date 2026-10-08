@@ -301,7 +301,7 @@ test("{§trailing-slots}: an ambiguous grouped KILL changes no member, while its
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "KILL"), false);
         assert.ok(rows.some(({ op, status_rx }) => op === "NOTE" && status_rx === 200));
-        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && /scope or metadata block with its path/u.test(rx)));
+        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("The scope `<1,3>` follows the shared pattern of a target group.")));
     } finally { await db.close(); }
 });
 
