@@ -1,9 +1,9 @@
 ---
-"@plurnk/plurnk-service": major
-"@plurnk/plurnk-contracts": major
-"@plurnk/plurnk-agui": major
-"@plurnk/plurnk-a2a": major
-"@plurnk/plurnk-schedule": major
+"@plurnk/plurnk-service": minor
+"@plurnk/plurnk-contracts": minor
+"@plurnk/plurnk-agui": minor
+"@plurnk/plurnk-a2a": minor
+"@plurnk/plurnk-schedule": minor
 "@plurnk/plurnk-digest": patch
 "@plurnk/plurnk-hooks": patch
 "@plurnk/plurnk-execs-common": patch

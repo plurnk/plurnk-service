@@ -1,6 +1,6 @@
 ---
-"@plurnk/plurnk-parser": major
-"@plurnk/plurnk-contracts": major
+"@plurnk/plurnk-parser": minor
+"@plurnk/plurnk-contracts": minor
 "@plurnk/plurnk-service": patch
 ---
 

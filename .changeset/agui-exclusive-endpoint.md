@@ -1,6 +1,6 @@
 ---
-"@plurnk/plurnk-agui": major
-"@plurnk/plurnk-service": major
+"@plurnk/plurnk-agui": minor
+"@plurnk/plurnk-service": minor
 "@plurnk/plurnk-contracts": patch
 "@plurnk/plurnk-modules": patch
 "@plurnk/plurnk-meta": patch
