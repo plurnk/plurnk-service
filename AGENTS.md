@@ -299,3 +299,8 @@ is itself an agreed requirement.
 one landing: types, schema, methods, Problems, knobs, wire actions, spec tags, tests, fixtures and docs.
 Retired names fail hard and name their successor. A surface-only rename, a new flag over old internals,
 is a defect, not a first step.
+
+**A diagnostic says what happened, never why** ({§diagnostic-observation}). A message names what
+was read, what was done with it and where, and may show the construct's working form; it never
+guesses the author's intent or the cause. An existing message is no license: check every sentence
+against what the producer itself decided.

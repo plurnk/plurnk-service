@@ -684,10 +684,7 @@ repeat the complete selection/metadata group per operand. ANTLR accepts
 adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order. A second scope
-is refused, and the recovery reads the pair: a line number followed by its anchor
-(`<91> <@abcde>`, a copied row prefix) recovers to the anchor alone, two other single
-positions to one scope with both ends (`<@abcde> <-1>` to `<@abcde,-1>`), and anything
-else to one operation per selection.
+is refused; the recovery is the scope's working form ({§parse-recovery}).
 
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
 optional target and duration under {§send-wait-scope}. Their literal bodies begin
@@ -717,7 +714,7 @@ are never split. Each URI inherits its slot's scope and metadata and compiles th
 BARE and NOTE take no scope, and neither does a SEND without a recipient; a `<…>` slot on such a
 heading, in any position, is skipped and the operation runs, with one warning-severity advisory
 naming the operation's slots and the dropped scope — `` `WORK` takes a target only; the scope
-`<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL. `` (`` `NOTE` takes no target or
+`<1,-1>` was ignored. `` (`` `NOTE` takes no target or
 scope; … ``, `` `SEND` without a recipient takes no scope; … ``). An aside is never a scope, a
 recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT follows
 {§send-wait-scope}. There is no ambiguity: the operation has one reading with or without
@@ -756,9 +753,8 @@ written on the heading line — under {§heading-inline-body}. The host names th
 (`ParseOptions.jsonBodyExecutors`). A heading that already carries a block keeps the object as
 inline body. On FIND, READ and KILL the same text is the matcher
 ({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
-that parses as a JSON object draws one advisory naming the option form ("`{…}`
-was read as the matcher; an option block is `[{…}]`."), so the collision is
-learned in the turn it happens.
+that parses as a JSON object draws one advisory saying so: "`{…}` was read as the
+matcher." ({§diagnostic-observation}).
 
 §operation-aside The final header modifier may be one single-line HTML
 comment. AstBuilder removes its delimiters and surrounding whitespace into
@@ -801,10 +797,9 @@ language lifts only from one block that parses as a JSON array of objects;
 anything else lifts nothing and reaches the owner's `400` untouched. A
 `pattern` that is present but not a string is the language's own positioned
 diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
-READ, and targeted KILL take no body: a body beneath their heading is ignored and
-the operation still runs, with one warning-severity advisory naming the
-heading-line form (`FIND takes no body; the body was ignored. A pattern belongs
-on the opening fence line after the path.`); it is never silently read as a
+READ, and targeted KILL take no body: a body beneath their heading is not used and
+the operation still runs, with one warning-severity advisory naming the lines not
+used (`FIND takes no body; lines 4–6 were not used.`); it is never silently read as a
 matcher, and it never strikes ({§matcher-body-redirect}). The heading line itself
 is the matcher's home ({§naked-pattern}). A body that is only an HTML comment is
 still the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body:
@@ -1570,7 +1565,14 @@ fields and Problem Details extension members remain open. A malformed result is
 an internal producer contract violation; it is not converted into a second
 model-facing failure envelope.
 
-### 13.5 Problem Details
+### 13.5 Diagnostics and Problem Details
+
+§diagnostic-observation **A diagnostic says what happened, never why.** Every Problem `detail`
+and `recovery`, parse diagnostic and notice names what was read, what was done with it, and
+where, and may show the working form of the construct it read or refused. It never names a cause
+or an intent the input does not establish: no likely mistake, no reconstruction of what the author
+meant, no alternative the producer did not apply. Each sentence presupposes only what the producer
+itself decided.
 
 §problem-details `ProblemDetails` requires `type`, `title`, `status`, and `detail`;
 `instance` is optional until a durable host can attach the occurrence URI.
@@ -1588,8 +1590,8 @@ model-facing failure envelope.
 | extensions  | Factual producer-known operands or constraints                                                                                          |
 
 `detail` is failure truth; `recovery` is not a second explanation. Producers do
-not infer motives, blame the model, restate status, or expose an implementation
-accident as the cause. General syntax and workflow teaching remain in the model
+not blame the model, restate status, or expose an implementation accident as the
+cause ({§diagnostic-observation}). General syntax and workflow teaching remain in the model
 packet rather than being repeated in every Problem.
 
 `Problems.create(owner, code, status, detail, extensions?, options?)` derives a
@@ -1767,17 +1769,14 @@ class PlurnkParseError extends Error {
 ```
 
 §parse-recovery **Every hard diagnostic carries its working form.** A `severity: "error"`
-diagnostic names, in `recovery`, the form that runs, in the model's terms: a refused heading
-carries the operation's canonical line (`` `READ (path) <L,M>? pattern? <!-- aside -->?` on the
-opening fence line; READ takes no body. ``), a refused matcher the dialect's form with an example,
-and a refused regex the regex that matches the words the model wrote — `` A pattern is a regex:
-write `/url/` to match lines containing url; `*` repeats what precedes it. To select files by
-name, put the glob in the target: `FIND (tests/*url*)`. `` — where the glob suggestion is derived
-from the pattern only when it is glob-shaped, and the regex sentence stands alone otherwise. The
-runtime projects `recovery` as the Problem's `recovery` beside the verbatim `message`; an advisory
-carries none, since its statement ran. A refused matcher carries the same pair into its own
-operation's Problem ({§matcher-refusal}). Before this, a refused regex (`/*url*/`, DeepSeek run429)
-reported `Nothing to repeat` with no way forward and the turn was spent.
+diagnostic names, in `recovery`, the form of the construct it refused, in the model's terms: a
+refused heading carries the operation's canonical line (`` `READ (path) <L,M>? pattern? <!-- aside -->?`
+on the opening fence line; READ takes no body. ``), a refused scope the scope's form, and a refused
+matcher its dialect's form with an example (`` A pattern is a regex written `/pattern/flags`, such
+as `/timeout/i`. ``). The working form is the language's, never a reconstruction of the input
+({§diagnostic-observation}). The runtime projects `recovery` as the Problem's `recovery` beside the
+verbatim `message`; an advisory carries none, since its statement ran. A refused matcher carries
+the same pair into its own operation's Problem ({§matcher-refusal}).
 
 §parser-position Parser source locations are points, not text regions. An AST
 statement's `position` identifies the first backtick of its header; a diagnostic
@@ -1919,9 +1918,9 @@ diagnostics are:
 - §bare-target **A target written without its parentheses is refused with the line that runs.**
   A FIND, READ or EDIT heading with no target whose heading text opens with a word that is no
   matcher sigil, `READ a.py <1,4>`, cannot run: the word stands where the target goes, but on FIND it
-  could as well be a pattern. The statement is one hard diagnostic that writes the corrected line —
-  `` `READ` has no target: `a.py` stands where the target goes. Write the target in parentheses:
-  `READ (a.py) <1,4>`. `` A targetless KILL's heading text remains its inline deliverable.
+  could as well be a pattern. The statement is one hard diagnostic,
+  `` `READ` has no target: `a.py` stands where the target goes. ``, whose recovery is the operation's
+  working form ({§parse-recovery}). A targetless KILL's heading text remains its inline deliverable.
 - §bare-anchor-scope **An EDIT's anchor without its angle brackets is its scope.** On an EDIT
   heading, `@abcde` or `@abcde,@fghij` standing alone where the scope goes — nothing but an aside, a
   closer or the line end after it — is the scope `<@abcde>`, with one warning-severity advisory:
@@ -1930,9 +1929,9 @@ diagnostics are:
   marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
   since `@patch` is a search a model means.
 - §matcher-body-redirect **Unread body text on bodyless operations.** FIND, READ and bodyless
-  KILL keep the statement but discard text the matcher did not consume, with one warning:
-  `READ takes no body; the body was ignored. A pattern belongs on the opening fence line
-  after the path.` KILL's advisory says `This KILL`, limiting the claim to that invocation:
+  KILL keep the statement but do not use text the matcher did not consume, with one warning
+  naming where it stands: `READ takes no body; lines 4–38 were not used.`, or `the text after its
+  heading on line 3` when it shares the heading's line. KILL's advisory says `This KILL`, limiting the claim to that invocation:
   parameterless completion and log distillation bodies remain valid. Delivered like
   {§misplaced-aside-advisory} as a `parse_advisory` notice (a warning, never an error).
   One sigil line beneath a bodyless heading is the bare form written a line low and still lifts;
@@ -1963,33 +1962,33 @@ diagnostics are:
   with any other content is ignored under the same advisory path
   ({§matcher-body-redirect}).
 
-§error-shape The diagnostic class determines how much guidance the parser may
-provide. Advisories belong to one successfully built statement. A rejected
+§error-shape The diagnostic class determines the parts of a message; every class says what
+happened, never why ({§diagnostic-observation}). Advisories belong to one successfully built statement. A rejected
 statement emits its hard diagnostic, not normalization advisories; neither a
 rejection nor an internal exception carries advisories into another statement
 or parser invocation.
 
-| Class                  | Surface               | Message contract                                                                          |
-|------------------------|-----------------------|-------------------------------------------------------------------------------------------|
-| Hard fact              | `severity: "error"`   | One concise observed fact and violated constraint in PLURNK vocabulary.                   |
-| Targeted hard redirect | `severity: "error"`   | One canonical correction only when parser state makes the intended structure unambiguous. |
-| Non-fatal advisory     | `severity: "warning"` | One narrowly gated likely mistake and canonical alternative; input remains admitted.      |
-| Boundary loss          | `unparsedTail`        | Where trust ends, which header slot remains open, and why later input is undefined.        |
+| Class         | Surface               | Message contract                                                                                                  |
+|---------------|-----------------------|-------------------------------------------------------------------------------------------------------------------|
+| Hard fact     | `severity: "error"`   | What was read, where, and the constraint it violates, in PLURNK vocabulary; `recovery` is the construct's working form ({§parse-recovery}). |
+| Advisory      | `severity: "warning"` | What was read and what was done with it, read as a named construct or not used, and where; the statement remains admitted. |
+| Boundary loss | `unparsedTail`        | Where trust ends and which header slot remains open; later input is undefined.                                   |
 
 All messages use PLURNK protocol vocabulary: opening fence, closing fence, target,
 scope, line marker, body, section boundary, or space between slots. They never
 expose ANTLR rule or token names. They refer to a slot or
-feature rather than an implementation rule. Generic tutoring, speculative
-intent, coordinate restatement, and multiple repair strategies are forbidden.
+feature rather than an implementation rule. Generic tutoring, coordinate
+restatement and multiple repair strategies are forbidden, and no message names an
+intent ({§diagnostic-observation}).
 Unexpected top-level text immediately after a closed operation identifies that
 operation's opening line, closing line, and matching backtick count.
 
 Examples of canonical hard facts:
 
 - `unrecognized character '<' in target`
-- `unexpected bracket modifier; the fence name selects the executor`
+- `unrecognized character '[' in the sh header`
 - `unrecognized character 'X' in statement header`
-- `WAIT's body begins below the header`
+- `unrecognized character '[' in the WAIT header`
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
