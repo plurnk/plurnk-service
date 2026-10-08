@@ -6,7 +6,7 @@ an agent or a contributor needs to act is here or in the documents it names.
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
 grammar authority, the AG-UI server module, and the extensions included in the default installation. The
-terminal and optional web clients are separate repositories.
+terminal client is a separate repository.
 
 ## Operations quick reference
 

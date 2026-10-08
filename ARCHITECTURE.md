@@ -53,7 +53,7 @@ flowchart LR
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
-    agui --> clients["CLI / TUI / web clients"]
+    agui --> clients["Terminal client<br/>CLI · TUI"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
