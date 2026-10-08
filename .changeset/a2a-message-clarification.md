@@ -1,5 +1,5 @@
 ---
-"@plurnk/plurnk-a2a": minor
+"@plurnk/plurnk-a2a": major
 ---
 
 The inbound exposure converses with its caller by message only. A Task no

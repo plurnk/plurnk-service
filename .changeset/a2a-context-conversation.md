@@ -1,5 +1,5 @@
 ---
-"@plurnk/plurnk-a2a": minor
+"@plurnk/plurnk-a2a": major
 ---
 
 An A2A Context is one conversation: its worker holds every Task, and each Task
