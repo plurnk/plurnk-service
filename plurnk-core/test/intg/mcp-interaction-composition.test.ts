@@ -61,7 +61,7 @@ const setup = async (
                 state: {}, messages: [],
                 tools: [{ name: "mcp_input_required", description: "Answer MCP requests.", parameters: { type: "object" } }],
                 context: [],
-                forwardedProps: { plurnk: { workspace, projectRoot: null, control: true } },
+                forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true } },
                 ...additions,
             }),
             signal: AbortSignal.timeout(10_000),
@@ -77,10 +77,10 @@ const setup = async (
     // server auto-approval leaves each MCP input as the only client decision.
     const start = (): Promise<Event[]> => post({
         messages: [{ id: "prompt", role: "user", content: "Perform the MCP operation and report its result." }],
-        forwardedProps: { plurnk: { workspace, projectRoot: null } },
+        forwardedProps: { plurnk: { workspace, projectRoot: null, interactive: true } },
     });
     const reconnect = (): Promise<Event[]> => post({
-        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, mode: "sync" } },
+        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true, mode: "sync" } },
     });
     return { provider, post, start, reconnect, daemon, db };
 };

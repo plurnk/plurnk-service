@@ -272,12 +272,14 @@ not access to workspace resources ({§actor-boundary-no-mutex}).
 | Explicit client control attachment | Claim a runtime-owned conversation and its runtime-owned descendants; never claim the runtime actor or replace another owner. |
 | Observation or disconnect | No change. |
 
-An owner declares the client tool names it implements. The declaration remains
-durable while it is disconnected. A proposal requiring review waits for
-that owner; unsupported review fails at the request boundary. `_plurnk` implements
-no client tools. Server approval policy may settle a proposal automatically; it
-cannot fabricate an interaction answer. Kernel maintenance remains kernel work
-({§actor-boundary-self-hosting}).
+An owner declares its capability set: the client tool names it implements, and whether it
+is interactive, that is, whether a person attends it. The declaration remains durable while it
+is disconnected. A proposal requiring review waits for that owner; unsupported review fails at
+the request boundary. Approval needs no person: a client that accepts automatically still
+implements `request_approval`. Clarification and a park only a person can end need an
+interactive owner. `_plurnk` implements no client tools and is never interactive. Server
+approval policy may settle a proposal automatically; it cannot fabricate an interaction answer.
+Kernel maintenance remains kernel work ({§actor-boundary-self-hosting}).
 
 §worker-owner-creation Ownership, inheritance, and runtime-owner creation are
 database invariants. A newly created worker cannot be left without an owner;
@@ -294,8 +296,8 @@ different owner. Capability admission remains independent and precedes approval.
 §client-interaction-routing Clarification is not approval. A protocol adapter may
 register a reply route for the conversations it serves (for example, A2A
 `input-required`). Matching routes must identify one distinct recipient; conflicting
-recipients are an error. With no matching route, the worker's owner receives it if
-its declared tools support the request. No
+recipients are an error. With no matching route, the worker's owner receives it if it is
+interactive and its declared tools support the request. No
 matching recipient means an immediate unsupported-interaction result, not a park.
 The pending interaction records that recipient and accepts a response only from
 it, through the ordinary response-schema validation and settlement path. Protocol
@@ -1246,9 +1248,9 @@ retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
 WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact — **unless the worker has no review-capable
-owner ({§worker-ownership}); then the loop concludes on the provider's exact failure
-because that park has no reviewer to wake it.** Only a client cancel, the execution allowance
+next prompt or wake with its log intact — **unless the worker's owner is not interactive
+({§worker-ownership}); then the loop concludes on the provider's exact failure because no
+person attends to wake that park.** Only a client cancel, the execution allowance
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
@@ -3504,10 +3506,10 @@ Generated reference publication and audit narration have no reviewer and do not
 depend on interactive defaults. An unexpected bookkeeping proposal rejects through
 the ordinary lifecycle, even if the server would accept other operations.
 
-A park requires a live obligation or a review-capable owner. Connection presence
+A park requires a live obligation or an interactive owner. Connection presence
 does not determine capability. Ordinary WAIT on streams or delegated work is
-unchanged; a provider-recovery park without a reviewer concludes on the provider
-failure ({§provider-recovery}).
+unchanged; a provider-recovery park whose owner is not interactive concludes on the
+provider failure ({§provider-recovery}).
 
 The following tags describe columns in frozen released migrations only; neither
 is a current approval mechanism.

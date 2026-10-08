@@ -22,7 +22,7 @@ export default class SeamSocket {
 
     async #claim(workerId: number): Promise<void> {
         const { workspaceId } = this.#attached();
-        await this.#daemon.registerWorkerOwner(workspaceId, { address: SeamSocket.owner, tools: ["request_approval", "question", "mcp_input_required"] });
+        await this.#daemon.registerWorkerOwner(workspaceId, { address: SeamSocket.owner, tools: ["request_approval", "question", "mcp_input_required"], interactive: true });
         await this.#daemon.claimWorkerOwner({ workspaceId, workerId, owner: SeamSocket.owner });
     }
 

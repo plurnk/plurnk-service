@@ -1552,12 +1552,12 @@ export default class TurnRunner {
         if (attempts.parked) {
             // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
             // [202] wait and resumes on the next prompt or wake; the failure stays durable.
-            const recoverable = await WorkerOwners.hasReviewer(this.#db, loopId);
+            const recoverable = await WorkerOwners.interactive(this.#db, loopId);
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:provider",
                 kind: "provider_unavailable",
                 level: "error",
-                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; ${recoverable ? "the loop is parked and resumes on the next prompt or wake" : "no review-capable owner is assigned, so the loop ends here"}.`,
+                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; ${recoverable ? "the loop is parked and resumes on the next prompt or wake" : "nobody attends the worker's owner, so the loop ends here"}.`,
             });
             return turnResult(request, 202, { providerParked: true, providerFailure: recorded.result, emissionAttempts });
         }

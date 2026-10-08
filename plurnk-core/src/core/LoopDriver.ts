@@ -264,8 +264,8 @@ export default class LoopDriver {
                 if (turn.providerParked) {
                     // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
                     // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
-                    // {§worker-ownership} Without a review-capable owner, report the provider failure.
-                    if (!await WorkerOwners.hasReviewer(this.#db, loopId)) {
+                    // {§worker-ownership} Without an interactive owner, report the provider failure.
+                    if (!await WorkerOwners.interactive(this.#db, loopId)) {
                         if (turn.providerFailure === undefined) {
                             throw new Error("a provider-recovery stop requires its exact failure to conclude");
                         }

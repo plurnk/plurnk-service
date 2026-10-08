@@ -2,9 +2,9 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/WorkerOwner.json",
     "title": "WorkerOwner",
-    "description": "A workspace-scoped approval owner and the client tools it implements. Capabilities persist while disconnected; a message never changes ownership.",
+    "description": "A workspace-scoped approval owner, the client tools it implements, and whether a person attends it. Capabilities persist while disconnected; a message never changes ownership.",
     "type": "object",
-    "required": ["address", "tools"],
+    "required": ["address", "tools", "interactive"],
     "additionalProperties": false,
     "properties": {
         "address": { "type": "string", "minLength": 1 },
@@ -12,6 +12,10 @@
             "type": "array",
             "uniqueItems": true,
             "items": { "type": "string", "minLength": 1 }
+        },
+        "interactive": {
+            "type": "boolean",
+            "description": "A person attends this owner: it can be asked, and work parked for a person can wait for it."
         }
     }
 }

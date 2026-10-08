@@ -16,12 +16,18 @@ const downProvider = (): Mock => {
     return provider;
 };
 
-for (const reviewable of [true, false]) {
-    test(`{§worker-ownership}: exhausted provider recovery ${reviewable ? "parks for the owner" : "concludes without a reviewer"}`, async () => {
+// {§provider-recovery} A park waits for a person: approving alone, as a yolo client does, attends nothing.
+for (const [label, owner] of [
+    ["parks for an interactive owner", { tools: ["request_approval", "question", "mcp_input_required"], interactive: true }],
+    ["concludes for an owner that approves but is not interactive", { tools: ["request_approval"], interactive: false }],
+    ["concludes for the runtime owner", null],
+] as const) {
+    const parks = owner?.interactive === true;
+    test(`{§worker-ownership}: exhausted provider recovery ${label}`, async () => {
         await using db = await openMigrated();
-        const workspaceId = await insertWorkspace(db, `recovery-${reviewable}`);
+        const workspaceId = await insertWorkspace(db, `recovery-${label.split(" ").at(-1)}-${owner === null ? "runtime" : owner.interactive}`);
         const workerId = await insertWorker(db, workspaceId);
-        if (reviewable) await ownWorker(db, workspaceId, workerId, ["request_approval"]);
+        if (owner !== null) await ownWorker(db, workspaceId, workerId, [...owner.tools], owner.interactive);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const notices: string[] = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_sid, { notice }) => {
@@ -30,7 +36,7 @@ for (const reviewable of [true, false]) {
         const run = await engine.runLoop({ workspaceId, workerId, loopId, provider: downProvider(), messages: [], maxTurns: 2 });
         const lifecycle = new LoopLifecycle(db);
         assert.equal(run.reason, "provider_unavailable");
-        if (reviewable) {
+        if (parks) {
             assert.equal(run.result.status, 202);
             assert.equal(await lifecycle.status(loopId), 202);
             assert.equal(await lifecycle.result(loopId), null);
@@ -40,7 +46,7 @@ for (const reviewable of [true, false]) {
             assert.equal(run.result.problem?.type, "https://problems.plurnk.xyz/provider/plurnk/network-failure");
             assert.equal(run.result.problem?.detail, "connection refused");
             assert.equal((await lifecycle.result(loopId))?.status, 503);
-            assert.match(notices.at(-1)!, /no review-capable owner is assigned/);
+            assert.match(notices.at(-1)!, /nobody attends the worker's owner, so the loop ends here/);
         }
     });
 }
@@ -61,6 +67,11 @@ test("{§client-interaction-routing}: unsupported requests fail without parking;
         return true;
     });
     assert.deepEqual(await interactions.list(workspaceId), []);
+    await ownWorker(db, workspaceId, workerId, ["question"], false);
+    await assert.rejects(interactions.request(request, ids), (error: unknown) => {
+        assert.equal((error as { result: { status: number } }).result.status, 501, "a declared tool with nobody attending is no recipient");
+        return true;
+    });
     await ownWorker(db, workspaceId, workerId, ["question"]);
     const response = interactions.request(request, ids);
     const [pending] = await waitForDb(() => interactions.list(workspaceId), (items) => items.length === 1);
@@ -94,15 +105,18 @@ test("{§client-interaction-routing}: protocol routing supersedes owner delivery
     await assert.rejects(interactions.recipient(context), /empty recipient/);
 });
 
-test("{§worker-ownership}: parking requires either an obligation or a review-capable owner", async () => {
+test("{§worker-ownership}: parking requires either an obligation or an interactive owner", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "park-waker");
     const workerId = await insertWorker(db, workspaceId);
     const lifecycle = new LoopLifecycle(db);
     const loopId = await insertLoop(db, workerId, 1, "go");
-    await assert.rejects(lifecycle.park(loopId, { wakenBy: null }), /cannot park without a waker or review-capable owner/);
+    await assert.rejects(lifecycle.park(loopId, { wakenBy: null }), /cannot park without a waker or an interactive owner/);
     assert.notEqual(await lifecycle.status(loopId), 202);
     assert.equal(await lifecycle.park(loopId, { wakenBy: "obligations" }), true);
+    await ownWorker(db, workspaceId, workerId, ["request_approval"], false);
+    const approving = await insertLoop(db, workerId, 3, "go");
+    await assert.rejects(lifecycle.park(approving, { wakenBy: null }), /cannot park without a waker or an interactive owner/, "approval alone attends nothing");
     await ownWorker(db, workspaceId, workerId);
     const owned = await insertLoop(db, workerId, 2, "go");
     assert.equal(await lifecycle.park(owned, { wakenBy: null }), true);

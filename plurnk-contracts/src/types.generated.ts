@@ -1250,4 +1250,8 @@ endColumn: number
 export interface WorkerOwner {
 address: string
 tools: string[]
+/**
+ * A person attends this owner: it can be asked, and work parked for a person can wait for it.
+ */
+interactive: boolean
 }

@@ -84,10 +84,10 @@ export default class LoopLifecycle {
         }
     }
 
-    // {§worker-ownership} A provider park without another waker requires a review-capable owner.
+    // {§worker-ownership} A provider park without another waker requires an interactive owner.
     async park(loopId: number, { wakenBy, pollAt }: { wakenBy: string | null; pollAt?: number }): Promise<boolean> {
-        if (wakenBy === null && !await WorkerOwners.hasReviewer(this.#db, loopId)) {
-            throw new Error(`loop ${loopId} cannot park without a waker or review-capable owner; conclude instead`);
+        if (wakenBy === null && !await WorkerOwners.interactive(this.#db, loopId)) {
+            throw new Error(`loop ${loopId} cannot park without a waker or an interactive owner; conclude instead`);
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,

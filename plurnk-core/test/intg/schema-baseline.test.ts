@@ -125,13 +125,16 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
         assert.deepEqual(after.prepare("SELECT id, owner FROM workers ORDER BY id").all().map((row) => ({ ...row })),
             [1, 2, 3].map((id) => ({ id, owner: "_plurnk" })), "old loop policy does not guess an approval owner");
         assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "original conversation");
-        assert.deepEqual(after.prepare("SELECT workspace_id, address, tools FROM worker_owners ORDER BY workspace_id").all().map((row) => ({ ...row })),
-            [1, 2].map((workspace_id) => ({ workspace_id, address: "_plurnk", tools: "[]" })));
+        assert.deepEqual(after.prepare("SELECT workspace_id, address, tools, interactive FROM worker_owners ORDER BY workspace_id").all().map((row) => ({ ...row })),
+            [1, 2].map((workspace_id) => ({ workspace_id, address: "_plurnk", tools: "[]", interactive: 0 })), "{§worker-ownership} nobody attends an upgraded owner");
         after.exec(`
             INSERT INTO worker_owners (workspace_id, address, tools) VALUES (1, 'agui://owner', '["request_approval"]');
             UPDATE workers SET owner = 'agui://owner' WHERE id = 1;
             INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id) VALUES (4, 1, 'later', 'model', 1);
         `);
+        assert.equal(after.prepare("SELECT interactive FROM worker_owners WHERE address = 'agui://owner'").get()!.interactive, 0, "a client is not interactive until it says so");
+        after.exec("UPDATE worker_owners SET interactive = 1 WHERE address = 'agui://owner'");
+        assert.throws(() => after.exec("UPDATE worker_owners SET interactive = 1 WHERE address = '_plurnk'"), /CHECK constraint failed/, "the runtime owner is never interactive");
         assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "agui://owner");
         assert.throws(() => after.exec("UPDATE workers SET owner = 'missing' WHERE id = 2"), /worker owner does not belong/);
         assert.throws(() => after.exec("UPDATE workers SET owner = 'agui://owner' WHERE id = 3"), /worker owner does not belong/);

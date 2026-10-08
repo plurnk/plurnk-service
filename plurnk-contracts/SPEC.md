@@ -137,7 +137,7 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
 | `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service and workspace layers |
 | `CapabilityProjection`    | Exact service, workspace, and normalized effective policies | Expose the resolver's workspace cascade without claiming one layer is effective authority |
-| `WorkerOwner` | Nonempty address and unique client-tool names | Persist by workspace; inherit through worker creation |
+| `WorkerOwner` | Nonempty address, unique client-tool names, and whether it is interactive | Persist by workspace; inherit through worker creation |
 | `ProposalPolicy` | `review`, `accept`, or `reject` | Read the server's disposition knob at the proposal boundary |
 | `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
 | `ProposalProjection` | Identity, review target, body/attrs, owner, stale signal, disposition | One validated projection for live delivery and reconnect |
@@ -169,8 +169,9 @@ capability policy or inherited bound; every actor uses the same live workspace
 policy. A client never derives effective authority from the mutable layer alone.
 
 §proposal-policy `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES`
-is its schema-owned vocabulary. `WorkerOwner` carries an address and the client-tool
-names that recipient implements. Neither contains resource permissions or
+is its schema-owned vocabulary. `WorkerOwner` carries an address, the client-tool
+names that recipient implements, and `interactive`: whether a person attends it. Neither
+contains resource permissions or
 message-carried authority. Core owns persistence, inheritance and settlement
 ({§worker-ownership}, {§proposal-disposition}); capability admission precedes approval.
 

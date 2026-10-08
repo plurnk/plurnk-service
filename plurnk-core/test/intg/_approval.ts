@@ -5,8 +5,9 @@ import WorkerOwners from "../../src/core/WorkerOwners.ts";
 
 export const TEST_OWNER = "test://primary";
 
-export const ownWorker = async (db: Db, workspaceId: number, workerId: number, tools = ["request_approval", "question", "mcp_input_required"]): Promise<void> => {
-    await WorkerOwners.register(db, workspaceId, { address: TEST_OWNER, tools });
+// A full client by default: every client tool, with a person attending.
+export const ownWorker = async (db: Db, workspaceId: number, workerId: number, tools = ["request_approval", "question", "mcp_input_required"], interactive = true): Promise<void> => {
+    await WorkerOwners.register(db, workspaceId, { address: TEST_OWNER, tools, interactive });
     await WorkerOwners.claim(db, workspaceId, workerId, TEST_OWNER);
 };
 

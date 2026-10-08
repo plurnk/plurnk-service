@@ -87,6 +87,10 @@ export default class RunHandler {
             throw new HttpProblemError(httpProblem("control-invalid", 400, "control must be a boolean.",
                 { stage: "request-validation", retryable: false }));
         }
+        if (forwarded?.interactive !== undefined && typeof forwarded.interactive !== "boolean") {
+            throw new HttpProblemError(httpProblem("interactive-invalid", 400, "interactive must be a boolean.",
+                { stage: "request-validation", retryable: false }));
+        }
         const mode = forwarded?.mode;
         if (mode !== undefined && mode !== "sync") {
             throw new HttpProblemError(httpProblem(
@@ -147,7 +151,11 @@ export default class RunHandler {
             || action?.kind === "op.exec" || action?.kind === "op.parse";
         const owner = control ? MessageAddress.owner(input.threadId) : undefined;
         if (owner !== undefined) {
-            await this.#seam().registerWorkerOwner(workspaceId, { address: owner, tools: [...new Set(input.tools.map(({ name }) => name))] });
+            // {§agui-worker-owner} The Run declares the owner's capability set: the tools it
+            // implements, and whether a person attends it. Unstated, nobody does.
+            await this.#seam().registerWorkerOwner(workspaceId, {
+                address: owner, tools: [...new Set(input.tools.map(({ name }) => name))], interactive: forwarded?.interactive === true,
+            });
             for (const claim of [workerId, env.workerId]) {
                 await this.#seam().claimWorkerOwner({ workspaceId, workerId: claim, owner });
             }

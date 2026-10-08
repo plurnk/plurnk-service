@@ -94,8 +94,10 @@ export default class ClientInteractions {
             if (address.length === 0) throw new Error("An interaction route returned an empty recipient.");
             return address;
         }
+        // {§client-interaction-routing} Clarification needs a person: the owner receives it only while
+        // it is interactive and implements the requested tool.
         const owner = await WorkerOwners.read(this.#db, context.workerId);
-        return owner.tools.includes(context.toolName) ? owner.address : null;
+        return owner.interactive && owner.tools.includes(context.toolName) ? owner.address : null;
     }
 
     async request(

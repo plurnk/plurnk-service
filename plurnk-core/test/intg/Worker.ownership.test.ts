@@ -6,7 +6,7 @@ import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
-const owner: WorkerOwner = { address: "agui://local/threads/primary", tools: ["request_approval", "question"] };
+const owner: WorkerOwner = { address: "agui://local/threads/primary", tools: ["request_approval", "question"], interactive: true };
 
 test("{§worker-owner-creation}: every worker has a durable runtime owner before client attachment", async () => {
     await withDaemon(null, async (_db, daemon) => {
@@ -32,13 +32,13 @@ test("{§worker-ownership}: control claims runtime descendants; later delegation
         for (const workerId of [parent.workerId, before.workerId, after.workerId, grandchild.workerId]) {
             assert.equal((await daemon.readWorker({ workspaceId, identity: { id: workerId } }))?.owner, owner.address);
         }
-        const stranger: WorkerOwner = { address: "agui://local/threads/other", tools: [] };
+        const stranger: WorkerOwner = { address: "agui://local/threads/other", tools: [], interactive: false };
         await daemon.registerWorkerOwner(workspaceId, stranger);
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: parent.workerId, owner: stranger.address }), owner,
             "opening an already-owned conversation is not a transfer");
         const runtimeId = await insertWorker(db, workspaceId, null, "_plurnk", "_plurnk");
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: runtimeId, owner: owner.address }),
-            { address: "_plurnk", tools: [] }, "the runtime actor itself is never claimable");
+            { address: "_plurnk", tools: [], interactive: false }, "the runtime actor itself is never claimable");
     });
 });
 

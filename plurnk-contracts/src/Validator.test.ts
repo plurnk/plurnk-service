@@ -668,12 +668,12 @@ test("CapabilityPolicy accepts only its canonical wire shape", () => {
     }
 });
 
-test("{§worker-ownership}: owner declarations require an address and explicit supported tools", () => {
-    for (const tools of [[], ["request_approval"], ["question", "mcp_input_required"]]) {
-        const owner = { address: "agui://anonymous/threads/main", tools };
+test("{§worker-ownership}: owner declarations require an address, explicit supported tools and attendance", () => {
+    for (const [tools, interactive] of [[[], false], [["request_approval"], false], [["request_approval", "question", "mcp_input_required"], true]] as const) {
+        const owner = { address: "agui://anonymous/threads/main", tools: [...tools], interactive };
         assert.equal(Validator.assertWorkerOwner(owner), owner);
     }
-    for (const invalid of [{}, { address: "" , tools: [] }, { address: "owner" }, { address: "owner", tools: ["question", "question"] }, { address: "owner", tools: [42] }, { address: "owner", tools: [], attended: true }, null, []]) {
+    for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], attended: true }, null, []]) {
         assert.equal(Validator.validateWorkerOwner(invalid).valid, false);
         assert.throws(() => Validator.assertWorkerOwner(invalid as never), InvalidWorkerOwnerError);
     }

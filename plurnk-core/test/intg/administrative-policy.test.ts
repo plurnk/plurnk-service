@@ -37,7 +37,7 @@ test("{§runtime-bookkeeping-policy}: reference publication is independent of in
     const workerId = await RuntimeWorker.ensure(db, workspaceId);
     const loop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: workerId });
     assert.ok(loop);
-    assert.deepEqual(await WorkerOwners.read(db, workerId), { address: "_plurnk", tools: [] });
+    assert.deepEqual(await WorkerOwners.read(db, workerId), { address: "_plurnk", tools: [], interactive: false });
 });
 
 test("{§worker-owner-resolution}: administrative loop creation does not read proposal defaults; proposal admission does", async (t) => {

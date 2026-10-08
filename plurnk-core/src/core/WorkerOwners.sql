@@ -19,20 +19,20 @@ BEGIN
 END;
 
 -- PREP: worker_owner_register
-INSERT INTO worker_owners (workspace_id, address, tools)
-VALUES ($workspace_id, $address, $tools)
-ON CONFLICT (workspace_id, address) DO UPDATE SET tools = excluded.tools;
+INSERT INTO worker_owners (workspace_id, address, tools, interactive)
+VALUES ($workspace_id, $address, $tools, $interactive)
+ON CONFLICT (workspace_id, address) DO UPDATE SET tools = excluded.tools, interactive = excluded.interactive;
 
 -- PREP: worker_owner_registered
-SELECT address, tools FROM worker_owners WHERE workspace_id = $workspace_id AND address = $address;
+SELECT address, tools, interactive FROM worker_owners WHERE workspace_id = $workspace_id AND address = $address;
 
 -- PREP: worker_owner_read
-SELECT o.address, o.tools
+SELECT o.address, o.tools, o.interactive
 FROM workers w JOIN worker_owners o ON o.workspace_id = w.workspace_id AND o.address = w.owner
 WHERE w.id = $worker_id;
 
 -- PREP: worker_owner_for_loop
-SELECT o.address, o.tools
+SELECT o.address, o.tools, o.interactive
 FROM loops l JOIN workers w ON w.id = l.worker_id
 JOIN worker_owners o ON o.workspace_id = w.workspace_id AND o.address = w.owner
 WHERE l.id = $loop_id;

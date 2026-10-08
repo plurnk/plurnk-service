@@ -191,7 +191,7 @@ const mockSeam = () => {
         usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
     }))));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, resolves, loopRuns, modelSets, modelQueries, effortSets, finish, emit };
+    return { seam, owners, resolves, loopRuns, modelSets, modelQueries, effortSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -453,6 +453,27 @@ test("a read-only management Run does not duplicate its conversation's model set
             && (event as { value?: { id?: number } }).value?.id === 21);
         assert.equal(answerRows(conversationEvents).length, 1, "the conversation receives its SEND exactly once");
         assert.equal(answerRows(managementEvents).length, 0, "the management Run receives no conversation rows");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-worker-owner} a control Run declares its owner's capability set: tools, and whether a person attends", async () => {
+    const { seam, owners } = mockSeam();
+    seam.readWorkerModel = async () => ({ model: null, spawnModel: null });
+    const mod = await host(seam);
+    try {
+        const port = mod.address().port;
+        const tools = [{ name: "request_approval", description: "Review a proposed operation.", parameters: { type: "object" } }];
+        for (const [stated, interactive] of [[true, true], [false, false], [undefined, false]] as const) {
+            await post(port, { threadId: "t1", tools, forwardedProps: { plurnk: {
+                workspace: "t1", control: true, ...(stated === undefined ? {} : { interactive: stated }), action: { kind: "worker.model.get" },
+            } } });
+            assert.deepEqual(owners.get("agui://anonymous/threads/t1"), { address: "agui://anonymous/threads/t1", tools: ["request_approval"], interactive },
+                `interactive ${String(stated)}: unstated, nobody attends`);
+        }
+        const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({ threadId: "t1", forwardedProps: { plurnk: { workspace: "t1", interactive: "yes" } } })) });
+        assert.equal(refused.status, 400);
+        assert.match((await refused.json() as { type: string }).type, /interactive-invalid$/u);
     } finally { await mod.close(); }
 });
 

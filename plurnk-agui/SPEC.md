@@ -65,9 +65,11 @@ does not recompute them.
 
 An owning conversation is `agui://anonymous/threads/<encoded threadId>`, scoped by
 workspace. It is not a socket, Run, or client bookkeeping worker. `RunAgentInput.tools`
-declares its supported client-tool names. Control attachment registers those capabilities
-and claims only runtime-owned work under {§worker-ownership}; observation does neither.
-Capabilities survive disconnection and a later declaration replaces them for future requests.
+declares its supported client-tool names, and `forwardedProps.plurnk.interactive` (a boolean)
+states whether a person attends it; unstated, nobody does. Control attachment registers that
+capability set and claims only runtime-owned work under {§worker-ownership}; observation does
+neither. Capabilities survive disconnection and a later declaration replaces them for future
+requests.
 
 | Request | Ownership effect |
 |---|---|
@@ -717,6 +719,7 @@ reconstruct one from `RUN_ERROR`.
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
 | `loop-policy-retired` | 400 | Loop policy is retired; advertise client tools and let the worker's owner handle approvals. |
 | `control-invalid` | 400 | control must be a boolean. |
+| `interactive-invalid` | 400 | interactive must be a boolean. |
 | `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
 | `invalid-sync-input` | 400 | Conversation synchronization cannot include messages, an action, or an interrupt resume. |
 | `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |

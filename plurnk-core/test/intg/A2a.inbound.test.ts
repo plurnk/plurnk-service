@@ -102,7 +102,7 @@ test("{§a2a-worker-ownership}: the parent owner approves operations while clari
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
     const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-owned-parent", projectRoot: null });
-    const owner = { address: "agui://operator", tools: ["request_approval", "question"] };
+    const owner = { address: "agui://operator", tools: ["request_approval", "question"], interactive: true };
     await daemon.registerWorkerOwner(workspaceId, owner);
     const parent = await daemon.createConversationWorker({ workspaceId, name: "operator", owner: owner.address });
     daemon.registerModule(A2aExposure.init({
