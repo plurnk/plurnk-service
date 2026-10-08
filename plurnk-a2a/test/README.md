@@ -41,8 +41,9 @@ before changing the adapter. Do not patch
 the checker or count these assertions as passing.
 
 The deterministic provider supplies text completion and text/file Artifacts. The
-exposure never asks its caller for input ({§a2a-worker-ownership}), so the checker's
-input-required requirements fail by design rather than by defect. File output
+exposure never asks its caller for input ({§a2a-worker-ownership}), so the checker skips
+its input-required requirements: those Tasks complete instead. The Agent Card carries no
+`Last-Modified` header, an optional caching aid the checker reports. File output
 uses ordinary scratch EDIT and SEND attachment acquisition through Core, not
 fabricated SDK Artifacts. Core's scratch text is `text/markdown`; the checker
 requests `text/plain`. That mismatch remains visible instead of relabeling

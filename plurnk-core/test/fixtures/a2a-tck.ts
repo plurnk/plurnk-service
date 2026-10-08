@@ -53,14 +53,13 @@ class TckProvider extends Mock {
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
             const content = count === 0
                 ? ["````EDIT (worker:///output.txt)", "tck", "````", "````NOTE", "Send the file.", "````"].join("\n")
-                : ["````SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "````", "````SEND", "````"].join("\n");
+                : ["````SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "````", "````KILL", "````"].join("\n");
             return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         }
         // {§a2a-worker-ownership} The exposure never asks its caller for input, so an input-required
-        // scenario is answered like any other message.
+        // scenario is answered like any other message. {§kill-conclusion} The answer is the KILL body.
         const content = [
-            "````SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
-            "````SEND", "````",
+            "````KILL", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
         ].join("\n");
         return new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(content)] }).generate(args);
     }
