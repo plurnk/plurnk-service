@@ -18,6 +18,19 @@ export default class BudgetReadout {
         return `{"tokens":${TOKENS_PLACEHOLDER},"budget":${budget}}`;
     }
 
+    // The budget a stored gauge showed the model; null when it showed none, or when the packet predates
+    // the one-object gauge and records its room in another shape.
+    static budgetOf(content: string): number | null {
+        let gauge: unknown;
+        try {
+            gauge = JSON.parse(content.split("\n")[0] ?? "");
+        } catch {
+            return null;
+        }
+        const budget = typeof gauge === "object" && gauge !== null ? (gauge as { budget?: unknown }).budget : undefined;
+        return typeof budget === "number" ? budget : null;
+    }
+
     // {§tokenomics-render-weight-budget} — the width only expands, so the final
     // numeric substitution cannot change the measured packet length or oscillate.
     // {§context-gauge} — the inventory is complete whatever the packet weighs: over budget it is the

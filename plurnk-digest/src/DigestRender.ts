@@ -543,11 +543,53 @@ export default class DigestRender {
             `Tokens:     ${usageStr}`,
             `Cost:       ${costStr}${kindStr}${usagelessStr}`,
             `Wire:       ${wireStr}`,
+            `Room:       ${DigestRender.#renderRoom(worker, m)}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
             `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).byWorker.get(worker.id))}`,
             `Emissions:  ${DigestRender.#renderEmissions(worker, m)}`,
             `Reasonings: ${DigestRender.#renderReasonings(worker, m)}`,
         ].join("\n");
+    }
+
+    // {§digest-room-line} — the room in provider tokens: the largest budget the model was shown, at its
+    // request's own ratio, against the capacity; the wall's estimate against the provider's count; and the
+    // requests the estimate put under the wall while the count was over it.
+    static #renderRoom(worker: WorkerRow, m: DigestModel): string {
+        const measured = DigestRender.#roomMeasures(worker, m);
+        if (measured.length === 0) return "(no measured requests)";
+        const room = Math.max(...measured.map(({ weight, budget, count, capacity }) => budget * count / weight / capacity));
+        const errors = measured.map(({ estimate, count }) => (estimate - count) / count);
+        const missed = measured.filter(({ estimate, count, wall }) => estimate <= wall && count > wall).length;
+        const percent = (ratio: number): string => `${ratio < 0 ? "-" : "+"}${Math.abs(100 * ratio).toFixed(1)}%`;
+        return `budget up to ${Math.round(100 * room)}% of capacity · wall estimate ${percent(Math.min(...errors))} to ${percent(Math.max(...errors))} of the count`
+            + (missed === 0 ? "" : `  ⚠ ${missed} over the wall the estimate admitted`);
+    }
+
+    // One measure per packet-bearing inference turn whose request records a known capacity and wall and a
+    // provider count: the exact preflight measurement, else the reported input.
+    static #roomMeasures(worker: WorkerRow, m: DigestModel): Array<{ weight: number; budget: number; capacity: number; wall: number; count: number; estimate: number }> {
+        const measures = [];
+        for (const loop of m.loopsByWorker.get(worker.id) ?? []) {
+            for (const turn of m.turnsByLoop.get(loop.id) ?? []) {
+                if (turn.kind !== "inference" || turn.has_packet !== 1) continue;
+                const packet = m.evidence.packet(turn).packet;
+                if (packet === null || packet.budget === null || packet.budget === 0 || packet.weight === 0) continue;
+                const call = m.modelCalls.findLast((row) => row.turn_id === turn.id && row.kind === "emission" && row.capacity !== null);
+                const capacity = DigestRender.parseJson(call?.capacity) as {
+                    inputCapacity?: number | null; inputWall?: number | null; prompt?: { kind?: string; tokens?: number };
+                } | null;
+                if (capacity?.inputCapacity == null || capacity.inputWall == null) continue;
+                const reported = (m.requestsByTurn.get(turn.id) ?? [])
+                    .findLast((row) => row.kind === "emission" && row.outcome === "response" && row.usage_input !== null)?.usage_input ?? null;
+                const count = capacity.prompt?.kind === "exact" ? capacity.prompt.tokens ?? null : reported;
+                if (count === null || count === 0) continue;
+                measures.push({
+                    weight: packet.weight, budget: packet.budget, capacity: capacity.inputCapacity, wall: capacity.inputWall, count,
+                    estimate: Math.ceil(packet.weight * capacity.inputCapacity / packet.budget),
+                });
+            }
+        }
+        return measures;
     }
 
     // {§emission-row} — announced, retired by the model, and echoed back as headings in its own text.

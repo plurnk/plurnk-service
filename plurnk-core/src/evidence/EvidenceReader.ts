@@ -9,6 +9,7 @@ import type {
     DispositionCountRow, DispositionRow, StorageRow, StorageTableRow,
 } from "@plurnk/plurnk-digest";
 import PacketWire from "../core/packet-wire.ts";
+import BudgetReadout from "../core/BudgetReadout.ts";
 import LegacyPacketEnvelope from "./LegacyPacketEnvelope.ts";
 import FabricatedLog from "../core/FabricatedLog.ts";
 import { contentWeight } from "../core/content-weight.ts";
@@ -109,6 +110,8 @@ export default class EvidenceReader implements DigestEvidence {
                         assistantRaw: StoredPacket.isAdmitted(packet) ? packet.assistantRaw : null,
                         attributions: packet.attributions,
                         attachments: packet.attachments ?? [],
+                        weight: packet.weight,
+                        budget: BudgetReadout.budgetOf(PacketWire.sectionContent(packet, "budget")),
                         slot: (name) => PacketWire.renderSlot(packet.sections, name),
                         messages: (emissions) => packet.sections.some(({ name }) => name === "previous-emission")
                             ? PacketWire.packetToWireMessages(packet)

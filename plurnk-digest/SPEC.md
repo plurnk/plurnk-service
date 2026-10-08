@@ -78,6 +78,8 @@ to project and writes no files.
 
 §digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
+§digest-room-line **The room in provider tokens.** Each worker summary renders a `Room:` line over its packet-bearing inference requests that record a known input capacity and wall and a provider count: the exact preflight measurement, else the reported input. It names the largest budget the model was shown, converted at that request's own ratio (`count ÷ weight`), as a share of the capacity; the range of the wall's estimate as the packet's conversion reconstructs it (`weight × capacity ÷ budget`) against the count; and, marked ⚠, the requests the estimate put under the wall while the count was over it ({§context-wall-measure}). A worker without such requests reads `(no measured requests)`. Every run checks the ruler, pass or fail.
+
 §digest-cache-ledger **Measured cache reuse and estimated prompt overlap are separate.**
 
 | Projection | Meaning |
