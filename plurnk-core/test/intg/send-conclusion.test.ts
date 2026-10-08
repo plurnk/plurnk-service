@@ -133,7 +133,6 @@ for (const [label, response, reasoning, expected] of [
     ["KILL with a response NOTE", `${conclude("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 200],
     ["SEND before KILL", `${send("Four.")}\n\n${conclude()}`, null, 200],
     ["SEND after KILL", `${conclude()}\n\n${send("Four.")}`, null, 200],
-    ["two KILLs", `${conclude("Four.")}\n\n${conclude("Precisely four.")}`, null, 102],
     ["text before KILL", `Preface.\n\n${conclude("Four.")}`, null, 200],
     ["text after KILL", `${conclude("Four.")}\n\nPostscript.`, null, 200],
     ["SEND with a response NOTE", `${send("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 102],
@@ -148,6 +147,20 @@ for (const [label, response, reasoning, expected] of [
         finally { await db.close(); }
     });
 }
+
+test("{§terminal-kill}: a second KILL fence is literal answer text, not another completion request", async () => {
+    const response = "```KILL\nFour.\n```\n\n```KILL\nPrecisely four.\n```";
+    const { db, turn, answer } = await setup([said(response)]);
+    try {
+        const result = await turn();
+        assert.equal(result.status, 200);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["KILL"]);
+        const delivered = await answer();
+        assert.ok("content" in delivered);
+        assert.equal(delivered.content, "Four.\n```\n\n```KILL\nPrecisely four.\n```", "the nested KILL remains in the delivered answer");
+    } finally { await db.close(); }
+});
 
 test("{§kill-conclusion}: a NOTE after the messages were answered does not silently conclude", async () => {
     const { db, turn } = await setup([said(send("Four.")), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
