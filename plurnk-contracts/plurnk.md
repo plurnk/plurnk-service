@@ -89,6 +89,10 @@ This is an example of the final deliverable response that ends the loop.
 bar
 ```
 
+```EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 44 -->
+bar
+```
+
 ```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
 baz
 ```
