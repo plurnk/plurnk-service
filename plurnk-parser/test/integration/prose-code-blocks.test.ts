@@ -90,8 +90,10 @@ test("{§naked-kill} a naked KILL shows a fenced `KILL (notes.md)` without runni
     assert.match(bodyOf(kill)!, /I'm leaving it in place\.$/u);
     assert.deepEqual(result.items.filter((item) => item.kind === "text"), []);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["`KILL` opened with no fence; the taught form is three backticks."]);
-    const closed = statements("KILL\nShown:\n```READ (a.md)\n```\nKILL\n```READ (b.md)\n```");
-    assert.deepEqual(closed.map((statement) => `${statement.op}${"target" in statement && statement.target ? ` ${statement.target.raw}` : ""}`), ["KILL", "READ b.md"], "the name alone still closes a naked block; a fence inside never does");
+    const answer = "Shown:\n```READ (a.md)\n```\nKILL\n```READ (b.md)\n```";
+    const closed = statements(`KILL\n${answer}`);
+    assert.deepEqual(closed.map((statement) => `${statement.op}${"target" in statement && statement.target ? ` ${statement.target.raw}` : ""}`), ["KILL"], "a name or fence cannot expose later operations");
+    assert.equal(bodyOf(closed[0]), answer);
 });
 
 test("{§naked-kill} an aside on a naked KILL preserves its quoted deletion (recorded Cerebras demo)", () => {

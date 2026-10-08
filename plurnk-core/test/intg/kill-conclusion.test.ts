@@ -141,18 +141,28 @@ test("{§outside-text}: stray text answers nothing; a later explicit empty KILL 
 });
 
 for (const completionFirst of [false, true]) {
-    test(`#809: mixed KILL ${completionFirst ? "before" : "after"} EDIT preserves the edit but does not publish a final answer`, async () => {
+    test(`{§terminal-kill}: EDIT ${completionFirst ? "after KILL is delivered literally without mutation" : "before KILL executes and defers completion"}`, async () => {
         const edit = frame("EDIT (worker:///answer)", "42");
         const kill = frame("KILL", "Unreviewed answer.");
+        const content = (completionFirst ? [kill, edit] : [edit, kill]).join("\n\n");
         const f = await setup([
-            { assistant: { content: (completionFirst ? [kill, edit] : [edit, kill]).join("\n\n"), reasoning: null } },
+            { assistant: { content, reasoning: null } },
             { assistant: { content: frame("KILL", "Verified answer."), reasoning: null } },
         ]);
         try {
             const first = await f.turn();
+            const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/answer", name: "body" });
+            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; rx: string; status_rx: number }>({ turn_id: first.turnId });
+            if (completionFirst) {
+                assert.equal(first.status, 200);
+                assert.deepEqual(await f.replies(), [content.slice(content.indexOf("\n") + 1)]);
+                assert.equal(channel, undefined, "an answer cannot execute its displayed EDIT");
+                assert.deepEqual(rows.map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["READ", 200], ["KILL", 200]], "only ordinary answer delivery and completion have receipts");
+                return;
+            }
             assert.equal(first.status, 102);
             assert.deepEqual(await f.replies(), []);
-            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; rx: string; status_rx: number }>({ turn_id: first.turnId });
+            assert.equal(channel?.content, "42");
             assert.equal(rows.find(({ op }) => op === "EDIT")?.status_rx, 201);
             assert.equal(rows.find(({ op }) => op === "KILL")?.status_rx, 102);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).detail, "Completion deferred. Conclude with KILL alone."); // {§pinned-wording-core}
@@ -212,19 +222,20 @@ for (const stage of ["inference", "terminal transition"] as const) {
 }
 
 for (const completionFirst of [false, true]) {
-    test(`#809: log curation ${completionFirst ? "after" : "before"} completion does not prevent an answered loop concluding`, async () => {
+    test(`{§terminal-kill}: log curation ${completionFirst ? "after KILL is answer text" : "before KILL executes without preventing completion"}`, async () => {
         const curate = frame("KILL (log:///**/NOTE)", "");
         const complete = frame("KILL", "42.");
+        const content = (completionFirst ? [complete, curate] : [curate, complete]).join("\n\n");
         const f = await setup([
             { assistant: { content: frame("NOTE", "Disposable scratch."), reasoning: null } },
-            { assistant: { content: (completionFirst ? [complete, curate] : [curate, complete]).join("\n\n"), reasoning: null } },
+            { assistant: { content, reasoning: null } },
         ]);
         try {
             assert.equal((await f.turn()).status, 102);
             assert.equal((await f.turn()).status, 200);
-            assert.deepEqual(await f.replies(), ["42."]);
+            assert.deepEqual(await f.replies(), [completionFirst ? content.slice(content.indexOf("\n") + 1) : "42."]);
             const rows = await f.db.engine_render_log.all<{ op: string }>({ worker_id: f.workerId });
-            assert.equal(rows.some(({ op }) => op === "NOTE"), false, "the admitted curation executes before completion");
+            assert.equal(rows.some(({ op }) => op === "NOTE"), completionFirst, "only curation before the final answer executes");
         } finally { await f.db.close(); }
     });
 }

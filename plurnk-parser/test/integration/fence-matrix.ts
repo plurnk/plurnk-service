@@ -56,6 +56,10 @@ export const cells = (): Cell[] => {
         const body = inner.body(width);
         if (body === null) continue;
         const text = `${fence(width)}${head}\n${body}\n${fence(width)}${tail.text}`;
+        if (op === "KILL" && tail.text !== "") {
+            out.push({ name: `${op} · outer ${width} · ${inner.name} · ${tail.name}`, text, op, body: `${body}\n${fence(width)}${tail.text}`, following: [] });
+            continue;
+        }
         const runs = width === 3 && op === "EDIT" && inner.mutationSameWidth !== undefined ? inner.mutationSameWidth
             : inner.sameWidth !== undefined && width === 3 && op !== "KILL" ? inner.sameWidth : null;
         // {§unclosed-mutation-yields} then {§quotation}: once the example runs, the EDIT's written closer is a stray

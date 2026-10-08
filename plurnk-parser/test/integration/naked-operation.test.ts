@@ -52,8 +52,9 @@ test("{§naked-operation}: an aside at end of input still permits an empty compl
 
 test("{§naked-kill}: an aside-bearing name inside the answer does not close it", () => {
     const body = "Shown:\nKILL <!-- also shown -->\n```KILL (notes.md)\n```\nStill the answer.";
-    const result = PlurnkParser.parse(`KILL <!-- answer -->\n${body}\nKILL\n\`\`\`READ (b.md)\n\`\`\``);
-    assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["KILL", body], ["READ", null]]);
+    const answer = `${body}\nKILL\n\`\`\`READ (b.md)\n\`\`\``;
+    const result = PlurnkParser.parse(`KILL <!-- answer -->\n${answer}`);
+    assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["KILL", answer]]);
     assert.deepEqual(warnings(result), [RECEIPT("KILL")]);
 });
 

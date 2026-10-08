@@ -311,7 +311,8 @@ column-zero line outside any block containing a native operation's name and at m
 `<!-- aside -->`, with only horizontal whitespace otherwise, opens that operation as if it were
 fenced with the taught three backticks. The aside retains its ordinary meaning: no target or
 modifiers are inferred. Its body runs to a line that is exactly the name
-again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
+again, to the next heading ({§fence-heading-in-body}), or to the end of the turn, except
+parameterless KILL always takes the remaining answer region ({§terminal-kill}). A fence inside
 naming nothing known is body; the block expects no closer, so its body is never cut
 back ({§closer-fallback}). A naked `KILL` alone holds every fence inside it as text ({§naked-kill}). It runs, and one warning-severity receipt follows its statement —
 `` `KILL` opened with no fence; the taught form is three backticks. `` One rule for every native
@@ -327,8 +328,8 @@ read this way.
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks and a name that is a native operation or a known executor
 is a heading. Inside an open block it either ends that block without closing it and opens the
-next statement, or it is a literal example held by the block; the block holds it only while
-the block ends at a real closer, and {§fence-pairing} chooses between the two. Fence lines of
+next statement, or it is a literal example held by the block. {§fence-pairing} chooses between
+the two; parameterless KILL always holds the remaining input ({§terminal-kill}). Fence lines of
 fewer than three backticks are never headings ({§operation-fences}). Known executors are `sh`
 plus what the host names in `ParseOptions.executors`. Inside a parameterless `KILL` a
 heading never ends the block ({§terminal-kill}).
@@ -442,11 +443,13 @@ heading. An operation example quoted in a body of its own width therefore reads 
 closing and the example running; the wider outer fence or the tab offset quotes it
 ({§operation-fences}).
 
-§terminal-kill **A KILL body is the deliverable.** Inside a parameterless `KILL`, at any depth, a
-heading is a literal example or text and never ends the block; the block ends at its closer or
-the end of the input. Of 796 recorded parameterless KILLs, 9 were followed by any other
-operation, while 62 of 120 SENDs were, so the rule is KILL's alone. It keeps a final report whole
-and never runs a command the report only shows.
+§terminal-kill **A parameterless KILL starts the final answer region.** Once its heading is
+recognized as an operation, the rest of the input is its literal body. A fence cannot return
+that region to executable operations or outside text. Apparent operations, receipts and malformed
+fences within it are answer text. An actual enclosing closer at the end is framing, not body;
+an earlier fence remains body. Compact and recovered naked spellings obey the same boundary.
+Quoted KILL examples do not open this region; targeted KILL retains ordinary statement framing.
+Earlier operations still execute and completion remains subject to {§kill-conclusion}.
 
 §prose-code-blocks **A message or a prompt shows code.** Inside a `SEND`, `WORK`, `FORK` or `BARE`
 body, at any depth, a heading that names an executor (` ```sh `, ` ```python3 `) is a code block the
@@ -457,8 +460,8 @@ operation. In the distinct recorded benchmark emissions an executor heading ende
 run218, run114 and run118, deepdumb run44) was the child's task, the prompt's code or code quoted in
 a report, and reading it as an operation truncated the task and ran the example in the parent.
 
-§message-run-on **A message runs to the end of the turn.** A parameterless `KILL`, or a `SEND`,
-`WORK`, `FORK` or `BARE`, whose block reaches the end of the input without its closer takes it
+§message-run-on **A message runs to the end of the turn.** A `SEND`, `WORK`, `FORK` or `BARE`
+whose block reaches the end of the input without its closer takes it
 there with no repair: the text after its last inner block is still the deliverable, the message
 or the task, never outside text. The run counts as a supplied closer, so a reading that closes at
 a real fence still wins, and it never costs an operation: when the reading that runs on hides more
@@ -467,11 +470,9 @@ operations the author wrote than the best repaired reading, the repaired reading
 inner fence keep what followed it (the qflash run192, run90 and run210 deliverables regain their last
 sections), one echoed transcript (glm run155) runs one more operation, and none loses one.
 
-§naked-kill **A naked KILL is the whole rest of the turn.** A parameterless `KILL` opened without
-a fence ({§naked-operation}), with or without an aside, is a completion: every fenced
-block inside it, a native operation heading included, is text the deliverable shows, exactly as
-inside a fenced KILL ({§terminal-kill}), and the block ends only at its name alone on a line or at
-the end of the input. No operation the deliverable shows runs.
+§naked-kill **A naked KILL obeys the same answer boundary.** A parameterless `KILL` opened without
+a fence ({§naked-operation}), with or without an aside, takes the remaining input under
+{§terminal-kill}. A repeated name can close it only at the end; it never exposes later operations.
 
 §pairing-witness **Witnesses.**
 
@@ -1308,6 +1309,8 @@ disposition. The shape rules ARE structural:
   dispositions until the other admitted operations settle
   ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
   position. Omission does not synthesize a disposition ({§turn-shape}).
+  This applies to WAIT, not to the literal answer region opened by parameterless KILL
+  ({§terminal-kill}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only WAIT joins live work: an open stream or a live
   child. With none, it continues. Its optional duration bounds parking ({§send-wait-scope});

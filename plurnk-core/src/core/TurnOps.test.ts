@@ -63,7 +63,7 @@ test("{§emission-row} a long body is frozen whole", () => {
     assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
 });
 
-test("{§outside-text} a worker that ends its emission with comments keeps every operation; the comments are outside text", () => {
+test("{§outside-text} {§terminal-kill} comments before KILL remain outside; comments after it belong to the answer", () => {
     const emitted = [
         `${PlurnkParser.frame("EDIT (worker:///notes.md)", "complete body")} <!-- imitated aside -->`,
         PlurnkParser.frame("KILL", "The answer."),
@@ -73,8 +73,9 @@ test("{§outside-text} a worker that ends its emission with comments keeps every
     const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
     assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "KILL"]);
     assert.equal((statements[0] as EditStatement).body, "complete body");
+    assert.equal(statements[1]?.op === "KILL" ? statements[1].body : null, "The answer.\n```\n\n<!-- a trailing comment of its own -->");
     assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
-        ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
+        ["<!-- imitated aside -->"]);
 });
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {

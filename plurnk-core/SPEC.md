@@ -2893,6 +2893,8 @@ accounting and model-visible failure evidence remain separately owned by
   contains exactly one KILL without a target, scope, matcher or metadata, no hard
   parse error or lost boundary, and was not cut at the provider's output allowance.
   The operation limit must admit the entire program.
+  The parser retains everything after that KILL heading as its answer region
+  ({§terminal-kill}); apparent operations there are body text, not siblings.
   SEND, NOTE and log-targeted KILL may accompany it, as may outside text ({§outside-text});
   every other operation requires continuation. This tolerance is unadvertised:
   model teaching requests KILL alone. Reasoning-side NOTEs remain ordinary notes.

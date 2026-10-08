@@ -1,6 +1,5 @@
 // {§heading-inline-body} — every operation, every kind of heading text, every place it is written: the operation
-// is never lost, no text is dropped silently, the operation after it still runs, and the reading follows the
-// shape table.
+// is never lost, no text is dropped silently, and the reading follows the shape table and {§terminal-kill}.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
@@ -92,8 +91,15 @@ for (const [heading, op, read] of SHAPES) {
                 assert.deepEqual(reading(statements[0]!), expected, label);
                 assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), advisory === undefined ? [] : [advisory], `${label} — a reading other than the canonical one is named once`);
 
-                const followed = parse(`${source}\n\n${fence}READ (z.md)\n${fence}`);
-                assert.deepEqual(followed.items.flatMap((item) => item.kind === "statement" ? [nameOf(item.statement)] : []), [op, "READ"], `${label} — the operation after it still runs`);
+                const tail = `\n\n${fence}READ (z.md)\n${fence}`;
+                const followed = parse(`${source}${tail}`);
+                const following = followed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+                if (heading === "KILL") {
+                    assert.deepEqual(following.map(nameOf), ["KILL"], `${label} — the apparent operation is answer text`);
+                    assert.equal(reading(following[0] as unknown as Record<string, unknown>).body, `${text}${place === "open" || place === "below" ? `\n${fence}` : ""}${tail}`, label);
+                } else {
+                    assert.deepEqual(following.map(nameOf), [op, "READ"], `${label} — the operation after it still runs`);
+                }
 
                 const canonical = PlurnkParser.stringify([statements[0] as never]);
                 const again = parse(canonical);

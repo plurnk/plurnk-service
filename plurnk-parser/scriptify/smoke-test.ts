@@ -106,6 +106,17 @@ if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(sel
 
 // The model tier also records free text as text items; the program is its statements.
 const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
+const ticks = String.fromCharCode(96).repeat(3);
+const answerTail = "Complete answer.\\n" + ticks + "\\n"
+    + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+    const parsed = parse(ticks + "KILL\\n" + answerTail);
+    assertClean("terminal answer tail", parsed);
+    const statements = statementsOf(parsed);
+    if (statements.length !== 1 || statements[0]?.op !== "KILL" || statements[0]?.body !== answerTail) {
+        throw new Error("packed parser truncated the answer or executed its example");
+    }
+}
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
     + "\\n3\\n" + program + "\\nPostscript.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {

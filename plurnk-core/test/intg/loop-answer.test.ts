@@ -53,7 +53,10 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
     } finally { await db.close(); }
 });
 
-test("{§loop-answer}: a concluded child's termination IS what it said, read at its own address", async () => {
+for (const [shape, body] of [
+    ["ordinary", "The draft is sound."],
+    ["early closer", "The draft is sound.\n````\n```EDIT (worker:///must-not-execute)\nNot an operation.\n```\nThe entire report is the answer.\n````"],
+] as const) test(`{§loop-answer} {§terminal-kill}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-child-${crypto.randomUUID()}`);
@@ -62,7 +65,7 @@ test("{§loop-answer}: a concluded child's termination IS what it said, read at 
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````KILL\nThe draft is sound.\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`KILL\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
             workspaceId, workerId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);
@@ -70,6 +73,8 @@ test("{§loop-answer}: a concluded child's termination IS what it said, read at 
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }], "the event retains the child's exact terminal result");
         const answer = await engine.look({ workspaceId, workerId: parentId, loopId, statement: statement("````READ (ops://reviewer/1)````") });
         assert.ok("content" in answer);
-        assert.equal(answer.content, "The draft is sound.", "the parent reads the answer where the termination points");
+        assert.equal(answer.content, body, "the parent reads the complete answer where the termination points");
+        const escaped = await db.test_get_channel_by_pathname.get({ pathname: "/must-not-execute", name: "body" });
+        assert.equal(escaped, undefined, "the child's deliverable cannot execute its examples");
     } finally { await db.close(); }
 });
