@@ -4,6 +4,8 @@
 
 ### Patch Changes
 
+- Pin the AI SDK runtime and provider adapters to the verified dependency
+  versions, preserving the tested SDK selection in fresh consumer installs.
 - 0d5480b: Bind worker approvals to durable owners, inherited by child workers. Client
   attachments declare their supported interaction tools; reconnecting owners can
   resume pending approvals. Explicit control attachment may claim runtime-owned
