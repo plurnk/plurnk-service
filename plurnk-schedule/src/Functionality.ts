@@ -212,7 +212,7 @@ export default class ScheduleFunctionality {
                     path: `schedule:///rules/${encodeURIComponent(alias)}`,
                     rule: parsed.text,
                     zone: parsed.zone,
-                    text: describeRule(parsed),
+                    text: `${describeRule(parsed)}${next === null ? "; no future occurrences" : ""}`,
                     next: next === null ? null : isoString(next),
                     exhausted: next === null,
                     target: definition.target,

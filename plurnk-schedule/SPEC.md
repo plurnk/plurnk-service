@@ -38,7 +38,9 @@ refuses with `rule-unbounded`. A service rule ({§schedule-environment}) may be
 unbounded; the operator owns it. An exhausted rule stays listed `active` with
 `exhausted: true` and `next: null`; it arms nothing. Exhaustion states that no
 future occurrence exists, not that a message was delivered: a rule may already
-be exhausted when added.
+be exhausted when added. Its existing `text` description ends with
+`; no future occurrences`, in add results and later inspection alike. This is
+status, not a failure or a claim of delivery; no dates or wake conditions change.
 
 ## §schedule-zone Zone
 

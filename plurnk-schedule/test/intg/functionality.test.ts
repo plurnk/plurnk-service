@@ -210,7 +210,7 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
     });
     assert.deepEqual(prepared.outcomes.get("once"), {
         state: "active",
-        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time", next: null, exhausted: true, target: "worker://bot" },
+        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time; no future occurrences", next: null, exhausted: true, target: "worker://bot" },
     });
     assert.deepEqual(adapter.scheduler.armed(1), [], "nothing arms before commit");
     await prepared.commit();
@@ -263,7 +263,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
     const done = await adapter.prepare(preparation(3, { beat: BEAT }));
     assert.deepEqual((done.outcomes.get("beat") as { detail: { next: null; exhausted: boolean } }).detail, {
-        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times", next: null, exhausted: true, target: "worker://bot",
+        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times; no future occurrences", next: null, exhausted: true, target: "worker://bot",
     });
     await adapter.scheduler.close();
 });
@@ -287,8 +287,9 @@ test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add
         const prepared = await adapter.prepare(preparation(5, { expired, fresh }));
         const expiredOutcome = prepared.outcomes.get("expired");
         assert.ok(expiredOutcome?.state === "active");
-        const expiredDetail = expiredOutcome.detail as { next: string | null; exhausted: boolean };
+        const expiredDetail = expiredOutcome.detail as { next: string | null; exhausted: boolean; text: string };
         assert.deepEqual([expiredDetail.next, expiredDetail.exhausted], [null, true], "an expired candidate has no occurrence left to deliver");
+        assert.match(expiredDetail.text, /; no future occurrences$/u, "the rule description states what exhaustion means, without implying delivery");
         const freshOutcome = prepared.outcomes.get("fresh");
         assert.ok(freshOutcome?.state === "active");
         const freshDetail = freshOutcome.detail as { next: string | null; exhausted: boolean };
