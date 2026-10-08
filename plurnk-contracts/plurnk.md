@@ -28,11 +28,11 @@ body?
 
 ## Workflow Management
 
-> [!TIP]
-> A parameterless KILL with the final deliverable response ends the loop.
-
 > [!IMPORTANT]
-> YOU MUST NOT emit any other OP when you end the loop, and all child workers and streams must be resolved.
+> YOU MAY end the loop with a turn emitting only a parameterless KILL containing the final deliverable response.
+
+> [!CAUTION]
+> Turns containing multiple OPs, active workers, or open streams will not end the loop.
 
 ```SEND <!-- example: a parameterless send messages user -->
 This is an example of a continuing turn progress update for the user.
