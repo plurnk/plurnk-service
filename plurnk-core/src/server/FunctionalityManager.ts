@@ -6,6 +6,7 @@
 // exact coordinator method a client action calls.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
+import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { Problems, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
@@ -24,7 +25,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "Read-only. Unavailable definitions carry their exact Problem. Provenance identifies the winning configuration input, not a runtime or shadowed definition.",
     },
     discover: {
-        summary: "Inspect a query or source and return inert candidates.",
+        summary: "Return inert candidates for the input its schema accepts.",
         details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
     },
     add: {
@@ -45,11 +46,12 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
     },
 });
 
+// {§functionality-discover-advertisement} The family's verbs are exactly those with an input schema.
 export type FunctionalityTeaching = {
     readonly traits?: readonly string[];
-    readonly inputSchemas: Readonly<Record<FunctionalityVerb, JsonSchema>>;
+    readonly inputSchemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>;
     readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly details: string };
+    readonly discovery?: FunctionalityDiscovery;
 };
 
 const isFunctionalityVerb = (value: string | null): value is FunctionalityVerb =>
@@ -108,17 +110,24 @@ export default class FunctionalityManager extends BaseExecutor {
         return isFunctionalityVerb(target) && READ_VERBS.has(target) ? "read" : "host";
     }
 
-    // The six verbs in lifecycle order; `add` teaches the family's definition from its schema
-    // with one exact example, and `discover` carries the family's own contract when it has one.
+    #verbs(): FunctionalityVerb[] {
+        return FUNCTIONALITY_VERBS.filter((verb) => this.#teaching.inputSchemas[verb] !== undefined);
+    }
+
+    // The family's verbs in lifecycle order; `add` teaches the family's definition from its schema
+    // with one exact example, and `discover` carries the family's own teaching when it has some.
+    // A body is optional where an empty one is a complete request: `list`, and a discovery whose
+    // empty request lists everything.
     toolRegistry(): RuntimeToolRegistry {
         return {
-            tools: FUNCTIONALITY_VERBS.map((verb) => {
-                const inputSchema = this.#teaching.inputSchemas[verb];
+            tools: this.#verbs().map((verb) => {
+                const inputSchema = this.#teaching.inputSchemas[verb]!;
+                const optional = verb === "list" || (verb === "discover" && this.#teaching.discovery?.emptyListsAll === true);
                 return {
                     target: verb,
                     summary: VERB_TEACHING[verb].summary,
                     invocation: {
-                        body: { role: "JSON arguments", required: verb !== "list" },
+                        body: { role: "JSON arguments", required: !optional },
                         target: { role: "lifecycle verb", required: true, kind: "literal" },
                         inputSchema,
                     },
@@ -130,8 +139,9 @@ export default class FunctionalityManager extends BaseExecutor {
 
     #details(verb: FunctionalityVerb): string {
         const base = VERB_TEACHING[verb];
-        if (verb === "discover" && this.#teaching.discovery !== undefined) {
-            return `${base.details}\n\n${this.#teaching.discovery.details}`;
+        if (verb === "discover") {
+            const details = this.#teaching.discovery?.details;
+            return details === undefined ? base.details : `${base.details}\n\n${details}`;
         }
         if (verb !== "add") return base.details;
         const example = this.#teaching.example === undefined ? [] : [
@@ -143,9 +153,10 @@ export default class FunctionalityManager extends BaseExecutor {
 
     async run(args: ExecArgs): Promise<ExecResult> {
         const verb = args.target;
-        if (!isFunctionalityVerb(verb)) {
+        const verbs = this.#verbs();
+        if (!isFunctionalityVerb(verb) || !verbs.includes(verb)) {
             return Results.failure("functionality", "verb-unknown", 400, `'${verb ?? ""}' is not a ${this.runtime} lifecycle verb.`, {}, {
-                recovery: `Select one of ${FUNCTIONALITY_VERBS.join(", ")}.`,
+                recovery: `Select one of ${verbs.join(", ")}.`,
                 retryable: false,
             });
         }

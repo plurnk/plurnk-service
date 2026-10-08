@@ -21,13 +21,13 @@ definitions without reading the whole catalog:
 
 The turn-0 catalog lists every enabled server's Markdown document. `list`
 shows every server, including disabled ones and unavailable ones with their
-exact Problem; `enable` turns a server on; `discover` finds servers to add.
+exact Problem; `enable` turns a server on.
 
 ## discover, then add
 
-`discover` takes `{"query": "<name>"}` and searches the MCP Registry; each
-candidate carries the exact definition to add. Discovery never persists or
-enables anything.
+`discover` is present when the operator configures an MCP Registry. It takes
+`{"query": "<name>"}` and searches that registry; each candidate carries the
+exact definition to add. Discovery never persists or enables anything.
 
 ```mcp (discover) <!-- search before adding -->
 {"query": "filesystem"}

@@ -11,7 +11,8 @@ import type { PluginContext } from "./PluginConfiguration.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
-import type { DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import {
     Problems,
     type FunctionalityCandidate,
@@ -44,7 +45,6 @@ import {
     registrySettings,
     serverSettings,
     type McpAuthorization,
-    type RegistrySettings,
     type ToolPolicy,
 } from "./config.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
@@ -296,6 +296,12 @@ const catalogDetail = (executor: McpExecutor): object => {
     };
 };
 
+// {§mcp-registry-discovery} — the registry `discover` searches.
+interface Registry {
+    readonly url: string;
+    readonly limit: number;
+}
+
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
     "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
@@ -303,6 +309,11 @@ type SetupSeam = Pick<ModuleSetupSeam,
 
 export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
+    // {§mcp-registry-discovery} The registry `discover` searches, read at construction; without one the
+    // family serves no discovery. An invalid setting withholds discovery alone
+    // ({§module-contained-configuration}).
+    readonly #registry: Registry | null;
+    readonly contained: readonly ContainedConfiguration[];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];
     #plugins!: SetupSeam["readWorkspacePlugins"];
     readonly #configurationNotices = new Map<number, readonly Notice[]>();
@@ -329,6 +340,17 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     private constructor(environ: NodeJS.ProcessEnv) {
         this.#env = environ;
+        let registry: Registry | null = null;
+        let contained: ContainedConfiguration[] = [];
+        try {
+            const { url, limit } = registrySettings(environ);
+            if (url !== null) registry = { url, limit };
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            contained = [{ key: cause.key, message: cause.message }];
+        }
+        this.#registry = registry;
+        this.contained = contained;
     }
 
     async setup(seam: SetupSeam): Promise<void> {
@@ -337,6 +359,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
+        const registry = this.#registry;
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
@@ -344,12 +367,15 @@ export default class Module implements DaemonModule<SetupSeam> {
             definitionSchema: MCP_DEFINITION,
             example: { alias: "example-server", definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] } },
             docsDir: fileURLToPath(new URL("..", import.meta.url)),
-            discovery: {
-                details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
-            },
+            ...(registry === null ? {} : {
+                discovery: {
+                    inputs: ["query"],
+                    details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
+                },
+                discover: (query) => this.#discover(query, registry),
+            }),
             available: (identity) => this.#available(identity),
             configurationNotices: ({ workspaceId }) => this.#configurationNotices.get(workspaceId) ?? [],
-            discover: (query) => this.#discover(query),
             admit: (input) => this.#admit(input),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
@@ -405,26 +431,14 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     // {§mcp-registry-discovery} Candidates are complete definitions, never installations.
-    async #discover(query: FunctionalityDiscoverQuery): Promise<FunctionalityCandidate[]> {
-        if (query.configuration !== undefined) {
-            throw actionError("configuration-unsupported", 400, "MCP discovery searches the MCP Registry by query; client configuration contributes nothing.", { retryable: false });
-        }
-        if (query.source !== undefined) {
-            throw actionError("source-unsupported", 400, "MCP discovery searches the MCP Registry by query; it does not install from a source URL.", {
-                source: query.source, retryable: false,
-            });
-        }
-        if (query.query === undefined) return [];
-        const { url, limit }: RegistrySettings = registrySettings(this.#env);
-        if (url === null) {
-            throw actionError("registry-not-configured", 501, "MCP registry search is off: the operator names no registry.", { query: query.query, retryable: false });
-        }
+    async #discover(query: FunctionalityDiscoverQuery, { url, limit }: Registry): Promise<FunctionalityCandidate[]> {
+        const term = query.query!;
         let servers: RegistryServer[];
         try {
-            servers = await searchRegistry({ url, query: query.query, limit, timeoutMs: connectTimeoutMs(this.#env) });
+            servers = await searchRegistry({ url, query: term, limit, timeoutMs: connectTimeoutMs(this.#env) });
         } catch (cause) {
-            throw actionError("discover-failed", 502, cause instanceof RegistryError ? cause.message : `The MCP Registry search for '${query.query}' failed.`, {
-                query: query.query, retryable: true,
+            throw actionError("discover-failed", 502, cause instanceof RegistryError ? cause.message : `The MCP Registry search for '${term}' failed.`, {
+                query: term, retryable: true,
             }, cause);
         }
         return servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({

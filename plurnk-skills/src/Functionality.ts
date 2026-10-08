@@ -24,7 +24,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type { FunctionalityAdapter, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
+import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import SkillSource from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";
 
@@ -94,7 +94,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", source: "https://git.example/acme/skills.git" } };
     readonly docsDir = resolve(import.meta.dirname, "..");
-    readonly discovery = {
+    readonly discovery: FunctionalityDiscovery = {
+        inputs: ["source"],
         details: "`source` lists the Agent Skills one source carries: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. A candidate carries the exact definition to add.",
     };
 
@@ -231,14 +232,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     }
 
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
-        if (query.configuration !== undefined) {
-            throw actionError("configuration-unsupported", 400, "Agent Skills discovery takes a source; client configuration contributes nothing.", { retryable: false });
-        }
-        if (query.query !== undefined) {
-            throw actionError("query-unsupported", 400, "Agent Skills have no standard registry to search; discover takes a source: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive.", { query: query.query, retryable: false });
-        }
-        if (query.source === undefined) return [];
-        const source = query.source;
+        const source = query.source!;
         const located = await SkillSource.locate(source, await this.#seam.workspacePaths(identity.workspaceId));
         const opened = await this.#source.open(located);
         try {

@@ -125,6 +125,12 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         const discovered = await invoke<FunctionalityDiscoverResult>(alice, "discover", { query: "PAGER" });
         assert.equal(discovered.candidates.find(({ alias }) => alias === "PAGER")?.provenance.source, "@plurnk/plurnk-execs");
         assert.equal(await stateOf(alice, "PAGER"), undefined, "discovery persisted nothing");
+        // {§functionality-discover-advertisement} A request naming no input is the whole catalog; a client's
+        // own configuration is no input, refused by the shared schema check.
+        const catalog = (await invoke<FunctionalityDiscoverResult>(alice, "discover", {})).candidates;
+        assert.ok(catalog.some(({ alias }) => alias === "PAGER"), "the empty request lists the catalog");
+        assert.ok(catalog.length > discovered.candidates.length, "the whole catalog, not a query's matches");
+        assert.equal(await refusal(() => invoke(alice, "discover", { configuration: {} })), "https://problems.plurnk.xyz/functionality/arguments-invalid");
 
         // WORK owns its heading slot ({§env-option}): a key it does not take and a reserved name are
         // refused by name, before any child exists.

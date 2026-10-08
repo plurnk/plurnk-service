@@ -4243,11 +4243,32 @@ Retryability describes the actual failed condition, not its numeric status.
 | Verb | Common contract |
 |---|---|
 | `list` | Project definitions, ownership (`origin`), winning configuration source (`provenance`), enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
-| `discover` | Return inert candidates. Never install, persist, enable, or execute them. |
+| `discover` | Return inert candidates for the inputs the family serves ({§functionality-discover-advertisement}). Never install, persist, enable, or execute them. |
 | `add` | Admit and persist a local definition, prepare it, and enable it atomically. It may override an inherited definition. Reapplying the same local definition enables it idempotently (200); a different local definition for that alias fails 409 without replacing it. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions cannot be removed at this scope. Saved results remain. |
+
+§functionality-discover-advertisement **A family's `discover` advertises exactly the inputs it
+serves.** The coordinator builds the family's discover input schema from its declared discovery
+({§functionality-discovery-inputs}): the declared inputs with their shared
+`FunctionalityDiscoverQuery` definitions and no other property (a multi-scope family adds
+`scope`), and, unless a request naming none lists everything, at least one of them: the one
+input required, or any of several. The client actions, the manager's tool documents and their
+schema documents carry that schema. Any other input, or a request naming none, is refused by the
+shared schema check as 400 `arguments-invalid`, its `errors` naming each field; no family mints
+its own refusal for an input it does not serve. A family without discovery has no `discover`
+action, and its manager teaches none. A value of a served input the family cannot use remains the
+family's own refusal.
+
+| Family | Inputs | A request naming none |
+|---|---|---|
+| `skills` | `source` ({§skills-functionality}) | Refused |
+| `schedule` | `source` ({§schedule-clock}) | Refused |
+| `mcp` | `query`, while a registry is configured; otherwise no discovery ({§mcp-registry-discovery}) | Refused |
+| `a2a` | `source`, `configuration` ({§a2a-functionality}) | Refused |
+| `env` | `query`, `source` ({§env-functionality}) | The whole catalog |
+| `members` | `query` ({§members-functionality}) | Refused |
 
 §configuration-definition-resolution **Named resource definitions replace whole;
 independent behavior controls remain independent.** Source readers and scope
@@ -4420,8 +4441,9 @@ set any name it lists or none of them — it answers which names have a **consum
 a Worker learns the name of a value only the operator can supply. The catalog projects
 declarations, never the host environment, so a credential the operator has filled in appears by
 name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never
-read). `configuration` is refused: a client's own environment contributing candidates would be a
-second door past the ceiling.
+read). `source` selects one declaring package, and a request naming neither input is the whole
+catalog. A client's own environment is no input: contributing candidates, it would be a second
+door past the ceiling.
 
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
 not from a live process or a cached worker environment.
@@ -4434,11 +4456,12 @@ than capability — with worker overrides above workspace defaults. The adapter 
 coordinator keys durable state and the locally-owned `origin`
 by it: a workspace-scoped family's own entries carry origin `workspace`, a worker-scoped
 family's carry `worker`. Origin names ownership, never scope, so a projection never claims the
-workspace set a value one Worker set for itself. Nothing else in the contract varies: the six
-verbs, the two projections, enabledness, and the service-baseline rules are one implementation
+workspace set a value one Worker set for itself. Nothing else in the contract varies but the
+discovery inputs a family serves ({§functionality-discover-advertisement}): the verbs, the two
+projections, enabledness, and the service-baseline rules are one implementation
 across every family, which is what keeps their idioms from drifting apart.
 
-A family projects `<scope>.<family>.<verb>` for each supported scope. The action's
+A family projects `<scope>.<family>.<verb>` for each verb it serves, in each supported scope. The action's
 context binds that scope; a worker-scoped action also names the Worker. Its durable
 value is the same shape per (worker, family) in `worker_module_state`, read
 at each verb and at each spawn rather than held in the workspace snapshot. Its `list` and
@@ -4488,7 +4511,8 @@ definitions add no hot-path teaching. Their exact state and Problem remain
 available through `list`.
 
 §functionality-model-projection **Each family has one workspace manager
-executor.** The six verbs use their actual coordinator schemas and the ordinary
+executor.** Its verbs — `discover` only where the family serves discovery
+({§functionality-discover-advertisement}) — use their actual coordinator schemas and the ordinary
 tool-document machinery. `list`/`discover` are read effects; mutations are host
 effects and use normal proposals. Summary, signatures, and deep docs derive
 from the same registry ({§tools-resource-materialization},
@@ -5476,10 +5500,11 @@ The alias is a short name, suggested from the glob. `list` shows each
 definition with what it resolved to — `include` or `exclude`, the pattern, the members it
 admits or removes (count and a bounded sample), and for a model's inclusion the matches the
 repository's ignore rules refused — so the model sees what its glob did and adapts.
-`discover` is introspection, never a catalog: a path answers why it is or is not visible
-(tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored,
-untracked, absent); a glob previews what `add` would include or exclude. Names only, never
-content; nothing is added.
+`discover` is introspection, never a catalog: its one input, `query`, is a path or a glob. A path
+answers why it is or is not visible (tracked, included by which pattern, a creation record,
+excluded by which `!glob`, ignored, untracked, absent); a glob previews what `add` would include
+or exclude. A query that names neither, blank or a bare `!`, is 400 `query-invalid`. Names only,
+never content; nothing is added.
 
 §members-configuration *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>`
 declares one service-origin rule (`!glob` excludes). The shared naming and
@@ -6038,12 +6063,11 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 |---|---:|---|
 | `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
-| `configuration-unsupported` | 400 | Environment discovery reads this installation's declared configuration; client configuration contributes nothing. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
 | `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
 | `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
-| `query-required` | 400 | discover takes a path or a glob. Recovery: Supply `{ "query": "<path or glob>" }`. |
+| `query-invalid` | 400 | '*query*' names no path or pattern. Recovery: Supply a path such as `docs/guide.md` or a pattern such as `docs/**`. |
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
 | `definition-invalid` | 400 | A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude. |
 | `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: `git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE. |

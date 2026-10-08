@@ -79,15 +79,6 @@ test("{§env-functionality} discover projects only what a Worker may set, and ma
     assert.deepEqual(await adapter.discover({ query: "PLURNK_WITNESS_KNOB" }, identity), [], "not even by exact name");
 });
 
-// Client configuration contributing candidates would be a second door into the cascade, past the
-// operator's ceiling. Agent Skills refuses the same field for the same reason.
-test("{§env-functionality} discover refuses client-supplied configuration", async () => {
-    await assert.rejects(
-        () => adapter.discover({ configuration: {} }, identity),
-        /client configuration contributes nothing/u,
-    );
-});
-
 test("{§env-functionality} available projects what the ceiling admits, enabled, in name order", async () => {
     const previous = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
     process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "ZED_LAST,ALPHA_FIRST";

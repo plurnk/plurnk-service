@@ -52,7 +52,7 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
         family: "fx", workspaceId: 1, coordinator,
         inputSchemas: schemas,
         example: { alias: "a", definition: { kind: "ok" } },
-        discovery: { details: "`source` is one fixture locator." },
+        discovery: { inputs: ["source"], details: "`source` is one fixture locator." },
     });
     const tool = (target: string) => manager.toolRegistry().tools.find((candidate) => candidate.target === target)!;
     for (const verb of FUNCTIONALITY_VERBS) {
@@ -75,6 +75,28 @@ test("{§functionality-model-projection} the family manager exposes exactly the 
     assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "").invocation.target?.kind, "literal");
     assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "").details, undefined, "no doc file, no details slot");
     assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "Authored body.").details, "Authored body.", "the family's doc-file body rides the runtime declaration's details");
+});
+
+test("{§functionality-discover-advertisement} a family without discovery has no discover verb, and its manager names the verbs it has", async () => {
+    invocations.length = 0;
+    const { discover: _discover, ...served } = inputSchemas;
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas: served });
+    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), ["list", "add", "enable", "disable", "remove"]);
+    const refused = await manager.run(args("discover", '{"query": "x"}').args);
+    assert.equal(refused.status, 400);
+    assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
+    assert.equal(refused.problem?.detail, "'discover' is not a fx lifecycle verb.");
+    assert.equal(refused.problem?.recovery, "Select one of list, add, enable, disable, remove.");
+    assert.deepEqual(invocations, [], "the refusal never reaches the coordinator");
+});
+
+test("{§functionality-discover-advertisement} a discovery whose empty request lists everything takes an optional body", () => {
+    const body = (discovery?: { readonly inputs: readonly ("query" | "source")[]; readonly emptyListsAll?: true }) =>
+        new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas, ...(discovery === undefined ? {} : { discovery }) })
+            .toolRegistry().tools.find(({ target }) => target === "discover")!.invocation.body.required;
+    assert.equal(body({ inputs: ["query", "source"], emptyListsAll: true }), false);
+    assert.equal(body({ inputs: ["query", "source"] }), true);
+    assert.equal(body({ inputs: ["source"] }), true);
 });
 
 test("{§functionality-model-projection} a verb runs through the coordinator as an operation and streams its JSON result", async () => {

@@ -1,7 +1,7 @@
 // {§functionality-adapter} — the seam between the workspace Functionality coordinator (core) and
 // a family adapter (a module). Declared once here because a module never imports core: every
 // package that meets the seam imports these shapes rather than restating them (#884).
-import type { FunctionalityProvenance, ProblemDetails } from "./types.ts";
+import type { FunctionalityDiscoverQuery, FunctionalityProvenance, ProblemDetails } from "./types.ts";
 
 export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
@@ -18,6 +18,9 @@ export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
 export interface FunctionalityOptions {
     readonly env?: Readonly<Record<string, string>>;
 }
+
+// {§functionality-discovery-inputs} — one input of the shared discovery query a family may serve.
+export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
 
 // Who invoked a verb: a client action, or the model's execution ({§functionality-model-projection}).
 // A family may bound the model's authority ({§members-model-scope}) without a second grammar.

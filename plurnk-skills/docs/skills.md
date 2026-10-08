@@ -45,7 +45,7 @@ subject to ordinary operation approval. Skill resources are read-only through `s
 `discover` lists the skills one source carries: `{"source": "..."}` returns one
 candidate per skill with the exact definition to add. A source is a git remote
 as a full https or ssh URL, a folder, a lone `SKILL.md`, or a zip or tar
-archive. There is no registry to search. Discovery never installs anything.
+archive. Discovery never installs anything.
 
 ## Adding
 

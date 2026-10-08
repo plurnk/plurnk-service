@@ -24,7 +24,7 @@ import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleErr
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
 import { isoString, zoned } from "./temporal.ts";
 import ScheduleResources from "./ScheduleResources.ts";
-import type { ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { FunctionalityDiscovery, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
@@ -88,7 +88,8 @@ export default class ScheduleFunctionality {
         },
     };
     readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
-    readonly discovery = {
+    readonly discovery: FunctionalityDiscovery = {
+        inputs: ["source"],
         details: "`source` is rule text: RFC 5545, an optional DTSTART line and one RRULE line, or bare `FREQ=…` parts. One inert candidate comes back. Its summary opens with the current time in the effective zone and previews the first occurrences; its definition carries the rule as it would be stored, to `add` with a `target` and a `prompt`. Nothing is persisted.",
     };
 
@@ -129,18 +130,10 @@ export default class ScheduleFunctionality {
 
     // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.
     async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]> {
-        if (query.configuration !== undefined) {
-            throw failure("configuration-unsupported", 400, "schedule discovery reads rule text from `source`; it takes no configuration.", { retryable: false });
-        }
-        if (query.query !== undefined) {
-            throw failure("query-unsupported", 400, "schedule discovery reads rule text from `source`; there is no catalog to search.", { retryable: false });
-        }
-        if (query.source === undefined) {
-            throw failure("source-required", 400, "schedule discovery needs rule text in `source`, such as `FREQ=DAILY`.", { retryable: false });
-        }
+        const source = query.source!;
         const zone = await this.#zone(identity, options);
         const now = this.#scheduler.now();
-        const parsed = this.#read(query.source, zone, now);
+        const parsed = this.#read(source, zone, now);
         const preview = upcoming(parsed, now, previewOccurrences(this.#env)).map(isoString);
         return [{
             alias: parsed.rule.options().freq.toLowerCase(),
@@ -151,7 +144,7 @@ export default class ScheduleFunctionality {
                 ...(parsed.bounded ? [] : ["unbounded: add needs COUNT or UNTIL"]),
             ].join("; "),
             definition: { rule: parsed.text },
-            provenance: { kind: "rule", source: query.source },
+            provenance: { kind: "rule", source },
         }];
     }
 

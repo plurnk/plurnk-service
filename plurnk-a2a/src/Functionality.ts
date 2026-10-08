@@ -21,6 +21,7 @@ import {
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
+import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import A2a from "./A2a.ts";
 import { outboundDefinitions } from "./config.ts";
 import { readDefinition } from "./definition.ts";
@@ -129,7 +130,8 @@ export default class A2aFunctionality {
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
     readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
-    readonly discovery = {
+    readonly discovery: FunctionalityDiscovery = {
+        inputs: ["source", "configuration"],
         details: "`source` is an agent's base URL; its Agent Card is fetched and returned as one inert candidate carrying the exact definition to add. An added agent is addressed as `a2a://<alias>`.",
     };
 
@@ -185,33 +187,27 @@ export default class A2aFunctionality {
                 provenance: { kind: "client-configuration", source: `PLURNK_A2A_${alias.replaceAll("-", "_")}` },
             }));
         }
-        if (query.source !== undefined) {
-            const source = query.source;
-            if (!/^https?:\/\//u.test(source)) {
-                throw failure("source-invalid", 400, "A2A discovery requires an absolute HTTP(S) agent URL.", { retryable: false });
-            }
-            let card: AgentCard;
-            try {
-                card = await discoverAgentCard(source);
-            } catch (cause) {
-                throw failure("card-unreachable", 502, "Agent Card discovery failed.", {
-                    source,
-                    diagnostic: ErrorDetail.preview(cause),
-                    retryable: true,
-                }, cause);
-            }
-            const alias = aliasOfCard(card);
-            return [{
-                alias,
-                summary: card.description,
-                definition: { name: alias, url: source } satisfies A2aAgentDefinition,
-                provenance: { kind: "agent-card", source, reference: card.name },
-            }];
+        const source = query.source!;
+        if (!/^https?:\/\//u.test(source)) {
+            throw failure("source-invalid", 400, "A2A discovery requires an absolute HTTP(S) agent URL.", { retryable: false });
         }
-        if (query.query !== undefined) {
-            throw failure("registry-not-configured", 501, "A2A registry search requires a configured downstream registry; none is configured.", { query: query.query, recovery: "Discover an explicit agent URL.", retryable: false });
+        let card: AgentCard;
+        try {
+            card = await discoverAgentCard(source);
+        } catch (cause) {
+            throw failure("card-unreachable", 502, "Agent Card discovery failed.", {
+                source,
+                diagnostic: ErrorDetail.preview(cause),
+                retryable: true,
+            }, cause);
         }
-        return [];
+        const alias = aliasOfCard(card);
+        return [{
+            alias,
+            summary: card.description,
+            definition: { name: alias, url: source } satisfies A2aAgentDefinition,
+            provenance: { kind: "agent-card", source, reference: card.name },
+        }];
     }
 
     async admit(input: unknown): Promise<{ alias: string; definition: object }> {

@@ -8,6 +8,7 @@ import type {
     FunctionalityCaller,
     FunctionalityCandidate,
     FunctionalityDefinitionSource,
+    FunctionalityDiscoverInput,
     FunctionalityDiscoverQuery,
     FunctionalityFamilyHandle,
     FunctionalityOptions,
@@ -40,6 +41,15 @@ export interface ModuleActionRegistration {
 
 export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
+// {§functionality-discovery-inputs} — the discovery a family serves: the shared query's inputs it reads,
+// and whether a request naming none lists everything. The coordinator advertises exactly these.
+export interface FunctionalityDiscovery {
+    readonly inputs: readonly FunctionalityDiscoverInput[];
+    readonly emptyListsAll?: true;
+    // The family's own `discover` teaching beneath the generic verb summary.
+    readonly details?: string;
+}
+
 // {§functionality-adapter} — one family of managed Functionality beneath the host's coordinator.
 // `Runtime` is what a resident family prepares and `SchemeFacet` the face its manager may expose;
 // both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
@@ -63,16 +73,18 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     // The exact definition one `add` accepts and the coordinator persists.
     readonly definitionSchema: JsonSchema;
     // Teaching for the family's generated document ({§functionality-model-projection}): one exact
-    // `add` example, and the family's own `discover` contract when the generic one does not fit.
+    // `add` example.
     readonly example?: { readonly alias: string; readonly definition: object };
-    readonly discovery?: { readonly details: string };
+    // Absent: the family serves no discovery, and implements no `discover`.
+    readonly discovery?: FunctionalityDiscovery;
     // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
     // authored teaching beneath the runtime document's generated header.
     readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     // Current partial-source diagnostics; independent valid definitions remain available.
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
+    // Receives only a query the family's declared discovery admits.
+    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<Runtime>>;
     teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;

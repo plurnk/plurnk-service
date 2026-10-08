@@ -193,6 +193,17 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.match(String((await discover("!README.md")).summary), /would exclude 1 member: README\.md/u);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "discover admits nothing");
             assert.deepEqual(await states(), ["docs:service:active"], "discover records nothing");
+            // {§functionality-discover-advertisement} `query` is the one input: `source` is refused by the
+            // shared schema check, and a query naming no path or pattern by the family itself.
+            const refusedProblem = async (params: Readonly<Record<string, unknown>>) => {
+                const error = await invoke("discover", params).then(() => null, (cause: unknown) => cause);
+                assert.ok(error instanceof OperationFailureError, `expected an OperationFailureError, got ${String(error)}`);
+                return error.result.problem;
+            };
+            assert.equal((await refusedProblem({ source: "README.md" }))?.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+            const bare = await refusedProblem({ query: "!" });
+            assert.equal(bare?.type, "https://problems.plurnk.xyz/members/functionality/query-invalid");
+            assert.equal(bare?.detail, "'!' names no path or pattern.");
 
             // A client action adds a loose file: a workspace-origin definition, active, projected, member.
             const added = await invoke<{ status: number; alias: string }>("add", { alias: "loose", definition: { glob: "loose.md" } });

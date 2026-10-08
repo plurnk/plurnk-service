@@ -7,7 +7,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type { FunctionalityAdapter } from "@plurnk/plurnk-modules";
+import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";
@@ -54,7 +54,10 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
-    readonly discovery = {
+    // {§env-functionality} A client's own environment is no input: it would bypass the operator's ceiling.
+    readonly discovery: FunctionalityDiscovery = {
+        inputs: ["query", "source"],
+        emptyListsAll: true,
         details: "`discover` is this installation's configuration catalog: every name an installed "
             + "package declares that you may set, with the declaring package as provenance and its own "
             + "comment as the summary; plurnk's own names never appear. `query` matches a name or the "
@@ -86,13 +89,6 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     }
 
     async discover(query: FunctionalityDiscoverQuery, _identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
-        if (query.configuration !== undefined) {
-            // A client's own environment contributing candidates would be a second door into the
-            // cascade, past the operator's ceiling. The refusal is the same shape Agent Skills uses.
-            throw actionError("configuration-unsupported", 400,
-                "Environment discovery reads this installation's declared configuration; client configuration contributes nothing.",
-                { retryable: false });
-        }
         // The catalog is filtered to what a Worker may set (#586, the converged shape): plurnk's own
         // configuration and provider credential names are the operator's, refused by `add`, and would
         // only bury the few names that matter under the operator's knobs.

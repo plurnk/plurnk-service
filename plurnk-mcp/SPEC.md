@@ -291,7 +291,7 @@ without changing durable state.
 | `PLURNK_MCP_EXPANDED` | JSON array of aliases whose tool invocations are surveyed at turn 0 ({§tools-resource-materialization}); absent or `[]` expands none |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds for setup and each complete catalog walk |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds for the whole operation |
-| `PLURNK_MCP_REGISTRY_URL` | HTTP(S) registry discovery endpoint; empty disables registry search |
+| `PLURNK_MCP_REGISTRY_URL` | HTTP(S) registry `discover` searches; empty, the family serves no discovery ({§mcp-registry-discovery}) |
 | `PLURNK_MCP_REGISTRY_LIMIT` | Positive integer result bound |
 
 Aliases and controls follow {§resource-environment}. Malformed definitions or controls fail
@@ -355,9 +355,11 @@ attachment, never a stored credential.
 
 The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
 ({§module-discovery}). It is setup-only: `setup` registers the family adapter and there is no
-start seam. Its factory only reads the environment, so configuration errors surface where they
-always have: in the family's diagnostics at runtime and in the offline check
-({§operator-config-offline-validation}). It claims no HTTP mounts.
+start seam. Its factory only reads the environment: the registry settings, because they decide
+whether the family serves discovery ({§mcp-registry-discovery}). An invalid one is contained
+({§module-contained-configuration}): the family serves no discovery and the rest works. Every
+other configuration error surfaces in the family's diagnostics at runtime, and all of them in the
+offline check ({§operator-config-offline-validation}). It claims no HTTP mounts.
 
 §mcp-launch-environment **A server inherits the operator's environment.** A stdio server
 starts with the operator's environment without plurnk's own secrets ({§exec-env-scoped}), as every MCP
@@ -369,7 +371,8 @@ entries and masks applied, and resolved ambient values are never copied into def
 stale-configuration state. HTTP servers have no local process environment.
 
 §mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
-coordinator publishes `workspace.mcp.list | discover | add | enable | disable | remove` and the model's
+coordinator publishes `workspace.mcp.list | add | enable | disable | remove`, with `discover`
+while a registry is configured, and the model's
 `mcp` runtime with the common semantics, durable state, and publication; this module
 registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add` and `remove` change workspace state ({§mcp-definitions}), and
 `discover` searches the MCP Registry ({§mcp-registry-discovery}). `prepare` connects the enabled set, reusing
@@ -379,22 +382,21 @@ capabilities, tool names, resource and prompt counts — `unavailable` with its 
 `authorization-required` with its URL), and a two-phase snapshot: `commit` closes connections the new
 set no longer uses and records pending authorizations; `abort` closes only what the attempt opened.
 
-§mcp-registry-discovery **`discover` searches the MCP Registry.** `{ query }` asks
-`PLURNK_MCP_REGISTRY_URL` (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at
+§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery
+while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty,
+the family has no `discover` ({§functionality-discover-advertisement}). Its one input, `query`,
+asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at
 its latest version, whose names match. Each npm, PyPI, NuGet or OCI package with a stdio transport
 becomes a stdio entry run as the registry's own examples run it (`npx -y`, `uvx`, `dnx`, or
 `docker run -i --rm` passing each declared variable through), and each Streamable HTTP remote becomes a
 URL entry with its non-secret literal headers. An entry that needs a person's input first, such as a
 template variable or a required argument with no value, has none. A candidate is a complete definition;
 its summary names the environment variables and headers the
-server needs, and its provenance names the registry and the server's `name@version`. `source` and
-`configuration` are not registry queries and are refused.
+server needs, and its provenance names the registry and the server's `name@version`.
 
 | Discovery, admission, or installation condition | Problem | Status |
 |---|---|---|
-| No registry is configured | `registry-not-configured` | 501 |
 | The registry is unreachable, fails, or answers malformed | `discover-failed`, retryable | 502 |
-| `discover` names a `source` or client `configuration` | `source-unsupported`, `configuration-unsupported` | 400 |
 | The complete connection definition is invalid | `definition-invalid` | 400 |
 | The alias differs from the definition's name | `alias-mismatch` | 400 |
 

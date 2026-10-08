@@ -25,7 +25,7 @@ import type {
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type { FunctionalityAdapter } from "@plurnk/plurnk-modules";
+import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 
 const MEMBERS_FAMILY = "members";
 const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
@@ -189,8 +189,8 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     readonly definitionSchema = DEFINITION;
     readonly example = { alias: "docs", definition: { glob: "docs/**" } };
     readonly docsDir = Paths.packageRoot;
-    readonly discovery = {
-        signature: '{"query": string}',
+    readonly discovery: FunctionalityDiscovery = {
+        inputs: ["query"],
         details: "A path answers why it is or is not visible — tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored, untracked, or absent. A glob (or `!glob`) previews what `add` would include or exclude. Names only; nothing is added.",
     };
     readonly #db: Db;
@@ -210,10 +210,12 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     // Introspection, never a catalog: a path answers why it is or is not visible; a glob previews
     // what `add` would resolve to. Names only, never content.
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
-        const raw = typeof query.query === "string" ? query.query : typeof query.source === "string" ? query.source : "";
+        const raw = query.query!;
         const glob = raw.trim();
         if (patternOf(glob).length === 0) {
-            throw refuse("query-required", 400, "discover takes a path or a glob.", { recovery: "Supply { \"query\": \"<path or glob>\" }." });
+            throw refuse("query-invalid", 400, `'${raw}' names no path or pattern.`, {
+                recovery: "Supply a path such as `docs/guide.md` or a pattern such as `docs/**`.",
+            });
         }
         const overlay = await GitMembership.resolveOverlay(this.#db, identity.workspaceId, undefined, undefined);
         if (overlay === null) {

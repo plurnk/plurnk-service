@@ -102,8 +102,8 @@ contract is the one package that depends on it directly. There is no manifest ve
 ## Functionality adapters
 
 §functionality-adapter **An adapter owns protocol truth.** It declares its
-family, namespace owner, definition schema, contributed defaults, discovery,
-admission, preparation, and teardown, and its alias grammar when that is not
+family, namespace owner, definition schema, contributed defaults, discovery
+({§functionality-discovery-inputs}), admission, preparation, and teardown, and its alias grammar when that is not
 the shared lowercase-hyphen one: the coordinator enforces whichever grammar the
 family declares, at admission, in the service projection, and on persisted
 state, so an environment variable's name is an alias exactly as a skill name
@@ -119,10 +119,19 @@ outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
 failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal. The
-seam's shapes — the identity a verb acts under, its options, definition
-sources, outcomes, preparation, the prepared result and the family handle —
+seam's shapes — the identity a verb acts under, its options, the discovery inputs,
+definition sources, outcomes, preparation, the prepared result and the family handle —
 are declared once in `plurnk-contracts`. `FunctionalityAdapter` is generic over
 the runtime a resident family prepares and the scheme facet its manager may
 expose; both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
 An adapter may expose current partial-source `configurationNotices`; these join the ordinary
 workspace diagnostics without preventing independently valid definitions from preparing.
+
+§functionality-discovery-inputs **An adapter declares the discovery inputs it serves.**
+`discovery` names `inputs`, keys of the shared discovery query (`FunctionalityDiscoverInput`:
+`query`, `source`, `configuration`); `emptyListsAll` when a request naming none of them lists
+everything; and optional `details`, the family's own `discover` teaching. An adapter declares
+`discovery` exactly when it implements `discover`, which receives only a query that declaration
+admits. Registration refuses an empty, repeated or unknown input, and either half without the
+other. Without `discovery` a family serves no discovery and has no `discover` verb
+({§functionality-discover-advertisement}).

@@ -75,10 +75,11 @@ const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
         properties: { kind: { enum: ["ok", "fail", "doc", "auth"] } },
     },
     available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true }],
+    discovery: { inputs: ["query"] },
     discover: async (query) => [{
-        alias: `found-${query.query ?? "all"}`,
+        alias: `found-${query.query!}`,
         definition: { kind: "ok" },
-        provenance: { kind: "fixture", source: query.query ?? "catalog" },
+        provenance: { kind: "fixture", source: query.query! },
     }],
     admit: async (input) => {
         const { alias, definition } = input as { alias?: string; definition: object };

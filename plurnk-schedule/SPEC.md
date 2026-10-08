@@ -64,8 +64,8 @@ text in `source` returns one inert candidate whose summary opens with the
 current time in the effective zone (RFC 9557, to the second), states the rule
 in words, and previews its next `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES`
 occurrences ({§schedule-discovery-preview}); the candidate's definition
-carries the canonical rule text. Discovery persists nothing; a `query` or a
-`configuration` is refused.
+carries the canonical rule text. Discovery persists nothing; rule text in
+`source` is its one input ({§functionality-discover-advertisement}).
 
 §schedule-discovery-preview `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES` is a family control
 like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
@@ -119,9 +119,6 @@ or persisting a rule ({§operator-config-offline-validation}).
 
 | code | status | contract |
 |---|---:|---|
-| `configuration-unsupported` | 400 | schedule discovery reads rule text from `source`; it takes no configuration. |
-| `query-unsupported` | 400 | schedule discovery reads rule text from `source`; there is no catalog to search. |
-| `source-required` | 400 | schedule discovery needs rule text in `source`, such as `FREQ=DAILY`. |
 | `alias-required` | 400 | schedule add needs an alias. |
 | `definition-invalid` | 400 | The schedule definition is invalid. |
 | `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |

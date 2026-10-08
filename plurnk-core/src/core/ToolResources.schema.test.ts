@@ -178,6 +178,17 @@ test("{§executor-input-schema-preview} a required closed set of strings shows i
     }), '{"a": "v0", "b": "x", "c": false, "d": []}');
 });
 
+test("{§executor-input-schema-preview} a schema that requires one of several inputs previews its first branch", () => {
+    const oneOf = {
+        type: "object", additionalProperties: false,
+        properties: { source: { type: "string" }, configuration: { type: "object" } },
+        anyOf: [{ required: ["source"] }, { required: ["configuration"] }],
+    };
+    assert.equal(ToolInputSchema.preview(oneOf), '{"source": ""}');
+    assert.deepEqual(ToolInputSchema.requiredFields(oneOf), ["source"]);
+    assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
+});
+
 test("{§executor-input-schema-preview} notes omitted optional properties as (+N opt) before the schema pointer", () => {
     const withOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",

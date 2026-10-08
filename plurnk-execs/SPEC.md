@@ -507,10 +507,11 @@ field takes a minimal default value matching its declared JSON type: `""` for st
 `0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object;
 an undeclared type is `null`. A required field declaring a closed set of strings
 (`enum`) uses its first choice as its default value, so common invocations require
-no verb guesswork (#762). Nested objects and arrays stay empty; optional fields,
-references, other constraints, and conditional branches are not interpreted. When
-declared top-level properties exceed the required set, the aside signals their presence
-with `(+N opt)`.
+no verb guesswork (#762). A top-level `anyOf` contributes its first branch's required
+fields, so a schema that requires one of several inputs previews one valid form. Nested
+objects and arrays stay empty; optional fields, references, other constraints, and other
+conditional branches are not interpreted. When declared top-level properties exceed the
+required set, the aside signals their presence with `(+N opt)`.
 The preview is not a complete signature or validation promise. Its schema link
 provides the complete original schema, including descriptions, definitions,
 references, and constraints; repository-owned referenced schemas are included

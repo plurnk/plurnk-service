@@ -72,13 +72,13 @@ owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 
 ## Manage a workspace's servers
 
-MCP is one family of workspace Functionality, managed with the six verbs every family has
-({§mcp-management-actions}).
+MCP is one family of workspace Functionality, managed with the verbs every family shares
+({§mcp-management-actions}); `discover` is present while the operator configures a registry.
 
 | Action | Parameters |
 |---|---|
 | `workspace.mcp.list` | — |
-| `workspace.mcp.discover` | `query`: searches the MCP Registry ({§mcp-registry-discovery}) |
+| `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-registry-discovery}) |
 | `workspace.mcp.add` | optional `alias` (the definition's `name`), `definition`: a complete connection definition |
 | `workspace.mcp.enable` / `disable` / `remove` | `alias` |
 | `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
@@ -99,8 +99,8 @@ exact RFC 9457 Problem Details:
 } } } }
 ```
 
-The model manages the same family through ````` ````mcp (list|discover|add|enable|disable|remove) `````,
-each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
+The model manages the same family through ````` ````mcp (list|discover|add|enable|disable|remove) `````
+(`discover` while a registry is configured), each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.
 

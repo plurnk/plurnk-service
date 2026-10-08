@@ -157,9 +157,6 @@ test("{§schedule-clock} discovery tells the time beside the rule it reads, in t
         tokyo!.summary,
         "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]; unbounded: add needs COUNT or UNTIL",
     );
-    assert.equal((await problemOf(() => adapter.discover({}, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/source-required");
-    assert.equal((await problemOf(() => adapter.discover({ query: "daily" }, { workspaceId: 1 }))).status, 400);
-    assert.equal((await problemOf(() => adapter.discover({ configuration: { TZ: "UTC" } }, { workspaceId: 1 }))).status, 400);
     assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }, { env: { TZ: "Mars/Olympus" } }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
     assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
 });

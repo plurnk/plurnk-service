@@ -35,6 +35,7 @@ const floor = {
     PLURNK_MCP_ENABLED: "1",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "5",
 };
 
 interface RuntimeRegistration {
@@ -63,7 +64,8 @@ interface Adapter {
     readonly namespaceOwner: string;
     available(identity: { workspaceId: number }): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
     readonly example?: { readonly alias: string; readonly definition: object };
-    discover(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
+    readonly discovery?: { readonly inputs: readonly string[]; readonly details?: string };
+    discover?(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
     admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: {
@@ -962,26 +964,48 @@ test("{§mcp-registry-discovery} discover searches the registry by query and off
     const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
     try {
-        assert.deepEqual(await h.adapter().discover({ query: "example" }, h.identity(1)), [{
+        assert.deepEqual(h.adapter().discovery?.inputs, ["query"], "a configured registry is searched by query alone");
+        assert.deepEqual(await h.adapter().discover!({ query: "example" }, h.identity(1)), [{
             alias: "example-server",
             summary: "Search the example index. — npx -y @example/server@1.2.3",
             definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
             provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
         }]);
         assert.deepEqual(requests, ["/v0.1/servers?search=example&version=latest&limit=5"]);
-        assert.deepEqual(await h.adapter().discover({}, h.identity(1)), [], "discovery without a query offers nothing");
-        await rejectsManagementProblem(() => h.adapter().discover({ source: "https://example.com/plugin.git" }, h.identity(1)), "source-unsupported", 400);
-        await rejectsManagementProblem(() => h.adapter().discover({ configuration: {} }, h.identity(1)), "configuration-unsupported", 400);
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-registry-discovery} a registry that is off or failing is a Problem, never an empty result", async (t) => {
+test("{§mcp-registry-discovery} a failing registry is a Problem, never an empty result", async (t) => {
     const url = await serveRegistry(t, (_request, response) => { response.writeHead(500).end(); });
-    for (const [registry, code, status] of [["", "registry-not-configured", 501], [url, "discover-failed", 502]] as const) {
-        const h = harness({ PLURNK_MCP_REGISTRY_URL: registry, PLURNK_MCP_REGISTRY_LIMIT: "5" });
+    const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" });
+    await h.setup();
+    try {
+        await rejectsManagementProblem(() => h.adapter().discover!({ query: "example" }, h.identity(1)), "discover-failed", 502);
+    } finally { await h.module.stop(); }
+});
+
+test("{§mcp-registry-discovery} {§functionality-discovery-inputs} with no registry the family declares no discovery", async () => {
+    const h = harness({ PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "5" });
+    await h.setup();
+    try {
+        assert.equal(h.adapter().discovery, undefined, "no discovery is declared");
+        assert.equal(h.adapter().discover, undefined, "and none is implemented");
+        assert.deepEqual(h.module.contained, [], "an empty registry is a choice, not a fault");
+    } finally { await h.module.stop(); }
+});
+
+test("{§mcp-module} {§module-contained-configuration} an invalid registry setting withholds discovery alone and is reported", async () => {
+    for (const [env, key] of [
+        [{ PLURNK_MCP_REGISTRY_URL: "file:///registry", PLURNK_MCP_REGISTRY_LIMIT: "5" }, "PLURNK_MCP_REGISTRY_URL"],
+        [{ PLURNK_MCP_REGISTRY_URL: "https://registry.example", PLURNK_MCP_REGISTRY_LIMIT: "0" }, "PLURNK_MCP_REGISTRY_LIMIT"],
+    ] as const) {
+        const h = harness(env);
         await h.setup();
         try {
-            await rejectsManagementProblem(() => h.adapter().discover({ query: "example" }, h.identity(1)), code, status);
+            assert.deepEqual(h.module.contained.map(({ key }) => key), [key], "the module contains the setting it cannot use");
+            assert.equal(h.adapter().discovery, undefined, "the family serves no discovery");
+            assert.equal(h.adapter().family, "mcp", "the family itself is registered");
+            assert.ok(h.actions.has("workspace.mcp.oauth.begin"), "the module's continuations remain");
         } finally { await h.module.stop(); }
     }
 });

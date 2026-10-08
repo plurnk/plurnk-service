@@ -70,7 +70,7 @@ const optionalPropertyCount = (schema?: JsonSchema): number => {
     const properties = typeof schema.properties === "object" && schema.properties !== null && !Array.isArray(schema.properties)
         ? schema.properties as Record<string, unknown>
         : {};
-    const required = Array.isArray(schema.required) ? schema.required : [];
+    const required = ToolInputSchema.requiredFields(schema);
     return Object.keys(properties).filter((key) => !required.includes(key)).length;
 };
 

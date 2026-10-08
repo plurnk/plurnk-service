@@ -58,7 +58,7 @@ test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep requ
     assert.doesNotMatch(JSON.stringify(invalidConfiguration), /not a url/u);
 });
 
-test("discovery is inert: a URL yields one card-derived candidate, configuration yields overlay candidates, a query is refused", async () => {
+test("discovery is inert: a URL yields one card-derived candidate, configuration yields overlay candidates", async () => {
     const agent = await startDemoAgent();
     try {
         const family = new A2aFunctionality(diagnosticEnv);
@@ -74,7 +74,6 @@ test("discovery is inert: a URL yields one card-derived candidate, configuration
         ]);
         assert.equal((await problemOf(() => family.discover({ source: "ftp://nope" }))).type, "https://problems.plurnk.xyz/a2a/functionality/source-invalid");
         assert.equal((await problemOf(() => family.discover({ source: "http://127.0.0.1:9" }))).type, "https://problems.plurnk.xyz/a2a/functionality/card-unreachable");
-        assert.equal((await problemOf(() => family.discover({ query: "research" }))).status, 501);
         assert.equal((await problemOf(() => family.discover({ configuration: { PLURNK_A2A_bad: "not JSON" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/configuration-invalid");
     } finally {
         await agent.close();

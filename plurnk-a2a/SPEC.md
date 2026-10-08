@@ -196,12 +196,12 @@ case-insensitive `Authorization` header.
 
 *Available definitions* are the environment's aliases; `PLURNK_A2A_ENABLED`
 supplies their default enabledness. *Admission* (`add {alias, definition}`)
-requires `alias = name`. *Discovery is inert*: `discover {source}` fetches one
+requires `alias = name`. *Discovery is inert*, and its inputs are `source` and
+`configuration` ({§functionality-discover-advertisement}): `discover {source}` fetches one
 standard Agent Card from that URL only and returns one candidate whose alias
 is the card name's slug, with `agent-card` provenance; `discover
 {configuration}` projects a client's own `PLURNK_A2A_*` environment as
-`client-configuration` candidates; `discover {query}` is 501
-`registry-not-configured` until a registry is configured. Discovery never
+`client-configuration` candidates. Discovery never
 adds, enables, authenticates beyond the named host, or persists.
 
 *Preparation* resolves symbolic `${NAME}` references at connection
@@ -392,5 +392,4 @@ delete the retained source.
 | `agent-not-configured` | 404 | No A2A agent is configured as '*authority*'. |
 | `authorization-unresolved` | 409 | A2A agent '*alias*' references *variable* in *field*, which is not set in the service environment. |
 | `card-unreachable` | 502 | Agent Card discovery failed (for the A2A agent); retryable. |
-| `registry-not-configured` | 501 | A2A registry search requires a configured downstream registry; none is configured. |
 | `interface-unsupported` | 502 | The Agent Card advertises no usable HTTP+JSON 1.0 interface. |

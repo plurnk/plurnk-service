@@ -36,11 +36,13 @@ export const mcpEnvironment = (servers: Readonly<Record<string, object>>): Recor
     ])),
 });
 
-// The fixture-scaled host controls.
+// The fixture-scaled host controls. No registry: a test that searches one names its own.
 export const MCP_CONTROLS = {
     PLURNK_MCP_ENABLED: "1",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
     PLURNK_MCP_RETRY_FLOOR_MS: "250",
     PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REGISTRY_URL: "",
+    PLURNK_MCP_REGISTRY_LIMIT: "20",
 } as const;

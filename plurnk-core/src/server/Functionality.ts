@@ -12,6 +12,7 @@ import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import { DocFile } from "@plurnk/plurnk-execs";
 import type {
     FunctionalityDefinitionState,
+    FunctionalityDiscoverInput,
     FunctionalityDiscoverResult,
     FunctionalityListResult,
     FunctionalityPreparationActivity,
@@ -31,7 +32,7 @@ import type {
     WorkspaceCapabilityGate,
 } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
-import type { ModuleActionRegistration } from "@plurnk/plurnk-modules";
+import type { FunctionalityDiscovery, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type {
     HostFunctionalityAdapter,
     WorkspaceCapabilityProvider,
@@ -135,6 +136,16 @@ const ALIAS_INPUT: JsonSchema = Object.freeze({
     properties: { alias: { type: "string", minLength: 1 } },
 });
 const EMPTY_INPUT: JsonSchema = Object.freeze({ type: "object", additionalProperties: false, properties: {} });
+// {§functionality-discover-advertisement} — the shared definition of every input a family may serve.
+const DISCOVER_INPUTS: Readonly<Record<FunctionalityDiscoverInput, JsonSchema>> = discoverySchema.properties;
+const discoverInput = ({ inputs, emptyListsAll }: FunctionalityDiscovery): JsonSchema => ({
+    type: "object",
+    additionalProperties: false,
+    properties: Object.fromEntries(inputs.map((input) => [input, DISCOVER_INPUTS[input]])),
+    ...(emptyListsAll === true ? {}
+        : inputs.length === 1 ? { required: [...inputs] }
+            : { anyOf: inputs.map((input) => ({ required: [input] })) }),
+});
 
 const failure = (
     family: string,
@@ -153,7 +164,7 @@ export default class Functionality {
     readonly #host: FunctionalityHost;
     readonly #adapters = new Map<string, HostFunctionalityAdapter>();
     readonly #owners = new Set<string>();
-    readonly #schemas = new Map<string, Readonly<Record<FunctionalityVerb, JsonSchema>>>();
+    readonly #schemas = new Map<string, Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>>();
     readonly #families = new Map<string, WorkspaceFamily>();
     readonly #queues = new Map<string, Promise<unknown>>();
     readonly #admissions = new Map<Promise<unknown>, number>();
@@ -176,6 +187,16 @@ export default class Functionality {
         if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "worker")) {
             throw new Error(`Functionality family '${family}' declares invalid scopes.`);
         }
+        // {§functionality-discovery-inputs}
+        const { discovery } = adapter;
+        if ((discovery === undefined) !== (adapter.discover === undefined)) {
+            throw new Error(`Functionality family '${family}' must declare discovery exactly when it implements discover.`);
+        }
+        if (discovery !== undefined && (!Array.isArray(discovery.inputs) || discovery.inputs.length === 0
+            || new Set(discovery.inputs).size !== discovery.inputs.length
+            || discovery.inputs.some((input) => !Object.hasOwn(DISCOVER_INPUTS, input)))) {
+            throw new Error(`Functionality family '${family}' declares invalid discovery inputs.`);
+        }
         const scopeProperties = scopes.length > 1
             ? { scope: { enum: [...scopes], description: `Definition scope; model calls default to ${scopes[0]}.` } }
             : {};
@@ -185,26 +206,28 @@ export default class Functionality {
             if (!isRecord(source.properties)) throw new Error(`Functionality ${family} input has no property map.`);
             return { ...source, properties: { ...source.properties, ...scopeProperties } };
         };
-        const schemas: Readonly<Record<FunctionalityVerb, JsonSchema>> = Object.freeze({
+        const addInput: JsonSchema = Object.freeze({
+            type: "object",
+            additionalProperties: false,
+            required: ["definition"],
+            properties: {
+                ...scopeProperties,
+                alias: { type: "string", minLength: 1 },
+                definition: adapter.definitionSchema,
+            },
+        });
+        // {§functionality-discover-advertisement} A family without discovery has no discover verb.
+        const schemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>> = Object.freeze({
             list: scopedInput(EMPTY_INPUT),
-            discover: scopes.length === 1 ? SCHEMA("FunctionalityDiscoverQuery") : scopedInput(discoverySchema),
-            add: Object.freeze({
-                type: "object",
-                additionalProperties: false,
-                required: ["definition"],
-                properties: {
-                    ...scopeProperties,
-                    alias: { type: "string", minLength: 1 },
-                    definition: adapter.definitionSchema,
-                },
-            }),
+            ...(discovery === undefined ? {} : { discover: scopedInput(discoverInput(discovery)) }),
+            add: addInput,
             enable: scopedInput(ALIAS_INPUT),
             disable: scopedInput(ALIAS_INPUT),
             remove: scopedInput(ALIAS_INPUT),
         });
         // {§functionality-model-projection} — the taught `add` example must satisfy the schema it teaches.
         if (adapter.example !== undefined) {
-            const example = Validator.validateJsonSchemaInstance(schemas.add, adapter.example);
+            const example = Validator.validateJsonSchemaInstance(addInput, adapter.example);
             if (!example.valid) {
                 throw new Error(`Functionality family '${family}' teaches an add example that violates its own definition schema: ${JSON.stringify(example.errors)}`);
             }
@@ -219,11 +242,13 @@ export default class Functionality {
         // {§functionality-scope} The action context binds one of the family's supported scopes.
         for (const scope of scopes) {
             for (const verb of FUNCTIONALITY_VERBS) {
+                const inputSchema = schemas[verb];
+                if (inputSchema === undefined) continue;
                 this.#host.registerModuleAction({
                     name: `${scope}.${family}.${verb}`,
                     scope,
                     residency: verb === "list" || verb === "discover" ? "none" : "required",
-                    inputSchema: schemas[verb],
+                    inputSchema,
                     outputSchema: SCHEMA(verb === "list"
                         ? "FunctionalityListResult"
                         : verb === "discover"
@@ -390,6 +415,8 @@ export default class Functionality {
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
         const schema = this.#schemas.get(family)![verb];
+        // Neither projection offers a verb the family does not serve ({§functionality-discover-advertisement}).
+        if (schema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
         const validation = Validator.validateJsonSchemaInstance(schema, params);
         if (!validation.valid) {
             throw failure(family, "arguments-invalid", 400, `${family} ${verb} arguments do not match their schema.`, {
@@ -586,7 +613,8 @@ export default class Functionality {
     }
 
     async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions): Promise<FunctionalityDiscoverResult> {
-        const candidates = await adapter.discover(query, identity, options);
+        // Registration pairs a declared discovery with its implementation ({§functionality-discovery-inputs}).
+        const candidates = await adapter.discover!(query, identity, options);
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
 

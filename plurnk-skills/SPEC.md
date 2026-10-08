@@ -46,11 +46,10 @@ Blank definitions are invalid; controls may precede a definition. Environment
 validation checks shape, names, remote URL rules, and Git-only `ref` without
 fetching or opening a source; `commit` is service-recorded, not an input.
 
-*Discovery is inert.* `discover {source}` lists the standard skills one source
-carries, each a candidate with `source` provenance and the exact definition to
-add; it never installs, persists, or enables. Agent Skills have no standard
-registry, so `discover {query}` is 400 `query-unsupported`, naming the source
-forms. Client `configuration` contributes nothing and is refused with 400.
+*Discovery is inert.* `source` is the family's one discovery input
+({§functionality-discover-advertisement}): `discover {source}` lists the standard
+skills one source carries, each a candidate with `source` provenance and the exact
+definition to add; it never installs, persists, or enables.
 
 *Admission.* `add {alias, definition}` requires `alias = name` and a `source`;
 the workspace definition may shadow a service skill of the same name. Relative
@@ -153,9 +152,7 @@ only through the generated ```` ```skills ```` family
 
 | code | status | contract |
 |---|---:|---|
-| `configuration-unsupported` | 400 | Agent Skills discovery takes a source; client configuration contributes nothing. |
 | `definition-invalid` | 400 | The Agent Skill definition is invalid; a supplied commit must be a ref instead, and refs require Git sources. |
-| `query-unsupported` | 400 | Agent Skills have no standard registry to search; discover takes a source: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. |
 | `source-invalid` | 400 | '*source*' is not a valid git remote URL; an https source carries no credentials (git's credential helper supplies them); is not a source: a git remote is a full https or ssh URL; is relative, and this workspace has no project root to resolve it against; or is neither a folder, a SKILL.md, nor a zip or tar archive. |
 | `source-missing` | 404 | No folder or file is at '*source*'. |
 | `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |

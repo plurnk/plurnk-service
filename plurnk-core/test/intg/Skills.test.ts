@@ -269,17 +269,19 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
         assert.doesNotMatch(await catalog() ?? "", /review/);
         assert.ok((await states()).includes("review:service:disabled"));
 
-        // Discovery is inert: a source lists its skills; there is no registry to query.
+        // Discovery is inert: a source lists its skills; `source` is the one input discovery serves.
         const bySource = await invoke<{ candidates: Array<{ alias: string; summary?: string; definition: object; provenance: { kind: string; source: string } }> }>("discover", { source });
         assert.deepEqual(bySource.candidates.map(({ alias, summary, definition, provenance }) => ({ alias, summary, definition, provenance })), [
             { alias: "alpha", summary: "Alpha from the source", definition: { name: "alpha", source }, provenance: { kind: "source", source } },
             { alias: "review", summary: "Review, project edition", definition: { name: "review", source }, provenance: { kind: "source", source } },
         ]);
-        const query = await rejectedProblem(() => invoke("discover", { query: "alpha" }));
-        assert.equal(query.type, "https://problems.plurnk.xyz/skills/functionality/query-unsupported");
-        assert.match(query.detail, /discover takes a source/u);
+        // {§functionality-discover-advertisement} An input the family does not serve is refused by the shared schema check, by name.
+        for (const [params, field] of [[{ query: "alpha" }, '"query"'], [{ configuration: { X: "y" } }, '"configuration"']] as const) {
+            const refused = await rejectedProblem(() => invoke("discover", params));
+            assert.equal(refused.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+            assert.ok((refused.errors as Array<{ error: string }>).some(({ error }) => error.includes(field)), `the errors name ${field}`);
+        }
         assert.equal(await exists(join(projectRoot, "alpha")), false, "discovery installed nothing");
-        assert.equal((await rejectedProblem(() => invoke("discover", { configuration: { X: "y" } }))).status, 400);
         assert.equal((await rejectedProblem(() => invoke("discover", { source: join(base, "nowhere") }))).type, "https://problems.plurnk.xyz/skills/functionality/source-missing");
 
         // Admission is exact.

@@ -221,12 +221,21 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
 
     assert.deepEqual(
         daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
-        ["add", "complete", "disable", "discover", "enable", "list", "oauth.begin", "oauth.complete", "remove"].map((verb) => `workspace.mcp.${verb}`),
-        "the mcp family has every lifecycle verb beside its protocol continuations",
+        ["add", "complete", "disable", "enable", "list", "oauth.begin", "oauth.complete", "remove"].map((verb) => `workspace.mcp.${verb}`),
+        "with no registry the mcp family has every lifecycle verb but discover, beside its protocol continuations",
     );
     assert.deepEqual((await listed()).map(({ alias, origin, state }) => ({ alias, origin, state })), [{ alias: "fixture", origin: "service", state: "dormant" }]);
     assert.equal((await call("fixture", "echo")).status, 200, "the configured server runs its read-only tool on first use");
     assert.equal((await listed())[0]?.state, "active");
+    // {§functionality-discover-advertisement} With no registry the manager teaches no discover.
+    const references = await daemon.engine.referenceEntries(workspaceId);
+    const manager = references.find(({ pathname }) => pathname === "/_plurnk/plurnk/mcp.md")?.content ?? "";
+    assert.match(manager, /```mcp \(list\|add\|enable\|disable\|remove\) <!-- Manage MCP servers -->/u, "the summary names the verbs the family serves");
+    assert.doesNotMatch(manager, /```mcp \(discover\) <!-- Return inert candidates/u, "the tool list has no discover");
+    assert.equal(references.some(({ pathname }) => pathname === "/_plurnk/plurnk/mcp/discover.json"), false, "no discover schema document");
+    const unserved = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne("````mcp (discover)\n{\"query\": \"echo\"}\n````") });
+    assert.equal(unserved.status, 404, "a discover the family does not serve is no registered target");
+    assert.match(String((unserved as { problem?: { type?: string } }).problem?.type), /\/target-not-registered$/u);
     assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "fixture" })).definition.state, "disabled");
     assert.ok((await call("fixture", "echo")).status >= 400, "a disabled server's tool is absent");
     assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "fixture" })).definition.state, "active");

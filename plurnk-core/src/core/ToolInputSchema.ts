@@ -18,12 +18,21 @@ const defaultValue = (property: JsonSchema): unknown => {
     return null;
 };
 
+const names = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : [];
+
 export default class ToolInputSchema {
+    // {§executor-input-schema-preview} — the top-level required fields, with the first `anyOf`
+    // branch's when the schema requires one of several alternatives.
+    static requiredFields(schema: JsonSchema): string[] {
+        const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
+        return [...new Set([...names(schema.required), ...names(objectOf(branches[0]).required)])];
+    }
+
     // {§executor-input-schema-preview} — a compact valid JSON skeleton of required fields.
     static preview(schema: JsonSchema): string {
         const properties = objectOf(schema.properties);
-        const required = Array.isArray(schema.required) ? schema.required : [];
-        const entries = required.map((name: string) => {
+        const entries = ToolInputSchema.requiredFields(schema).map((name) => {
             const prop = objectOf(properties[name]);
             return `${JSON.stringify(name)}: ${JSON.stringify(defaultValue(prop))}`;
         });
