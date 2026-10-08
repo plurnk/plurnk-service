@@ -38,7 +38,7 @@ selects a project folder; leaving it empty creates a headless workspace.
 ### Without a declared parent
 
 Omit `PLURNK_A2A_PARENT_WORKER` to use `_plurnk`. New Context workers are its
-children, and Task workers are children of their Context. They inherit the runtime
+children, and each Task runs as a loop of its Context. They inherit the runtime
 owner, which cannot review approvals. With the default
 `PLURNK_SERVICE_PROPOSALS=review`, operations requiring approval are rejected.
 For unattended automatic approval, set:
@@ -66,14 +66,15 @@ PLURNK_CLIENT_YOLO=0 plurnk --workspace=research --worker=supervisor
 ```
 
 Control attachment claims runtime-owned work; it does not take ownership from
-another client. New Context and Task workers inherit the parent's approval owner.
+another client. New Context workers, and so their Tasks, inherit the parent's approval owner.
 With service approval set to `review`, that client receives their approval requests
 even while idle. Client YOLO defaults to on; the command above selects manual review.
 Disconnecting a review-capable owner leaves approvals waiting for reconnection.
 
 In either setup the A2A caller converses by message: the model asks it in a reply,
-and its answer arrives as a later Task in the same Context. A Task never enters
-`input-required`. An interaction the Task raises, such as a `question`, goes to the
+and its answer arrives as a later Task in the same Context. A Context is one
+conversation and runs one Task at a time, so a later Task sees the whole exchange;
+a new Task while one is open is refused. A Task never enters `input-required`. An interaction the Task raises, such as a `question`, goes to the
 worker's owner and needs an interactive one. A missing named parent refuses new Context
 creation, and changing the setting does not reparent existing Contexts.
 See [A2A ownership](./SPEC.md)

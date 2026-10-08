@@ -14,6 +14,8 @@ import {
 import {
     ContentTypeNotSupportedError,
     RequestMalformedError,
+    TaskNotCancelableError,
+    UnsupportedOperationError,
 } from "@a2a-js/sdk/errors";
 import {
     Validator,
@@ -22,9 +24,14 @@ import {
     type ApplicationWorkerProjection,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
-import type PlurnkTaskStore from "./PlurnkTaskStore.ts";
-import type { PlurnkTaskBinding } from "./PlurnkTaskStore.ts";
+import PlurnkTaskStore from "./PlurnkTaskStore.ts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
+
+// {§a2a-inbound-exposure} The Loop a Task started or continued, on its Context worker.
+interface StartedTask {
+    readonly context: ApplicationWorkerProjection;
+    readonly loopId: number;
+}
 
 const taskSnapshot = (request: RequestContext): Task => ({
     id: request.taskId,
@@ -65,7 +72,7 @@ const textOf = (message: Message): string => {
 
 // The port functions the executor calls.
 export type ExecutorPort = Pick<ApplicationPort,
-    | "cancelWorker" | "createConversationWorker" | "forkWorker"
+    | "cancelWorker" | "createConversationWorker"
     | "readWorker" | "ensureRuntimeWorker" | "runLoop" | "subscribeToEvents">;
 
 export default class PlurnkAgentExecutor implements AgentExecutor {
@@ -87,16 +94,23 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     async validateMessage(message: Message | undefined): Promise<void> {
         if (message === undefined) return; // The SDK owns required envelope fields.
         textOf(message);
+        // A new Task in a Context that is still working is refused before execution.
+        if (message.taskId.length > 0 || !WORKER_NAME.test(message.contextId)) return;
+        const workspaceId = await this.#workspace.existingId();
+        if (workspaceId === null) return;
+        const context = await this.#port.readWorker({ workspaceId, identity: { name: message.contextId } });
+        if (context !== null && (this.#ownedContexts.has(context.name) || await this.#store.ownsContext(context))) {
+            await this.#assertIdle(workspaceId, context);
+        }
     }
 
     async execute(request: RequestContext, events: ExecutionEventBus): Promise<void> {
         this.#activeTasks.add(request.taskId);
         try {
             const workspaceId = await this.#workspace.id();
-            const binding = await this.#ensureBinding(request);
             const snapshot = request.task ?? taskSnapshot(request);
 
-            await this.#observe(binding, async () => {
+            await this.#observe(workspaceId, () => this.#start(workspaceId, request, async (context) => {
                 const envelope = SendMessageRequest.toJSON({
                     ...request.request,
                     message: { ...request.userMessage, contextId: request.contextId, taskId: request.taskId },
@@ -105,9 +119,9 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                 const modes = request.request.configuration?.acceptedOutputModes ?? [];
                 const body = modes.length === 0 ? text
                     : [text, `Accepted output media types: ${JSON.stringify(modes)}`].filter(Boolean).join("\n\n");
-                await this.#port.runLoop({
+                const started = await this.#port.runLoop({
                     workspaceId,
-                    workerId: binding.task.id,
+                    workerId: context.id,
                     prompt: body,
                     envelope,
                     attachments: request.userMessage.parts.flatMap((part) => part.content?.$case === "raw" ? [{
@@ -118,7 +132,8 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     source: PlurnkAgentExecutor.#source(request),
                     messageAddress: PlurnkAgentExecutor.#source(request),
                 });
-            }, () => {
+                return started.loopId;
+            }), () => {
                 events.publish(AgentEvent.task(snapshot));
                 const working: Task = {
                     ...snapshot,
@@ -153,15 +168,18 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
 
     async cancelTask(taskId: string, events: ExecutionEventBus): Promise<void> {
         const binding = await this.#store.binding(taskId);
-        if (binding === null) throw new Error(`A2A Task '${taskId}' has no Plurnk worker.`);
-        const { workspaceId } = binding;
+        if (binding === null) throw new Error(`A2A Task '${taskId}' has no Plurnk loop.`);
+        const { workspaceId, context, loop } = binding;
+        if (!PlurnkTaskStore.open(loop)) throw new TaskNotCancelableError(`A2A Task '${taskId}' has already finished.`);
         const activeExecutorWillPublish = this.#activeTasks.has(taskId);
-        const result = await this.#observe(binding, async () => {
+        // One Task at a time: cancelling its Context's work cancels exactly that Task.
+        const result = await this.#observe(workspaceId, async () => {
             await this.#port.cancelWorker({
                 workspaceId,
-                workerId: binding.task.id,
+                workerId: context.id,
                 reason: "A2A caller cancelled the Task",
             });
+            return { context, loopId: loop.id };
         }, () => {});
         if (result.status !== 499) {
             throw new Error(`A2A Task '${taskId}' did not terminate as cancelled.`);
@@ -175,80 +193,77 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         }
     }
 
-    async #ensureBinding(request: RequestContext): Promise<PlurnkTaskBinding> {
-        const workspaceId = await this.#workspace.id();
-        for (const [label, value] of [["Context", request.contextId], ["Task", request.taskId]] as const) {
-            if (!WORKER_NAME.test(value)) {
-                throw new RequestMalformedError(`${label} identity '${value}' cannot name a Plurnk worker.`);
-            }
+    // {§a2a-inbound-exposure} Resolve the Context and start or continue the Task's Loop under the
+    // Context's lock, so two Tasks of one Context can never start together.
+    async #start(
+        workspaceId: number,
+        request: RequestContext,
+        run: (context: ApplicationWorkerProjection) => Promise<number>,
+    ): Promise<StartedTask> {
+        if (!WORKER_NAME.test(request.contextId)) {
+            throw new RequestMalformedError(`Context identity '${request.contextId}' cannot name a Plurnk worker.`);
         }
-        let resolved: PlurnkTaskBinding | null = null;
+        if (!WORKER_NAME.test(request.taskId)) {
+            throw new RequestMalformedError(`Task identity '${request.taskId}' is not one this exposure mints.`);
+        }
+        let started: StartedTask | null = null;
         await this.#serialize(request.contextId, async () => {
-            const existingTask = await this.#store.binding(request.taskId);
-            if (existingTask !== null) {
-                if (existingTask.context.name !== request.contextId) {
-                    throw new RequestMalformedError(
-                        `A2A Task '${request.taskId}' does not belong to Context '${request.contextId}'.`,
-                    );
-                }
-                this.#ownedContexts.add(request.contextId);
-                resolved = existingTask;
-                return;
-            }
-            if (request.task !== undefined) {
-                throw new RequestMalformedError(`A2A Task '${request.taskId}' has no Plurnk binding.`);
-            }
-
-            const existingContext = await this.#port.readWorker({
-                workspaceId,
-                identity: { name: request.contextId },
-            });
-            let context: ApplicationWorkerProjection;
-            if (existingContext === null) {
-                if (request.task !== undefined) {
-                    throw new RequestMalformedError(`A2A Context '${request.contextId}' does not exist.`);
-                }
-                const created = await this.#port.createConversationWorker({
-                    workspaceId,
-                    name: request.contextId,
-                    parentWorkerId: await this.#parent(workspaceId),
-                });
-                const projected = await this.#port.readWorker({ workspaceId, identity: { id: created.workerId } });
-                if (projected === null) throw new Error(`A2A Context '${request.contextId}' was not visible after creation.`);
-                context = projected;
-                this.#ownedContexts.add(request.contextId);
-            } else {
-                if (existingContext.origin !== "model" || existingContext.parentWorkerId === null) {
-                    throw new RequestMalformedError(
-                        `A2A Context '${request.contextId}' is not a child model Worker.`,
-                    );
-                }
-                if (
-                    !this.#ownedContexts.has(request.contextId)
-                    && !await this.#store.ownsContext(existingContext)
-                ) {
-                    throw new RequestMalformedError(
-                        `A2A Context '${request.contextId}' is not owned by this exposure.`,
-                    );
-                }
-                this.#ownedContexts.add(request.contextId);
-                context = existingContext;
-            }
-
-            const created = await this.#port.forkWorker({
-                workspaceId,
-                workerId: context.id,
-                name: request.taskId,
-            });
-            const task = await this.#port.readWorker({
-                workspaceId,
-                identity: { id: created.workerId },
-            });
-            if (task === null) throw new Error(`A2A Task '${request.taskId}' was not visible after creation.`);
-            resolved = { workspaceId, context, task, loop: null };
+            const context = await this.#context(workspaceId, request);
+            started = { context, loopId: await run(context) };
         });
-        if (resolved === null) throw new Error(`A2A Task '${request.taskId}' has no Plurnk binding.`);
-        return resolved;
+        if (started === null) throw new Error(`A2A Task '${request.taskId}' did not start.`);
+        return started;
+    }
+
+    async #context(workspaceId: number, request: RequestContext): Promise<ApplicationWorkerProjection> {
+        if (request.task !== undefined) {
+            // A continuation folds into its Task's own open Loop.
+            const binding = await this.#store.binding(request.taskId);
+            if (binding === null) throw new RequestMalformedError(`A2A Task '${request.taskId}' has no Plurnk loop.`);
+            if (binding.context.name !== request.contextId) {
+                throw new RequestMalformedError(
+                    `A2A Task '${request.taskId}' does not belong to Context '${request.contextId}'.`,
+                );
+            }
+            if (!PlurnkTaskStore.open(binding.loop)) {
+                throw new UnsupportedOperationError(
+                    `A2A Task '${request.taskId}' has finished; start a new Task in its Context.`,
+                );
+            }
+            this.#ownedContexts.add(request.contextId);
+            return binding.context;
+        }
+        const existing = await this.#port.readWorker({ workspaceId, identity: { name: request.contextId } });
+        if (existing === null) {
+            const created = await this.#port.createConversationWorker({
+                workspaceId,
+                name: request.contextId,
+                parentWorkerId: await this.#parent(workspaceId),
+            });
+            const projected = await this.#port.readWorker({ workspaceId, identity: { id: created.workerId } });
+            if (projected === null) throw new Error(`A2A Context '${request.contextId}' was not visible after creation.`);
+            this.#ownedContexts.add(request.contextId);
+            return projected;
+        }
+        if (existing.origin !== "model" || existing.parentWorkerId === null) {
+            throw new RequestMalformedError(`A2A Context '${request.contextId}' is not a child model Worker.`);
+        }
+        if (!this.#ownedContexts.has(request.contextId) && !await this.#store.ownsContext(existing)) {
+            throw new RequestMalformedError(`A2A Context '${request.contextId}' is not owned by this exposure.`);
+        }
+        this.#ownedContexts.add(request.contextId);
+        await this.#assertIdle(workspaceId, existing);
+        return existing;
+    }
+
+    // {§a2a-inbound-exposure} A Context is one conversation, and it runs one Task at a time.
+    async #assertIdle(workspaceId: number, context: ApplicationWorkerProjection): Promise<void> {
+        const open = await this.#store.openTask(workspaceId, context);
+        if (open === null) return;
+        throw new UnsupportedOperationError(open.taskId === null
+            ? `A2A Context '${context.name}' is still working; wait for it to finish.`
+            : `A2A Context '${context.name}' is still working on Task '${open.taskId}'. `
+                + "Continue that Task, wait for it to finish, or cancel it.");
     }
 
     async #parent(workspaceId: number): Promise<number> {
@@ -258,20 +273,28 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
         return parent.id;
     }
 
+    // Subscribes before starting, so a fast Loop's termination is never missed.
     async #observe(
-        binding: PlurnkTaskBinding,
-        action: () => Promise<void>,
+        workspaceId: number,
+        start: () => Promise<StartedTask>,
         started: () => void,
     ): Promise<OperationResult> {
+        const terminated = new Map<string, unknown>();
+        let target: string | null = null;
         const settled = Promise.withResolvers<OperationResult>();
-        const unsubscribe = this.#port.subscribeToEvents((workspaceId, method, params) => {
-            if (workspaceId !== binding.workspaceId || typeof params !== "object" || params === null) return;
+        const unsubscribe = this.#port.subscribeToEvents((eventWorkspace, method, params) => {
+            if (eventWorkspace !== workspaceId || method !== "loop/terminated" || typeof params !== "object" || params === null) return;
             const candidate = params as Record<string, unknown>;
-            if (candidate.workerId !== binding.task.id || method !== "loop/terminated") return;
-            settled.resolve(Validator.assertOperationResult(candidate.result as OperationResult));
+            const key = `${String(candidate.workerId)}/${String(candidate.loopId)}`;
+            if (key === target) settled.resolve(Validator.assertOperationResult(candidate.result as OperationResult));
+            else terminated.set(key, candidate.result);
         });
         try {
-            await action();
+            const { context, loopId } = await start();
+            target = `${context.id}/${loopId}`;
+            if (terminated.has(target)) {
+                settled.resolve(Validator.assertOperationResult(terminated.get(target) as OperationResult));
+            }
             started();
             return await settled.promise;
         } finally {

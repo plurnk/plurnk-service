@@ -11,7 +11,7 @@ import {
     Exposure as A2aExposure,
     OutboundModule,
 } from "@plurnk/plurnk-a2a";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
@@ -65,6 +65,9 @@ const runTask = async (
     if (first.$case !== "task") throw new Error("the composed A2A run did not create a Task");
     return { task: first.value, events };
 };
+
+// {§a2a-inbound-exposure} A Task is the Loop its first message started; the message source names it.
+const taskOf = (source: string | null): string | undefined => /\/tasks\/([^/]+)\/messages\//u.exec(source ?? "")?.[1];
 
 test("{§a2a-worker-ownership}: an absent configured parent cannot create an ownerless A2A context", async () => {
     const db = await openMigrated();
@@ -129,11 +132,9 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
         assert.ok(!states.includes(TaskState.TASK_STATE_INPUT_REQUIRED), "an A2A Task never asks its caller for structured input");
         assert.equal(states.at(-1), TaskState.TASK_STATE_COMPLETED);
         const context = await daemon.readWorker({ workspaceId, identity: { name: answered.task.contextId } });
-        const task = await daemon.readWorker({ workspaceId, identity: { name: answered.task.id } });
         assert.equal(context?.parentWorkerId, parent.workerId);
-        assert.equal(task?.parentWorkerId, context?.id);
-        assert.equal(context?.owner, owner.address);
-        assert.equal(task?.owner, owner.address);
+        assert.equal(context?.owner, owner.address, "the Context, and so each of its Tasks, carries the parent's owner");
+        assert.equal(await daemon.readWorker({ workspaceId, identity: { name: answered.task.id } }), null, "a Task is a Loop, not a Worker");
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
     } finally { await daemon.stop(); await http.close(); await db.close(); }
 });
@@ -155,16 +156,16 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     let protocolAddress = "";
     let unrelatedAddress = "";
     t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
-        const [task] = (await daemon.listWorkers(workspace.workspaceId, { origin: "model" }))
-            .filter((worker) => worker.kind === "fork");
-        assert.ok(task);
+        const [context] = (await daemon.listWorkers(workspace.workspaceId, { origin: "model" }))
+            .filter((worker) => worker.parentWorkerId !== null);
+        assert.ok(context);
         let program: string;
         if (calls++ === 0) {
-            const [request] = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: task.id });
+            const [request] = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: context.id });
             assert.ok(request?.source);
             protocolAddress = request.source;
-            unrelatedAddress = `message://${task.name}/abcdef12`;
-            await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: task.id,
+            unrelatedAddress = `message://${context.name}/abcdef12`;
+            await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: context.id,
                 prompt: "An unrelated native request.", messageAddress: unrelatedAddress });
             program = "````NOTE\nObserve the new request before replying.\n````";
         } else if (calls === 2) {
@@ -180,7 +181,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
         const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const { task } = await runTask(client, "Provide the A2A answer.");
         const retrieved = await client.getTask({ tenant: "", id: task.id, historyLength: 10 });
-        const binding = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.id } });
+        const binding = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.contextId } });
         assert.ok(binding);
         assert.equal(retrieved.status?.state, TaskState.TASK_STATE_COMPLETED, JSON.stringify(retrieved));
         assert.equal(retrieved.artifacts[0]?.parts[0]?.content?.value, "The A2A answer.");
@@ -348,37 +349,18 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         const runtime = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { id: context.parentWorkerId } });
         assert.equal(runtime?.origin, "_plurnk");
         assert.equal(context.owner, "_plurnk");
-        const tasks = await daemon.listWorkers(workspace.workspaceId, {
-            origin: "model",
-            parentWorkerId: context.id,
-        });
+        assert.deepEqual(await daemon.listWorkers(workspace.workspaceId, { origin: "model", parentWorkerId: context.id }), [],
+            "a Task is not a Worker");
+        const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: context.id });
         assert.deepEqual(
-            tasks.map(({ name }) => name).toSorted(),
-            [first.task.id, second.task.id, asked.task.id, answered.task.id].toSorted(),
-            "each A2A Task is one child Worker under its Context",
+            loops.map(({ promptSource }) => taskOf(promptSource)),
+            [first.task.id, second.task.id, asked.task.id, answered.task.id],
+            "each A2A Task is one Loop of its Context worker, in order",
         );
-        const secondWorker = tasks.find(({ name }) => name === second.task.id)!;
-        const secondLog = await daemon.readLog({
-            workspaceId: workspace.workspaceId,
-            workerId: secondWorker.id,
-            limit: 1_000,
-        });
-        assert.ok(
-            secondLog.some((row) => row.source === `worker://${first.task.id}` && row.op === "READ"
-                && JSON.stringify(row.rx).includes("first composed result")),
-            "the later Task inherits the first Task's pending terminal evidence through the Context snapshot",
-        );
-        const answeredWorker = tasks.find(({ name }) => name === answered.task.id)!;
-        const answeredLog = await daemon.readLog({
-            workspaceId: workspace.workspaceId,
-            workerId: answeredWorker.id,
-            limit: 1_000,
-        });
-        assert.ok(
-            answeredLog.some((row) => row.source === `worker://${asked.task.id}` && row.op === "READ"
-                && JSON.stringify(row.rx).includes("Which branch should I use?")),
-            "the follow-up Task sees the question it answers through the Context snapshot",
-        );
+        // {§a2a-inbound-exposure} One conversation: the follow-up sees the request behind its question.
+        const followUp = provider.received[3]!.map(chatMessageText).join("\n");
+        assert.ok(followUp.includes("choose a branch"), "the follow-up Task sees the caller's earlier request");
+        assert.ok(followUp.includes("Which branch should I use?"), "and the question it answers");
         const namedContexts: number[] = [];
         for (const [contextId, result] of [
             ["Approach_A", "uppercase context result"],
@@ -390,10 +372,10 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             assert.equal(stored.status?.state, TaskState.TASK_STATE_COMPLETED);
             assert.equal(stored.artifacts[0]?.parts[0]?.content?.value, result);
             const context = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: contextId } });
-            const task = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: named.task.id } });
             assert.ok(context !== null);
-            assert.equal(context.name, contextId);
-            assert.equal(task?.parentWorkerId, context.id, "the protocol Context and Task identities are the worker names verbatim");
+            assert.equal(context.name, contextId, "the protocol Context names its worker verbatim");
+            const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: context.id });
+            assert.deepEqual(loops.map(({ promptSource }) => taskOf(promptSource)), [named.task.id], "and its Task is that worker's Loop");
             namedContexts.push(context.id);
         }
         assert.notEqual(namedContexts[0], namedContexts[1], "A2A Context identities remain case-sensitive");
@@ -571,14 +553,11 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             parentWorkerId: await daemon.ensureRuntimeWorker(workspace.workspaceId),
         });
         assert.equal(roots.length, 1, "restart reuses the one durable Context child");
-        const tasks = await daemon.listWorkers(workspace.workspaceId, {
-            origin: "model",
-            parentWorkerId: roots[0]!.id,
-        });
+        const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: roots[0]!.id });
         assert.deepEqual(
-            tasks.map(({ name }) => name).toSorted(),
-            [first.task.id, second.task.id].toSorted(),
-            "the fresh adapter adds one child Task without adopting or duplicating the Context",
+            loops.map(({ promptSource }) => taskOf(promptSource)),
+            [first.task.id, second.task.id],
+            "the fresh adapter adds one Task Loop without adopting or duplicating the Context",
         );
     } finally {
         await daemon.stop();
@@ -587,7 +566,47 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
     }
 });
 
-test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worker lifecycle", async () => {
+test("{§a2a-inbound-exposure}: a new Task is refused while its Context works on another", async () => {
+    const db = await openMigrated();
+    const provider = new BlockingMock();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, http });
+    const workspace = await daemon.createWorkspace({ name: `a2a-busy-${crypto.randomUUID()}`, projectRoot: null });
+    daemon.registerModule(A2aExposure.init({
+        workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
+        card: a2aCard(),
+        ...A2A_EXPOSURE,
+    }), "test-module");
+    try {
+        await daemon.start();
+        const client = await connectHttpJsonAgent(serviceUrl(daemon));
+        let task: Task | null = null;
+        let refusal: unknown = null;
+        for await (const event of client.sendMessageStream(A2aMessage.request("hold the conversation"))) {
+            const current = payload(event);
+            if (current.$case === "task") task = current.value;
+            if (current.$case !== "statusUpdate" || current.value.status?.state !== TaskState.TASK_STATE_WORKING) continue;
+            assert.ok(task !== null);
+            await provider.started.promise;
+            refusal = await client.sendMessage(A2aMessage.request("start another Task", { contextId: task.contextId }))
+                .then(() => null, (error: unknown) => error);
+            await client.cancelTask({ tenant: "", id: task.id, metadata: {} });
+        }
+        assert.ok(task !== null);
+        assert.match(String(refusal), new RegExp(`still working on Task '${task.id}'`, "u"),
+            "the refusal names the Task in flight and the ways forward");
+        const context = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.contextId } });
+        assert.ok(context !== null);
+        const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: context.id });
+        assert.deepEqual(loops.map(({ promptSource }) => taskOf(promptSource)), [task.id], "the refused Task started no Loop");
+    } finally {
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    }
+});
+
+test("{§a2a-inbound-exposure}: A2A cancellation settles the Task's ordinary Loop lifecycle", async () => {
     const db = await openMigrated();
     const provider = new BlockingMock();
     const http = await bindListener();
@@ -641,7 +660,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
         ]);
         const worker = await daemon.readWorker({
             workspaceId: workspace.workspaceId,
-            identity: { name: task.id },
+            identity: { name: task.contextId },
         });
         assert.ok(worker !== null);
         const loops = await daemon.listWorkerLoops({

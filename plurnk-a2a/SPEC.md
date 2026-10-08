@@ -75,28 +75,33 @@ state, not an independent Task database.
 
 ```mermaid
 flowchart LR
-    Parent["Configured parent Worker"] --> Context["Context child Worker\nname = contextId"]
-    Caller["A2A caller"] --> Context
-    Context --> Task1["Task child Worker\nname = taskId"]
-    Context --> Task2["Task child Worker\nname = taskId"]
-    Task1 --> Loop1["one live Task Loop"]
-    Task2 --> Loop2["one live Task Loop"]
+    Parent["Configured parent Worker"] --> Context["Context Worker\nname = contextId"]
+    Caller["A2A caller"] -->|messages| Context
+    Context --> Loop1["Task Loop\nfirst message names taskId"]
+    Context --> Loop2["Task Loop\nfirst message names taskId"]
 ```
 
-The SDK generates new Context and Task UUIDs before execution. Those UUIDs
-already satisfy Plurnk's worker-name contract ({§worker-name}), so their exact values name the
-Context Worker and its Task child. No adapter binding table, synthetic
-actor, or second scheduler exists. Later Tasks fork the Context Worker and
-therefore receive the parent-visible prior Task evidence under Core's ordinary
-topology contract.
+A Context is one conversation, and Plurnk's conversation is a Worker. The SDK generates new
+Context and Task UUIDs before execution; a Context UUID already satisfies Plurnk's worker-name
+contract ({§worker-name}) and names its Context Worker verbatim. A Task is one Loop of that
+Worker, started by the Task's first message, whose source
+`a2a://anonymous/contexts/<context>/tasks/<task>/messages/<message>` names it. Every Task's
+messages and replies therefore stay in one Worker log, and a later Task sees the whole
+conversation. No adapter binding table, synthetic actor, or second scheduler exists.
 
-Only a child Worker with a durable message source matching its exact A2A Context,
-Task, and Message identities projects as a Task. A Worker is reusable as an A2A
-Context only after this adapter created it in the running exposure or one such
-Task proves its durable ownership after restart. Ordinary model Workers in the
-same workspace are neither discoverable nor adoptable through A2A. Foreign
-Task identities that cannot name a local Worker are unknown Tasks, not Core
-validation failures. Unsupported Message content is rejected before execution
+| Request | Behavior |
+|---|---|
+| New Task, Context idle | Starts a fresh Loop of the Context Worker. |
+| Message continuing the open Task | Folds into that Task's Loop ({§methods-loop-run-fold-consistency}). |
+| New Task while another Task is open | Refused before execution with `UNSUPPORTED_OPERATION`, naming the open Task: a Context runs one Task at a time. |
+| Cancel the open Task | Cancels the Context Worker's unfinished work, which is exactly that Task. |
+
+Only a Loop whose initial message source matches exact A2A Context, Task, and Message
+identities projects as a Task, and a Task's newest such Loop is its state. A Worker is
+reusable as an A2A Context only after this adapter created it in the running exposure or one
+of its Tasks proves its durable ownership after restart. Ordinary model Workers in the same
+workspace are neither discoverable nor adoptable through A2A. Foreign Task identities this
+exposure never minted are unknown Tasks, not Core validation failures. Unsupported Message content is rejected before execution
 with the standard protocol error; it does not create Workers or alter an existing
 Task. Other executor failures follow the SDK's failed-Task behavior.
 
@@ -138,8 +143,8 @@ caller can discover the scheme. Empty is an unauthenticated exposure: the panel
 states it, the adapter never infers it.
 
 §a2a-worker-ownership New Context workers are fresh model children of the configured
-existing parent; Task workers inherit that owner's approval identity through ordinary
-delegation. The default `_plurnk` parent is runtime-owned and cannot review. A missing
+existing parent and inherit its approval owner; a Task is a Loop of its Context, so it has
+that owner. The default `_plurnk` parent is runtime-owned and cannot review. A missing
 configured parent refuses admission, without creating a substitute. Existing contexts
 retain their parent and owner when configuration changes. Released root contexts are
 attached to the runtime actor during migration; their task identities and evidence remain.

@@ -22,8 +22,9 @@ class TckProvider extends Mock {
 
     // {§message-short-identity} — the packet shows a message by its short address, never the
     // transport's own name for it, so the scenario the TCK encodes in its messageId is read from
-    // the durable inbound message of the Task worker this call serves ({§worker-provider-identity}).
-    async #scenario(providerIdentity: string): Promise<string> {
+    // the newest inbound message of the Context worker this call serves ({§worker-provider-identity}).
+    // A Context runs one Task at a time, so that message is the current Task's.
+    async #scenario(providerIdentity: string): Promise<{ readonly scenario: string; readonly task: string }> {
         const daemon = this.#daemon();
         let worker = this.#workers.get(providerIdentity);
         if (worker === undefined) {
@@ -38,13 +39,16 @@ class TckProvider extends Mock {
         }
         const arrivals = (await daemon.readMessages(worker)).filter(({ direction }) => direction === "inbound");
         const source = arrivals.at(-1)?.source ?? "";
-        return /\/messages\/(tck-[a-z0-9_-]+)/u.exec(source)?.[1] ?? "default";
+        return {
+            scenario: /\/messages\/(tck-[a-z0-9_-]+)/u.exec(source)?.[1] ?? "default",
+            task: /\/tasks\/([^/]+)\//u.exec(source)?.[1] ?? source,
+        };
     }
 
     override async generate(args: Parameters<Provider["generate"]>[0]) {
-        const count = this.#calls.get(args.workerId) ?? 0;
-        this.#calls.set(args.workerId, count + 1);
-        const scenario = await this.#scenario(args.workerId);
+        const { scenario, task } = await this.#scenario(args.workerId);
+        const count = this.#calls.get(task) ?? 0;
+        this.#calls.set(task, count + 1);
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
             const content = count === 0

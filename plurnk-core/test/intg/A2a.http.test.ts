@@ -121,19 +121,21 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
         configuration: { returnImmediately: true },
     });
     await provider.started.promise;
-    const second = await send("Complete the second Task.", { contextId: first.contextId });
+    // A Context runs one Task at a time, so the overlapping Task has a Context of its own.
+    const second = await send("Complete the second Task.");
+    assert.notEqual(second.contextId, first.contextId);
     provider.release();
     const resumed = await waitForDb(() => request(`/tasks/${first.id}`),
         (task) => task.status.state === "TASK_STATE_COMPLETED");
     assert.equal(resumed.contextId, first.contextId);
-    const path = `/tasks?contextId=${encodeURIComponent(first.contextId)}&pageSize=1`;
+    const path = "/tasks?pageSize=1";
     const page = await request(path);
     assert.deepEqual(page.tasks.map((task: { id: string }) => task.id), [first.id]);
     assert.equal(page.totalSize, 2);
     assert.ok(page.nextPageToken);
     assert.ok(page.tasks.every((task: { artifacts?: unknown[] }) => !task.artifacts?.length));
 
-    await send("Complete the third Task.", { contextId: first.contextId });
+    const third = await send("Complete the third Task.", { contextId: first.contextId });
     const next = await request(`${path}&pageToken=${encodeURIComponent(page.nextPageToken)}`);
     assert.deepEqual(next.tasks.map((task: { id: string }) => task.id), [second.id],
         "a new Task before the cursor does not duplicate the preceding page");
@@ -142,6 +144,9 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
     const filtered = await request(`${path}&status=TASK_STATE_COMPLETED&includeArtifacts=true&statusTimestampAfter=${encodeURIComponent(resumed.status.timestamp)}`);
     assert.equal(filtered.totalSize, 2);
     assert.equal(filtered.tasks[0].artifacts[0].parts[0].text, "third Task");
+    const scoped = await request(`/tasks?contextId=${encodeURIComponent(first.contextId)}`);
+    assert.deepEqual(scoped.tasks.map((task: { id: string }) => task.id), [third.id, first.id],
+        "a Context filter lists that conversation's Tasks, newest first");
     for (const token of ["-1", "garbage", Buffer.from(JSON.stringify([0])).toString("base64url")]) {
         const problem = await request(`${path}&pageToken=${encodeURIComponent(token)}`, undefined, 400);
         assert.equal(problem.error.code, 400);
@@ -229,7 +234,7 @@ for (const modes of [undefined, [], ["application/json", "text/plain"]]) {
         assert.ok(!packet.includes("request-only-evidence"), "opaque metadata is retained, not injected as instructions");
         const admitted = { ...message, contextId: result.task.contextId, taskId: result.task.id };
         assert.deepEqual(result.task.history, [admitted]);
-        const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: result.task.id } });
+        const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: result.task.contextId } });
         assert.ok(worker);
         const incoming = (await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: worker.id }))
             .find(row => row.direction === "inbound");
