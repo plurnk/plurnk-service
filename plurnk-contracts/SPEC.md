@@ -901,8 +901,7 @@ one park with the earliest bound, including the configured bound for each bare W
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
-semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400),
-because later and recurring delivery belong to the schedule family. A
+semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400). A
 targetless message takes no scope. A scope never changes the message body or
 disposition.
 
@@ -1571,8 +1570,8 @@ model-facing failure envelope.
 and `recovery`, parse diagnostic and notice names what was read, what was done with it, and
 where, and may show the working form of the construct it read or refused. It never names a cause
 or an intent the input does not establish: no likely mistake, no reconstruction of what the author
-meant, no alternative the producer did not apply. Each sentence presupposes only what the producer
-itself decided.
+meant, no alternative the producer did not apply, and no form the language no longer has. Each
+sentence presupposes only what the producer itself decided.
 
 §problem-details `ProblemDetails` requires `type`, `title`, `status`, and `detail`;
 `instance` is optional until a durable host can attach the occurrence URI.
