@@ -100,7 +100,7 @@ const assertParseIssues = (value: unknown): ParseIssueTransition => {
     return value as ParseIssueTransition;
 };
 
-export const EDIT_NOOP_DETAIL = "No change: EDIT body matches the selected content. Omit the body to delete the selection.";
+export const EDIT_NOOP_DETAIL = "No change: EDIT body matches the selected content.";
 
 const receiptFields = (
     receipt: Record<string, unknown>,

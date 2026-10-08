@@ -18,7 +18,7 @@ test("{§notifications-notice-event} notifyNotice broadcasts to clients attached
                 loopId: 42,
                 notice: {
                     source: "provider:local",
-                    kind: "grammar_unenforced",
+                    kind: "output_unaccounted",
                     level: "warn",
                     message: "transported grammar diverged from returned content",
                     position: { type: "content-offset", line: 3, column: 7 },
@@ -32,7 +32,7 @@ test("{§notifications-notice-event} notifyNotice broadcasts to clients attached
             assert.equal(notices[0].workerId, 7);
             assert.equal(notices[0].loopId, 42);
             assert.equal(notices[0].notice.source, "provider:local");
-            assert.equal(notices[0].notice.kind, "grammar_unenforced");
+            assert.equal(notices[0].notice.kind, "output_unaccounted");
             assert.equal(notices[0].notice.message, "transported grammar diverged from returned content");
         } finally { ws.close(); }
     });

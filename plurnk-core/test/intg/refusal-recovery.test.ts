@@ -83,7 +83,7 @@ test("{§membership-read-refusal} a key beyond the root is told it is outside th
         const { status, problem } = await dispatch(source);
         assert.equal(status, 404, source);
         assert.equal(problem.detail, "No member of this workspace is at '../outside/delete_tests.log'.", `${source}: the address's membership, nothing about the disk`);
-        assert.equal(problem.recovery, "'../outside/delete_tests.log' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.", source);
+        assert.equal(problem.recovery, "'../outside/delete_tests.log' is outside the project root: only a members definition under the operator's namespace scope admits it.", source);
     }
 });
 
@@ -112,26 +112,25 @@ test("{§log-near-miss} a log miss beside real rows names them", async (t) => {
     assert.equal((await dispatch("````READ (log:///7/1/1/READ)````")).problem.recovery, undefined, "a loop with no rows has nothing to name");
 });
 
-test("{§unregistered-scheme-recovery} an unregistered scheme names the executor fence its authority is, else what is registered", async (t) => {
+test("{§unregistered-scheme-recovery} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {
     const { dispatch } = await runtime(t);
-    const fence = await dispatch("````WORK (tool://sh/run)\nls\n````");
-    assert.equal(fence.status, 501);
-    assert.equal(fence.problem.detail, "Scheme 'tool' is not registered.");
-    assert.equal(fence.problem.recovery, "`sh` is an executor: run ```sh (run)``` with its input in the body.");
+    const executorAuthority = await dispatch("````WORK (tool://sh/run)\nls\n````");
+    assert.equal(executorAuthority.status, 501);
+    assert.equal(executorAuthority.problem.detail, "Scheme 'tool' is not registered.");
     const listed = await dispatch("````READ (nosuch://x/y)````");
-    assert.match(listed.problem.recovery ?? "", /^Registered schemes: .*\bfile\b.*\blog\b.*\.$/u);
+    for (const refused of [executorAuthority, listed]) assert.match(refused.problem.recovery ?? "", /^Registered schemes: .*\bfile\b.*\blog\b.*\.$/u);
 });
 
-test("{§fts-word-phrase} a full-text query that unbalances FTS5's own syntax is offered the phrase and the regex", async (t) => {
+test("{§fts-word-phrase} {§diagnostic-observation} a full-text query FTS5 refuses carries FTS5's message and the dialect's form", async (t) => {
     const { engine, ids, dispatch } = await runtime(t);
     assert.equal((await dispatch("````EDIT (worker:///notes.md)\nif all(flags):\n````")).status, 201);
     await engine.warmWorkspaceDerivations(ids.workspaceId);
     const refused = await dispatch("````FIND (worker:///notes.md) ~all(````");
     assert.equal(refused.status, 400);
-    assert.equal(refused.problem.recovery, "FTS5 reads parentheses and quotes as query syntax: quote the phrase, as `~\"all(\"`, or match the characters with a regex, as `/all\\(/`.");
+    assert.equal(refused.problem.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.");
 });
 
-test("{§exec-lifetime} an execution that outlives its lifetime is told how to run longer", async (t) => {
+test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives its lifetime says so, and nothing more", async (t) => {
     const { db, ids, dispatch, sequence } = await runtime(t);
     assert.equal((await dispatch("````sh [{\"lifetime\": \"1s\"}]\nsleep 5\n````")).status, 200);
     const stream = await executionAddress(db, ids.turnId, sequence());
@@ -143,7 +142,7 @@ test("{§exec-lifetime} an execution that outlives its lifetime is told how to r
     }
     assert.ok(ended, "the deadline closes the stream with 504");
     assert.equal(ended.problem.detail, "Execution of 'sh' outlived its 1s lifetime.");
-    assert.equal(ended.problem.recovery, "Run it again with a longer lifetime, such as [{\"lifetime\": \"30m\"}], or with none to let it run as long as the loop.");
+    assert.equal(ended.problem.recovery, undefined);
 });
 
 test("{§exec-near-miss} an execution id written under another runtime names the address it holds", async (t) => {

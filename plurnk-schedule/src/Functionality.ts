@@ -136,7 +136,7 @@ export default class ScheduleFunctionality {
             throw failure("query-unsupported", 400, "schedule discovery reads rule text from `source`; there is no catalog to search.", { retryable: false });
         }
         if (query.source === undefined) {
-            throw failure("source-required", 400, "schedule discovery needs rule text in `source`; `FREQ=DAILY` is enough to read the time.", { retryable: false });
+            throw failure("source-required", 400, "schedule discovery needs rule text in `source`, such as `FREQ=DAILY`.", { retryable: false });
         }
         const zone = await this.#zone(identity, options);
         const now = this.#scheduler.now();

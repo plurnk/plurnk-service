@@ -1034,10 +1034,9 @@ export default class AiSdkProvider implements Provider {
         if (sendGrammar !== undefined
             && this.tokenize !== undefined
             && usage?.outputTokens !== undefined) {
-            // Channel-escape detector: completion tokens
-            // billed far beyond every visible channel mean the decode ESCAPED into
-            // a server-discarded reasoning block mid-emission. This diagnostic
-            // requires the serving vocabulary; an estimate cannot prove absence.
+            // {§diagnostic-observation} — billed output tokens far beyond every visible channel are reported
+            // as the two counts, naming no cause. The count requires the serving vocabulary; an estimate
+            // cannot prove absence.
             try {
                 const [contentTokens, reasoningTokens] = await Promise.all([
                     this.tokenize(raw.content),
@@ -1047,9 +1046,9 @@ export default class AiSdkProvider implements Provider {
                 if (usage.outputTokens > visible + 64) {
                     (notices ??= []).push({
                         source: this.#source,
-                        kind: "grammar_unenforced",
+                        kind: "output_unaccounted",
                         level: "warn",
-                        message: `decode escaped the grammar: ${usage.outputTokens} output tokens billed but only ${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
+                        message: `${usage.outputTokens} output tokens billed; ${visible} visible across content and reasoning.`,
                         position: [...raw.content].length,
                     });
                 }

@@ -116,10 +116,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (changes !== 1) throw new Error(`spawn output entry ${entryId} is not there to record the environment on`);
     }
 
-    // The slot contract, stated when a resource source cannot be read: the resource IS the
-    // program and the body its stdin; a targetless invocation takes a command body.
+    // The slot contract, stated when a resource source cannot be read: the resource IS the program and the
+    // body its stdin. The other reading of the fence is not offered ({§diagnostic-observation}).
     static sourceRecovery(source: string, upstream: unknown): string {
-        const contract = `The target \`${source}\` names the program resource; the body is its stdin. Without a target, the body is the command.`;
+        const contract = `The target \`${source}\` names the program resource; the body is its stdin.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
     }
 
@@ -349,7 +349,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const refuse = (
             code: string,
             detail: string,
-            recovery: string,
+            recovery: string | undefined,
             extensions: Readonly<Record<string, unknown>> = {},
         ): ExecResult => Results.failure(
             "scheme:exec",
@@ -357,7 +357,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             400,
             detail,
             {},
-            { runtime, recovery, retryable: false, ...extensions },
+            { runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false, ...extensions },
         ) as ExecResult;
 
         if (invocation.body.required && !hasBody) {
@@ -444,9 +444,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             return refuse(
                 "target-is-documentation",
                 `\`${execTarget.raw}\` is reference documentation the harness generated, not a program; ${runtime} cannot run it.`,
-                hasBody
-                    ? `Drop the target and keep the command: the opening fence line is ${runtime} alone, with the command lines beneath it.`
-                    : `READ it to learn the ${runtime} executor; to run a program, target the program's own path, or put the command beneath a ${runtime} heading with no target.`,
+                undefined,
                 { target: execTarget.raw },
             );
         }
@@ -467,15 +465,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             }
         }
 
-        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none;
-        // execution lifetime is the metadata's lifetime field.
-        if (statement.lineMarker !== null) {
-            return refuse(
-                "scope-unsupported",
-                "An execution takes no scope.",
-                `Remove the scope; how long the run may live is metadata: [{"lifetime": "30m"}], or ${LIFETIME_SYNTAX}.`,
-            );
-        }
+        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none.
+        if (statement.lineMarker !== null) return refuse("scope-unsupported", "An execution takes no scope.", undefined);
 
         // {§env-option} — the fence's own environment is the service's key: refused here by name,
         // so the model learns why, never dropped at the spawn. The executor never sees it.
@@ -539,27 +530,25 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 return refuse(
                     "target-not-a-program",
                     `${runtime} target '${target}' is a directory, not a program.`,
-                    "Run in a directory with `[{\"cwd\": \"<directory>\"}]` and put the command in the body.",
+                    undefined,
                     { target },
                 );
             }
             if (kind === "missing") {
-                // The target is not a script here, but it may be a registered tool of another
-                // executor — say so first; that is what exists (#388).
+                // The target is not a script here, but it may be a registered tool of another executor or an
+                // executor itself: that is what exists, said as found (#388, {§diagnostic-observation}).
                 const executors = core.executors;
                 const ownerRuntimes = executors === undefined
                     ? []
                     : executors.availableRuntimes(core.workspaceId)
                         .filter((tag) => executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === target) === true);
-                // A target that names another available executor is a fence written under the wrong
-                // runtime (`sh (python3)` over a Python body, #895); the recovery names that fence.
                 const runtimeTarget = executors !== undefined && target !== null && target !== runtime
                     && executors.availableRuntimes(core.workspaceId).includes(target);
                 const recovery = ownerRuntimes.length > 0
-                    ? `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`
+                    ? `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`.`
                     : runtimeTarget
-                        ? `\`${target}\` is its own executor; use that name on the opening fence and put the program in the body.`
-                        : `The target must name an existing program resource. A targetless ${runtime} takes the command in its body.`;
+                        ? `\`${target}\` is its own executor.`
+                        : "The target must name an existing program resource.";
                 return refuse(
                     "target-not-found",
                     `The ${runtime} program does not resolve as a script or a registered tool for this executor.`,
@@ -896,7 +885,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             problem: {
                 ...result.problem,
                 detail: `'${runtime}' exited with code 127; \`${program}\` is a registered tool of \`${owner}\`.`,
-                recovery: `Use the \`${owner}\` fence with target \`(${program})\` and JSON input in the body; contract: ${contract}.`,
+                recovery: `\`${program}\`'s contract: ${contract}.`,
                 toolRuntimes: owners,
                 tool: program,
             },
@@ -1228,7 +1217,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                         runtime,
                         lifetime,
                         stage: "execution",
-                        recovery: `Run it again with a longer lifetime, such as [{"lifetime": "30m"}], or with none to let it run as long as the loop.`,
                         retryable: false,
                     },
                 );

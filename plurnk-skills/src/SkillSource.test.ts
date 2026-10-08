@@ -32,7 +32,8 @@ test("{§skills-sources} a git remote is a full https or ssh URL; other schemes 
             problemType("source-invalid")(error) && error.problem!.source === undefined && !error.problem!.detail!.includes("token"),
         "a credential in a source URL is refused without being echoed");
     await assert.rejects(() => SkillSource.locate("acme/skills", { projectRoot: "/nowhere", home: "/home/ada" }),
-        (error: { problem?: { type?: string; detail?: string } }) => problemType("source-missing")(error) && /shorthand names no forge/u.test(error.problem!.detail!));
+        (error: { problem?: { type?: string; detail?: string } }) => problemType("source-missing")(error) && error.problem!.detail === "No folder or file is at 'acme/skills'.",
+        "owner/repo is read as a project path, and its refusal names only what is absent ({§diagnostic-observation})");
     await assert.rejects(() => SkillSource.locate("skills", context), problemType("source-invalid"), "a relative source needs a project root");
 });
 
@@ -92,7 +93,9 @@ test("{§skills-sources} an Agent Plugin source is refused: its skills keep the 
     await mkdir(join(base, "plugin", "skills", "alpha"), { recursive: true });
     await writeFile(join(base, "plugin", "plugin.json"), JSON.stringify({ name: "acme" }));
     await writeFile(join(base, "plugin", "skills", "alpha", "SKILL.md"), skill("alpha"));
-    await assert.rejects(() => localReader.open({ kind: "folder", location: join(base, "plugin") }), problemType("source-is-plugin"));
+    await assert.rejects(() => localReader.open({ kind: "folder", location: join(base, "plugin") }),
+        (error: { problem?: { type?: string; detail?: string } }) =>
+            problemType("source-is-plugin")(error) && error.problem!.detail === `'${join(base, "plugin")}' is an Agent Plugin, not a skill.`);
 });
 
 test("{§skills-sources} fetching uses the supplied operator environment and preserves explicit SSH configuration", async (t) => {

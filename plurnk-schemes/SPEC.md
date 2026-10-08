@@ -453,14 +453,13 @@ without a trailing newline at a zero-width column-1 region, and returns every ot
 prepend anchor, never a range start: `<0,M>` — including `<0,-1>`, which is not a
 whole-content alias — is refused 416 by `lines()`, `linesRaw()`, `textReplacement()`,
 `lineMarkerEdit[Batch]()`, `window()` and `page()`, on empty content and empty result sets
-too, and never clamped to `<1,M>`. The refusal's `recovery` names the forms the author may
-have meant, in the range's unit:
+too, and never clamped to `<1,M>`. The refusal's detail states the zero start in the range's
+unit; its `recovery` never rebuilds the refused range ({§diagnostic-observation}):
 
 | Unit | `recovery` |
 |---|---|
-| line, `M ≥ 1` | the whole-line insert `<M,1,M,1>` ({§zero-width-column-one-insert}), `<0>` / `<-1>`, and `<1,M>` |
-| line, `M < 1` | `<1,-1>` for every line, `<0>` / `<-1>` |
-| byte, result, resource | `<1,M>` |
+| line | the line forms `<L,M>`, `<0>` and `<-1>` |
+| byte, result, resource | the fixed `range-not-satisfiable` recovery ({§problems-schemes}) |
 
 §read-zero-start The shared READ projection tolerates a two-coordinate `<0,M>`
 when `M` is a positive safe integer or `-1`: it selects `<1,M>`, retains `[0,M]`
@@ -496,8 +495,8 @@ start-column overshoots remain 416 errors.
   failure once for the whole batch: every conflicting pair with its relation in
   `conflicts`, the regions that conflict with nothing in `cleanRegions`, the
   first pair in `conflictingRegions`, plus `editCount` and `applied: 0`. The
-  prose states counts only; it does not duplicate the coordinate arrays or add a
-  second line-only representation.
+  prose states counts and, for a shared endpoint, the line both regions claim,
+  its text and the two regions; it adds no second line-only representation.
 - `Slicer.page(items, marker, options?)` is the separate ordered-result
   pagination helper; it accepts only one or two integer positions and can name
   an operation-owned range unit. An empty result set satisfies any well-formed
@@ -710,16 +709,16 @@ of message body or reply state. The protocol module owns URI identity; Core owns
 admission and correlation. Message representations reject mutation while remaining SEND
 recipients. Scratch entries and protocol artifacts retain their own existing write contracts.
 
-§message-immutable-recovery An EDIT, COPY or MOVE onto, or KILL of, a message address is
-refused 405 `message-immutable`; its detail names the address as an immutable received message,
-and its `recovery` distinguishes replying from concluding the loop:
-`` Reply with `SEND (message://tester/bde40185)` and a body, or conclude the loop with parameterless KILL. ``
+§message-immutable An EDIT, COPY or MOVE onto, or KILL of, a message address is
+refused 405 `message-immutable` with no `recovery` ({§diagnostic-observation}); its detail
+names the address as an immutable received message:
+`` `message://tester/bde40185` is a received message; it cannot be edited, moved or killed. ``
 
 §problems-schemes **Slicer and matcher Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
-| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line). Recovery: Choose a range within the available extent, unless the scope it means is computable ({§text-scope-semantics}): a result page written as lines names its bound and the READ that selects them (`Choose positions within 1..3; READ with <84,180> selects text lines.`), a zero line or column the 1-based region when that region is valid (`Lines and columns count from 1: <199,1,199,1>.`), an inverted region the same region written forward (`Write the earlier position first: <188,1,189,1>.`), and `<-N,-1>` the tail it means (`-1 is the only position counted from the end; the last 5 lines are <88,92>.`). |
+| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line; a result page names the unit it pages). Recovery: Choose a range within the available extent. Some refusals state the extent or show the working form of the construct instead; none rebuilds the input into another scope ({§diagnostic-observation}): a result position outside its page the page's bound (`Choose positions within 1..3.`), a region holding a zero line or column the counting rule of {§text-scope-semantics} (`Lines and columns count from 1.`), an inverted region the form's order (`An exact region names its earlier position first: <SL,SC,EL,EC>.`), a `<-N,-1>` range the line extent (`-1 is the only position counted from the end; lines run 1..92.`), and a line range from 0 the line forms ({§range-starts-at-one}). |
 | `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
 | `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
 | `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |
@@ -728,6 +727,6 @@ and its `recovery` distinguishes replying from concluding the loop:
 
 | sentence | arises when |
 |---|---|
-| `Range <0,end>` starts at 0, which is not a line; lines are numbered from 1 and 0 is only the prepend position. / `Range <0,-1>` starts at 0; resource positions are numbered from 1. Recovery: Write `<1,-1>` to start at the first resource. / Write `<1,n>` to start at the first byte. | a range whose start is 0 ({§range-starts-at-one}) |
+| `Range <0,end>` starts at 0, which is not a line; lines are numbered from 1 and 0 is only the `<0>` prepend position. Recovery: `<L,M>` selects lines L through M; `<0>` prepends and `<-1>` appends without replacing anything. / `Range <0,end>` starts at 0; *unit* positions are numbered from 1. | a range whose start is 0 ({§range-starts-at-one}) |
 | [metadata] must be a JSON array of option objects. | a metadata modifier that is not an array of objects |
 | A scope requires one position or an inclusive two-position range. | a scope of unsupported arity |

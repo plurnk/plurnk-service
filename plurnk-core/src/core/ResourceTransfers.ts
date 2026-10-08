@@ -145,11 +145,11 @@ export default class ResourceTransfers {
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
-        // {§readable-channel} — a derived projection cannot be moved out of its entry; COPY it.
+        // {§readable-channel} — a derived projection cannot be moved out of its entry.
         if (EntryReadable.isDerived(resolvedSource.channel)) {
             return MutationEffects.failure(
                 "channel-derived", 400,
-                `#${resolvedSource.channel} is derived from its source channel and cannot be moved; COPY it instead.`,
+                `#${resolvedSource.channel} is derived from its source channel and cannot be moved.`,
                 {}, { scheme: resolvedSource.scheme, channel: resolvedSource.channel, operation: "MOVE", retryable: false },
             );
         }
@@ -157,7 +157,7 @@ export default class ResourceTransfers {
         if (selected.matchedScopes !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
             return MutationEffects.failure(
                 "pattern-unsupported", 400,
-                `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern; COPY the lines and KILL its rows by pattern.`,
+                `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern.`,
                 {}, { scheme: resolvedSource.scheme, operation: "MOVE", retryable: false },
             );
         }

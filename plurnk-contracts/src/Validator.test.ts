@@ -381,7 +381,7 @@ test("Notice accepts open producer observations and typed positions", () => {
     for (const notice of [
         {
             source: "provider:local",
-            kind: "grammar_unenforced",
+            kind: "output_unaccounted",
             level: "warn",
             message: "transported grammar diverged from the returned content",
             position: { type: "content-offset", line: 3, column: 12 },

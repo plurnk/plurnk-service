@@ -113,7 +113,7 @@ export default class ResourceSelector {
                 {},
                 {
                     scheme,
-                    recovery: unregisteredSchemeRecovery(target, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
+                    recovery: unregisteredSchemeRecovery(this.#schemes.list(ctx.workspaceId)),
                     retryable: false,
                 },
             );
@@ -139,7 +139,7 @@ export default class ResourceSelector {
             return MutationEffects.failure(
                 "channel-derived",
                 400,
-                `#${channel} is derived from #${manifest.defaultChannel}; write the source channel and the projection follows.`,
+                `#${channel} is derived from #${manifest.defaultChannel} and is not written.`,
                 {},
                 { scheme, channel, source: manifest.defaultChannel, retryable: false },
             );

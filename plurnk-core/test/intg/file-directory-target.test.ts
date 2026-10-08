@@ -54,7 +54,7 @@ const turnRows = async (program: string | ((root: string) => string)) => {
 
 // The recorded shapes (#853): `READ (changelog) <1,-1>` (pytest) and `READ (tests/forms_tests/) <0>`
 // (django) were answered "exists on disk but is not a member", steering the model to admit a directory.
-test("{§file-directory-target}: a directory target says it is a directory and gives the listing that works", async () => {
+test("{§file-directory-target} {§diagnostic-observation}: a directory target says it is a directory; a READ or KILL carries the listing", async () => {
     const [read, slashed, listing, member, kill, edit] = await turnRows([
         "````READ (changelog) <1,-1>````",
         "````READ (tests/forms_tests/) <0> <!-- list directory structure -->````",
@@ -68,22 +68,22 @@ test("{§file-directory-target}: a directory target says it is a directory and g
     assert.deepEqual([read?.problem?.type, read?.problem?.detail, read?.problem?.recovery], [
         "https://problems.plurnk.xyz/scheme/file/path-is-directory",
         "'changelog' is a directory, not a file; READ reads one file.",
-        "List its files with `FIND (changelog/)`, then READ one by its path.",
+        "`FIND (changelog/)` lists its files.",
     ]);
     assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file."); // {§pinned-wording-core}
-    assert.equal(slashed?.problem?.recovery, "List its files with `FIND (tests/forms_tests/)`, then READ one by its path."); // {§pinned-wording-core}
+    assert.equal(slashed?.problem?.recovery, "`FIND (tests/forms_tests/)` lists its files."); // {§pinned-wording-core}
     assert.equal(listing?.status, 200, "the named listing form works");
     assert.match(String(listing?.content), /changelog\/7122\.bugfix\.rst/u);
     assert.equal(member?.status, 200, "and the listed path reads");
     assert.deepEqual([kill?.status, kill?.problem?.detail, kill?.problem?.recovery], [
         404,
         "'changelog' is a directory, not a file; KILL removes one file.",
-        "List its files with `FIND (changelog/)`, then KILL each by its path.",
+        "`FIND (changelog/)` lists its files.",
     ]);
     assert.deepEqual([edit?.status, edit?.problem?.detail, edit?.problem?.recovery], [
         403,
         "'changelog' is a directory, not a file; EDIT writes one file.",
-        "Name a file inside it, as `EDIT (changelog/<file>)`; list its files with `FIND (changelog/)`.",
+        undefined,
     ]);
 });
 

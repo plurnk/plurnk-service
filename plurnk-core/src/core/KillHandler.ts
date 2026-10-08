@@ -171,7 +171,7 @@ export default class KillHandler {
                 {},
                 {
                     scheme: schemeName,
-                    recovery: unregisteredSchemeRecovery(path, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
+                    recovery: unregisteredSchemeRecovery(this.#schemes.list(ctx.workspaceId)),
                     retryable: false,
                 },
             );

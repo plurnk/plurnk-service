@@ -469,7 +469,7 @@ test("execution source eligibility and failures come from the owning READ contra
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
         // #425 F4 — the owning identity stays; the execution slot contract rides the recovery.
-        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
+        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin.");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
@@ -480,7 +480,7 @@ test("execution source eligibility and failures come from the owning READ contra
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
         // The recovery states the slot contract and never guesses that the missing resource was a tool call.
         assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "execution does not guess that a missing resource was intended as a tool call");
-        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin. Without a target, the body is the command.");
+        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin.");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);
@@ -514,17 +514,17 @@ test("{§exec-target-near-miss} an own-scheme target that can never be a stream 
 // {§exec-target-documentation} — the recorded shape (#853, run99 qflash): ```sh (worker:///_plurnk/plurnk/sh.md)```
 // over `git checkout -- …` was accepted, realized as a host temporary the containerized runtime never saw,
 // and failed as `cannot open /tmp/plurnk-exec-….md`.
-test("{§exec-target-documentation} a generated reference target is refused at admission with the targetless form", async () => {
+test("{§exec-target-documentation} {§diagnostic-observation} a generated reference target is refused at admission, saying what it is and nothing more", async () => {
     const ctx = await wire();
     try {
         const withBody = await ctx.dispatch(ctx.root, "worker:///_plurnk/plurnk/tool.md", "git checkout -- src/_pytest/assertion/util.py");
         assert.equal(withBody.status, 400);
         assert.match(String(withBody.problem?.type), /\/target-is-documentation$/);
         assert.equal(withBody.problem?.detail, "`worker:///_plurnk/plurnk/tool.md` is reference documentation the harness generated, not a program; tool cannot run it.");
-        assert.equal(withBody.problem?.recovery, "Drop the target and keep the command: the opening fence line is tool alone, with the command lines beneath it.");
+        assert.equal(withBody.problem?.recovery, undefined, "the body is not presumed to be a command");
         const bodiless = await ctx.dispatch(ctx.root, "worker:///_plurnk/tools/tool.md");
         assert.equal(bodiless.status, 400);
-        assert.equal(bodiless.problem?.recovery, "READ it to learn the tool executor; to run a program, target the program's own path, or put the command beneath a tool heading with no target.");
+        assert.equal(bodiless.problem?.recovery, undefined);
         assert.equal(ctx.runs.length, 0, "nothing was realized or run");
     } finally {
         await ctx.close();

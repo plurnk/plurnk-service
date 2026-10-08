@@ -17,12 +17,12 @@ export default class MessageScheme implements SchemeHandler {
     }
 
     async resolveEntryAddress(target: ParsedPath, _ctx: SchemeAddressCtx, access: "read" | "write" = "read") {
-        // {§message-immutable-recovery} — immutable evidence is neither a reply nor a lifecycle control.
+        // {§message-immutable} — immutable evidence is neither a reply nor a lifecycle control.
         if (access === "write") return Results.failure(
             `scheme:${this.manifest.name}`, "message-immutable", 405,
             `\`${target.raw}\` is a received message; it cannot be edited, moved or killed.`,
             {},
-            { retryable: false, recovery: `Reply with \`SEND (${target.raw})\` and a body, or conclude the loop with parameterless KILL.` },
+            { retryable: false },
         );
         if (target.kind !== "url") return null;
         return {

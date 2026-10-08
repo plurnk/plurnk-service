@@ -235,9 +235,6 @@ export default class File extends CoreSchemeAdapterBase {
         // {§membership-read-refusal} — admission is the recovery for an untracked file; a file the
         // repository ignores no model definition admits, so its refusal says who can (#1005).
         const ignored = occupied && await GitMembership.isIgnored(core.db, core.workspaceId, key, undefined) === true;
-        // A bare name that is an executor's is a fence written as a path (`WORK (sh)`, #902): the
-        // recovery names the fence, not the membership machinery.
-        const executor = !occupied && !key.includes("/") && (core.executors?.availableRuntimes(core.workspaceId).includes(key) ?? false);
         return Results.failure(
             "scheme:file",
             occupied ? "entry-not-member" : "entry-not-found",
@@ -252,9 +249,7 @@ export default class File extends CoreSchemeAdapterBase {
                     ? ignored
                         ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
                         : "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
-                    : executor
-                        ? `\`${key}\` is an executor, not a path: run a program with a \`\`\`${key} fence and the program in the body; WORK starts a worker by \`worker://<name>\`.`
-                        : fileMissRecovery(key),
+                    : fileMissRecovery(key),
                 retryable: false,
             },
         ) as SchemeResultBase;
@@ -269,16 +264,16 @@ export default class File extends CoreSchemeAdapterBase {
         }
     }
 
-    // {§file-directory-target} — a directory inside the root is named as one, with the listing form
-    // that reaches its files, never as a missing or non-member file.
-    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL"): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery: string; retryable: false } } {
-        const listing = `\`FIND (${key}/)\``;
+    // {§file-directory-target} — a directory inside the root is named as one, never as a missing or non-member
+    // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
+    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL"): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
+        const listing = `\`FIND (${key}/)\` lists its files.`;
         const { detail, recovery } = {
-            READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: `List its files with ${listing}, then READ one by its path.` },
-            EDIT: { detail: `'${key}' is a directory, not a file; EDIT writes one file.`, recovery: `Name a file inside it, as \`EDIT (${key}/<file>)\`; list its files with ${listing}.` },
-            KILL: { detail: `'${key}' is a directory, not a file; KILL removes one file.`, recovery: `List its files with ${listing}, then KILL each by its path.` },
+            READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: listing },
+            EDIT: { detail: `'${key}' is a directory, not a file; EDIT writes one file.`, recovery: undefined },
+            KILL: { detail: `'${key}' is a directory, not a file; KILL removes one file.`, recovery: listing },
         }[op];
-        return { code: "path-is-directory", detail, extensions: { target: key, recovery, retryable: false } };
+        return { code: "path-is-directory", detail, extensions: { target: key, ...(recovery === undefined ? {} : { recovery }), retryable: false } };
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -313,7 +308,7 @@ export default class File extends CoreSchemeAdapterBase {
                 detail: `The spelling '${pathname}' does not name a file: it is empty, or it names a directory.`,
                 extensions: {
                     requestedPath: pathname,
-                    recovery: "Name a file. Directories are never entries, and a path above the root is a mount key, not a refusal.",
+                    recovery: "Name a file.",
                     retryable: false,
                 },
             };
@@ -362,7 +357,6 @@ export default class File extends CoreSchemeAdapterBase {
                     detail: `A symlink on '${pathname}' resolves outside the namespace.`,
                     extensions: {
                         requestedPath: pathname,
-                        recovery: "The key would name bytes the mount table never mounted. Write to a real in-namespace path.",
                         retryable: false,
                     },
                 };
@@ -418,7 +412,7 @@ export default class File extends CoreSchemeAdapterBase {
                 ok: false,
                 code: "binary-write-unsupported",
                 status: 415,
-                detail: `A text EDIT cannot author binary '${mimetype}'; COPY or MOVE the bytes instead.`,
+                detail: `A text EDIT cannot author binary '${mimetype}'.`,
                 extensions: {
                     mimetype,
                     retryable: false,

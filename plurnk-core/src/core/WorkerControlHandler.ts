@@ -89,11 +89,7 @@ export default class WorkerControlHandler {
                 409,
                 error.message,
                 {},
-                {
-                    worker: error.workerName,
-                    recovery: `To give '${error.workerName}' more work, write \`SEND (worker://${error.workerName})\` with the task as the body; to start another worker, choose a name no worker holds.`,
-                    retryable: false,
-                },
+                { worker: error.workerName, retryable: false },
             );
         }
         const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });

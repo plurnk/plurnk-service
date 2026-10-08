@@ -17,7 +17,6 @@ const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
 const ARCHIVE = /\.(?:zip|tar|tgz|tbz2|txz|tar\.(?:gz|bz2|xz|zst))$/iu;
 const SCP_REMOTE = /^[\w.~-]+@[\w.-]+:(?!\/\/)\S/u;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//iu;
-const SHORTHAND = /^[\w.-]+\/[\w.-]+$/u;
 
 export type SkillSourceKind = "git" | "folder" | "skill-file" | "archive";
 
@@ -118,8 +117,7 @@ export default class SkillSource {
             info = await stat(location);
         } catch (cause) {
             if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-                const hint = SHORTHAND.test(source) ? "; owner/repo shorthand names no forge, so give the repository's full https or ssh URL" : "";
-                throw actionError("source-missing", 404, `No folder or file is at '${source}'${hint}.`, { source, path: location, retryable: false });
+                throw actionError("source-missing", 404, `No folder or file is at '${source}'.`, { source, path: location, retryable: false });
             }
             throw actionError("source-unreadable", 422, `'${source}' cannot be read: ${messageOf(cause)}`, { source, path: location, retryable: false }, cause);
         }
@@ -216,7 +214,7 @@ export default class SkillSource {
 
     static async #assertSkillSource(root: string, source: string): Promise<void> {
         if (await isFile(join(root, "plugin.json"))) {
-            throw actionError("source-is-plugin", 422, `'${source}' is an Agent Plugin; install it as a plugin, so its skills keep the plugin's identity and servers.`, {
+            throw actionError("source-is-plugin", 422, `'${source}' is an Agent Plugin, not a skill.`, {
                 source, retryable: false,
             });
         }

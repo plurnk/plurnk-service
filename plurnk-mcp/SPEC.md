@@ -830,11 +830,11 @@ stdio/Streamable HTTP servers are composition evidence only.
 | `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
 | `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
 | `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). |
-| `invalid-tool-arguments` | 400 | The tool arguments are not one JSON object. Recovery: One JSON object per MCP tool call; a second call is a second fence. |
-| `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant; check the configured client credentials and issuer. |
+| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call. |
+| `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant. |
 | `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
-| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata; legacy endpoint inference is not supported. |
-| `oauth-registration-unavailable` | 502 | The authorization server exposes no usable client registration: configure pre-registration or advertised CIMD; its metadata does not advertise a Dynamic Client Registration endpoint. |
+| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. |
+| `oauth-registration-unavailable` | 502 | No client is registered with the authorization server: none is configured for it, it advertises no Dynamic Client Registration endpoint, and no client metadata document it accepts is configured. |
 | `oauth-redirect-invalid` | 400 | The OAuth callback must use HTTPS or HTTP loopback with a usable port. |
 | `oauth-configuration-conflict` | 409 | MCP server '*alias*' is not configured for this interactive OAuth callback. |
 | `oauth-busy` | 409 | MCP server '*alias*' is already starting authorization. |

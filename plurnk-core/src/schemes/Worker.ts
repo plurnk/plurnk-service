@@ -300,13 +300,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const address = WorkerControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;
-        // {§send-directed-scope} — a worker takes no scope: later or recurring delivery is a schedule rule.
+        // {§send-directed-scope} — a worker SEND takes no scope.
         if (statement.lineMarker !== null) {
-            return Results.failure(
-                "scheme:worker", "scope-unsupported", 400,
-                "A worker SEND takes no scope.",
-                {}, { recovery: "Remove the scope; to deliver later or on a cadence, add a rule with the schedule family.", retryable: false },
-            );
+            return Results.failure("scheme:worker", "scope-unsupported", 400, "A worker SEND takes no scope.", {}, { retryable: false });
         }
         const controlAuthority = address.authority;
         if (core.injectWorker === undefined) throw new Error("worker.send: injectWorker capability absent");

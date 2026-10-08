@@ -632,7 +632,7 @@ test("{§skills-sources} add refuses a plugin, a link out of its skill, shorthan
     assert.equal(await exists(join(s.projectSkills, "leaky")), false, "a refused install leaves nothing behind");
     const shorthand = await refused({ name: "plain", source: "acme/kit" });
     assert.equal(shorthand.type, `${PROBLEM}source-missing`);
-    assert.match(shorthand.detail, /shorthand names no forge/u);
+    assert.equal(shorthand.detail, "No folder or file is at 'acme/kit'.");
     assert.equal((await refused({ name: "plain", source: "http://forge.test/acme/kit.git" })).type, `${PROBLEM}source-invalid`);
     assert.equal((await refused({ name: "plain", source: join(sources, "kit"), ref: "main" })).type, `${PROBLEM}definition-invalid`);
     assert.equal((await refused({ name: "plain", source: "https://forge.test/acme/kit.git", commit: "0".repeat(40) })).type, `${PROBLEM}definition-invalid`);

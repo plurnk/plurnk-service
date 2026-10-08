@@ -70,21 +70,20 @@ test("LogVisibility rejects character regions but treats absent lines as no-ops"
             status: 400,
             code: "curation-scope-invalid",
             detail: "Range <3,2> runs backward; a range names its first line first.",
-            recovery: "Write <2,3>; KILL (log:///1/1/1) with no scope retires the whole row.",
+            recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/1) with no scope retires the whole row.",
         },
     );
 });
 
-// {§log-scope-recovery} — the recorded shapes (#853): `KILL (log:///1/9/2/READ) <0, -1>` meant the whole
-// row, and `<0>` the first line; both were told only "positive coordinates".
-test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-body scope names the mistake and the forms that work", () => {
+// {§log-scope-recovery} {§diagnostic-observation} — every refusal ends in the same forms; the written scope is never rebuilt.
+test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
     const refusal = (marks: [number] | [number, number], content = "a\nb\nc") => LogVisibility.resolveScope({ marks }, "log:///1/9/2/READ", content);
     assert.deepEqual(refusal([0, -1]), {
         ok: false,
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "Write <1,-1> to trim every line of the body; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
     });
     assert.deepEqual(refusal([0, -1], ""), refusal([0, -1]), "an empty body is refused by the same rule, never clamped");
     assert.deepEqual(refusal([0, 17]), {
@@ -92,21 +91,21 @@ test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-bod
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,17> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "To trim lines 1 through 17, write <1,17>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
     });
     assert.deepEqual(refusal([0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "<0> is not a line of a log body; lines are numbered from 1.",
-        recovery: "Write <1> to trim the first line; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
     });
     assert.deepEqual(refusal([2, 0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "Range <2,0> ends at 0, which is not a line; a range ends at a line from 1, or at -1 for the last line.",
-        recovery: "Write <2,-1> to trim through the last line; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
     });
     for (const [marks, range] of [[[1, -1], [1, -1]], [[1], [1, 1]], [[2, 3], [2, 3]]] as const) {
         assert.deepEqual(LogVisibility.resolveScope({ marks: [...marks] }, "log:///1/9/2/READ", "a\nb\nc"), { ok: true, range: [...range] }, "the forms the recoveries name work");

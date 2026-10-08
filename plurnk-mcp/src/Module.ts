@@ -175,7 +175,7 @@ const preparationError = (
         return actionError(
             "oauth-client-credentials-failed",
             502,
-            `MCP server '${definition.name}' rejected the client-credentials grant; check the configured client credentials and issuer.`,
+            `MCP server '${definition.name}' rejected the client-credentials grant.`,
             {
                 server: definition.name,
                 type: definition.type,

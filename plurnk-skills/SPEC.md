@@ -162,12 +162,12 @@ only through the generated ```` ```skills ```` family
 | `definition-invalid` | 400 | The Agent Skill definition is invalid; a supplied commit must be a ref instead, and refs require Git sources. |
 | `query-unsupported` | 400 | Agent Skills have no standard registry to search; discover takes a source: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. |
 | `source-invalid` | 400 | '*source*' is not a valid git remote URL; an https source carries no credentials (git's credential helper supplies them); is not a source: a git remote is a full https or ssh URL; is relative, and this workspace has no project root to resolve it against; or is neither a folder, a SKILL.md, nor a zip or tar archive. |
-| `source-missing` | 404 | No folder or file is at '*source*' (; owner/repo shorthand names no forge, so give the repository's full https or ssh URL). |
+| `source-missing` | 404 | No folder or file is at '*source*'. |
 | `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |
 | `source-unreachable` | 502 | git could not reach '*remote*', or fetch it (at '*ref*'): *reason*. |
 | `ref-missing` | 404 | '*remote*' has no branch or tag '*ref*', or names no default branch. |
 | `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Remove the skill and add it again to take the current commit. |
-| `source-is-plugin` | 422 | '*source*' is an Agent Plugin; install it as a plugin, so its skills keep the plugin's identity and servers. |
+| `source-is-plugin` | 422 | '*source*' is an Agent Plugin, not a skill. |
 | `source-unsafe` | 422 | '*path*' links outside its skill, or is neither a file, a directory, nor an inward link. |
 | `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |
 | `skill-ambiguous` | 409 | '*source*' carries *count* skills named '*name*'. |

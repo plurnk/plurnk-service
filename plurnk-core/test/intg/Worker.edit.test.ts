@@ -192,7 +192,7 @@ test("EDIT that changes nothing returns 304; only a content change updates the e
         assert.equal(reWrite.status, 304, "identical content → no-op");
         assert.equal(
             reWrite.detail,
-            "No change: EDIT body matches the selected content. Omit the body to delete the selection.",
+            "No change: EDIT body matches the selected content.",
         );
         assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
         const changed = await k.edit(editStatement({ target, body: "different", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));

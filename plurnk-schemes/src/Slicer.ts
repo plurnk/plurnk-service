@@ -112,10 +112,10 @@ export default class Slicer {
         );
     }
 
-    // A result scope written as text lines (`FIND (a.py) <84,180>`): the page bound, then the READ
-    // that selects those lines (#1005).
-    static #pageRecovery(written: string, total: number): string {
-        return `Choose positions within 1..${total}; READ with <${written}> selects text lines.`;
+    // A result position outside the page: the recovery states the positions the page holds and
+    // names no other operation ({§diagnostic-observation}).
+    static #pageRecovery(total: number): string {
+        return `Choose positions within 1..${total}.`;
     }
 
     static #regionFailure<T extends SchemeResult>(
@@ -189,14 +189,10 @@ export default class Slicer {
             return { error: "An exact text region requires four integer coordinates." };
         }
         const resolved = Slicer.#exactRegion(content, marker, body);
-        // {§text-scope-semantics} — lines and columns count from 1; a zero is the 0-based habit, and
-        // when the region it means is valid the refusal names it (#1005).
+        // {§text-scope-semantics} — lines and columns count from 1; a refused region holding a zero
+        // says so as read and is never rebuilt into another region ({§diagnostic-observation}).
         if (!("error" in resolved) || !marker.marks.includes(0)) return resolved;
-        const [head, ...rest] = marker.marks;
-        const counted: LineMarker["marks"] = [head === 0 ? 1 : head, ...rest.map((mark) => mark === 0 ? 1 : mark)];
-        return "error" in Slicer.#exactRegion(content, { ...marker, marks: counted }, body)
-            ? resolved
-            : { error: resolved.error, recovery: `Lines and columns count from 1: <${counted.join(",")}>.` };
+        return { error: resolved.error, recovery: "Lines and columns count from 1." };
     }
 
     static #exactRegion(content: string, marker: LineMarker, body: string): TextReplacement | ScopeError {
@@ -230,7 +226,7 @@ export default class Slicer {
         if (end < start) {
             return {
                 error: `Exact region ${startLine},${startColumn},${endLine},${rawEndColumn} ends before it starts.`,
-                recovery: `Write the earlier position first: <${endLine},${rawEndColumn},${startLine},${startColumn}>.`,
+                recovery: "An exact region names its earlier position first: <SL,SC,EL,EC>.",
             };
         }
         return { start, end, body, startLine, endLine: resolvedEndLine };
@@ -371,29 +367,23 @@ export default class Slicer {
         };
     }
 
-    // {§range-starts-at-one} A two-coordinate range never starts at 0; the refusal names the
-    // zero-width insertion and the 1-based range the author may have meant.
+    // {§range-starts-at-one} A two-coordinate range never starts at 0. The refusal says so in the
+    // range's unit; a line range's recovery shows the working line forms, never a range rebuilt
+    // from the refused one ({§diagnostic-observation}).
     static #zeroStart(last: number, unit: RangeUnit): ScopeError {
         if (unit !== "line") {
-            return {
-                error: `Range <0,${last}> starts at 0; ${unit} positions are numbered from 1.`,
-                recovery: `Write <1,${last}> to start at the first ${unit}.`,
-            };
-        }
-        const error = `Range <0,${last}> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.`;
-        if (last < 1) {
-            return {
-                error,
-                recovery: `Write <1,-1> to select every line; <0> prepends and <-1> appends without replacing anything.`,
-            };
+            return { error: `Range <0,${last}> starts at 0; ${unit} positions are numbered from 1.` };
         }
         return {
-            error,
-            recovery: `To insert before line ${last}, write <${last},1,${last},1>; <0> prepends and <-1> appends; to select lines 1 through ${last}, write <1,${last}>.`,
+            error: `Range <0,${last}> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.`,
+            recovery: "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.",
         };
     }
 
     static #normalize(marker: LineMarker, totalLines: number, unit: RangeUnit): NormalizedMarker | ScopeError {
+        // {§diagnostic-observation} — a window over another unit (a resource's bytes) names that unit.
+        const noun = unit === "matchLocation" ? "match location" : unit;
+        const Noun = `${noun[0]!.toUpperCase()}${noun.slice(1)}`;
         // {§slicer-text-algebra} The parser carries raw `marks: [number, ...]`;
         // this owner assigns roles: marks[0] = first/position, marks[1] = last
         // (range end). A single mark is a position/sentinel; two is a range.
@@ -403,7 +393,7 @@ export default class Slicer {
         const first = marker.marks[0];
         const last = marker.marks.length > 1 ? marker.marks[1] : null;
         if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) {
-            return { error: "Whole-line scopes require integer coordinates." };
+            return { error: `${Noun} scopes require integer coordinates.` };
         }
         if (last === null) {
             if (first === 0) return { kind: "before-first", start: 0, end: 0 };
@@ -411,8 +401,8 @@ export default class Slicer {
             if (first > 0 && first <= totalLines) return { kind: "range", start: first, end: first };
             return {
                 error: totalLines === 0
-                    ? `Line ${first} cannot select from empty content.`
-                    : `Line ${first} is outside the available line range 1..${totalLines}.`,
+                    ? `${Noun} ${first} cannot select from empty content.`
+                    : `${Noun} ${first} is outside the available ${noun} range 1..${totalLines}.`,
             };
         }
         if (first === 0) return Slicer.#zeroStart(last, unit);
@@ -428,16 +418,16 @@ export default class Slicer {
         const n = first;
         let m = last;
         if (m === -1 || m > totalLines) m = totalLines;
-        // {§text-scope-semantics} — -1 is the only position counted from the end; `<-N,-1>` is the tail it
-        // means, named as lines (#1005).
+        // {§text-scope-semantics} — -1 is the only position counted from the end; a `<-N,-1>` start is
+        // refused with the line extent, never rebuilt into a tail ({§diagnostic-observation}).
         if (n < -1 && last === -1) {
             return {
-                error: `Range start ${first} is outside the available line range 1..${totalLines}.`,
-                recovery: `-1 is the only position counted from the end; the last ${Math.min(-n, totalLines)} lines are <${Math.max(1, totalLines + n + 1)},${totalLines}>.`,
+                error: `Range start ${first} is outside the available ${noun} range 1..${totalLines}.`,
+                recovery: `-1 is the only position counted from the end; ${noun}s run 1..${totalLines}.`,
             };
         }
-        if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available line range 1..${totalLines}.` };
-        if (m < 1) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
+        if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available ${noun} range 1..${totalLines}.` };
+        if (m < 1) return { error: `Range end ${last} is outside the available ${noun} range 1..${totalLines}.` };
         if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
         return { kind: "range", start: n, end: m };
     }
@@ -577,9 +567,9 @@ export default class Slicer {
                 };
             }
             return Slicer.#rangeFailure(
-                `Result ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
+                `Result ${first} is out of range; available positions are 1..${total}; this scope pages ${extent.unit} items.`,
                 extent,
-                Slicer.#pageRecovery(`${first}`, total),
+                Slicer.#pageRecovery(total),
             );
         }
         if (first === 0) {
@@ -600,9 +590,9 @@ export default class Slicer {
         const n = first;
         const m = last === -1 ? total : Math.min(last, total);
         if (n < 1 || n > total) return Slicer.#rangeFailure(
-            `Result range start ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
+            `Result range start ${first} is out of range; available positions are 1..${total}; this scope pages ${extent.unit} items.`,
             extent,
-            Slicer.#pageRecovery(`${first},${last}`, total),
+            Slicer.#pageRecovery(total),
         );
         if (m < 1) return Slicer.#rangeFailure(
             `Result range end ${last} is out of range; available positions are 1..${total}.`,
@@ -790,11 +780,7 @@ export default class Slicer {
         if (conflicts.length > 0) {
             const clean = live.flatMap((r, index) => conflicted.has(index) ? [] : [r.marker.marks]);
             const shared = conflicts.filter((c) => c.relation === "shared endpoint");
-            const containment = conflicts.some((c) => c.relation === "one contains the other");
-            const guidance = [
-                ...shared.map((c) => `\`<SL,EL>\` is inclusive: line ${c.line} (${JSON.stringify(c.text)}) is claimed by both <${c.regions[0].join(",")}> and <${c.regions[1].join(",")}> and neither body reproduces it - end the first at ${c.line! - 1} or start the second at ${c.line! + 1}.`),
-                ...(containment ? ["Resubmit the outer region alone if its body already includes the inner change."] : []),
-            ];
+            const guidance = shared.map((c) => `\`<SL,EL>\` is inclusive: line ${c.line} (${JSON.stringify(c.text)}) is claimed by both <${c.regions[0].join(",")}> and <${c.regions[1].join(",")}> and neither body reproduces it.`);
             return Slicer.#failure(
                 "overlapping-edits",
                 409,

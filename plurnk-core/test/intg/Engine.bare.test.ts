@@ -385,10 +385,9 @@ for (const [target, status, problem] of [
             assert.ok(bare?.problemType?.endsWith(`/${problem}`));
             assert.equal(child.calls.length, 0);
             if (target === null) {
-                // The refusal teaches where a prompt goes: a model that put its question in the aside
-                // reads the shape from the receipt itself.
+                // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
                 const [row] = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
-                assert.match(JSON.parse(row!.rx).problem.detail, /fence body.*aside is not a prompt/);
+                assert.equal(JSON.parse(row!.rx).problem.detail, "BARE has no prompt text: the prompt is the fence body, a resource path, or both.");
             }
         } finally { await db.close(); }
     });

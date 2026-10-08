@@ -557,7 +557,7 @@ test("invalid tool arguments carry the one-object recovery", async () => {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
-            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second fence."); // {§problems-mcp}
+            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call."); // {§problems-mcp}
         }
     } finally {
         await connection.close();

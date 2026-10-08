@@ -165,7 +165,7 @@ test("{§fts-word-phrase}: a word with inner punctuation searches its tokens as 
         }
         const excluded = await worker.find(find("*", "inherited -members"), ctx);
         assert.equal(excluded.status, 400, "a leading `-` stays FTS5's column exclusion");
-        assert.equal(excluded.problem?.recovery, "`members:` and `-members` are FTS5 column filters, and the index has one column; to search for a word write it bare, as `~members`, and to exclude one write `NOT` between terms, as `~a NOT members`.");
+        assert.equal(excluded.problem?.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them."); // {§diagnostic-observation}
     } finally { await db.close(); }
 });
 

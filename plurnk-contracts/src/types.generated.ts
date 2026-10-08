@@ -1046,7 +1046,7 @@ export interface Notice {
  */
 source: string
 /**
- * Open discriminator within a source. Examples include `grammar_unenforced`, `search_progress`, and `turn_awaiting_model`.
+ * Open discriminator within a source. Examples include `output_unaccounted`, `search_progress`, and `turn_awaiting_model`.
  */
 kind: string
 /**

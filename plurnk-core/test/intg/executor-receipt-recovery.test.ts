@@ -14,7 +14,7 @@ import { quiesceExecs } from "./_execs.ts";
 // {§exec-stream-page} {§log-readable-projection}: the executor is the fixture;
 // parsing, dispatch, source storage, automatic observations and packet assembly are real.
 for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/stream", "application/json"]) {
-    test(`execution recovery follows the output address of a ${body === null ? "bodyless" : "one-line"} ${mimetype} invocation`, async () => {
+    test(`{§log-range-miss-names-stream} execution output stays reachable from the stream address a ${body === null ? "bodyless" : "one-line"} ${mimetype} invocation's receipt carries`, async () => {
         const output = Array.from({ length: 40 }, (_, index) => `result ${index + 1}`).join("\n");
         const executor: Executor = {
             runtime: "receiptfixture", glyph: "?",
@@ -82,8 +82,8 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
-            assert.equal(stream, invocation.stream, "recovery uses the exact advertised output address, without adding a channel");
-            if (body === null) assert.equal(problem.recovery, `READ ${String(stream)} for the command's stream.`);
+            assert.equal(stream, invocation.stream, "the receipt carries the exact advertised output address, without adding a channel");
+            assert.doesNotMatch(String(problem.recovery ?? ""), /for the command's stream/u, "{§diagnostic-observation}: the address is a fact on the receipt, never a remedy");
 
             const recovered = await turn(frame(`READ (${String(stream)}) <17,40>`, null));
             assert.equal(recovered.outcomes[0]?.status, 200);

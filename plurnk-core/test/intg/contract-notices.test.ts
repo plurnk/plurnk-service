@@ -62,7 +62,7 @@ const noticeProvider = (extraDrains: number) => {
             assistantRaw: { id: "x", filtered: true },
             accounting: [accounting],
             capacity: testProviderCapacity(req.messages, provider.contextWindow),
-            notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "decode escaped into a discarded channel", position: NOTICE_POS }],
+            notices: [{ source: "provider:mock", kind: "output_unaccounted", level: "warn", message: "5000 output tokens billed; 1 visible across content and reasoning", position: NOTICE_POS }],
         };
     };
     return provider;
@@ -82,7 +82,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     return JSON.parse(row?.packet ?? "{}") as { sections: Array<Record<string, unknown>> };
 };
 
-test("{§notice-content-offset-pointer} a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
+test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccounted) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points at exact source retrievable through ops://<worker>/, not an automatic log row.
     // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -97,7 +97,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (grammar_unenfor
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* grammar_unenforced: decode escaped into a discarded channel @ 2:3",
+            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -108,7 +108,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (grammar_unenfor
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 2:3$/m);
+        assert.match(wire, /^\* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3$/m);
 
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const source = programs.find(({ turn_id, kind }) => turn_id === t1.turnId && kind === "ops");
@@ -131,7 +131,7 @@ test("{§notice-drain-on-read} the notice buffer drains — a notice appears on 
         const kindsOf = async (turnId: number) =>
             packetSection(await getPacket(db, turnId), "notices")
                 .split("\n")
-                .filter((line) => line.includes("grammar_unenforced")).length;
+                .filter((line) => line.includes("output_unaccounted")).length;
 
         assert.equal(await kindsOf(t1.turnId), 0, "notice not visible on the turn that produced it");
         assert.equal(await kindsOf(t2.turnId), 1, "notice drained exactly once on read");
@@ -460,19 +460,19 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
             noticeNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
         });
 
-        const provider = noticeProvider(1);                   // turn 1: grammar_unenforced NOTICE pushed + broadcast live
+        const provider = noticeProvider(1);                   // turn 1: output_unaccounted NOTICE pushed + broadcast live
         // NOTE: errors are log items (no notice/event); the broadcast surface is for engine NOTICES.
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // Client side: the notice broadcast live, scoped to the loop's workspace,
         // BEFORE turn 2 ever builds a packet.
-        const liveParse = broadcasts.filter((b) => b.payload.notice.kind === "grammar_unenforced");
+        const liveParse = broadcasts.filter((b) => b.payload.notice.kind === "output_unaccounted");
         assert.equal(liveParse.length, 1, "the notice broadcast live exactly once");
         assert.equal(liveParse[0].workspaceId, workspaceId, "scoped to the loop's workspace");
         assert.equal(liveParse[0].payload.loopId, loopId);
         const liveNotice = liveParse[0].payload.notice;
         assert.equal(liveNotice.source, "provider:mock");
-        assert.equal(liveNotice.kind, "grammar_unenforced");
+        assert.equal(liveNotice.kind, "output_unaccounted");
         assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 3 });
 
         // Model side: the notice drains once as a bounded projection.
@@ -480,7 +480,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced: decode escaped into a discarded channel @ 2:3",
+            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3",
         );
     } finally { await db.close(); }
 });

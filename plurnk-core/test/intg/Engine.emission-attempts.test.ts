@@ -392,7 +392,7 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors)[0], {
-            message: "`### log:///1/1/2/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt.",
+            message: "`### log:///1/1/2/READ` is a log entry, and only the harness writes the log.",
             line: 1, column: 1, source: "harness",
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: result.turnId });

@@ -72,7 +72,8 @@ export default class LogVisibility {
         content: string,
         publishedAnchors: readonly string[] = [],
     ): LogVisibilityScopeResolution {
-        // {§log-scope-recovery} — every refusal ends in the forms that work on this row.
+        // {§log-scope-recovery} — every refusal ends in the forms that work on this row, never a rebuild of the
+        // written scope ({§diagnostic-observation}).
         const retire = `KILL (${identity}) with no scope retires the whole row`;
         const refuse = (detail: string, recovery = `Trim one line with <L> or lines L through M with <L,M>; ${retire}.`) =>
             ({ ok: false, status: 400, code: "curation-scope-invalid", detail, recovery }) as const;
@@ -113,7 +114,7 @@ export default class LogVisibility {
         const first = marks[0] as number;
         if (marks.length === 1) {
             if (first < 1) {
-                return refuse(`<${first}> is not a line of a log body; lines are numbered from 1.`, `Write <1> to trim the first line; ${retire}.`);
+                return refuse(`<${first}> is not a line of a log body; lines are numbered from 1.`);
             }
             return { ok: true, range: first <= total ? [first, first] : null };
         }
@@ -122,23 +123,11 @@ export default class LogVisibility {
         const written = `<${first},${rawEnd}>`;
         // {§range-starts-at-one} — one rule with the file slicer: a range never starts at 0 and is
         // never clamped; the refusal is its 416 in its words, naming the forms a log body takes.
-        if (first < 1) {
-            return {
-                ok: false,
-                status: 416,
-                code: "range-not-satisfiable",
-                detail: `Range ${written} starts at ${first}, which is not a line; lines are numbered from 1.`,
-                recovery: rawEnd < 1
-                    ? `Write <1,-1> to trim every line of the body; ${retire}.`
-                    : `To trim lines 1 through ${rawEnd}, write <1,${rawEnd}>; ${retire}.`,
-            };
-        }
+        if (first < 1) return { ...refuse(`Range ${written} starts at ${first}, which is not a line; lines are numbered from 1.`), status: 416, code: "range-not-satisfiable" };
         if (rawEnd !== -1 && rawEnd < 1) {
-            return refuse(`Range ${written} ends at ${rawEnd}, which is not a line; a range ends at a line from 1, or at -1 for the last line.`, `Write <${first},-1> to trim through the last line; ${retire}.`);
+            return refuse(`Range ${written} ends at ${rawEnd}, which is not a line; a range ends at a line from 1, or at -1 for the last line.`);
         }
-        if (rawEnd !== -1 && rawEnd < first) {
-            return refuse(`Range ${written} runs backward; a range names its first line first.`, `Write <${rawEnd},${first}>; ${retire}.`);
-        }
+        if (rawEnd !== -1 && rawEnd < first) return refuse(`Range ${written} runs backward; a range names its first line first.`);
         if (total === 0) return { ok: true, range: null };
         const start = first;
         const end = rawEnd === -1 ? total : Math.min(rawEnd, total);

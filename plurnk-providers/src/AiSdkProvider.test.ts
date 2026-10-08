@@ -1739,9 +1739,8 @@ test("template reasoning preserves an empty grammar-required channel as exact ev
     });
 });
 
-test("channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
-    // Tiny visible content, no reasoning, thousands billed — the decode
-    // escaped into a discarded reasoning block, unconstrained.
+test("{§diagnostic-observation} billed output tokens vastly beyond the visible channels attach output_unaccounted, stating both counts", async () => {
+    // Tiny visible content, no reasoning, thousands billed.
     const chunks = [
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
@@ -1757,13 +1756,12 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
     };
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
+    const escape = res.notices?.find((e) => e.kind === "output_unaccounted");
     assert.ok(escape, "escape notice attached");
-    assert.equal(escape!.kind, "grammar_unenforced");
-    assert.match(escape!.message ?? "", /5000 output tokens billed/);
+    assert.equal(escape!.message, "5000 output tokens billed; 1 visible across content and reasoning.", "the notice states the counts, never a cause ({§diagnostic-observation})");
 });
 
-test("channel-escape state is absent without a transported grammar", async () => {
+test("output_unaccounted is not reported without a transported grammar", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },

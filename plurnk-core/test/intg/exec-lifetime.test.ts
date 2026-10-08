@@ -32,12 +32,12 @@ const refusal = async (fence: string, name: string): Promise<{ status: number; p
     return row;
 };
 
-test("{§exec-lifetime}: a numeric scope on an execution is refused, naming the field that replaced it", { timeout: 120_000 }, async () => {
+test("{§exec-lifetime} {§diagnostic-observation}: a scope on an execution is refused, saying only that", { timeout: 120_000 }, async () => {
     const { status, problem } = await refusal("````sh <30,5>", "exec-scope");
     assert.equal(status, 400);
     assert.match(problem.type, /scheme\/exec\/scope-unsupported$/u);
     assert.equal(problem.detail, "An execution takes no scope.");
-    assert.match(problem.recovery ?? "", /lifetime.*"30m".*"loop", "turn", or "detached"/u);
+    assert.equal(problem.recovery, undefined);
 });
 
 test("{§exec-lifetime}: an unreadable lifetime is refused before the spawn, with every form it could take", { timeout: 120_000 }, async () => {

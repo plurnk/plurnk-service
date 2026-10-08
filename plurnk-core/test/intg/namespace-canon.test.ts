@@ -183,7 +183,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§problems-file}
-        assert.equal(miss.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body."); // {§problems-file}
+        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body."); // {§problems-file}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -245,7 +245,7 @@ test("{§membership-read-refusal}: beyond the root a miss is the same sentence w
             assert.equal(result.status, 404);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
             assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, `'../${name}' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
+            assert.equal(result.problem?.recovery, `'../${name}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
         }
         // The disk beyond the root stays dark: swap the names and the two answers are one answer.
         const normalize = (result: typeof there, name: string): string => JSON.stringify(result).replaceAll(name, "<name>");
@@ -289,20 +289,16 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§problems-file} a bare executor name as a file target is refused as a fence written as a path (#902)", async () => {
+test("{§problems-file} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no fence (#902)", async () => {
     const { db, ctx } = await setup();
     try {
         const executors = await testExecutors();
         assert.ok(executors.availableRuntimes(ctx.workspaceId).includes("sh"), "the real shell executor is available to the fixture");
         const withExecutors = { ...ctx, executors };
-        const fence = await readFileScheme(readStmt("sh"), withExecutors);
-        assert.equal(fence.status, 404);
-        assert.equal(fence.problem?.recovery, "`sh` is an executor, not a path: run a program with a ```sh fence and the program in the body; WORK starts a worker by `worker://<name>`.");
-        const plain = await readFileScheme(readStmt("nope"), withExecutors);
-        assert.equal(plain.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", "an ordinary miss keeps its recovery");
-        const nested = await readFileScheme(readStmt("tools/sh"), withExecutors);
-        assert.match(nested.problem?.recovery ?? "", /^Check the path with FIND/u, "a path with a separator is a path, whatever its last segment is called");
-        const blind = await readFileScheme(readStmt("sh"), ctx);
-        assert.match(blind.problem?.recovery ?? "", /^Check the path with FIND/u, "without a registry the name is only a path");
+        for (const key of ["sh", "nope", "tools/sh"]) {
+            const miss = await readFileScheme(readStmt(key), withExecutors);
+            assert.equal(miss.status, 404, key);
+            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", key);
+        }
     } finally { await db.close(); }
 });

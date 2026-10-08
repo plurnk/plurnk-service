@@ -1482,13 +1482,13 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
     const notices = [{
         source: "provider:test",
-        kind: "grammar_unenforced",
+        kind: "output_unaccounted",
         level: "warn",
-        message: "output diverged from the grammar",
+        message: "5000 output tokens billed; 1 visible across content and reasoning",
         position: { type: "content-offset", line: 1, column: 0 },
     }];
     const out = PacketWire.renderNotices(notices);
-    assert.match(out, /^\* grammar_unenforced: output diverged from the grammar @ 1:0$/m);
+    assert.match(out, /^\* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 1:0$/m);
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
     assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });

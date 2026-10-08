@@ -12,7 +12,7 @@ import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
-test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async (t) => {
+test("{§exec-tool-fall-through} {§diagnostic-observation} a bare execution of a tool's name fails with a receipt that names the tool and its document", { timeout: 60_000 }, async (t) => {
     serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
@@ -44,7 +44,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
             assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}
             assert.equal(
                 receipt.problem?.recovery,
-                "Use the `fixture` fence with target `(fail)` and JSON input in the body; contract: worker:///_plurnk/tools/fixture/fail.json.",
+                "`fail`'s contract: worker:///_plurnk/tools/fixture/fail.json.",
             );
             assert.deepEqual(receipt.problem?.toolRuntimes, ["fixture"]);
             assert.equal(receipt.problem?.tool, "fail");

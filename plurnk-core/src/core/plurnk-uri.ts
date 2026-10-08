@@ -74,9 +74,9 @@ export function missDetail(scheme: string | null, target: string): string {
     return scheme === "file" ? `No member of this workspace is at '${target}'.` : `No entry exists at ${target}.`;
 }
 
-// {§membership-read-refusal} — every file miss carries this recovery: path correction, creation and
-// admission stand as alternatives, and none is presumed.
-export const FILE_MISS_RECOVERY = "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.";
+// {§membership-read-refusal} {§diagnostic-observation} — every file miss carries this recovery: listing,
+// creation and admission stand as alternatives, each valid whatever the address was for.
+export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.";
 
 // {§fs-canonical-name} — an entry's model-facing address: a file member is its root-relative key,
 // every other scheme its rendered URI.
@@ -89,7 +89,7 @@ export function entryAddress(scheme: string, authority: string, pathname: string
 // names under the default scopes; the sentence holds under every members scope (#1005).
 export function fileMissRecovery(key: string): string {
     return key.startsWith("../")
-        ? `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.`
+        ? `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`
         : FILE_MISS_RECOVERY;
 }
 

@@ -43,13 +43,13 @@ export default class InvocationMetadata {
         return { options };
     }
 
-    // {§executor-metadata} — an unsupported field's refusal names every field the run takes, the
-    // executor's own and the service's ({§service-metadata-keys}): a time bound is `lifetime`, and
-    // the program is the body, never a field (#1005).
+    // {§executor-metadata} — an unsupported field's recovery names every field the run takes, the
+    // executor's own and the service's ({§service-metadata-keys}), and no guess at the field the
+    // author meant ({§diagnostic-observation}).
     static #fields(accepted: Accepted): string {
         const names = ["cwd", ...(accepted.args === true ? ["args"] : []), ...(accepted.stdin === true ? ["stdin"] : []), ...MetadataOptions.SERVICE_KEYS]
             .map((name) => `\`${name}\``);
-        return `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}; a time bound is \`[{"lifetime": "30m"}]\`, and the program goes in the body beneath the fence.`;
+        return `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}.`;
     }
 
     static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {

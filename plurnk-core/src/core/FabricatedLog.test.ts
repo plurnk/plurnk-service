@@ -13,9 +13,9 @@ test("{§fabricated-log-entry} a log address in prose, or another heading, is no
     assert.equal(FabricatedLog.find("### Log summary"), null);
 });
 
-test("{§fabricated-log-entry} the correction quotes the heading and states the one remedy", () => {
+test("{§fabricated-log-entry} {§diagnostic-observation} the diagnostic quotes the heading and says only who writes the log", () => {
     assert.equal(FabricatedLog.message("### log:///2/1/5/READ"),
-        "`### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt.");
+        "`### log:///2/1/5/READ` is a log entry, and only the harness writes the log.");
 });
 
 test("{§fabricated-log-entry} {§emission-row} an echoed emission heading is tolerated, and a later invented receipt still is not", () => {

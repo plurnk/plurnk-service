@@ -90,9 +90,9 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
                 && metadata?.client_id_metadata_document_supported === true;
             if (!cimdAvailable && metadata?.registration_endpoint === undefined) {
                 throw new OAuthSetupError("oauth-registration-unavailable",
-                    "The authorization server exposes no usable client registration: "
-                    + "configure pre-registration or advertised CIMD; its metadata does not advertise "
-                    + "a Dynamic Client Registration endpoint.",
+                    "No client is registered with the authorization server: none is configured for it, it "
+                    + "advertises no Dynamic Client Registration endpoint, and no client metadata document it "
+                    + "accepts is configured.",
                 );
             }
             return undefined;
@@ -168,8 +168,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     saveDiscoveryState(state: OAuthDiscoveryState): void {
         if (state.authorizationServerMetadata === undefined) {
             throw new OAuthSetupError("oauth-metadata-unavailable",
-                "MCP OAuth requires validated authorization-server metadata; "
-                + "legacy endpoint inference is not supported.",
+                "MCP OAuth requires validated authorization-server metadata, and the server provided none.",
             );
         }
         this.#discoveryState = state;

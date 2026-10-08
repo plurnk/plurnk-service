@@ -121,7 +121,7 @@ or persisting a rule ({§operator-config-offline-validation}).
 |---|---:|---|
 | `configuration-unsupported` | 400 | schedule discovery reads rule text from `source`; it takes no configuration. |
 | `query-unsupported` | 400 | schedule discovery reads rule text from `source`; there is no catalog to search. |
-| `source-required` | 400 | schedule discovery needs rule text in `source`; `FREQ=DAILY` is enough to read the time. |
+| `source-required` | 400 | schedule discovery needs rule text in `source`, such as `FREQ=DAILY`. |
 | `alias-required` | 400 | schedule add needs an alias. |
 | `definition-invalid` | 400 | The schedule definition is invalid. |
 | `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |

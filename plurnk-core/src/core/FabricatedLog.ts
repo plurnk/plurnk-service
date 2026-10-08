@@ -24,6 +24,6 @@ export default class FabricatedLog {
     }
 
     static message(heading: string): string {
-        return `\`${heading}\` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt.`;
+        return `\`${heading}\` is a log entry, and only the harness writes the log.`;
     }
 }

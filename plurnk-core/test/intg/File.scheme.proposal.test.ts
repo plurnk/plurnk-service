@@ -334,7 +334,7 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
         assert.equal(result.status, 304);
         assert.equal(
             result.detail,
-            "No change: EDIT body matches the selected content. Omit the body to delete the selection.",
+            "No change: EDIT body matches the selected content.",
         );
         assert.equal(await readFile(join(root, target), "utf8"), original);
 

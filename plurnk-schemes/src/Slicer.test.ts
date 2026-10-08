@@ -522,10 +522,13 @@ test("a shared endpoint no body reproduces stays refused, naming the line and th
     const shared = result.problem as { conflicts?: Array<{ relation: string; line?: number }>; recovery?: string } | undefined;
     assert.equal(shared?.conflicts?.[0]?.relation, "shared endpoint");
     assert.equal(shared?.conflicts?.[0]?.line, 3);
-    assert.match(String(result.problem?.recovery), /line 3 \("c"\) is claimed by both <2,3> and <3,5> and neither body reproduces it - end the first at 2 or start the second at 4/);
+    assert.equal(
+        result.problem?.recovery,
+        "1 conflicting pair (shared endpoint); 0 of 2 regions are clean; 0 of 2 were applied. `<SL,EL>` is inclusive: line 3 (\"c\") is claimed by both <2,3> and <3,5> and neither body reproduces it.",
+    );
 });
 
-test("containment stays refused and the receipt says which region to resubmit (#428)", () => {
+test("{§diagnostic-observation} containment stays refused and the receipt names the relation, advising no resubmission (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "outer" },
         { marker: { marks: [3] }, body: "inner" },
@@ -533,7 +536,10 @@ test("containment stays refused and the receipt says which region to resubmit (#
     assert.equal(result.status, 409);
     const contained = result.problem as { conflicts?: Array<{ relation: string }>; recovery?: string } | undefined;
     assert.equal(contained?.conflicts?.[0]?.relation, "one contains the other");
-    assert.match(String(result.problem?.recovery), /Resubmit the outer region alone if its body already includes the inner change/);
+    assert.equal(
+        result.problem?.recovery,
+        "1 conflicting pair (one contains the other); 0 of 2 regions are clean; 0 of 2 were applied. Submit non-overlapping EDIT regions.",
+    );
 });
 
 
@@ -577,15 +583,15 @@ test("{§slicer-window} an empty byte source returns no coordinates, never the i
 // {§range-starts-at-one} Recorded destructive shapes (#853): rtx `EDIT (tests/test_ext_autodoc.py) <0,795>` /
 // `<0,@xb6i9>` (anchor resolved to 795) meant "insert here" and replaced the file head; `<0,-1>` replaced the file.
 const HEAD = Array.from({ length: 800 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
-test("{§range-starts-at-one} EDIT <0,795> is refused 416 and names the zero-width insert <795,1,795,1>; the file is untouched", () => {
+test("{§range-starts-at-one} {§diagnostic-observation} EDIT <0,795> is refused 416 with the working line forms, never a rebuilt range; the file is untouched", () => {
     const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");
     assert.equal(result.status, 416);
     assert.equal(result.result, undefined, "no content is produced");
     assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§pinned-wording-schemes}
     assert.equal(
         result.problem?.recovery,
-        "To insert before line 795, write <795,1,795,1>; <0> prepends and <-1> appends; to select lines 1 through 795, write <1,795>.",
-    );
+        "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.",
+    ); // {§pinned-wording-schemes}
     assert.deepEqual(result.problem?.range, { unit: "line", total: 800, requested: [0, 795] });
 });
 
@@ -602,7 +608,7 @@ test("{§zero-width-column-one-insert} wholeLineBody appends the content's separ
 });
 
 test("{§range-starts-at-one} the strict slicing and mutation algebra rejects <0,-1>, including on empty content", () => {
-    const recovery = "Write <1,-1> to select every line; <0> prepends and <-1> appends without replacing anything.";
+    const recovery = "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything."; // {§pinned-wording-schemes}
     for (const content of [HEAD, ""]) {
         const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
         assert.equal(edit.status, 416, `EDIT on ${content.length} chars`);
@@ -618,34 +624,37 @@ test("{§range-starts-at-one} lines() requires the READ projection to normalize 
     const result = Slicer.lines(HEAD, { marks: [0, 30] });
     assert.equal(result.status, 416);
     assert.equal(result.text, undefined);
-    assert.match(result.problem?.recovery as string, /write <1,30>\.$/);
+    assert.equal(result.problem?.recovery, "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.");
 });
 
 test("{§range-starts-at-one} pages and byte windows refuse a zero start in their own unit", () => {
     const page = Slicer.page(["a", "b"], { marks: [0, -1] }, { unit: "resource" });
     assert.equal(page.status, 416);
     assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1."); // {§pinned-wording-schemes}
-    assert.equal(page.problem?.recovery, "Write <1,-1> to start at the first resource."); // {§pinned-wording-schemes}
+    assert.equal(page.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
     assert.equal(Slicer.page([], { marks: [0, 5] }, { unit: "resource" }).status, 416, "an empty result set does not excuse a zero start");
     const window = Slicer.window({ marks: [0, 16] }, 40, "byte");
     assert.equal(window.status, 416);
-    assert.equal(window.problem?.recovery, "Write <1,16> to start at the first byte."); // {§pinned-wording-schemes}
+    assert.equal(window.problem?.detail, "Range <0,16> starts at 0; byte positions are numbered from 1."); // {§pinned-wording-schemes}
+    assert.equal(window.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });
 
-// {§text-scope-semantics} — a refused scope names the working one when the slicer can compute it (#1005).
-test("a refused scope names the scope it means: result pages, zero coordinates, inverted regions, negative starts", () => {
+// {§text-scope-semantics} {§diagnostic-observation} — a refused scope states what it read, never the input rebuilt.
+test("{§diagnostic-observation} a refused scope states its bound or working form, never a rebuilt scope: result pages, zero coordinates, inverted regions, negative starts", () => {
     const recovery = (result: { problem?: { recovery?: string } }) => result.problem?.recovery;
-    // A FIND scope written as text lines pages results instead.
-    assert.equal(recovery(Slicer.page(["a"], { marks: [84, 180] }, { unit: "matchLocation" })),
-        "Choose positions within 1..1; READ with <84,180> selects text lines.");
-    assert.equal(recovery(Slicer.page(["a", "b", "c"], { marks: [77] }, { unit: "matchLocation" })),
-        "Choose positions within 1..3; READ with <77> selects text lines.");
-    // Lines and columns count from 1: the 0-based habit names the region it means.
-    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 0, 3, 0] }, "x\n")), "Lines and columns count from 1: <3,1,3,1>.");
-    assert.equal(recovery(Slicer.lines(TEXT, { marks: [1, 2, 3, 0] })), "Lines and columns count from 1: <1,2,3,1>.");
-    // An inverted region is the same region written backwards.
-    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), "Write the earlier position first: <2,1,3,1>.");
-    // -1 is the only position counted from the end; `<-2,-1>` is the tail.
-    assert.equal(recovery(Slicer.lines(TEXT, { marks: [-2, -1] })), "-1 is the only position counted from the end; the last 2 lines are <3,4>.");
+    // A result position outside the page states the page's bound and names no other operation.
+    const range = Slicer.page(["a"], { marks: [84, 180] }, { unit: "matchLocation" });
+    assert.equal(range.problem?.detail, "Result range start 84 is out of range; available positions are 1..1; this scope pages matchLocation items.");
+    assert.equal(recovery(range), "Choose positions within 1..1.");
+    const position = Slicer.page(["a", "b", "c"], { marks: [77] }, { unit: "matchLocation" });
+    assert.equal(position.problem?.detail, "Result 77 is out of range; available positions are 1..3; this scope pages matchLocation items.");
+    assert.equal(recovery(position), "Choose positions within 1..3.");
+    // A zero line or column states the counting rule; the region is not rebuilt.
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 0, 3, 0] }, "x\n")), "Lines and columns count from 1.");
+    assert.equal(recovery(Slicer.lines(TEXT, { marks: [1, 2, 3, 0] })), "Lines and columns count from 1.");
+    // An inverted region shows the form's order, not the region written forward.
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), "An exact region names its earlier position first: <SL,SC,EL,EC>.");
+    // `<-2,-1>` states the line extent, not a tail.
+    assert.equal(recovery(Slicer.lines(TEXT, { marks: [-2, -1] })), "-1 is the only position counted from the end; lines run 1..4.");
 });

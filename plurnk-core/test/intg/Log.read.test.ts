@@ -461,7 +461,7 @@ test("Log.read: #channel on an execution log item names the command's stream add
 
 // {§log-range-miss-names-stream} — the range twin of the channel miss above: an empty-extent
 // 416 on a log execution item names the recorded stream address, and that address reads.
-test("Log.read: an empty-extent 416 on an execution log item names the command's stream address", async () => {
+test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execution log item carries the command's stream address", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const schemes = new SchemeRegistry();
@@ -502,8 +502,8 @@ test("Log.read: an empty-extent 416 on an execution log item names the command's
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
         assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
-        assert.equal(miss.problem?.recovery, `READ ${address} for the command's stream.`);
-        assert.equal(miss.problem?.detail, `Range 2,3 cannot select from empty content. The command's streams live at ${address}.`);
+        assert.doesNotMatch(String(miss.problem?.recovery ?? ""), /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
         assert.equal(miss.problem?.retryable, false);
 
         // The named address is real: the same READ against it returns the output.
@@ -538,7 +538,7 @@ test("Log.read: an empty-extent 416 without a recorded stream keeps the generic 
 
 // {§log-range-miss-names-stream} — an ordinary out-of-range miss against a real extent keeps
 // the generic problem even when the row records a stream.
-test("Log.read: an out-of-range 416 against a command row's invocation names the stream (#759)", async () => {
+test("{§log-range-miss-names-stream} Log.read: an out-of-range 416 against a command row's invocation carries the stream (#759)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await insertExecutionRow(db, { workerId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
@@ -550,7 +550,7 @@ test("Log.read: an out-of-range 416 against a command row's invocation names the
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 2, requested: [9, 9] });
         assert.equal(miss.problem?.stream, "sh:///0badcafe");
-        assert.equal(miss.problem?.recovery, "READ sh:///0badcafe for the command's stream.");
-        assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2. The command's streams live at sh:///0badcafe.");
+        assert.doesNotMatch(String(miss.problem?.recovery ?? ""), /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2.");
     } finally { db.close(); }
 });

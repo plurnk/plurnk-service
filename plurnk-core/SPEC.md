@@ -1364,7 +1364,7 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Lost boundary before any closed operation | Reject the attempt; outside text is no substitute for a closed operational statement. An admitted reasoning operation is one ({§reasoning-operations}). |
 | Outside text carrying a log-entry heading, other than an emission row's | Reject the attempt ({§fabricated-log-entry}). |
 
-§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: it names the worker's own source ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading stays outside text, counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
+§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: it names the worker's own source ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading stays outside text, counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
 
 Warnings and closer recovery ({§closer-fallback}) do not reject. `finish=length`
 discloses truncation and precludes completion; it is not independently a rejection.
@@ -1626,9 +1626,9 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the member key, never a `file://` URI. Recovery treats path correction with FIND, creation with EDIT, and admission with `members (add)` as alternatives; it must not presume a missing READ requires creation or admission. Admission takes a `{"glob": "<path>"}` body. The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery; a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
+§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the member key, never a `file://` URI. Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. `` Admission takes a `{"glob": "<path>"}` body. The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery; a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
 
-§file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file, since admitting it is not what the model needs: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.` and the recovery names the listing that reaches its files, `` List its files with `FIND (<key>/)`, then READ one by its path. `` (KILL: `then KILL each by its path`; EDIT: `` Name a file inside it, as `EDIT (<key>/<file>)`; list its files with `FIND (<key>/)`. ``). Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
+§file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.`; a READ or KILL carries the listing as its recovery, `` `FIND (<key>/)` lists its files. ``, and an EDIT carries none. Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
 §file-find-directory **FIND recognizes existing directories without requiring a trailing slash.** An exact target naming a directory inside the workspace root resolves to the same recursive collection as its slash-suffixed spelling, including content matching and result pagination. Only workspace members appear; an empty directory or one containing only non-members yields a successful empty survey. Exact files stay exact, genuinely absent paths retain their missing-entry error, and this resolution does not inspect disk paths beyond the root. Shared glob and non-file URI semantics are unchanged.
 
@@ -2078,7 +2078,7 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
 - §edit-null-clears Writes the body; `body: null` clears it.
 - §edit-status-201-200 Returns `{ status: 201, entryId }` for a new entry and
   `{ status: 200, entryId }` for a content update.
-- §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring a scoped KILL's idempotence ({§log-kill-scope}). Its terse detail states the observed equality and the valid empty-body deletion shape; it never presumes that repetition or retrieval is the intended recovery.
+- §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring a scoped KILL's idempotence ({§log-kill-scope}). Its terse detail states the observed equality, `No change: EDIT body matches the selected content.`, and nothing else ({§diagnostic-observation}).
 - §edit-marker-required-on-existing **A markerless EDIT is CREATE-ONLY — there is no easy-clobber path on an existing entry.** A `<L>` marker scopes an EDIT to a range; without one, the body becomes the entry's WHOLE content — legitimate and required for a fresh entry (nothing exists to scope into), but on an EXISTING entry a missing marker is refused **400**, never a silent full replace. A deliberate full rewrite states that intent explicitly: `<1,-1>` resolves through the ordinary marker math to the same whole-content replacement, so the capability is available but cannot be selected by omission.
 - §edit-line-anchors An anchored EDIT resolves under {§line-anchors} and carries
   its endpoint checks as a core-private mutation precondition. Otherwise-valid
@@ -2152,7 +2152,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   when that differs from the channel's own mimetype the result names the
   channel's as `sourceMimetype`, so a consumer can still run the channel's
   handlers over a whole-resource `<1,-1>` read.
-- §log-range-miss-names-stream A 416 on a log execution item is the range twin of its channel miss ({§log-channel-miss-names-stream}): the coordinate addresses the row's invocation (its authored call body, often empty or one line) while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 gains it as `stream`, the detail appends where the command's streams live, and `recovery` is `READ <stream> for the command's stream`, whether the invocation's extent is empty or merely shorter than the range (#759). A 416 on a row with no recorded stream stays byte-identical to the generic slicer's.
+- §log-range-miss-names-stream A 416 on a log execution item addresses the row's invocation (its authored call body, often empty or one line), while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 carries it as the `stream` extension; its detail and recovery stay the generic slicer's, naming no cause ({§diagnostic-observation}).
 - §read-pattern **A pattern selects the lines a READ renders.** With a heading
   matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
   READ: the matcher runs over the channel's complete text — a regex anchors
@@ -2281,7 +2281,7 @@ AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMar
 
 KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. An emission row is curated whole ({§emission-row}): a scope covering every line retires it like an unscoped KILL; on its exact coordinate a narrower scope is 422 `emission-curated-whole`, whose recovery names both forms that retire it; a sweep leaves it intact. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}). Parameterless KILL instead requests completion ({§kill-conclusion}).
 
-§log-scope-recovery A log-body scope follows the file slicer's range rule ({§range-starts-at-one} in the schemes SPEC): a range starting at 0 — `<0,-1>` included — is refused 416 `range-not-satisfiable` on every body, empty ones too, and never clamped; its detail is the slicer's own sentence, `Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.`, and its recovery names the forms a log body takes — `Write <1,-1> to trim every line of the body; KILL (log:///1/9/2/READ) with no scope retires the whole row.`, or `To trim lines 1 through M, write <1,M>; …` — never the insert and append positions a body cannot take. Every other scope that names no line is 400 `curation-scope-invalid` and likewise names the model's mistake in its coordinates and the forms that work on that row: `<0>` offers `<1>`; an end below 1 offers `<L,-1>`; a backward `<5,3>` offers `<3,5>`; anything else offers `<L>`, `<L,M>` and the unscoped row KILL.
+§log-scope-recovery A log-body scope follows the file slicer's range rule ({§range-starts-at-one} in the schemes SPEC): a range starting at 0 — `<0,-1>` included — is refused 416 `range-not-satisfiable` on every body, empty ones too, and never clamped; its detail is the slicer's own sentence, `Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.`, and its recovery names the forms a log body takes — `Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.` — never the insert and append positions a body cannot take. Every other scope that names no line is 400 `curation-scope-invalid` with the same recovery: the forms that work on that row, never a rebuild of the written scope ({§diagnostic-observation}).
 
 A READ carrying active native media is atomic: any KILL scope is ignored and the entire observation is retired, including its native context contribution ({§packet-attachment-parts}). For a model turn, native activity is the attachment selection in its actual input packet; without a model packet, a native observation is atomic by default. Text-only observations in the same selection retain ordinary scoped behavior. Neither form deletes source data or forensic evidence.
 
@@ -2750,7 +2750,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   matches the selected channel's content or derivation; path globs select
   resources through `(target)` ({§path-glob}).
 - §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search uses {§markerless-first-page}, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
-- §fts-word-phrase **A word with inner punctuation is the phrase of its tokens.** FTS5 barewords hold only letters, digits, `_` and non-ASCII, so before the query reaches SQLite each word outside a quoted string or `NEAR(…)` group that is not a bareword (with optional leading `^` and trailing `*`) is quoted as a phrase: `~inherited-members` searches `"inherited-members"` — the adjacent tokens `inherited members` — instead of failing as `no such column: members`, and `c++`, `x.y`, `a/b` likewise. FTS5's own syntax passes untouched: `AND`/`OR`/`NOT`/`NEAR`, `+`, quoted phrases, parentheses, and column filters (a word containing `:`, `{` or `}`, or opening with `-`). A column-filter failure keeps SQLite's diagnostic and its recovery says what the filter is and gives the bare-word and `NOT` forms: `` `members:` and `-members` are FTS5 column filters, and the index has one column; to search for a word write it bare, as `~members`, and to exclude one write `NOT` between terms, as `~a NOT members`. `` A syntax error over parentheses or quotes, which FTS5 reads as its own syntax, recovers to the phrase and to the regex for the same characters: `` FTS5 reads parentheses and quotes as query syntax: quote the phrase, as `~"all("`, or match the characters with a regex, as `/all\(/`. `` (#1005).
+- §fts-word-phrase **A word with inner punctuation is the phrase of its tokens.** FTS5 barewords hold only letters, digits, `_` and non-ASCII, so before the query reaches SQLite each word outside a quoted string or `NEAR(…)` group that is not a bareword (with optional leading `^` and trailing `*`) is quoted as a phrase: `~inherited-members` searches `"inherited-members"` — the adjacent tokens `inherited members` — instead of failing as `no such column: members`, and `c++`, `x.y`, `a/b` likewise. FTS5's own syntax passes untouched: `AND`/`OR`/`NOT`/`NEAR`, `+`, quoted phrases, parentheses, and column filters (a word containing `:`, `{` or `}`, or opening with `-`). An FTS5 failure keeps SQLite's own message as its `diagnostic`, and its recovery is the dialect's form, never a rewrite of the query ({§diagnostic-observation}): `` An FTS5 query is barewords, "quoted phrases", and AND, OR, NOT and NEAR between them. ``
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The resolved target selection determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
@@ -3032,16 +3032,13 @@ target scheme, before effect admission or source acquisition. Core validates the
 preparation result and retains its cwd; it neither parses option names nor
 redirects metadata to a source scheme. An executor without preparation accepts
 no metadata. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
-anything spawns — a file is the script; a directory is refused `400 target-not-a-program`,
-pointing at `[{"cwd": "…"}]`; an absent path is refused `400 target-not-found`, giving the
-applicable accepted form without inferring what the model meant. When the target is a
-registered tool of another executor, recovery gives that tool's exact bracketed
-invocation; when it names another available executor (`sh (python3)` over a Python body, #895),
-recovery names that executor's fence — `` `python3` is its own executor; use that name on the
-opening fence and put the program in the body. ``; otherwise it points at an existing script or a bare shell-command body. A non-file resource
+anything spawns — a file is the script; a directory is refused `400 target-not-a-program`;
+an absent path is refused `400 target-not-found`, stating what exists and inferring nothing
+({§diagnostic-observation}): a registered tool of another executor is named with that executor,
+another available executor as its own executor (`` `python3` is its own executor. ``), and
+anything else as a target that must name an existing program resource. A non-file resource
 target that cannot be read keeps the owning READ's failure identity (#163) and states
-the slot contract in its recovery — the resource is the program and the body its stdin;
-a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
+the slot contract in its recovery: the resource is the program and the body its stdin. The started receipt always
 names the working directory only when it is not the project root, and then in the
 project-relative form ({§fs-namespace}); the default directory is omitted rather
 than repeated in every receipt. Native file addresses resolve from that same project
@@ -3060,15 +3057,14 @@ real stream id is always the program source.
 
 §exec-target-documentation **Generated reference is never a program.** A resource target under
 `worker:///_plurnk/` — the executor and scheme documentation the harness generates — is refused
-at admission, 400 `target-is-documentation`, before any source is realized or run: `` `worker:///_plurnk/plurnk/sh.md` is reference documentation the harness generated, not a program; sh cannot run it. `` With a body the recovery is `Drop the target and keep the command: the opening fence line is sh alone, with the command lines beneath it.`; without one it points to READ for the documentation and to the program's own path or a targetless heading to run something. Admitting it realized the markdown as a host temporary file that a sandboxed runtime could not open (`cannot open /tmp/plurnk-exec-….md`), and ran markdown where it could.
+at admission, 400 `target-is-documentation`, before any source is realized or run: `` `worker:///_plurnk/plurnk/sh.md` is reference documentation the harness generated, not a program; sh cannot run it. `` It carries no recovery ({§diagnostic-observation}). Admitting it realized the markdown as a host temporary file that a sandboxed runtime could not open (`cannot open /tmp/plurnk-exec-….md`), and ran markdown where it could.
 
 §exec-tool-fall-through **A tool run as a shell command is named at the failure
 site.** A bare shell command whose program is the name of a tool published by
 another enabled runtime (`brave_web_search {…}` under the default shell) exits
-127; the stream's terminal receipt then says the program is not a shell command
-but a tool of that runtime, gives the exact bracketed invocation with the JSON
-body convention, names the tool's own document, and carries `toolRuntimes` and
-`tool`. The status stays the shell's 500, nothing is rerouted, and a program the
+127; the stream's terminal receipt then says the program is a tool of that
+runtime, names the tool's own document, and carries `toolRuntimes` and `tool`;
+it builds no invocation ({§diagnostic-observation}). The status stays the shell's 500, nothing is rerouted, and a program the
 registry does not know keeps the plain exit-127 receipt.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
@@ -3179,12 +3175,12 @@ addressed to `<runtime>:///<id>` when the id holds an execution only under anoth
 §exec-lifetime **How long a spawn may live is the fence's metadata, one field.**
 `[{"lifetime": …}]` takes a duration (`30s`, `30m`, `2h`), or one of three words;
 absent is `loop`. The key is one of the service's reserved metadata keys, withheld
-from every owner by the framework ({§service-metadata-keys}). An execution takes no scope: a numeric coordinate on an
-executor target is refused `scope-unsupported` (400), naming the field.
+from every owner by the framework ({§service-metadata-keys}). An execution takes no scope: a scope on an
+execution is refused `scope-unsupported` (400).
 
 | `lifetime`   | The spawn |
 | ------------ | --------- |
-| a duration   | Aborted at the deadline — a bounded reap, polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and the stream is stamped **504** `execution-timeout`, distinct from a deliberate kill (499) or a clean exit (200): `` Execution of '*runtime*' outlived its *lifetime* lifetime. `` Recovery: `` Run it again with a longer lifetime, such as [{"lifetime": "30m"}], or with none to let it run as long as the loop. `` |
+| a duration   | Aborted at the deadline — a bounded reap, polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and the stream is stamped **504** `execution-timeout`, distinct from a deliberate kill (499) or a clean exit (200): `` Execution of '*runtime*' outlived its *lifetime* lifetime. `` |
 | `loop` (absent) | Loop-life bounded: reaped on every loop terminal except 202, the background-stream behavior. |
 | `turn`       | Reaped at the worker's next pre-turn via the registry abort, before the turn's own spawns, so it never survives into the subsequent turn; its terminal output surfaces born visible like any close ({§exec-stream}). |
 | `detached`   | Outlives its loop's terminal, 200 included. It never binds to the loop's teardown and is nobody's obligation — completion is not gated by it, WAIT does not park on it, optimistic settlement looks past it — and it ends only by KILL, the worker's total reap, or daemon shutdown; its late conclusion surfaces without opening a loop. |
@@ -5351,7 +5347,7 @@ their row shape, and their ordering are ordinary FIND projections owned by
 The model's runtime alert surface has two distinct kinds of information:
 
 - **Turn failures are log items.** A failed action and an engine-rail failure are durable `log_entries` rows whose `rx` is an RFC 9457 operation result. They can be scoped-KILLed, retired, and budgeted like every other row. The `errors` section is a derived pointer index over recent `status_rx ≥ 400` rows; it owns no bodies or failure state. Rejected emissions never become accepted turn content; their private response and admission evidence remains in `model_calls` and `turn_attempts`, apart from the bounded recovery `emissionAttempt` under {§invalid-emission-attempts}.
-- **Notices are transient observations.** Progress and non-fatal diagnostics such as `turn_awaiting_model`, `search_progress`, and `grammar_unenforced` may appear once in the packet and broadcast live. They neither substitute for a failure result nor influence scheduling or recovery.
+- **Notices are transient observations.** Progress and non-fatal diagnostics such as `turn_awaiting_model`, `search_progress`, and `output_unaccounted` may appear once in the packet and broadcast live. They neither substitute for a failure result nor influence scheduling or recovery.
 
 The `log` is durable product truth. The `errors` section points at its failures
 while the separate `notices` section displays transient observations. The two
@@ -5397,12 +5393,12 @@ retain distinct contracts and lifetimes.
 
 | notice `kind` | Source | Position |
 |---|---|---|
-| `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
+| `output_unaccounted` | a provider whose billed output tokens exceed those its content and reasoning hold | content-offset at the end of the content |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
 | `search_progress` | repository materialization/indexing lifecycle ({§persistent-search-index}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none |
 | `git_inspection_refused` | engine membership — automatic Git inspection refused a supplied repository whose config declares a `filter.*` program ({§membership-git-hermetic}); names the key; `level: warn`, once per workspace until the key changes or clears | none |
 
-§notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
+§notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `output_unaccounted` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 
 §operation-result-no-error-scheme Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, independently curatable and exactly READable while active. The `errors` section surfaces a derived pointer to each. Rejected emissions stay in the forensic model-call and admission relations. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
 
@@ -5441,7 +5437,7 @@ USD and token totals with separately named known subtotals across every physical
 calls included. It is the shared exact derivation from the ledger, never a second
 stored fact, so a live watcher accrues running loop cost per turn (#465).
 
-§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops://<worker>/<loop>/<turn>` source; the optional previous-emission section shows a canonical program ({§previous-emission}), so the position names a line of the source, which READ of its address shows. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
+§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `output_unaccounted` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops://<worker>/<loop>/<turn>` source; the optional previous-emission section shows a canonical program ({§previous-emission}), so the position names a line of the source, which READ of its address shows. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
 Reasoning normalization notices use source `grammar:reasoning` and omit the
 content-offset position: reasoning coordinates do not address the content source.
 
@@ -6010,7 +6006,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | code | status | contract |
 |---|---:|---|
 | `target-required` | 400 | *OP* requires a target path. Recovery: Write the target in parentheses on the opening fence line: `OP (path)`. |
-| `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: ({§unregistered-scheme-recovery}) `` `*host*` is an executor: run ```*host* (*tool*)``` with its input in the body. `` when the address's authority is one, else `Registered schemes: *names*.` |
+| `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: ({§unregistered-scheme-recovery}) `Registered schemes: *names*.` |
 | `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept the [metadata] modifier. |
 | `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
 | `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
@@ -6033,15 +6029,13 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. |
-| `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: To give '*name*' more work, write `SEND (worker://_name_)` with the task as the body; to start another worker, choose a name no worker holds. |
+| `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND. |
 
-§unregistered-scheme-recovery **An unregistered scheme's refusal names what does exist.** When the
-address's authority is an executor available to the workspace — an MCP server's tool written as
-`tool://gh/get_me` — the recovery is that executor's fence with the address's path as its target;
-otherwise it lists the schemes the workspace registers. READ, FIND, KILL and resource selection share
-the sentence.
+§unregistered-scheme-recovery **An unregistered scheme's refusal names what does exist.** Its recovery
+lists the schemes the workspace registers, and rebuilds the address into nothing else
+({§diagnostic-observation}). READ, FIND, KILL and resource selection share the sentence.
 
 §problems-content **Content and transfer Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -6073,11 +6067,11 @@ the sentence.
 | `path-names-no-file` | 403 | The spelling '*path*' does not name a file: it is empty, or it names a directory. |
 | `path-occupied-by-nonmember` | 403 | A non-member file already occupies '*path*'. Recovery: Choose an unoccupied member path. |
 | `path-outside-workspace` | 403 | A symlink on '*path*' resolves outside the namespace. |
-| `binary-write-unsupported` | 415 | A text EDIT cannot author binary '*mimetype*'; COPY or MOVE the bytes instead. |
+| `binary-write-unsupported` | 415 | A text EDIT cannot author binary '*mimetype*'. |
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it, so keep working files inside the root. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. |
 
 §problems-exec **Execution Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -6127,7 +6121,7 @@ the sentence.
 | `proposal-not-pending` | 409 | Recovery: Refresh pending proposals before resolving one. |
 | `loop-policy-retired` | 400 | Approval authority belongs to the worker's owner, not a submitted message. |
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
-| `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Write `<1,-1>` to trim every line of the body; `KILL (log:///…/READ)` with no scope retires the item. |
+| `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Trim one line with `<L>` or lines L through M with `<L,M>`; `KILL (log:///…/READ)` with no scope retires the whole row. |
 
 §pinned-wording-core **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
 
@@ -6143,7 +6137,7 @@ the sentence.
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | The stream was cancelled by KILL. | a stream terminal after KILL |
 | '*program*' exited with code *n*. | an execution's non-zero exit |
-| '*path*' is a directory, not a file; READ reads one file. Recovery: List its files with `FIND (_path_/)`, then READ one by its path. | READ of a directory |
+| '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |
 | The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |
 | '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"glob": "<path>"}` body. | a non-member on disk at the addressed path |

@@ -145,7 +145,7 @@ export default class EntryOps {
             return failure(
                 "channel-derived",
                 400,
-                `#${targetChannel} is derived from #${defaultChannel}; EDIT the source channel and the projection follows.`,
+                `#${targetChannel} is derived from #${defaultChannel} and is not written.`,
                 { entryId: null, channel: targetChannel },
                 { channel: targetChannel, source: defaultChannel, retryable: false },
             );

@@ -84,14 +84,11 @@ test("{§executor-metadata} cwd is prepared once from the supplied environment",
     assert.deepEqual(untouched, { status: 200, cwd: null });
 });
 
-test("{§executor-metadata} an unsupported field's refusal names the run's fields, a time bound and the body (#1005)", async () => {
+test("{§executor-metadata} an unsupported field's refusal names the run's fields and nothing more ({§diagnostic-observation})", async () => {
     for (const field of ["timeout", "cmd"]) {
         const refused = await executor.prepare(input([JSON.stringify({ [field]: 60 })]));
         assert.equal(refused.status, 400);
         assert.equal(refused.problem?.detail, `Executable tool '${input(null).runtime}' does not accept metadata field '${field}'.`);
-        assert.equal(
-            refused.problem?.recovery,
-            'Its fields are `cwd`, `args`, `stdin`, `env` and `lifetime`; a time bound is `[{"lifetime": "30m"}]`, and the program goes in the body beneath the fence.',
-        );
+        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args`, `stdin`, `env` and `lifetime`.");
     }
 });

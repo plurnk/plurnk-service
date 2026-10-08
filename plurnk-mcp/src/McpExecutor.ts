@@ -346,7 +346,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         diagnostic: ErrorDetail.preview(message(cause)),
-                        recovery: "One JSON object per MCP tool call; a second call is a second fence.",
+                        recovery: "One JSON object per MCP tool call.",
                     },
                 );
             }

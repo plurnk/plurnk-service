@@ -129,7 +129,7 @@ export default class DataStatementRunner {
                 {},
                 {
                     scheme: schemeName,
-                    recovery: unregisteredSchemeRecovery(statement.target, this.#schemes.list(ctx.workspaceId), ctx.executors, ctx.workspaceId),
+                    recovery: unregisteredSchemeRecovery(this.#schemes.list(ctx.workspaceId)),
                     retryable: false,
                 },
             );

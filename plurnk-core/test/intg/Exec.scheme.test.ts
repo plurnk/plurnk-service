@@ -160,7 +160,7 @@ test("{§execution-output-identity} missing output resources report their exact 
     } finally { await db.close(); }
 });
 
-test("{§exec-target-routing} a bare target that is another runtime's registered tool is refused naming that runtime (#388)", async () => {
+test("{§exec-target-routing} {§diagnostic-observation} a bare target that is another runtime's registered tool is refused naming that runtime (#388)", async () => {
     const real = await testExecutors();
     const sh = real.entry("sh");
     assert.ok(sh, "the real shell entry exists");
@@ -214,7 +214,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /The tool `crm_query` is registered under executor `crm`; use that name on the opening fence\./, "the recovery gives the one applicable invocation");
+        assert.match(rendered, /The tool `crm_query` is registered under executor `crm`\."/, "the recovery says where the tool is registered, and builds no fence");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction does not repeat abstract target categories");
         assert.match(rendered, /"toolRuntimes":\["crm"\]/);
     } finally { await db.close(); }
@@ -232,13 +232,13 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
         assert.match(rendered, /target-not-found/);
         assert.match(rendered, /The sh program does not resolve as a script or a registered tool for this executor\./);
         assert.doesNotMatch((result.problem as { detail?: string } | undefined)?.detail ?? "", /curl|under /, "the target and cwd remain structured facts");
-        assert.match(rendered, /The target must name an existing program resource\. A targetless sh takes the command in its body\./);
+        assert.match(rendered, /"recovery":"The target must name an existing program resource\."/, "the other reading of the fence is not offered");
         assert.doesNotMatch(rendered, /A target is a cwd|never a command/, "the correction is factual rather than presumptive");
         assert.ok(!rendered.includes(process.cwd()), "{§fs-namespace} the refusal never names the host directory it searched");
     });
 });
 
-test("{§exec-target-routing} a target that names another available executor is refused with that executor's fence (#895)", async () => {
+test("{§exec-target-routing} {§diagnostic-observation} a target that names another available executor is refused saying so, with no fence built (#895)", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "python3", "import json\nprint(json.dumps({\"ok\": True}))"),
@@ -248,8 +248,7 @@ test("{§exec-target-routing} a target that names another available executor is 
         assert.equal(result.status, 400, "refused, never spawned as `sh python3`");
         const rendered = JSON.stringify(result);
         assert.match(rendered, /target-not-found/);
-        assert.match(rendered, /`python3` is its own executor; use that name on the opening fence and put the program in the body\./, "the recovery names the fence the body wanted");
-        assert.doesNotMatch(rendered, /A targetless sh takes the command in its body/, "the generic recovery yields to the specific one");
+        assert.match(rendered, /"recovery":"`python3` is its own executor\."/, "the recovery states what python3 is");
     });
 });
 
