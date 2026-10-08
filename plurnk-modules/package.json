@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-modules",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "The Plurnk daemon module contract: the lifecycle a module implements and the base seam it receives.",
     "keywords": [
         "plurnk",
@@ -24,7 +24,7 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^2.0.0"
+        "@plurnk/plurnk-contracts": "^3.0.0"
     },
     "publishConfig": {
         "access": "public"
