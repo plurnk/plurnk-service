@@ -51,6 +51,20 @@ for (const [label, owner] of [
     });
 }
 
+test("{§worker-ownership}: a delegated child inherits its owner's attendance, so exhausted recovery concludes when nobody attends", async () => {
+    await using db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, "recovery-delegated");
+    const parentId = await insertWorker(db, workspaceId);
+    await ownWorker(db, workspaceId, parentId, ["request_approval"], false);
+    const childId = await insertWorker(db, workspaceId, parentId, "child", "model");
+    const loopId = await insertLoop(db, childId, 1, "delegated task");
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const run = await engine.runLoop({ workspaceId, workerId: childId, loopId, provider: downProvider(), messages: [], maxTurns: 2 });
+    assert.equal(run.reason, "provider_unavailable");
+    assert.equal(run.result.status, 503, "the child concludes on the provider's exact failure instead of parking for nobody");
+    assert.equal((await new LoopLifecycle(db).result(loopId))?.status, 503);
+});
+
 test("{§client-interaction-routing}: unsupported requests fail without parking; supported requests wait for their recipient", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "interaction-capabilities");
