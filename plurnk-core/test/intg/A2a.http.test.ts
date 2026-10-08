@@ -8,14 +8,10 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { answer } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 
-const completed = (content: string) => makeMockResponse([
-    "````KILL", content, "````",
-].join("\n"));
-
-const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[], token = "") => {
+const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answer>[], token = "") => {
     const db = await openMigrated();
     let http = await bindListener();
     let daemon = new Daemon({
@@ -111,9 +107,9 @@ class GatedMock extends Mock {
 
 test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker creation order", async (t) => {
     const provider = new GatedMock({ contextWindow: 100_000, responses: [
-        completed("second Task"),
-        completed("first Task"),
-        completed("third Task"),
+        answer("second Task"),
+        answer("first Task"),
+        answer("third Task"),
     ] });
     const { request, send } = await fixture(t, provider);
     const { task: first } = await request("/message:send", {
@@ -161,7 +157,7 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
 });
 
 test("{§a2a-inbound-exposure}: HTTP history retains the admitted prompt identity and content", async (t) => {
-    const { request, send } = await fixture(t, [completed("done")]);
+    const { request, send } = await fixture(t, [answer("done")]);
     const task = await send("A prompt with \"quotes\" and a\nsecond line.", { messageId: "caller-message" });
     const stored = await request(`/tasks/${task.id}?historyLength=1`);
     assert.deepEqual(stored.history, [{
@@ -183,7 +179,7 @@ test("{§message-envelope-evidence} {§a2a-hosted-message-resources}: hosted A2A
     t.after(() => new Promise<void>((resolve, reject) => resource.close((error) => error ? reject(error) : resolve())));
     const address = resource.address();
     assert.ok(address && typeof address === "object");
-    const provider = new Mock({ contextWindow: 100_000, inputModalities: ["image"], responses: [completed("received")] });
+    const provider = new Mock({ contextWindow: 100_000, inputModalities: ["image"], responses: [answer("received")] });
     const { request } = await fixture(t, provider);
     const parts = [
         { text: "Inspect this image.", mediaType: "text/plain", metadata: { position: 1 } },
@@ -216,7 +212,7 @@ test("{§message-envelope-evidence} {§a2a-hosted-message-resources}: hosted A2A
 
 for (const modes of [undefined, [], ["application/json", "text/plain"]]) {
     test(`{§a2a-response-preferences}: HTTP request preferences ${JSON.stringify(modes)} reach the provider without changing Message history`, async (t) => {
-        const provider = new Mock({ contextWindow: 100_000, responses: [completed("received")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [answer("received")] });
         const { request, daemon, workspace, restart } = await fixture(t, provider);
         const message = {
             messageId: "format-request", role: "ROLE_USER",
@@ -264,7 +260,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             ].join("\n") } };
         }
     }
-    const provider = new Echo({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }, completed("")] });
+    const provider = new Echo({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }, answer("")] });
     const { request } = await fixture(t, provider);
     const parts = [
         { raw: Buffer.from([0, 255, 13, 10, 128]).toString("base64"), mediaType: "application/x-example", filename: "opaque.bin" },
@@ -297,7 +293,7 @@ test("{§send-resource-attachments}: image READ and explicit report SEND preserv
         { assistant: { content: `\`\`\`\`READ ($IMAGE) <1,3>\n\`\`\`\`\n${continuing}`, reasoning: null } },
         { assistant: { content: `\`\`\`\`EDIT (worker:///report.md)\nOriginal report.\n\`\`\`\`\n${continuing}`, reasoning: null } },
         { assistant: { content: `\`\`\`\`SEND [{"attachments":["worker:///report.md"]}]\nHere is the report.\n\`\`\`\`\n\`\`\`\`EDIT (worker:///report.md) <1,-1>\nChanged after sending.\n\`\`\`\`\n\`\`\`\`KILL (log:///*/*/*/SEND) <1,-1>\n\`\`\`\`\n${continuing}`, reasoning: null } },
-        completed("Report delivered."),
+        answer("Report delivered."),
     ] });
     const { request, restart } = await fixture(t, provider);
     const raw = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -367,7 +363,7 @@ test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the sa
             }
         }
     }
-    const provider = new HeldProvider({ contextWindow: 100_000, responses: [completed("rejoined result")] });
+    const provider = new HeldProvider({ contextWindow: 100_000, responses: [answer("rejoined result")] });
     const { request, endpoint } = await fixture(t, provider);
     const initial = await request("/message:send", {
         message: { messageId: "long-running", role: "ROLE_USER", parts: [{ text: "Wait for the fixture signal." }] },

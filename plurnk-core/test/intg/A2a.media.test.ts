@@ -9,6 +9,7 @@ import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
+import { answer } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import ByteView from "../../src/content/byte-view.ts";
@@ -68,7 +69,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             turn(task),
             turn(`\`\`\`\`KILL (log:///*/*/*/READ) <1,-1>\n\`\`\`\`\n${task}`),
             turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n${task}`),
-            turn("````KILL\nInspected and curated the remote evidence.\n````"),
+            answer("Inspected and curated the remote evidence."),
         ],
     });
     const db = await openMigrated();

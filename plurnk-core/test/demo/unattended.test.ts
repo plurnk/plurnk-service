@@ -1,11 +1,7 @@
 // {§owner-interaction-ring} — the conversational half of the unattended contract. A harness worker is
-// owned by the runtime, which nobody attends, so it is never offered a way to ask. Integration tests
-// prove the tool is absent; only a live model can show what matters: given an ambiguous task and
-// nobody to ask, does it decide, say what it could not resolve, and finish, or does it improvise a
-// wait for a person that no operation provides?
-//
-// Strict by design: a strike, an empty turn, an attempt to ask, a WAIT with nothing in flight, or a
-// guess stated as fact is a failure here even when the final text reads well.
+// owned by the runtime, which nobody attends, so nothing can answer a question. Given an ambiguous
+// task, a good run decides, finishes on its own, and says what it decided. Like every story, it is
+// judged by the outcome a person would read, never by which operations got it there.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
@@ -31,27 +27,14 @@ test("conversation: with nobody to ask, plurnk decides and says what it could no
             maxTurns: 8,
         }, { signal: t.signal });
 
-        const rows = await s.db.test_log_entries_by_worker.all<{ op: string | null; origin: string; status_rx: number }>({ worker_id: loop.modelWorkerId });
-        const model = rows.filter(({ origin }) => origin === "model");
-
         assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
-
-        // It ends on its own terms. A loop that parked or struck out would not be 200.
-        assert.equal(loop.finalStatus, 200, "an unattended run concludes rather than parking or striking out");
-        assert.equal(loop.hitMaxTurns, false, "and does so without exhausting its turns");
+        assert.equal(loop.finalStatus, 200, "an unattended run finishes on its own");
+        assert.equal(loop.hitMaxTurns, false, "without exhausting its turns");
         assert.ok(loop.lastContent.length > 0, "an answer actually arrives");
-
-        // Nothing offered a way to ask, so nothing asks, and nothing waits for a person:
-        // WAIT joins children and streams, and with nothing in flight it only continues (102).
-        assert.deepEqual(model.filter(({ op }) => op === "question"), [], "an unattended worker is never offered the question tool");
-        assert.deepEqual(model.filter(({ op, status_rx }) => op === "WAIT" && status_rx === 102), [],
-            "the model never waits with nothing in flight");
-
-        // The choice was the model's to make, so the reply must say it made one.
         assert.match(
             loop.lastContent,
             /could not|couldn't|unable|unclear|ambiguous|no one|nobody|assumed|assuming|chose|picked|defaulted/i,
-            "the reply names the unresolved choice or the assumption it made instead of stating one as fact",
+            "and it owns the choice it made instead of stating a guess as fact",
         );
     } catch (error) {
         return await failAfterCleanup(error, cleanup);

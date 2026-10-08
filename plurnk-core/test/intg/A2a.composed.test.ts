@@ -14,7 +14,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { answer, makeMockResponse } from "./_mock.ts";
 
 class WorkspaceRoutedMock extends Mock {
     readonly #routes = new Map<string, Mock>();
@@ -50,13 +50,13 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
                 "````",
             ].join("\n")),
             makeMockResponse("````WAIT\nWaiting for the remote A2A Task.\n````"),
-            makeMockResponse("````KILL\nMangoes are drupes; pineapples are aggregate fruits.\n````"),
+            answer("Mangoes are drupes; pineapples are aggregate fruits."),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````KILL\nMangoes are drupes; pineapples are aggregate fruits.\n````"),
+            answer("Mangoes are drupes; pineapples are aggregate fruits."),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();
@@ -189,18 +189,18 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         responses: [
             delegate("mangoes and pineapples"),
             makeMockResponse("````WAIT\nWaiting for the remote A2A Task.\n````"),
-            makeMockResponse("````KILL\nFirst delegation done.\n````"),
+            answer("First delegation done."),
             delegate("plums and cherries"),
             makeMockResponse("````WAIT\nWaiting for the second remote A2A Task.\n````"),
-            makeMockResponse("````KILL\nSecond delegation done.\n````"),
-            makeMockResponse("````KILL\nBystander observed nothing remote.\n````"),
+            answer("Second delegation done."),
+            answer("Bystander observed nothing remote."),
         ],
     });
     const agentProvider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````KILL\nMangoes are drupes; pineapples are aggregate fruits.\n````"),
-            makeMockResponse("````KILL\nPlums and cherries are both drupes.\n````"),
+            answer("Mangoes are drupes; pineapples are aggregate fruits."),
+            answer("Plums and cherries are both drupes."),
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();

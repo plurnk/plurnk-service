@@ -15,7 +15,7 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { answer, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
@@ -98,7 +98,7 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
         makeMockResponse("````question\n" + JSON.stringify({ message: "Which branch?", requestedSchema: {
             type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false,
         } }) + "\n````"),
-        makeMockResponse("````KILL\nThe owner selected main.\n````"),
+        answer("The owner selected main."),
     ] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
@@ -159,7 +159,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
         const [context] = (await daemon.listWorkers(workspace.workspaceId, { origin: "model" }))
             .filter((worker) => worker.parentWorkerId !== null);
         assert.ok(context);
-        let program: string;
+        let response: ReturnType<typeof makeMockResponse>;
         if (calls++ === 0) {
             const [request] = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: context.id });
             assert.ok(request?.source);
@@ -167,13 +167,13 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
             unrelatedAddress = `message://${context.name}/abcdef12`;
             await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: context.id,
                 prompt: "An unrelated native request.", messageAddress: unrelatedAddress });
-            program = "````NOTE\nObserve the new request before replying.\n````";
+            response = makeMockResponse("````NOTE\nObserve the new request before replying.\n````");
         } else if (calls === 2) {
-            program = `\`\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\`\n\n\`\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\`\``;
+            response = makeMockResponse(`\`\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\`\n\n\`\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\`\``);
         } else {
-            program = "````KILL\n````";
+            response = answer("");
         }
-        return new Mock({ contextWindow: 100_000, responses: [makeMockResponse(program)] }).generate(args);
+        return new Mock({ contextWindow: 100_000, responses: [response] }).generate(args);
     });
     try {
         await daemon.start();
@@ -199,12 +199,12 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````KILL\nfirst composed result\n````"),
-            makeMockResponse("````KILL\nsecond composed result\n````"),
-            makeMockResponse("````KILL\nWhich branch should I use?\n````"),
-            makeMockResponse("````KILL\nselected branch\n````"),
-            makeMockResponse("````KILL\nuppercase context result\n````"),
-            makeMockResponse("````KILL\nlowercase context result\n````"),
+            answer("first composed result"),
+            answer("second composed result"),
+            answer("Which branch should I use?"),
+            answer("selected branch"),
+            answer("uppercase context result"),
+            answer("lowercase context result"),
         ],
     });
     const http = await bindListener();
@@ -394,7 +394,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("````KILL\nlazy workspace result\n````")],
+            responses: [answer("lazy workspace result")],
         }),
         http,
     });
@@ -473,7 +473,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("````KILL\nfirst durable result\n````")],
+            responses: [answer("first durable result")],
         }),
         http,
     });
@@ -513,7 +513,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("````KILL\nsecond durable result\n````")],
+                responses: [answer("second durable result")],
             }),
             http,
         });

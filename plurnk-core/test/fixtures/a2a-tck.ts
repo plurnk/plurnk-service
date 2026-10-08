@@ -4,7 +4,7 @@ import { Mock, type Provider } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, serviceUrl } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_db.ts";
-import { makeMockResponse } from "../intg/_mock.ts";
+import { answer, makeMockResponse } from "../intg/_mock.ts";
 
 const WORKSPACE = "a2a-tck";
 
@@ -51,17 +51,15 @@ class TckProvider extends Mock {
         this.#calls.set(task, count + 1);
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
-            const content = count === 0
-                ? ["````EDIT (worker:///output.txt)", "tck", "````", "````NOTE", "Send the file.", "````"].join("\n")
-                : ["````SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "````", "````KILL", "````"].join("\n");
-            return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
+            const response = count === 0
+                ? makeMockResponse(["````EDIT (worker:///output.txt)", "tck", "````", "````NOTE", "Send the file.", "````"].join("\n"))
+                : answer("", "````SEND [{\"attachments\":[\"worker:///output.txt\"]}]\n````");
+            return new Mock({ contextWindow: 1_000_000, responses: [response] }).generate(args);
         }
         // {§a2a-worker-ownership} The exposure never asks its caller for input, so an input-required
-        // scenario is answered like any other message. {§kill-conclusion} The answer is the KILL body.
-        const content = [
-            "````KILL", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
-        ].join("\n");
-        return new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(content)] }).generate(args);
+        // scenario is answered like any other message.
+        const response = answer(scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK");
+        return new Mock({ contextWindow: 1_000_000, responses: [response] }).generate(args);
     }
 }
 
