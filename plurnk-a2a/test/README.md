@@ -23,7 +23,7 @@ Core daemon on a loopback ephemeral port, runs all HTTP+JSON requirement tiers, 
 stops its daemon. Inference is deterministic and free. It does not use or
 restart the operator's daemon. Each run retains the database, service log,
 checker output, JSON/HTML/JUnit reports, command, and source/spec revisions in
-`~/benchmarks/a2a-tck-*`. A nonzero checker result remains nonzero.
+`$PLURNK_BENCHMARKS/a2a-tck-*` (`~/benchmarks` when unset). A nonzero checker result remains nonzero.
 
 ## Interpretation
 

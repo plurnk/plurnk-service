@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import HostPaths from "../src/core/HostPaths.ts";
+import { benchmarksRoot } from "../../scripts/test-artifacts.ts";
 
 const revision = "263b9cfaf16a554bdfb166a7ba5b67716e946349";
 const core = resolve(import.meta.dirname, "..");
@@ -16,7 +16,7 @@ const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: upstream, encodin
 const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: upstream, encoding: "utf8" }).trim();
 if (head !== revision || dirty) throw new Error(`The TCK checkout must be unmodified at ${revision}.`);
 
-const artifactsRoot = new HostPaths().expandUserPath("~/benchmarks");
+const artifactsRoot = benchmarksRoot();
 await mkdir(artifactsRoot, { recursive: true });
 const artifacts = await mkdtemp(join(artifactsRoot, "a2a-tck-"));
 const serviceLog = await open(join(artifacts, "service.log"), "w");

@@ -25,7 +25,7 @@ Where things are, for an agent that has to act before it has read everything:
   (specimens in `test/live/`), `npm run test:demo` (stories), or
   `npm run test:live:specimen -- "<exact name>"`. The whole-platform candidate is
   `npm run candidate` at the root (see README).
-- **Every live or demo worker leaves evidence** under `~/benchmarks/<label>-XXXXXX/`:
+- **Every live or demo worker leaves evidence** under `$PLURNK_BENCHMARKS/<label>-XXXXXX/` (`~/benchmarks` when unset):
   `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
   errors, cost), `<worker>-<loop>-<turn>.assistant.md` (the model's raw emissions),
   `.user.md` and `.system.md` (what it saw), `.wire.json` (the messages the provider received),
