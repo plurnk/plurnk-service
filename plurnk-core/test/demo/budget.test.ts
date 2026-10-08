@@ -14,7 +14,6 @@ import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
-import { logEntries } from "../intg/_packet.ts";
 import { liveLoop, liveWorkspace, pinAliasInputCapacity } from "../_live-harness.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import { measureFloor } from "./_floor-probe.ts";
@@ -26,9 +25,9 @@ const CURATION = new Set(["KILL", "MOVE", "NOTE"]);
 
 interface LoopRow { id: number; turn_id: number; op: string | null; origin: string; status_rx: number; rx: string; attrs: string }
 
-// {§context-over-budget-row} {§context-verbs} — the loop's discipline: every packet that carried the
-// over-budget row was answered with curation alone, and no model operation was refused. Fit receipts
-// ({§context-fit}) are outcomes, never friction.
+// {§context-over-budget-row} {§context-verbs} — the loop's discipline: every turn whose packet was
+// over, its head carrying the over-budget row, was answered with curation alone, and no model
+// operation was refused. Fit receipts ({§context-fit}) are outcomes, never friction.
 const assertBudgetDiscipline = async (db: Db, loopId: number): Promise<{ overTurns: number; modelTurns: number }> => {
     const turns = await db.test_list_turns_in_loop.all<{ id: number; kind: string; status: number; packet: string | null }>({ loop_id: loopId });
     const rows = await db.test_log_entries_by_loop.all<LoopRow>({ loop_id: loopId });
@@ -41,9 +40,8 @@ const assertBudgetDiscipline = async (db: Db, loopId: number): Promise<{ overTur
     assert.deepEqual(refused, [], "friction first: no model operation was refused or failed, and no strike was recorded");
     let overTurns = 0;
     for (const turn of turns) {
-        if (turn.packet === null) continue;
-        const over = logEntries(JSON.parse(turn.packet)).some((entry) => String(entry.logPath).endsWith("/error")
-            && (entry.problem as { detail?: string } | undefined)?.detail === OVER_BUDGET);
+        const over = rows.some((row) => row.turn_id === turn.id && row.origin === "_plurnk"
+            && (JSON.parse(row.rx) as { problem?: { detail?: string } }).problem?.detail === OVER_BUDGET);
         if (!over) continue;
         overTurns += 1;
         const program = rows.filter((row) => row.turn_id === turn.id && row.origin === "model" && !LogEntryProjection.isEmission(row));
