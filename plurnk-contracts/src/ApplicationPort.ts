@@ -28,13 +28,6 @@ export interface ApplicationOwnerIdentity {
     readonly address: string;
 }
 
-export type ClientInteractionRoute = (context: {
-    readonly workspaceId: number;
-    readonly workerId: number;
-    readonly loopId: number;
-    readonly toolName: string;
-}) => Promise<string | null>;
-
 export interface ProposalResolution {
     readonly decision: ProposalDecision;
     readonly body?: string;
@@ -181,7 +174,6 @@ export interface HttpHost {
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
     registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void>;
-    registerClientInteractionRoute(route: ClientInteractionRoute): () => void;
     claimWorkerOwner(args: { readonly workspaceId: number; readonly workerId: number; readonly owner: string }): Promise<WorkerOwner>;
     configurationNotices(): readonly Notice[];
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;

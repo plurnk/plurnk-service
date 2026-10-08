@@ -53,7 +53,7 @@ import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
 import WorkerOwners from "../core/WorkerOwners.ts";
 import RuntimeWorker from "../core/RuntimeWorker.ts";
-import type { ApplicationOwnerIdentity, ApplicationWorkerCreation, ClientInteractionRoute } from "@plurnk/plurnk-contracts";
+import type { ApplicationOwnerIdentity, ApplicationWorkerCreation } from "@plurnk/plurnk-contracts";
 import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
@@ -477,10 +477,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             workspaceId,
         );
         return this.#engine.pendingClientInteractions(checkedWorkspaceId);
-    }
-
-    registerClientInteractionRoute(route: ClientInteractionRoute): () => void {
-        return this.#engine.registerClientInteractionRoute(route);
     }
 
     async resolveClientInteraction(

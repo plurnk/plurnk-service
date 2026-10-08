@@ -97,28 +97,6 @@ test("{§client-interaction-routing}: unsupported requests fail without parking;
     assert.deepEqual(await interactions.list(workspaceId), []);
 });
 
-test("{§client-interaction-routing}: protocol routing supersedes owner delivery and refuses ambiguous recipients", async () => {
-    await using db = await openMigrated();
-    const workspaceId = await insertWorkspace(db, "protocol-recipient");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "go");
-    await ownWorker(db, workspaceId, workerId, ["question"]);
-    const interactions = new ClientInteractions(db);
-    const context = { workspaceId, workerId, loopId, toolName: "question" };
-    const remove = interactions.registerRoute(async () => "a2a://remote/task");
-    assert.equal(await interactions.recipient(context), "a2a://remote/task");
-    const removeSame = interactions.registerRoute(async () => "a2a://remote/task");
-    assert.equal(await interactions.recipient(context), "a2a://remote/task", "two exposures of the same recipient do not create another authority");
-    removeSame();
-    const removeDuplicate = interactions.registerRoute(async () => "a2a://other/task");
-    await assert.rejects(interactions.recipient(context), /Multiple interaction routes/);
-    removeDuplicate();
-    remove();
-    assert.equal(await interactions.recipient(context), TEST_OWNER);
-    interactions.registerRoute(async () => "");
-    await assert.rejects(interactions.recipient(context), /empty recipient/);
-});
-
 test("{§worker-ownership}: parking requires either an obligation or an interactive owner", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "park-waker");

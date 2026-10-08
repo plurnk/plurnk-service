@@ -9,8 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
-
-process.env.PLURNK_EXECS_QUESTION = "1";
+import { waitForDb } from "./_rpc.ts";
 
 const completed = (content: string) => makeMockResponse([
     "````KILL", content, "````",
@@ -90,35 +89,43 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
     return { request, send, daemon, workspace, endpoint, restart };
 };
 
+// The first inference waits for release, so a Task created first can finish after a later one.
+class GatedMock extends Mock {
+    readonly started = Promise.withResolvers<void>();
+    readonly #released = Promise.withResolvers<void>();
+    #held = false;
+
+    release(): void {
+        this.#released.resolve();
+    }
+
+    override async generate(...args: Parameters<Mock["generate"]>) {
+        if (!this.#held) {
+            this.#held = true;
+            this.started.resolve();
+            await this.#released.promise;
+        }
+        return super.generate(...args);
+    }
+}
+
 test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker creation order", async (t) => {
-    const { request, send } = await fixture(t, [
-        makeMockResponse([
-            "````question",
-            JSON.stringify({
-                message: "Which branch?",
-                requestedSchema: {
-                    type: "object",
-                    properties: { branch: { type: "string" } },
-                    required: ["branch"],
-                    additionalProperties: false,
-                },
-            }),
-            "````",
-            "````WAIT",
-            "Await the branch selection.",
-            "````",
-        ].join("\n")),
+    const provider = new GatedMock({ contextWindow: 100_000, responses: [
         completed("second Task"),
         completed("first Task"),
         completed("third Task"),
-    ]);
-    const first = await send("Choose a branch.");
-    assert.equal(first.status.state, "TASK_STATE_INPUT_REQUIRED");
+    ] });
+    const { request, send } = await fixture(t, provider);
+    const { task: first } = await request("/message:send", {
+        message: { messageId: randomUUID(), role: "ROLE_USER", parts: [{ text: "Complete the first Task.", mediaType: "text/plain" }] },
+        configuration: { returnImmediately: true },
+    });
+    await provider.started.promise;
     const second = await send("Complete the second Task.", { contextId: first.contextId });
-    const resumed = await send("main", { taskId: first.id });
-    assert.equal(resumed.id, first.id);
+    provider.release();
+    const resumed = await waitForDb(() => request(`/tasks/${first.id}`),
+        (task) => task.status.state === "TASK_STATE_COMPLETED");
     assert.equal(resumed.contextId, first.contextId);
-    assert.equal(resumed.status.state, "TASK_STATE_COMPLETED");
     const path = `/tasks?contextId=${encodeURIComponent(first.contextId)}&pageSize=1`;
     const page = await request(path);
     assert.deepEqual(page.tasks.map((task: { id: string }) => task.id), [first.id]);
@@ -335,48 +342,6 @@ test("{§a2a-inbound-exposure}: a Part without content fails before Worker admis
         assert.equal(problem.error.details[0].reason, "CONTENT_TYPE_NOT_SUPPORTED");
     }
     assert.deepEqual(await daemon.listWorkers(workspace.workspaceId, { origin: "model" }), []);
-});
-
-test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a valid answer", async (t) => {
-    const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse([
-            "````question",
-            JSON.stringify({ message: "Choose 42.", requestedSchema: { type: "integer", const: 42 } }),
-            "````",
-            "````WAIT", "Await input.", "````",
-        ].join("\n")),
-        completed("received 42"),
-    ] });
-    const { request, send, daemon, workspace } = await fixture(t, provider);
-    const task = await send("Ask for the number.");
-    assert.equal(task.status.state, "TASK_STATE_INPUT_REQUIRED");
-    const problem = await request("/message:send", {
-        message: { messageId: "rejected-answer", role: "ROLE_USER", taskId: task.id, parts: [{ text: "not an integer" }] },
-    }, 400);
-    assert.equal(problem.error.details[0].reason, "INVALID_PARAMS");
-    const waiting = await request(`/tasks/${task.id}`);
-    assert.equal(waiting.status.state, "TASK_STATE_INPUT_REQUIRED");
-    const resumed = await request("/message:send", {
-        message: { messageId: "accepted-answer", role: "ROLE_USER", taskId: task.id, parts: [{ data: 42, metadata: { choice: "number" } }], metadata: { caller: "test" } },
-        configuration: { acceptedOutputModes: ["text/plain"] },
-    });
-    assert.equal(resumed.task.id, task.id);
-    assert.equal(resumed.task.status.state, "TASK_STATE_COMPLETED");
-    assert.equal(resumed.task.artifacts[0].parts[0].text, "received 42");
-    const history = (await request(`/tasks/${task.id}`)).history;
-    assert.equal(history.length, 2);
-    assert.equal(history[1].messageId, "accepted-answer");
-    assert.deepEqual(history[1].parts, [{ data: 42, metadata: { choice: "number" } }]);
-    assert.deepEqual(history[1].metadata, { caller: "test" });
-    const last = await request(`/tasks/${task.id}?historyLength=1`);
-    assert.deepEqual(last.history, [history[1]], "historyLength selects the actual last admitted message");
-    const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
-    assert.match(packet, /Accepted output media types:.*text\/plain/u);
-    const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.id } });
-    assert.ok(worker);
-    const answer = (await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: worker.id }))
-        .filter(row => row.direction === "inbound").at(-1);
-    assert.deepEqual(answer?.envelope?.configuration, { acceptedOutputModes: ["text/plain"] });
 });
 
 test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the same live Task without repeating inference", async (t) => {

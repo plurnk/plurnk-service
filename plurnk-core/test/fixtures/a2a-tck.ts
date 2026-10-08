@@ -6,8 +6,6 @@ import { A2A_EXPOSURE, A2A_MOUNTS, a2aCard, bindListener, serviceUrl } from "../
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 
-process.env.PLURNK_EXECS_QUESTION = "1";
-
 const WORKSPACE = "a2a-tck";
 
 class TckProvider extends Mock {
@@ -46,7 +44,6 @@ class TckProvider extends Mock {
     override async generate(args: Parameters<Provider["generate"]>[0]) {
         const count = this.#calls.get(args.workerId) ?? 0;
         this.#calls.set(args.workerId, count + 1);
-        const source = JSON.stringify(args.messages);
         const scenario = await this.#scenario(args.workerId);
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
@@ -55,21 +52,12 @@ class TckProvider extends Mock {
                 : ["````SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "````", "````SEND", "````"].join("\n");
             return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         }
-        const awaitingInput = scenario.startsWith("tck-input-required") && (count === 0
-            || (source.includes("TCK history message") && !source.includes("TCK complete after history")));
-        const content = awaitingInput
-            ? [
-                "````question",
-                JSON.stringify({ message: "Please provide the requested input.", requestedSchema: { type: "string" } }),
-                "````",
-                "````WAIT",
-                "Await the caller's input.",
-                "````",
-            ].join("\n")
-            : [
-                "````SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
-                "````SEND", "````",
-            ].join("\n");
+        // {§a2a-worker-ownership} The exposure never asks its caller for input, so an input-required
+        // scenario is answered like any other message.
+        const content = [
+            "````SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
+            "````SEND", "````",
+        ].join("\n");
         return new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(content)] }).generate(args);
     }
 }

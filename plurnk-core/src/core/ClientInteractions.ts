@@ -3,7 +3,6 @@ import {
     type ClientInteractionProjection,
     type ClientInteractionRequest,
     type ClientInteractionResolution,
-    type ClientInteractionRoute,
     type ApplicationOwnerIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -69,7 +68,6 @@ export default class ClientInteractions {
     readonly #db: Db;
     readonly #pending = new Map<number, InteractionWaiter>();
     readonly #listeners: Array<(event: ClientInteractionPendingEvent) => void> = [];
-    readonly #routes = new Set<ClientInteractionRoute>();
 
     constructor(db: Db) {
         this.#db = db;
@@ -79,25 +77,11 @@ export default class ClientInteractions {
         this.#listeners.push(listener);
     }
 
-    registerRoute(route: ClientInteractionRoute): () => void {
-        this.#routes.add(route);
-        return () => { this.#routes.delete(route); };
-    }
-
-    // {§client-interaction-routing} Protocol clarification and local approval have distinct recipients.
-    async recipient(context: Parameters<ClientInteractionRoute>[0]): Promise<string | null> {
-        const matches = [...new Set((await Promise.all([...this.#routes].map((route) => route(context))))
-            .filter((address): address is string => address !== null))];
-        if (matches.length > 1) throw new Error(`Multiple interaction routes claim worker ${context.workerId}.`);
-        if (matches.length === 1) {
-            const address = matches[0]!;
-            if (address.length === 0) throw new Error("An interaction route returned an empty recipient.");
-            return address;
-        }
-        // {§client-interaction-routing} Clarification needs a person: the owner receives it only while
-        // it is interactive and implements the requested tool.
-        const owner = await WorkerOwners.read(this.#db, context.workerId);
-        return owner.interactive && owner.tools.includes(context.toolName) ? owner.address : null;
+    // {§client-interaction-routing} Clarification needs a person: the worker's owner receives it only
+    // while it is interactive and implements the requested tool.
+    async recipient(workerId: number, toolName: string): Promise<string | null> {
+        const owner = await WorkerOwners.read(this.#db, workerId);
+        return owner.interactive && owner.tools.includes(toolName) ? owner.address : null;
     }
 
     async request(
@@ -107,7 +91,7 @@ export default class ClientInteractions {
     ): Promise<ClientInteractionResolution> {
         const exact = structuredClone(Validator.assertClientInteractionRequest(request));
         signal?.throwIfAborted();
-        const recipient = await this.recipient({ ...ids, toolName: exact.toolName });
+        const recipient = await this.recipient(ids.workerId, exact.toolName);
         if (recipient === null) throw unsupportedInteraction(ids.loopId, exact.toolName);
         const inserted = await this.#db.client_interaction_insert.get<{ id: number }>({
             workspace_id: ids.workspaceId,

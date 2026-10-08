@@ -79,7 +79,6 @@ const mockSeam = () => {
             assert.ok(registered, "the adapter registers the owner before claiming a worker");
             return registered;
         },
-        registerClientInteractionRoute: () => () => {},
         ensureRuntimeWorker: async () => 1,
         configurationNotices: () => [],
         // {§http-host} — the test host (../test/host.ts) mounts the module's routes on its own socket.

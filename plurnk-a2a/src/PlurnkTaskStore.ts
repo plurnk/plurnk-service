@@ -17,7 +17,6 @@ import {
     type ApplicationLoopProjection,
     type ApplicationPort,
     type ApplicationWorkerProjection,
-    type ClientInteractionProjection,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
@@ -105,7 +104,7 @@ const terminalArtifact = (result: OperationResult | null, content: string | unde
 
 // The port functions the store calls.
 export type TaskStorePort = Pick<ApplicationPort,
-    "cancelWorker" | "listWorkerLoops" | "listWorkers" | "pendingClientInteractions" | "readMessages" | "readWorker">;
+    "cancelWorker" | "listWorkerLoops" | "listWorkers" | "readMessages" | "readWorker">;
 
 export default class PlurnkTaskStore implements TaskStore {
     readonly #port: TaskStorePort;
@@ -114,10 +113,6 @@ export default class PlurnkTaskStore implements TaskStore {
     constructor(port: TaskStorePort, workspace: WorkspaceBinding) {
         this.#port = port;
         this.#workspace = workspace;
-    }
-
-    static replyAddress(binding: PlurnkTaskBinding): string {
-        return `a2a://anonymous/contexts/${binding.context.name}/tasks/${binding.task.name}`;
     }
 
     async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
@@ -273,22 +268,15 @@ export default class PlurnkTaskStore implements TaskStore {
                 metadata: {},
             };
         }
-        const [rows, interactions] = await Promise.all([
-            this.#port.readMessages({
-                workspaceId,
-                workerId: task.id,
-            }),
-            this.#port.pendingClientInteractions(workspaceId),
-        ]);
-        const pending = interactions.find((candidate) =>
-            candidate.workerId === task.id && candidate.loopId === loop.id
-            && candidate.recipient === PlurnkTaskStore.replyAddress(binding)) ?? null;
-        const state = PlurnkTaskStore.#state(loop.status, pending);
+        const rows = await this.#port.readMessages({
+            workspaceId,
+            workerId: task.id,
+        });
+        const state = PlurnkTaskStore.#state(loop.status);
         const statusMessage = PlurnkTaskStore.#statusMessage(
             context.name,
             task.name,
             loop.terminalResult,
-            pending,
         );
         const history = rows
             .filter((row) => row.direction === "inbound"
@@ -332,8 +320,7 @@ export default class PlurnkTaskStore implements TaskStore {
         }
     }
 
-    static #state(status: number, pending: ClientInteractionProjection | null): TaskState {
-        if (pending !== null) return TaskState.TASK_STATE_INPUT_REQUIRED;
+    static #state(status: number): TaskState {
         if (status === 100) return TaskState.TASK_STATE_SUBMITTED;
         if (status === 102 || status === 202) return TaskState.TASK_STATE_WORKING;
         if (status === 200) return TaskState.TASK_STATE_COMPLETED;
@@ -345,17 +332,7 @@ export default class PlurnkTaskStore implements TaskStore {
         contextId: string,
         taskId: string,
         result: OperationResult | null,
-        pending: ClientInteractionProjection | null,
     ): Message | undefined {
-        if (pending !== null) {
-            return message(
-                `plurnk-interaction-${pending.interactionId}`,
-                contextId,
-                taskId,
-                Role.ROLE_AGENT,
-                pending.request.message ?? `${pending.request.toolName} requires input.`,
-            );
-        }
         const detail = result?.problem?.detail;
         return nonempty(detail)
             ? message(`plurnk-terminal-${taskId}`, contextId, taskId, Role.ROLE_AGENT, detail)

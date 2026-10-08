@@ -293,16 +293,13 @@ the current observer, or whichever ancestor has a live Run. A decision is accept
 only for that owner and the still-pending gate. Disconnect does not substitute a
 different owner. Capability admission remains independent and precedes approval.
 
-§client-interaction-routing Clarification is not approval. A protocol adapter may
-register a reply route for the conversations it serves (for example, A2A
-`input-required`). Matching routes must identify one distinct recipient; conflicting
-recipients are an error. With no matching route, the worker's owner receives it if it is
-interactive and its declared tools support the request. No
-matching recipient means an immediate unsupported-interaction result, not a park.
-The pending interaction records that recipient and accepts a response only from
-it, through the ordinary response-schema validation and settlement path. Protocol
-routes confer no proposal authority and never alter worker ownership. Adapter
-lifetime, not an individual connection's presence, governs a protocol route.
+§client-interaction-routing Clarification goes to the worker's owner, like approval, but
+only a person can answer it. The owner receives it while it is interactive and declares
+the requested tool; otherwise the request fails at once as unsupported and never parks.
+The pending interaction records that recipient and accepts a response only from it,
+through the ordinary response-schema validation and settlement path. A protocol caller,
+such as an A2A client, converses by message and is never a recipient
+({§a2a-worker-ownership}).
 
 ### Worker boundaries
 
@@ -4597,7 +4594,6 @@ Core's behavior behind them.
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools })` | Declares or replaces an owner's supported client-tool names in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
-| Clarification routing | `registerClientInteractionRoute(route) -> unsubscribe` | Registers an adapter-lifetime reply route under {§client-interaction-routing}; it confers no approval authority. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
@@ -6109,7 +6105,7 @@ the sentence.
 | Completion deferred. Conclude with KILL alone. | a concluding KILL that carries other operations ({§kill-conclusion}) |
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
 | Context window overflow: the packet cannot fit the model's window even as receipts. | the wall ({§context-wall}) |
-| No recipient implements the requested interaction. | No protocol recipient or worker owner advertises the required client tool ({§client-interaction-routing}). |
+| No recipient implements the requested interaction. | The worker's owner is not interactive or does not declare the required client tool ({§client-interaction-routing}). |
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | The stream was cancelled by KILL. | a stream terminal after KILL |

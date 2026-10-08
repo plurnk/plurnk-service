@@ -29,8 +29,7 @@ export interface A2aExposureOptions {
 }
 
 // {§a2a-inbound-exposure} The start seam: the port functions the exposure calls, and the listener it mounts on.
-export type ExposurePort = WorkspacePort & TaskStorePort & ExecutorPort & HttpHost
-    & Pick<import("@plurnk/plurnk-contracts").ApplicationPort, "registerClientInteractionRoute">;
+export type ExposurePort = WorkspacePort & TaskStorePort & ExecutorPort & HttpHost;
 
 export interface A2aExposureRegistration extends DaemonModule<ModuleSetupSeam, ExposurePort> {
     readonly mounts: readonly string[];
@@ -58,7 +57,6 @@ export default class Exposure {
     readonly #card: AgentCard;
     readonly #endpointPath: string;
     readonly #endpointUrl: string | undefined;
-    readonly #unregisterInteractionRoute: () => void;
     #closed = false;
 
     private constructor(application: ExposurePort, options: A2aExposureOptions) {
@@ -121,12 +119,6 @@ export default class Exposure {
         if (token.length === 0) app.use(this.#endpointPath, endpoint);
         else app.use(this.#endpointPath, Exposure.#bearerGate(token), endpoint);
         this.#app = app;
-        this.#unregisterInteractionRoute = application.registerClientInteractionRoute(async ({ workspaceId, workerId, loopId }) => {
-            if (await workspace.existingId() !== workspaceId) return null;
-            const worker = await application.readWorker({ workspaceId, identity: { id: workerId } });
-            const binding = worker === null ? null : await store.binding(worker.name);
-            return binding?.loop?.id === loopId ? PlurnkTaskStore.replyAddress(binding) : null;
-        });
     }
 
     static init(options: A2aExposureOptions): A2aExposureRegistration {
@@ -169,9 +161,5 @@ export default class Exposure {
 
     stop(): void {
         this.#closed = true;
-    }
-
-    close(): void {
-        this.#unregisterInteractionRoute();
     }
 }

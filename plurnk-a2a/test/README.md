@@ -40,8 +40,9 @@ Tasks, where the SDK uses `application/a2a+json` and 400. Compare each assertion
 before changing the adapter. Do not patch
 the checker or count these assertions as passing.
 
-The deterministic provider supplies text completion, text/file Artifacts, and
-input-required interactions, including repeated history exchanges. File output
+The deterministic provider supplies text completion and text/file Artifacts. The
+exposure never asks its caller for input ({§a2a-worker-ownership}), so the checker's
+input-required requirements fail by design rather than by defect. File output
 uses ordinary scratch EDIT and SEND attachment acquisition through Core, not
 fabricated SDK Artifacts. Core's scratch text is `text/markdown`; the checker
 requests `text/plain`. That mismatch remains visible instead of relabeling

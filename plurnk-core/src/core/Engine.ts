@@ -592,10 +592,6 @@ export default class Engine {
         return this.#interactions.list(workspaceId);
     }
 
-    registerClientInteractionRoute(route: import("@plurnk/plurnk-contracts").ClientInteractionRoute): () => void {
-        return this.#interactions.registerRoute(route);
-    }
-
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,

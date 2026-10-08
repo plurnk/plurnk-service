@@ -90,14 +90,14 @@ test("{§a2a-worker-ownership}: an absent configured parent cannot create an own
     } finally { await daemon.stop(); await http.close(); await db.close(); }
 });
 
-test("{§a2a-worker-ownership}: the parent owner approves operations while clarification returns to the A2A caller", async () => {
+test("{§a2a-worker-ownership}: the parent owner approves operations and answers questions; the caller only converses", async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````sh\necho approved-by-owner\n````"),
         makeMockResponse("````question\n" + JSON.stringify({ message: "Which branch?", requestedSchema: {
             type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false,
         } }) + "\n````"),
-        makeMockResponse("````KILL\nThe caller selected main.\n````"),
+        makeMockResponse("````KILL\nThe owner selected main.\n````"),
     ] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
@@ -112,32 +112,31 @@ test("{§a2a-worker-ownership}: the parent owner approves operations while clari
     try {
         await daemon.start();
         const client = await connectHttpJsonAgent(serviceUrl(daemon));
-        const running = runTask(client, "Run the command, ask me which branch, and report the answer.");
+        const running = runTask(client, "Run the command, ask which branch, and report the answer.");
         const [proposal] = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
         assert.equal(proposal!.owner, owner.address);
         await daemon.resolveProposal(proposal!.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });
-        const interrupted = await running;
-        const context = await daemon.readWorker({ workspaceId, identity: { name: interrupted.task.contextId } });
-        const task = await daemon.readWorker({ workspaceId, identity: { name: interrupted.task.id } });
+        const [interaction] = await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (items) => items.length === 1);
+        assert.equal(interaction!.recipient, owner.address, "the Task's question goes to its owner, never the A2A caller");
+        await assert.rejects(daemon.resolveClientInteraction(interaction!.interactionId,
+            { status: "resolved", payload: { branch: "wrong-authority" } }, { workspaceId, address: "a2a://anonymous/caller" }),
+        (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/recipient-mismatch"));
+        await daemon.resolveClientInteraction(interaction!.interactionId,
+            { status: "resolved", payload: { branch: "main" } }, { workspaceId, address: owner.address });
+        const answered = await running;
+        const states = answered.events.flatMap((event) => {
+            const update = payload(event);
+            return update.$case === "statusUpdate" ? [update.value.status?.state] : [];
+        });
+        assert.ok(!states.includes(TaskState.TASK_STATE_INPUT_REQUIRED), "an A2A Task never asks its caller for structured input");
+        assert.equal(states.at(-1), TaskState.TASK_STATE_COMPLETED);
+        const context = await daemon.readWorker({ workspaceId, identity: { name: answered.task.contextId } });
+        const task = await daemon.readWorker({ workspaceId, identity: { name: answered.task.id } });
         assert.equal(context?.parentWorkerId, parent.workerId);
         assert.equal(task?.parentWorkerId, context?.id);
         assert.equal(context?.owner, owner.address);
         assert.equal(task?.owner, owner.address);
-        const input = payload(interrupted.events.at(-1)!);
-        assert.equal(input.$case, "statusUpdate");
-        if (input.$case === "statusUpdate") assert.equal(input.value.status?.state, TaskState.TASK_STATE_INPUT_REQUIRED);
-        const [interaction] = await daemon.pendingClientInteractions(workspaceId);
-        assert.equal(interaction?.recipient, `a2a://anonymous/contexts/${interrupted.task.contextId}/tasks/${interrupted.task.id}`);
-        await assert.rejects(daemon.resolveClientInteraction(interaction!.interactionId,
-            { status: "resolved", payload: { branch: "wrong-authority" } }, { workspaceId, address: owner.address }),
-        (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/recipient-mismatch"));
-        const continued = await runTask(client, "main", { contextId: interrupted.task.contextId, taskId: interrupted.task.id });
-        const terminal = payload(continued.events.at(-1)!);
-        assert.equal(terminal.$case, "statusUpdate");
-        if (terminal.$case === "statusUpdate") assert.equal(terminal.value.status?.state, TaskState.TASK_STATE_COMPLETED);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-        assert.equal((await daemon.readWorker({ workspaceId, identity: { id: task!.id } }))?.owner, owner.address,
-            "remote clarification does not transfer approval ownership");
     } finally { await daemon.stop(); await http.close(); await db.close(); }
 });
 
@@ -203,22 +202,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         responses: [
             makeMockResponse("````KILL\nfirst composed result\n````"),
             makeMockResponse("````KILL\nsecond composed result\n````"),
-            makeMockResponse([
-                "````question",
-                "" + (JSON.stringify({
-                    message: "Which branch should I use?",
-                    requestedSchema: {
-                        type: "object",
-                        properties: { branch: { type: "string" } },
-                        required: ["branch"],
-                        additionalProperties: false,
-                    },
-                })) + "",
-                "````",
-                "````WAIT",
-                "Waiting for the branch selection.",
-                "````",
-            ].join("\n")),
+            makeMockResponse("````KILL\nWhich branch should I use?\n````"),
             makeMockResponse("````KILL\nselected branch\n````"),
             makeMockResponse("````KILL\nuppercase context result\n````"),
             makeMockResponse("````KILL\nlowercase context result\n````"),
@@ -321,43 +305,27 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         assert.equal(stored.status?.state, TaskState.TASK_STATE_COMPLETED);
         assert.equal(stored.artifacts[0]?.parts[0]?.content?.value, "second composed result");
 
-        const interrupted = await runTask(client, "choose a branch", {
+        // {§a2a-worker-ownership} A question to the caller is a reply: its Task completes with it,
+        // and the answer arrives as a later Task in the same Context.
+        const asked = await runTask(client, "choose a branch", {
             contextId: first.task.contextId,
         });
-        assert.deepEqual(interrupted.events.map((event) => payload(event).$case), [
-            "task",
-            "statusUpdate",
-            "statusUpdate",
-        ]);
-        const inputRequired = payload(interrupted.events.at(-1)!);
-        assert.equal(inputRequired.$case, "statusUpdate");
-        if (inputRequired.$case === "statusUpdate") {
-            assert.equal(inputRequired.value.status?.state, TaskState.TASK_STATE_INPUT_REQUIRED);
-            assert.equal(
-                inputRequired.value.status?.message?.parts[0]?.content?.value,
-                "Which branch should I use?",
-            );
-        }
+        const askedTask = await client.getTask({ tenant: "", id: asked.task.id, historyLength: 1 });
+        assert.equal(askedTask.status?.state, TaskState.TASK_STATE_COMPLETED);
+        assert.equal(askedTask.artifacts[0]?.parts[0]?.content?.value, "Which branch should I use?");
 
-        const continued = await runTask(client, "main", {
-            contextId: interrupted.task.contextId,
-            taskId: interrupted.task.id,
+        const answered = await runTask(client, "main", {
+            contextId: asked.task.contextId,
         });
-        assert.equal(continued.task.id, interrupted.task.id);
-        assert.equal(continued.task.contextId, interrupted.task.contextId);
-        assert.deepEqual(continued.events.map((event) => payload(event).$case), [
-            "task",
-            "statusUpdate",
-            "artifactUpdate",
-            "statusUpdate",
-        ]);
-        const continuedTask = await client.getTask({
+        assert.notEqual(answered.task.id, asked.task.id);
+        assert.equal(answered.task.contextId, asked.task.contextId);
+        const answeredTask = await client.getTask({
             tenant: "",
-            id: interrupted.task.id,
+            id: answered.task.id,
             historyLength: 10,
         });
-        assert.equal(continuedTask.status?.state, TaskState.TASK_STATE_COMPLETED);
-        assert.equal(continuedTask.artifacts[0]?.parts[0]?.content?.value, "selected branch");
+        assert.equal(answeredTask.status?.state, TaskState.TASK_STATE_COMPLETED);
+        assert.equal(answeredTask.artifacts[0]?.parts[0]?.content?.value, "selected branch");
 
         const listed = await client.listTasks({
             tenant: "",
@@ -369,7 +337,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             statusTimestampAfter: undefined,
             includeArtifacts: false,
         });
-        assert.equal(listed.totalSize, 3);
+        assert.equal(listed.totalSize, 4);
         assert.equal(listed.tasks.length, 2);
         assert.notEqual(listed.nextPageToken, "");
         assert.ok(listed.tasks.every((task) => task.contextId === first.task.contextId));
@@ -388,7 +356,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         });
         assert.deepEqual(
             tasks.map(({ name }) => name).toSorted(),
-            [first.task.id, second.task.id, interrupted.task.id].toSorted(),
+            [first.task.id, second.task.id, asked.task.id, answered.task.id].toSorted(),
             "each A2A Task is one child Worker under its Context",
         );
         const secondWorker = tasks.find(({ name }) => name === second.task.id)!;
@@ -401,6 +369,17 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             secondLog.some((row) => row.source === `worker://${first.task.id}` && row.op === "READ"
                 && JSON.stringify(row.rx).includes("first composed result")),
             "the later Task inherits the first Task's pending terminal evidence through the Context snapshot",
+        );
+        const answeredWorker = tasks.find(({ name }) => name === answered.task.id)!;
+        const answeredLog = await daemon.readLog({
+            workspaceId: workspace.workspaceId,
+            workerId: answeredWorker.id,
+            limit: 1_000,
+        });
+        assert.ok(
+            answeredLog.some((row) => row.source === `worker://${asked.task.id}` && row.op === "READ"
+                && JSON.stringify(row.rx).includes("Which branch should I use?")),
+            "the follow-up Task sees the question it answers through the Context snapshot",
         );
         const namedContexts: number[] = [];
         for (const [contextId, result] of [

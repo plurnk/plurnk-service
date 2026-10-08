@@ -71,9 +71,11 @@ With service approval set to `review`, that client receives their approval reque
 even while idle. Client YOLO defaults to on; the command above selects manual review.
 Disconnecting a review-capable owner leaves approvals waiting for reconnection.
 
-In either setup, task clarification returns to the A2A caller through
-`input-required`; it is not an operation approval. A missing named parent refuses
-new Context creation, and changing the setting does not reparent existing Contexts.
+In either setup the A2A caller converses by message: the model asks it in a reply,
+and its answer arrives as a later Task in the same Context. A Task never enters
+`input-required`. An interaction the Task raises, such as a `question`, goes to the
+worker's owner and needs an interactive one. A missing named parent refuses new Context
+creation, and changing the setting does not reparent existing Contexts.
 See [A2A ownership](./SPEC.md)
 ({§a2a-worker-ownership}), [core ownership](../plurnk-core/SPEC.md)
 ({§worker-ownership}), and [the configuration reference](./.env.defaults).

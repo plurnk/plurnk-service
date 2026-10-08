@@ -96,20 +96,18 @@ Context only after this adapter created it in the running exposure or one such
 Task proves its durable ownership after restart. Ordinary model Workers in the
 same workspace are neither discoverable nor adoptable through A2A. Foreign
 Task identities that cannot name a local Worker are unknown Tasks, not Core
-validation failures. Unsupported Message content and invalid answers to a
-pending interaction are rejected before execution with the standard protocol
-error; they do not create Workers or alter an existing Task. Other executor
-failures follow the SDK's failed-Task behavior.
+validation failures. Unsupported Message content is rejected before execution
+with the standard protocol error; it does not create Workers or alter an existing
+Task. Other executor failures follow the SDK's failed-Task behavior.
 
 | Durable Plurnk state | A2A projection |
 |---|---|
 | Loop `100` | `SUBMITTED` |
 | Loop `102` or `202` | `WORKING`; parking alone does not claim user input is required |
-| Pending client interaction on the Task Loop | `INPUT_REQUIRED` |
 | Successful terminal result | `COMPLETED`; the current Loop's last non-empty delivered reply from message history is the `result` Artifact. The lifecycle result is not a message body. |
 | External cancellation / Loop `499` | `CANCELED` |
 | Other terminal failure | `FAILED` with the exact Problem detail as its status Message |
-| Inbox messages carrying the adapter's causal source | Complete admitted user Message history from {§message-envelope-evidence}, including accepted interaction answers; independent of log curation and publication. |
+| Inbox messages carrying the adapter's causal source | Complete admitted user Message history from {§message-envelope-evidence}, independent of log curation and publication. |
 | Delivered replies answering this Task's A2A messages | Only replies whose `answers` name this Task's A2A messages contribute text or attachments. Native or other-protocol replies do not become A2A Artifacts. |
 | Such replies' attachment receipts | Distinct standard Artifacts holding send-time bytes from {§send-resource-attachments}, independent of later source changes. |
 
@@ -149,10 +147,12 @@ attached to the runtime actor during migration; their task identities and eviden
 | Boundary | Recipient |
 |---|---|
 | Operation approval | Worker owner; ordinary server disposition applies ({§worker-owner-resolution}). |
-| Task clarification | A2A caller through `INPUT_REQUIRED` and the same Task's continuation. The adapter registers this durable task route through {§client-interaction-routing}. |
-| Incoming message or clarification answer | Task input only; never approval authority or an ownership transfer. |
+| Clarification and other client interactions | Worker owner, which must be interactive ({§client-interaction-routing}). |
+| Incoming message | Task input only; never approval authority or an ownership transfer. |
 
-Only interactions addressed to this Task's A2A reply route project as `INPUT_REQUIRED`.
+The caller is a conversation partner, not a client: A2A carries no answer schema, so the
+model asks it in a reply and its answer arrives as a later message, normally a later Task
+in the same Context. A Task never enters `INPUT_REQUIRED`.
 `PLURNK_A2A_PROPOSALS` is retired; the adapter defines no parallel approval policy.
 
 §a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
