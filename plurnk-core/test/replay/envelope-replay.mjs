@@ -1,13 +1,15 @@
 // The envelope experiment (#893, the wire shape): a recorded rollout's packets re-sent with identical
-// bytes in two envelopes — today's (system + one user message holding the whole packet) and the
+// bytes in historical envelopes — "today" (system + one user message holding the whole packet) and the
 // turn envelope (system, one assistant message per turn's log rows, then the status clump as the
 // user message). Measured per sample: reasoning tokens, whether the reasoning restarts from the
 // task, and whether the first operation matches what the model actually did at that turn.
 // A paid experiment, never a test.
-// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <worker> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,turns,ops,turnsline,lastturn,lastturn-causal,syslog]
+// #1043: previous-assistant tests only the complete prior program between log and footer.
+// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <worker> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,previous-assistant,turns,ops,turnsline,lastturn,lastturn-causal,syslog]
 import { readFileSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadActiveProvider } from "@plurnk/plurnk-providers";
+import { previousAssistantEnvelope } from "./envelope-variants.mjs";
 
 const [alias, digestDir, worker, turnsArg, samplesArg, concurrencyArg, out, armsArg = "today,turns,ops"] = process.argv.slice(2);
 if (!alias || !digestDir || !worker || !turnsArg || !out) throw new Error("usage: envelope-replay.mjs <alias> <digest-dir> <worker> <turns> <samples> <concurrency> <out.jsonl> [arms]");
@@ -133,6 +135,8 @@ const worker_ = async () => {
         const RECEIPT_LINE = "\n\nYOU MUST NOT emit log receipts. Valid Plurnk OPs are translated into log receipts.\n";
         const messages = cell.arm === "today"
             ? [{ role: "system", content: system }, { role: "user", content: user }]
+            : cell.arm === "previous-assistant"
+                ? previousAssistantEnvelope([{ role: "system", content: system }, { role: "user", content: user }])
             : cell.arm === "turnsline"
                 ? [{ role: "system", content: system + RECEIPT_LINE }, ...turnEnvelope(user)]
                 : cell.arm === "lastturn"

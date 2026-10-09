@@ -288,7 +288,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
         assert.match(markdown, /T2: producer=_plurnk kind=operation status=200/);
-        assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ emission: \(none admitted\)/);
+        assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ request: system → user \([^\n]+\.request\.md\)\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

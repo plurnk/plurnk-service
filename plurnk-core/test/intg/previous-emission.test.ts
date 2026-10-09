@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -11,9 +11,9 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 
 const op = PlurnkParser.frame;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
-const tail = (text: string): string => text.split("\n\n## Previous Emission\n\n")[1] ?? "";
+const previousProgram = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 
-test("{§previous-emission}: the complete previous program closes one user message; sources, receipts and prefix remain intact", async (t) => {
+test("{§previous-emission}: the complete previous program separates log and footer; sources, receipts and prefix remain intact", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "previous-whole");
@@ -30,12 +30,17 @@ test("{§previous-emission}: the complete previous program closes one user messa
     const result = await engine.runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 3);
-    for (const request of provider.received) assert.deepEqual(request.map(({ role }) => role), ["system", "user"]);
+    assert.deepEqual(provider.received[0]!.map(({ role }) => role), ["system", "user"]);
+    for (const request of provider.received.slice(1)) {
+        assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+        assert.match(chatMessageText(request[1]!), /^## Log\n/u);
+        assert.match(chatMessageText(request[3]!), /^## Worker\n/u);
+    }
     const [opening, afterEdit, afterRead] = provider.received.map((request) => chatMessageText(request[1]!));
     assert.doesNotMatch(opening!, /## Previous Emission/u);
-    assert.equal(tail(afterEdit!), first, "all content operations and every body, including nested fences, survive unchanged");
-    assert.equal(tail(afterRead!), second, "the tail is replaced, not accumulated");
-    assert.doesNotMatch(tail(afterEdit!), /Reasoning memory/u, "reasoning operations stay in their channel");
+    assert.equal(previousProgram(provider.received[1]!), first, "all content operations and every body, including nested fences, survive unchanged");
+    assert.equal(previousProgram(provider.received[2]!), second, "the program is replaced, not accumulated");
+    assert.doesNotMatch(previousProgram(provider.received[1]!), /Reasoning memory/u, "reasoning operations stay in their channel");
     const record = afterEdit!.split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     assert.ok(record);
     assert.ok(afterRead!.includes(record), "aging the replay never changes the old record's bytes or weight");
@@ -47,7 +52,7 @@ test("{§previous-emission}: the complete previous program closes one user messa
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, workerId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
     assert.equal(PacketWire.sectionContent(packet, "previous-emission"), op("KILL", "Finished."), "reply bodies are not special-cased away");
-    assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")), "the tail is charged exactly once");
+    assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, workerId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, workerId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
     assert.equal(PacketWire.sectionContent(next, "previous-emission"), "", "a new loop does not inherit a prior loop's tail");
@@ -69,8 +74,8 @@ for (const [name, content, reasoning, expected] of [
         const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(content, reasoning), say(op("KILL", "Done."))] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(provider.received.length, 3);
-        assert.equal(tail(chatMessageText(provider.received[1]![1]!)), first);
-        assert.equal(tail(chatMessageText(provider.received[2]![1]!)), expected);
+        assert.equal(previousProgram(provider.received[1]!), first);
+        assert.equal(previousProgram(provider.received[2]!), expected);
     });
 }
 
@@ -99,11 +104,12 @@ test("{§previous-emission} {§context-own-rows-fit}: the wall omits the entire 
     }({ contextWindow: 200000, responses: [say(small), say(op("KILL", "Done."))] });
     await engine.runTurn({ workspaceId, workerId, loopId, provider: limited, messages: [] });
     const request = limited.received[0]!;
-    assert.equal(tail(chatMessageText(request[1]!)), "");
+    assert.equal(previousProgram(request), "");
+    assert.deepEqual(request.map(({ role }) => role), ["system", "user"], "whole-program omission rejoins log and footer");
     assert.match(chatMessageText(request[1]!), /Durable observation 1500\./u, "all result lines survive the optional replay");
     assert.doesNotMatch(chatMessageText(request[1]!), /"size":|\[REDACTED\]|preview|omitted/u, "no result suppression or replay placeholder");
     await engine.runTurn({ workspaceId, workerId, loopId, provider: limited, messages: [] });
-    assert.equal(tail(chatMessageText(limited.received[1]![1]!)), small, "the next turn can replay a smaller program");
+    assert.equal(previousProgram(limited.received[1]!), small, "the next turn can replay a smaller program");
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
     assert.equal(source?.content, first, "omission never rewrites the source");
 });
@@ -132,5 +138,5 @@ test("{§previous-emission}: an exhausted rejected turn does not revive the prec
     assert.equal(rejected.emissionExhausted, true);
     await engine.runTurn(args);
     assert.equal(provider.received.length, 3);
-    assert.equal(tail(chatMessageText(provider.received[2]![1]!)), "");
+    assert.equal(previousProgram(provider.received[2]!), "");
 });

@@ -99,8 +99,8 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
     assert.ok(Number(read.tokens) < state.tokens, "a visible READ cannot outweigh its complete packet");
     assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
-    // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
-    assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
+    // {§packet-wire-envelope}: each complete message is measured once.
+    assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
     assert.equal(state.budget, Math.floor(provider.inputCapacity! / factor));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
@@ -255,8 +255,8 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {
         assert.equal(budgetOf(packet).tokens, packet.weight);
-        // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
-    assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
+        // {§packet-wire-envelope}: each complete message is measured once.
+        assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
         assert.equal(budgetOf(packet).budget, budgetOf(before).budget);
     }
     assert.deepEqual(await f.db.tok_log_weight.get({ id: readId }), raw, "curation cannot alter the immutable READ result or its write-time weight");

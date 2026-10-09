@@ -3,7 +3,7 @@
 
 export interface PacketSectionDraft {
     readonly name: string;
-    readonly slot: "system" | "user";
+    readonly slot: "system" | "user" | "assistant";
     readonly header: string | null;
     readonly content: string;
 }

@@ -23,6 +23,18 @@ test("StoredPacket: request-only round trip preserves the exact measured request
     assert.deepEqual(StoredPacket.parse(JSON.stringify({ ...bag, sections })), packet);
 });
 
+test("{§packet-stored-shape}: assistant-role sections retain their bodies and position", () => {
+    const packet: RequestPacket = { ...request(), sections: [
+        request().sections[0]!,
+        { name: "previous-emission", slot: "assistant", header: null, content: "```EDIT (a)\nwhole body\n```", weight: 15 },
+        { name: "worker", slot: "user", header: "Worker", content: '{"turn":3}', weight: 9 },
+    ] };
+    assert.deepEqual(StoredPacket.parse(JSON.stringify(packet)), packet);
+    const sections = JSON.parse(StoredPacket.sections(packet));
+    assert.deepEqual(sections.map(({ slot }: { slot: string }) => slot), ["user", "assistant", "user"]);
+    assert.deepEqual(sections[1].items, [packet.sections[1]!.content]);
+});
+
 test("StoredPacket: a section's items must join back to its content", () => {
     const packet = request();
     const broken = { ...packet, sections: packet.sections.map((section) => ({ ...section, items: ["not", "the content"] })) };

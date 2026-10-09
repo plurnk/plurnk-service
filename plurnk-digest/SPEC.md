@@ -45,10 +45,11 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
-| `<stem>.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
+| `<stem>.request.md` | The turn stored a provider request | Ordered text-message envelope from `EvidencePacket.messages()`, with numbered role headings and full, literal bodies; not a transport capture. The turn waterfall names this file and its role sequence. |
+| `<stem>.assistant.md` | The turn has an `ops` source | This turn's output: exact `turn_sources.content`, independent of log rows; not assistant history in the request |
 | `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
-| `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
-| `<stem>.wire.json` | The turn stored a provider request | Reconstructed text-message envelope with its worker's emission rows placed ({§packet-wire-envelope}), not dispatched HTTP bytes. Excludes native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected |
+| `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Role-filtered text projections for extraction; not the complete request or its message boundaries. Native parts are not Markdown. |
+| `<stem>.wire.json` | The turn stored a provider request | The same ordered text-message envelope as `.request.md` ({§packet-wire-envelope}), in JSON; not dispatched HTTP bytes. Both exclude native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected. |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |

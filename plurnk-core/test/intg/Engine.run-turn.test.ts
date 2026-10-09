@@ -328,9 +328,9 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         assert.ok(row !== undefined);
         const packet = JSON.parse(row.packet) as { weight: number; sections: StoredPacketSection[] };
         assert.equal(PacketWire.sectionContent(packet, "previous-emission"), "", "the first request never contains its own forthcoming response");
-        const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
-            + contentWeight(PacketWire.renderSlot(packet.sections, "user"));
-        assert.equal(packet.weight, requestWeight, "all request text is charged once within its slot");
+        const requestWeight = PacketWire.packetToWireMessages(packet)
+            .reduce((sum, { content }) => sum + contentWeight(content), 0);
+        assert.equal(packet.weight, requestWeight, "all request text is charged once within its message");
     } finally { await db.close(); }
 });
 

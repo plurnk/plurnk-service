@@ -41,20 +41,26 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     for (const [index, stem] of stems.entries()) {
         assert.deepEqual(await wire(stem), provider.received[index]!.map((message) => ({ role: message.role, content: chatMessageText(message) })),
             `${stem}.wire.json is the request the provider received`);
+        const request = await readFile(join(digestDir, `${stem}.request.md`), "utf8");
+        const blocks = [...request.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
+        assert.deepEqual(blocks.map((match) => match[2]), provider.received[index]!.map(chatMessageText), "the readable request shows each exact input message in order");
+        assert.deepEqual([...request.matchAll(/^## \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index]!.map(({ role }) => role));
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
-    assert.deepEqual(roles(draft), ["system", "user"]);
-    assert.equal(draft[1]!.content.split("\n\n## Previous Emission\n\n")[1], "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
-        "the exact complete canonical program closes the user message");
+    assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
+    assert.equal(draft[2]!.content, "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
+        "the exact complete canonical program is the one assistant input");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user"]);
-    assert.equal(last[1]!.content.split("\n\n## Previous Emission\n\n")[1], "```KILL (log:///1/2/2/emission)\n```\n\n```NOTE\nRetired the first emission.\n```");
+    assert.deepEqual(roles(last), ["system", "user", "assistant", "user"]);
+    assert.equal(last[2]!.content, "```KILL (log:///1/2/2/emission)\n```\n\n```NOTE\nRetired the first emission.\n```");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
+    assert.match(report, /request: system → user \(analyst-1-2\.request\.md\)/u);
+    assert.match(report, /request: system → user → assistant → user \(analyst-1-3\.request\.md\)/u);
     assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);
     assert.match(report, /← \[_plurnk\] emission \(killed\)\[200\] ops:\/\/analyst\/1\/2$/mu);
     assert.match(report, /← \[_plurnk\] emission\[200\] ops:\/\/analyst\/1\/3$/mu);

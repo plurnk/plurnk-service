@@ -30,8 +30,8 @@ export default class PacketSections {
         if (typeof section.name !== "string" || section.name.length === 0) {
             throw new TypeError(`${subject}.name must be a non-empty string`);
         }
-        if (section.slot !== "system" && section.slot !== "user") {
-            throw new TypeError(`${subject}.slot must be system or user`);
+        if (section.slot !== "system" && section.slot !== "user" && section.slot !== "assistant") {
+            throw new TypeError(`${subject}.slot must be system, user or assistant`);
         }
         if (section.header !== null && typeof section.header !== "string") {
             throw new TypeError(`${subject}.header must be a string or null`);

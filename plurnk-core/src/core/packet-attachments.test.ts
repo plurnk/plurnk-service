@@ -156,7 +156,7 @@ test("{§packet-attachment-parts} a stored packet admits attachments of a known 
     assert.deepEqual(JSON.parse(StoredPacket.stringify(withAttachment)), bag, "stored request evidence retains its native deliveries");
 });
 
-test("{§packet-wire-envelope} {§emission-row} native attachments precede the complete previous emission at the user tail", async () => {
+test("{§packet-wire-envelope} {§emission-row} native attachments stay with the log before the assistant program and footer", async () => {
     const emissionRow = {
         coordinate: "1/1/1", op: "READ", origin: "_plurnk", producer: "model", status: 200,
         attrs: { kind: "emission" },
@@ -171,20 +171,21 @@ test("{§packet-wire-envelope} {§emission-row} native attachments precede the c
         sections: [
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
+            { name: "previous-emission", slot: "assistant", header: null, content: emissionRow.rx.content, weight: 20 },
             { name: "worker", slot: "user", header: "Worker", content: '{"loop":1,"turn":2}', weight: 8 },
-            { name: "previous-emission", slot: "user", header: "Previous Emission", content: emissionRow.rx.content, weight: 20 },
         ],
     };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const wire = await PacketWire.wireMessages(packet, async () => bytes, () => true);
-    assert.deepEqual(wire.map(({ role }) => role), ["system", "user"]);
-    const closing = wire.at(-1)!.content;
+    assert.deepEqual(wire.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    const closing = wire[1]!.content;
     assert.ok(Array.isArray(closing));
-    assert.deepEqual(closing[0], { type: "text", text: `## Log\n\n${rendered.records.join("\n\n")}\n\n## Worker\n{"loop":1,"turn":2}` }, "the READ result, then the status clump");
+    assert.deepEqual(closing[0], { type: "text", text: `## Log\n\n${rendered.records.join("\n\n")}` }, "native inputs belong with their READ observations");
     assert.deepEqual(closing[1], { type: "text", text: PacketWire.attachmentCaption(rendered.attachments[0]!) });
     assert.deepEqual(closing[2], { type: "file", data: bytes, mediaType: "image/png" });
-    assert.deepEqual(closing[3], { type: "text", text: `\n\n## Previous Emission\n\n${emissionRow.rx.content}` });
-    assert.equal(closing.length, 4, "nothing follows the previous emission");
+    assert.equal(closing.length, 3);
+    assert.deepEqual(wire[2], { role: "assistant", content: emissionRow.rx.content });
+    assert.deepEqual(wire[3], { role: "user", content: '## Worker\n{"loop":1,"turn":2}' });
     const textOnly = await PacketWire.wireMessages(packet, async () => { throw new Error("no media should be read"); }, () => false);
     assert.deepEqual(textOnly, PacketWire.packetToWireMessages(packet), "unsupported media do not change the text envelope");
 });
@@ -198,4 +199,28 @@ test("{§packet-attachment-parts} native-only observations are weighed and recla
     assert.equal(rendered.attachments.length, 1);
     const folded = PacketWire.renderLogWithAccounting([readRow({ ...row, initial_folded: [[1, -1]] })], weigh);
     assert.equal(folded.attachments.length, 1, "a bodyless native row folds nothing: the picture is the row");
+});
+
+test("{§packet-wire-envelope} historical native requests retain their recorded previous-program role and tail", async () => {
+    const rendered = PacketWire.renderLogWithAccounting([readRow()], weigh);
+    const program = "```READ (logo.png)\n```";
+    const packet: RequestPacket = {
+        weight: 1000, attributions: [], attachments: [...rendered.attachments],
+        sections: [
+            { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
+            { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
+            { name: "worker", slot: "user", header: "Worker", content: '{"turn":2}', weight: 8 },
+            { name: "previous-emission", slot: "user", header: "Previous Emission", content: program, weight: 20 },
+        ],
+    };
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    assert.deepEqual(await PacketWire.wireMessages(packet, async () => bytes), [
+        { role: "system", content: "sys" },
+        { role: "user", content: [
+            { type: "text", text: `## Log\n\n${rendered.content}\n\n## Worker\n{"turn":2}` },
+            { type: "text", text: PacketWire.attachmentCaption(rendered.attachments[0]!) },
+            { type: "file", data: bytes, mediaType: "image/png" },
+            { type: "text", text: `\n\n## Previous Emission\n\n${program}` },
+        ] },
+    ], "reading evidence must not retrofit current message roles or move retained native evidence");
 });

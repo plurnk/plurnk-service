@@ -14,7 +14,7 @@ const say = (content: string, reasoning: string | null = null) => ({ assistant: 
 const frame = PlurnkParser.frame;
 const surveyRead = frame("READ (reasoning://analyst/1/1)", null);
 const userText = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
-const previous = (request: readonly ChatMessage[]): string => userText(request).split("\n\n## Previous Emission\n\n")[1] ?? "";
+const previous = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 
 const run = async (name: string, prompt: string, responses: ReturnType<typeof say>[], maxTurns: number) => {
     const db = await openMigrated();

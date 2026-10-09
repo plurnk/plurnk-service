@@ -6,6 +6,7 @@ import {
     aggregateProviderAccounting,
     type ProviderAccounting,
     type ProviderRequestAccounting,
+    type ChatMessage,
 } from "@plurnk/plurnk-providers";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import type {
@@ -468,8 +469,10 @@ export default class DigestRender {
             : null;
         // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
         const wireLine = content.length === 0 && packet?.assistant != null ? DigestRender.wireLine(packet.assistantRaw) : null;
+        const requestLine = packet === null ? null
+            : `  ↳ request: ${packet.messages().map(({ role }) => role).join(" → ")} (${stem}.request.md)`;
         const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
-        return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
+        return [head, ...(requestLine ? [requestLine] : []), ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
     }
 
     // {§provider-wire-emission} — public so the line can be witnessed on its own.
@@ -753,6 +756,18 @@ export default class DigestRender {
         return lines.join("\n");
     }
 
+    // {§share-packet-names}: render the owned envelope, never infer roles from filenames or body text.
+    static request(messages: ReadonlyArray<ChatMessage & { content: string }>): string {
+        const blocks = messages.map(({ role, content }, index) => {
+            const length = [...content.matchAll(/`+/gu)].reduce((max, match) => Math.max(max, match[0].length + 1), 3);
+            const fence = "`".repeat(length);
+            return `## ${index + 1}. ${role}\n\n${fence}text\n${content}\n${fence}`;
+        });
+        return ["# Request", messages.map(({ role }) => role).join(" → "),
+            "Stored text-message envelope, not a transport capture. Native payloads and provider transformations are not shown.",
+            ...blocks, ""].join("\n\n");
+    }
+
     // Per-turn forensic files. turnOps is the source authority; PacketWire
     // reproduces provider request slots, and assistantRaw preserves provider bytes.
     // {§share-packet-names}: the stem each turn's packet files carry is its log coordinate, worker, loop and
@@ -833,7 +848,11 @@ export default class DigestRender {
                 // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
                 // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
                 try {
-                    files.push([`${padded}.wire.json`, JSON.stringify(packet.messages(), null, 2)]);
+                    const messages = packet.messages();
+                    files.push(
+                        [`${padded}.wire.json`, JSON.stringify(messages, null, 2)],
+                        [`${padded}.request.md`, DigestRender.request(messages)],
+                    );
                 } catch (cause) {
                     files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
                 }

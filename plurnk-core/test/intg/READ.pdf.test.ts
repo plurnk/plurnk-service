@@ -55,18 +55,19 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const requests = await runLoop(["pdf"]);
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
-    const user = second.at(-1);
-    assert.ok(user !== undefined && Array.isArray(user.content), `the closing message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
+    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    const user = second[1];
+    assert.ok(user !== undefined && Array.isArray(user.content), `the log message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
     assert.match(userText(second), /"tokensAttachment":1500/, "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const caption = user.content[user.content.indexOf(file) - 1];
     assert.ok(caption?.type === "text" && /^log:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
-    assert.deepEqual(user.content.map(({ type }) => type), ["text", "text", "file", "text"], "packet text, caption, native document, then previous emission");
-    assert.deepEqual(user.content.at(-1), {
-        type: "text",
-        text: `\n\n## Previous Emission\n\n${PlurnkParser.frame("READ (contract.pdf)", null)}\n\n${PlurnkParser.frame("NOTE", "looking")}`,
-    }, "the complete previous content program follows the native input");
+    assert.deepEqual(user.content.map(({ type }) => type), ["text", "text", "file"], "log text, caption and native document remain together");
+    assert.deepEqual(second[2], {
+        role: "assistant",
+        content: `${PlurnkParser.frame("READ (contract.pdf)", null)}\n\n${PlurnkParser.frame("NOTE", "looking")}`,
+    }, "the complete previous content program follows the native input as assistant history");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

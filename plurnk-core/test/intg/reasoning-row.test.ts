@@ -44,7 +44,7 @@ const story = async (contextWindow: number, reasoning: string) => {
     return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1]!, engine, ids: { workspaceId, workerId, loopId } };
 };
 
-test("{§reasoning-row} {§previous-emission}: reasoning precedes its emission record while the complete content program closes the user packet", async () => {
+test("{§reasoning-row} {§previous-emission}: reasoning stays in the log and only the complete content program is assistant-authored", async () => {
     await withKnob("1", async () => {
         const reasoning = "I think the fix is in the resolver.\nBecause the converter raises before the view is named.";
         const { db, first, second, rows, program, log, envelope } = await story(100_000, reasoning);
@@ -61,11 +61,12 @@ test("{§reasoning-row} {§previous-emission}: reasoning precedes its emission r
             assert.ok(heading >= 0, `the packet names the row by its own leaf and address: ${log.slice(0, 400)}`);
             assert.ok(emissionHeading > heading, "the reasoning row precedes the emission row in the packet");
             assert.match(log, /converter raises before the view is named/u, "the reasoning is in the packet, not a page of it");
-            assert.deepEqual(envelope.map(({ role }) => role), ["system", "user"]);
-            const [before, previous] = chatMessageText(envelope[1]!).split("\n\n## Previous Emission\n\n");
+            assert.deepEqual(envelope.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+            const before = chatMessageText(envelope[1]!);
+            const previous = chatMessageText(envelope[2]!);
             assert.match(before!, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before!, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, program, "the final section retains the whole content program without copying reasoning");
+            assert.equal(previous, program, "the assistant message retains the whole content program without copying reasoning");
         } finally { await db.close(); }
     });
 });

@@ -21,7 +21,7 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import ScopeFormat from "../content/scope-format.ts";
 import PatternEdits from "../content/pattern-edits.ts";
-import { Results as SchemeResults, type MatchEvidence } from "@plurnk/plurnk-schemes";
+import { Results as SchemeResults, type MatchEvidence, type PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -121,6 +121,7 @@ interface NoticeView {
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
+interface MessageSections { role: PacketSectionDraft["slot"]; sections: SectionView[] }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
@@ -204,7 +205,7 @@ export default class PacketWire {
     // string. Sections render in list order; empties are omitted (no empty headers on the wire);
     // JSON follows its H2 directly; other content has one blank line (null header is bare),
     // trailing newlines stripped, joined with a blank line.
-    static renderSlot(sections: SectionView[], slot: "system" | "user"): string {
+    static renderSlot(sections: SectionView[], slot: PacketSectionDraft["slot"]): string {
         return sections
             .filter((s) => s.slot === slot)
             .map((s) => PacketWire.renderSection(s))
@@ -307,12 +308,26 @@ export default class PacketWire {
         return typeof s?.content === "string" ? s.content : "";
     }
 
-    // {§packet-wire-envelope}: the stored slots are the text envelope, without assistant replay.
+    // {§packet-wire-envelope}: retained roles and order, not today's section names, define a
+    // historical request. An absent previous program leaves adjacent user sections together.
+    static #messageSections(packet: Packet): MessageSections[] {
+        const sections = packet.sections ?? [];
+        const messages: MessageSections[] = [{ role: "system", sections: sections.filter(({ slot }) => slot === "system") }];
+        for (const section of sections) {
+            if (section.slot === "system" || PacketWire.renderSection(section).length === 0) continue;
+            if (section.slot !== "user" && section.slot !== "assistant") throw new TypeError("packet section has an invalid message role");
+            const last = messages.at(-1)!;
+            if (last.role === section.slot) last.sections.push(section);
+            else messages.push({ role: section.slot, sections: [section] });
+        }
+        if (messages.length === 1) messages.push({ role: "user", sections: [] });
+        return messages;
+    }
+
     static packetToWireMessages(packet: Packet): Array<ChatMessage & { content: string }> {
-        return [
-            { role: "system", content: PacketWire.renderSlot(packet.sections ?? [], "system") },
-            { role: "user", content: PacketWire.renderSlot(packet.sections ?? [], "user") },
-        ];
+        return PacketWire.#messageSections(packet).map(({ role, sections }) => ({
+            role, content: PacketWire.renderSlot(sections, role),
+        }));
     }
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
@@ -1128,9 +1143,14 @@ export default class PacketWire {
         const messages: ChatMessage[] = PacketWire.packetToWireMessages(packet);
         const attachments = (packet.attachments ?? []).filter(({ kind }) => accepts(kind));
         if (attachments.length === 0) return messages;
-        // {§previous-emission}: native inputs precede the final section, never follow it.
-        const preceding = packet.sections.filter(({ name }) => name !== "previous-emission");
-        const previous = packet.sections.find(({ name }) => name === "previous-emission");
+        const groups = PacketWire.#messageSections(packet);
+        const logIndex = groups.findIndex(({ role, sections }) => role === "user" && sections.some(({ name }) => name === "log"));
+        const index = logIndex < 0 ? groups.findIndex(({ role }) => role === "user") : logIndex;
+        if (index < 0) throw new Error("native packet attachments require a user message");
+        // {§packet-attachment-parts}: native evidence belongs to the log's message. A retained
+        // packet may also hold its previous program in that message; keep its recorded tail.
+        const preceding = groups[index]!.sections.filter(({ name }) => name !== "previous-emission");
+        const previous = groups[index]!.sections.find(({ name }) => name === "previous-emission");
         const parts: ChatContentPart[] = [{ type: "text", text: PacketWire.renderSlot(preceding, "user") }];
         for (const attachment of attachments) {
             const bytes = await bytesOf(attachment);
@@ -1139,7 +1159,7 @@ export default class PacketWire {
         }
         const tail = previous === undefined ? "" : PacketWire.renderSection(previous);
         if (tail.length > 0) parts.push({ type: "text", text: `\n\n${tail}` });
-        return [messages[0]!, { role: "user", content: parts }];
+        return messages.map((message, at) => at === index ? { role: "user", content: parts } : message);
     }
 
     // {§packet-attachment-parts} — the part's identity: a native part on the user turn otherwise reads as

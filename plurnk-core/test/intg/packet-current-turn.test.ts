@@ -1,4 +1,4 @@
-// {§packet-current-turn} — the Worker block, first after the log, names the coordinate the
+// {§packet-current-turn} — the Worker block opens the footer and names the coordinate the
 // packet's response becomes, so the model's own `reasoning://alice/L/T` and `ops://alice/L/T` need no guessing.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -12,7 +12,7 @@ import { packetSection } from "./_packet.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 import { userText } from "./_mock.ts";
 
-test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, placed right after the log", async () => {
+test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, after log and continuity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-current-turn");
@@ -26,8 +26,8 @@ test("{§packet-current-turn}: the Worker block carries the loop and turn sequen
         assert.deepEqual([block.loop, block.turn], [3, 7]);
         assert.match(block.path, /^worker:\/\//);
         const names = packet.sections.map(({ name }) => name);
-        assert.equal(names[names.indexOf("log") + 1], "worker", "first in the status clump, never before the log");
-        assert.deepEqual(names, ["definition", "system-policy", "log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap", "previous-emission"], "the packet's sections, in order");
+        assert.equal(names[names.indexOf("previous-emission") + 1], "worker", "first in the status clump, after log and continuity");
+        assert.deepEqual(names, ["definition", "system-policy", "log", "previous-emission", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "the packet's sections, in order");
     } finally { await db.close(); }
 });
 

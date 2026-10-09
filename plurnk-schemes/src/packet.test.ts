@@ -28,15 +28,15 @@ test("PacketSectionTransformer: async transform + removal supported", async () =
 });
 
 test("PacketSections: exact valid drafts preserve their list", () => {
-    const drafts = [section({ name: "definition" }), section({ name: "prompt", slot: "user" })];
+    const drafts = [section({ name: "definition" }), section({ name: "prompt", slot: "user" }), section({ name: "authored", slot: "assistant" })];
     assert.equal(PacketSections.assertDrafts(drafts), drafts);
 });
 
 test("PacketSections: malformed draft lists fail with their exact location", () => {
     assert.throws(() => PacketSections.assertDrafts(null), /packet section drafts must be an array/);
     assert.throws(
-        () => PacketSections.assertDrafts([{ name: "x", slot: "assistant", header: null, content: "" }]),
-        /packet section drafts\[0\]\.slot must be system or user/,
+        () => PacketSections.assertDrafts([{ name: "x", slot: "tool", header: null, content: "" }]),
+        /packet section drafts\[0\]\.slot must be system, user or assistant/,
     );
     assert.throws(
         () => PacketSections.assertDrafts([{ name: "x", slot: "user", header: null }]),

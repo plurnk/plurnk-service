@@ -14,7 +14,9 @@ import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
+import StoredPacket from "../../src/core/StoredPacket.ts";
+import { insertPacketTurn, MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
 // release freezes what it shipped, the previous release is the path an existing database takes, and
@@ -47,6 +49,68 @@ const shape = (path: string): string => {
 
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
+
+test("{§db-migrations} {§packet-wire-envelope}: role evolution retains historical envelopes and every section item", async () => {
+    const path = await released(RELEASED);
+    const previous = "```EDIT (a.md)\nOriginal complete body.\n```";
+    const sections = [
+        { name: "definition", slot: "system" as const, header: null, weight: 2, content: "system" },
+        { name: "log", slot: "user" as const, header: "Log", weight: 10, content: "first record\n\nsecond record", items: ["first record", "second record"] },
+        { name: "worker", slot: "user" as const, header: "Worker", weight: 4, content: '{"turn":3}' },
+        { name: "previous-emission", slot: "user" as const, header: "Previous Emission", weight: 20, content: previous },
+    ];
+    const packet = { weight: 36, sections, attributions: [] };
+    let original: string;
+    let originalItems: unknown[];
+    const before = new DatabaseSync(path);
+    before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'packetUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'writer');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
+                VALUES (1, 1, 1, 'retain evidence', '{"proposals":"reject"}', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
+                VALUES (1, 1, 1, 'model', 'inference', 102, NULL);
+        `);
+        before.prepare("INSERT INTO turn_inference_evidence (turn_id, packet, sections) VALUES (1, ?, ?)")
+            .run(StoredPacket.stringify(packet), StoredPacket.sections(packet));
+        original = before.prepare("SELECT packet FROM turn_packets WHERE id = 1").get()!.packet as string;
+        originalItems = before.prepare("SELECT * FROM turn_section_items ORDER BY turn_id, section, position").all();
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: 1 }))!.packet, original!, "old packet bytes and section order survive the upgrade");
+        const historical = StoredPacket.parse(original!)!;
+        assert.deepEqual(PacketWire.packetToWireMessages(historical), [
+            { role: "system", content: "system" },
+            { role: "user", content: `## Log\n\nfirst record\n\nsecond record\n\n## Worker\n{"turn":3}\n\n## Previous Emission\n\n${previous}` },
+        ], "old authorship is not rewritten by the new projector");
+        const current = { ...packet, sections: [sections[0]!, sections[1]!,
+            { ...sections[3]!, slot: "assistant" as const, header: null }, sections[2]!] };
+        const id = await insertPacketTurn(db, 1, 2, current, 200);
+        const stored = StoredPacket.parse((await db.test_get_packet.get<{ packet: string }>({ id }))!.packet)!;
+        assert.deepEqual(PacketWire.packetToWireMessages(stored), [
+            { role: "system", content: "system" },
+            { role: "user", content: "## Log\n\nfirst record\n\nsecond record" },
+            { role: "assistant", content: previous },
+            { role: "user", content: '## Worker\n{"turn":3}' },
+        ]);
+    } finally { await db.close(); }
+    const after = new DatabaseSync(path);
+    try {
+        after.exec("PRAGMA foreign_keys = ON");
+        assert.deepEqual(after.prepare("SELECT * FROM turn_section_items WHERE turn_id = 1 ORDER BY turn_id, section, position").all(), originalItems!);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        assert.equal(after.prepare("SELECT count(*) AS n FROM packet_items").get()!.n, 5, "new message roles reuse every content-addressed item");
+        assert.throws(() => after.exec("UPDATE turn_sections SET slot = 'tool' WHERE turn_id = 2"), /CHECK constraint failed/);
+        assert.throws(() => after.exec("UPDATE turn_sections SET slot = NULL WHERE turn_id = 2"), /NOT NULL constraint failed/);
+        after.exec("DELETE FROM turns WHERE id = 2");
+        assert.equal(after.prepare("SELECT count(*) AS n FROM turn_section_items WHERE turn_id = 2").get()!.n, 0, "section and item membership still cascade with the turn");
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
 
 test("{§a2a-worker-ownership}: migration reparents A2A contexts without adopting ordinary roots or losing task evidence", async () => {
     const path = await released(RELEASED);

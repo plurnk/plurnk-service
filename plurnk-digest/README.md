@@ -3,6 +3,11 @@
 Forensic Markdown, JSON, packet artifacts, SQLite snapshots and model interviews. Rendering is
 independent of the daemon; the service supplies its canonical evidence reader.
 
+Read `<worker>-<loop>-<turn>.request.md` for the model's ordered text input, with each message's
+role and complete body. The digest names its role sequence beside each turn. `.assistant.md`
+is that turn's **output**, not its input history; `.system.md` and `.user.md` are role-filtered
+extracts. `.wire.json` contains the same ordered text input, not an HTTP capture.
+
 ```ts
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";

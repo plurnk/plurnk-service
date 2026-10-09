@@ -27,8 +27,9 @@ Where things are, for an agent that has to act before it has read everything:
   `npm run candidate` at the root (see README).
 - **Every live or demo worker leaves evidence** under `$PLURNK_BENCHMARKS/<label>-XXXXXX/` (`~/benchmarks` when unset):
   `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
-  errors, cost), `<worker>-<loop>-<turn>.assistant.md` (the model's raw emissions),
-  `.user.md` and `.system.md` (what it saw), `.wire.json` (the messages the provider received),
+  errors, cost), `<worker>-<loop>-<turn>.request.md` (ordered input messages with roles),
+  `.assistant.md` (that turn's raw output), and `.wire.json` (the same ordered text input as JSON,
+  not an HTTP capture). `.user.md` and `.system.md` are role-filtered extracts, not the full request,
   named by log coordinate. Read the digest;
   the database is evidence, never the diagnostic interface. For any other database,
   `npm run share -- <plurnk.db> [folder]` writes the same folder

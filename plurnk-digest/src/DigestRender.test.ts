@@ -2,6 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DigestRender from "./DigestRender.ts";
 
+test("{§share-packet-names}: readable requests retain roles, order and complete nested bodies", () => {
+    const messages = [
+        { role: "system" as const, content: "Rules\n" },
+        { role: "user" as const, content: "## Log\n\n1: ## 3. assistant" },
+        { role: "assistant" as const, content: "````EDIT (a.md)\n```NOTE\nLiteral nested example\n```\n````" },
+        { role: "user" as const, content: "## Worker\n{}" },
+    ];
+    const rendered = DigestRender.request(messages);
+    assert.match(rendered, /system → user → assistant → user/u);
+    const blocks = [...rendered.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
+    assert.deepEqual(blocks.map((match) => match[2]), messages.map(({ content }) => content));
+    assert.deepEqual([...rendered.matchAll(/^## \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), messages.map(({ role }) => role));
+    assert.match(rendered, /not a transport capture/u);
+});
+
 // {§exec-env-scoped} — a spawn's row carries the environment it received; the waterfall names every
 // value's provenance so a run's commands can never be misread as having run under the host's shell.
 // {§provider-wire-emission} — an empty emission is read from what the wire carried.

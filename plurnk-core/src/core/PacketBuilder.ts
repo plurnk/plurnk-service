@@ -318,11 +318,14 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§previous-emission}: core owns this section, so it is never a transformable draft; every
-        // packet stores it last, empty when no previous program qualifies.
+        // {§previous-emission}: core owns the frozen program and inserts it after transforms,
+        // between the log and footer. Empty content produces no assistant message.
         if (drafts.some(({ name }) => name === "previous-emission")) throw new Error("previous-emission is a core-owned packet section");
         const previous = omitPreviousEmission ? undefined : await this.#db.engine_previous_emission.get<{ content: string }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
-        drafts = [...drafts, { name: "previous-emission", slot: "user", header: "Previous Emission", content: previous?.content ?? "" }];
+        const logIndex = drafts.findIndex(({ name }) => name === "log");
+        const userIndex = drafts.findIndex(({ slot }) => slot === "user");
+        const insertion = logIndex >= 0 ? logIndex + 1 : userIndex >= 0 ? userIndex : drafts.length;
+        drafts = drafts.toSpliced(insertion, 0, { name: "previous-emission", slot: "assistant", header: null, content: previous?.content ?? "" });
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const transformedLog = drafts.find((section) => section.name === "log");
@@ -332,9 +335,8 @@ export default class PacketBuilder {
             const content = BudgetReadout.resolve(budgetSection.content, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
-                return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
-                    + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
-                    + attachmentsWeight;
+                return PacketWire.packetToWireMessages({ sections: candidateDrafts })
+                    .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight);
             }, curationTargets);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
@@ -346,8 +348,9 @@ export default class PacketBuilder {
             weight: weighContent(PacketWire.renderSection(section)),
             items: section.name === "log" && section.content === renderedLog.content ? renderedLog.records : [section.content],
         }));
-        const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        // {§packet-attachment-parts}: text, including the previous program, is already in the slots.
+        const renderWeight = PacketWire.packetToWireMessages({ sections })
+            .reduce((sum, { content }) => sum + weighContent(content), 0);
+        // {§packet-attachment-parts}: text, including the previous program, is already in the messages.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#allowances.set(packet.sections, { budget: curationBudget, factor });
         // {§context-own-rows-fit} — a transformed log is one item the wall cannot take row by row.

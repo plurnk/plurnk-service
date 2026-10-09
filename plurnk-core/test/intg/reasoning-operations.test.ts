@@ -118,7 +118,7 @@ for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
             const rows = logEntries(packet).filter((row) => String(row.logPath).startsWith("log:///1/2/"));
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
-            assert.deepEqual(provider.received[1]!.map(({ role }) => role), ["system", "user"]);
+            assert.deepEqual(provider.received[1]!.map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"]);
             assert.equal(packetSection(packet, "previous-emission"), content, "only the content program is replayed; reasoning OPs stay in their own channel");
             if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply retains its own log row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
@@ -219,8 +219,9 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         assert.equal(second.status, 200);
         assert.equal(requests.length, 2);
         assert.match(JSON.stringify(requests[1]!.messages), /Established fact/u);
-        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [],
-            "reasoning OPs and content NOTE do not become assistant-history programs");
+        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [{ role: "assistant", content }],
+            "only the complete content program reaches assistant history; reasoning OPs stay in their receipts");
     } finally {
         release.resolve();
         try { await running; } finally {
