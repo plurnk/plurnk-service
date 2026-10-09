@@ -1,4 +1,5 @@
 -- MIGRATE: 16 selection_statements
+-- Released in 2.0.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§target-group} {§db-migrations}: normalize derived ASTs, never original emissions or reasoning.
 -- Historical group members determined dispatch; duplicated top-level fields did not override them.
 UPDATE turns

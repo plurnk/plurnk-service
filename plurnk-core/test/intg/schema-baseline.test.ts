@@ -20,9 +20,10 @@ import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 // release freezes what it shipped, the previous release is the path an existing database takes, and
 // an earlier release keeps its longer path through the versions after it.
 type Release = { readonly version: number; readonly release: string; readonly shape: string };
-const RELEASED: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
-const PREVIOUS: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
-const EARLIER: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
+const RELEASED: Release = Object.freeze({ version: 17, release: "2.0.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
+const PREVIOUS: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
+const EARLIER: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
+const EARLIEST: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
 
 const released = async (release: Release): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
@@ -146,7 +147,7 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
 });
 
 test("{§db-migrations} {§skills-module}: the skills family state moves to its owner exactly", async (t) => {
-    const path = await released(RELEASED);
+    const path = await released(PREVIOUS);
     const home = await mkdtemp(join(tmpdir(), "plurnk-skills-upgrade-"));
     const hostPaths = new HostPaths({ home, env: {} });
     const definition = { name: "review", source: "https://unreachable.invalid/skills.git", commit: "b".repeat(40) };
@@ -173,7 +174,7 @@ test("{§db-migrations} {§skills-module}: the skills family state moves to its 
 });
 
 test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
-    const path = await released(RELEASED);
+    const path = await released(PREVIOUS);
     const operation = (heading: string): ReadStatement | KillStatement => {
         const item = PlurnkParser.parseStatements(PlurnkParser.frame(heading, null)).items.find((item) => item.kind === "statement");
         assert.ok(item?.kind === "statement" && (item.statement.op === "READ" || item.statement.op === "KILL"));
@@ -298,14 +299,14 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-for (const release of [RELEASED, PREVIOUS, EARLIER]) {
+for (const release of [RELEASED, PREVIOUS, EARLIER, EARLIEST]) {
     test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async () => {
         assert.equal(shape(await released(release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
     });
 }
 
 test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier requests and does not fabricate captures", async () => {
-    const path = await released(PREVIOUS);
+    const path = await released(EARLIER);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -333,7 +334,7 @@ test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier r
 });
 
 test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
-    const path = await released(PREVIOUS);
+    const path = await released(EARLIER);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -364,7 +365,7 @@ test("{§graph-relations}: upgrading preserves source content and invalidates im
 });
 
 test("{§db-migrations} {§child-orientation}: upgrading retains streams without inventing their missing output timestamps", async () => {
-    const path = await released(PREVIOUS);
+    const path = await released(EARLIER);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -404,8 +405,8 @@ test("{§db-migrations} {§child-orientation}: upgrading retains streams without
     } finally { await reopened.close(); }
 });
 
-test(`{§db-migrations} {§emission-row}: a ${PREVIOUS.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
-    const path = await released(PREVIOUS);
+test(`{§db-migrations} {§emission-row}: a ${EARLIER.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
+    const path = await released(EARLIER);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -437,8 +438,8 @@ test(`{§db-migrations} {§emission-row}: a ${PREVIOUS.release} database migrate
     } finally { after.close(); }
 });
 
-test(`{§db-migrations}: a ${EARLIER.release} database migrates in place and keeps its rows`, async () => {
-    const path = await released(EARLIER);
+test(`{§db-migrations}: a ${EARLIEST.release} database migrates in place and keeps its rows`, async () => {
+    const path = await released(EARLIEST);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
