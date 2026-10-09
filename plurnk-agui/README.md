@@ -61,3 +61,7 @@ terminal/editor behavior.
 ```sh
 npm run test -w @plurnk/plurnk-agui
 ```
+
+Deterministic tests use isolated configuration. The service's explicit
+`test:live` tier also includes the real-model AG-UI stories; its
+`test:live:specimen` selector can run either story by exact name.

@@ -8,12 +8,13 @@ import HostPaths from "../src/core/HostPaths.ts";
 import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 
 const workspace = resolve(import.meta.dirname, "..");
-const liveDirectory = resolve(workspace, "test/live");
+const liveDirectories = [resolve(workspace, "test/live"), resolve(workspace, "../plurnk-agui/test/live")];
 
-export const liveFiles = async () => (await readdir(liveDirectory))
-    .filter((name) => name.endsWith(".test.ts"))
-    .sort()
-    .map((name) => resolve(liveDirectory, name));
+export const liveFiles = async () => (await Promise.all(liveDirectories.map(async (directory) =>
+    (await readdir(directory)).filter((name) => name.endsWith(".test.ts"))
+        .map((name) => resolve(directory, name)))))
+    .flat()
+    .sort();
 
 export const exactSpecimen = (requested, names) => {
     const matches = names.filter((name) => name === requested);

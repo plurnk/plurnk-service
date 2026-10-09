@@ -1,16 +1,14 @@
 // {§agui-official-client-conformance} Optional real-model counterpart of the
 // deterministic official-client gate in conformance-fixture.test.ts.
 
-import { test } from "node:test";
+import { liveTest as test } from "../../../plurnk-core/test/live-test.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
-const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
+import { bindListener, openTestDatabase, SERVICE } from "../intg/_helpers.ts";
 
-test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async (t) => {
-    await import(join(SERVICE, "test/floor.ts"));
+test("live: the official AG-UI client accepts the complete model response stream", async (t) => {
     const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
     serverProposals(t, "accept");
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));

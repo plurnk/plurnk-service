@@ -24,8 +24,7 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
 };
 
 test("two threads, one world: distinct workers, shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
-    // Apply the same assembled package-default floor as the daemon's own test tiers.
-    await import(join(SERVICE, "test/floor.ts"));
+    await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
     const db = await openTestDatabase();

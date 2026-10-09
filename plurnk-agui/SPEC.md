@@ -268,11 +268,15 @@ every other daemon surface.
 ## §agui-first-party-client-conformance First-party client conformance
 
 §agui-official-client-conformance The ordinary integration gate runs the official
-`@ag-ui/client` 0.0.59 against the real daemon and a deterministic HTTP model fixture.
+`@ag-ui/client` against the real daemon and a deterministic HTTP model fixture.
 Its verifier and message builder exercise lifecycle, state, streaming reasoning,
-assistant speech, and provider refusals. The optional real-model test adds provider
-evidence; it does not substitute for the deterministic gate. Wire shapes derive
+assistant speech, and provider refusals. The explicit real-model tier adds provider
+evidence through the shared service live runner; it does not substitute for the
+deterministic gate. Wire shapes derive
 from the installed `@ag-ui/core` schemas ({§agui-run-authority}).
+Deterministic daemon fixtures use the isolated mock-tier bootstrap
+({§operator-config-real-model-profile}); operator configuration must not start
+external resources during the integration gate.
 
 The one-shot CLI and interactive terminal consume one AG-UI+
 semantic contract. Each surface verifies the contracts-owned conformance corpus

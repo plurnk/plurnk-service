@@ -1,22 +1,16 @@
 // {§agui-daemon-client} The go-live smoke: the in-process client interface, discovered by the
 // daemon and mounted at /agui on its listener, drives
-// a REAL model worker through the AG-UI+ single interface. Gated on a configured model
-// supplied to the runner; skips clean when absent.
+// a real model worker through the shared live runner.
 
-import { test } from "node:test";
+import { liveTest as test } from "../../../plurnk-core/test/live-test.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventType, type AguiEvent } from "../../src/types.ts";
-import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, SERVICE } from "../intg/_helpers.ts";
 
-// Needs a configured model and provider route from the invoking environment. The test
-// applies the assembled package-default floor after this gate.
-const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
-
-test("in-process module: discovery → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async (t) => {
-    await import(join(SERVICE, "test/floor.ts"));
+test("live: discovery and model response traverse the in-process AG-UI module", async (t) => {
     const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
     serverProposals(t, "accept");
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
