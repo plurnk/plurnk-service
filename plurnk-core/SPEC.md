@@ -2323,7 +2323,7 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 | facts | One strict JSON object in stable alphabetical order. | Present only when a fact exists. Asides, scopes, opaque invocation metadata and result facts belong here, not on the H3. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
-An emission row's body is not in its record ({§emission-row}); the optional emission history is a separate assistant message ({§emission-history}). Patterns retain their literal spelling; a pattern containing a line break is JSON-quoted to keep the H3 on one physical line. Receipts are descriptive records, not reconstructed operation headings. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+An emission row's body is not in its record ({§emission-row}); its eligible program follows it as a separate assistant message ({§emission-history}). Patterns retain their literal spelling; a pattern containing a line break is JSON-quoted to keep the H3 on one physical line. Receipts are descriptive records, not reconstructed operation headings. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
@@ -5294,7 +5294,7 @@ leaves the request-only record, while rejected exchanges remain in their
 | Turn state                    | `turns.packet` (the bag) + `turn_sections` rows  |
 | ----------------------------- | ----------------------------------------------- |
 | No admitted model request (including initialization and local capacity rejection) | SQL `NULL`, no rows |
-| Request assembled             | `{ weight, attributions }` + the sections as items; the complete emission-history section, or its empty content, is stored with the request ({§emission-history}) |
+| Request assembled             | `{ weight, attributions }` + the ordered sections as items; each selected program is stored at its emission boundary, with no empty placeholder ({§emission-history}) |
 | Response admitted             | `{ weight, attributions, assistant, assistantRaw }` + the sections as items |
 
 §packet-items **Sections are rows over content-addressed items; the bag never holds them.**
