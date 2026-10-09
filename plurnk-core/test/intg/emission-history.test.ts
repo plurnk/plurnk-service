@@ -89,7 +89,7 @@ test("{§emission-history}: retiring an emission removes only that program, not 
     } finally { await db.close(); }
 }));
 
-test("{§emission-history}: the complete previous program separates log and footer; sources, receipts and prefix remain intact", async (t) => {
+test("{§emission-history} {§operator-config-shipped-defaults}: default memory accumulates complete programs and retains NOTEs without automatic reasoning", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "previous-whole");
@@ -98,8 +98,9 @@ test("{§emission-history}: the complete previous program separates log and foot
     const body = "Actual replacement.\n```NOTE\nA literal nested example, not an operation.\n```\nLast line.";
     const first = [op("EDIT (worker:///memo.md)", body), op("NOTE", "Content memory."), op("WAIT [0]", null)].join("\n\n");
     const second = op("READ (worker:///memo.md)", null);
+    const reasoning = `Unretained deliberation.\n\n${op("NOTE", "Reasoning memory.")}`;
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say(first, op("NOTE", "Reasoning memory.")),
+        say(first, reasoning),
         say(second), say(op("SEND [200]", "Finished.")),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -115,8 +116,11 @@ test("{§emission-history}: the complete previous program separates log and foot
     const [opening, afterEdit, afterRead] = provider.received.map((request) => chatMessageText(request[1]!));
     assert.doesNotMatch(opening!, /## Previous Emission/u);
     assert.equal(previousProgram(provider.received[1]!), first, "all content operations and every body, including nested fences, survive unchanged");
-    assert.equal(previousProgram(provider.received[2]!), second, "the program is replaced, not accumulated");
+    assert.equal(previousProgram(provider.received[2]!), `${first}\n\n${second}`, "all complete programs accumulate in turn order");
     assert.doesNotMatch(previousProgram(provider.received[1]!), /Reasoning memory/u, "reasoning operations stay in their channel");
+    assert.match(afterEdit!, /Reasoning memory\./u, "reasoning NOTE persists as an ordinary receipt");
+    assert.match(afterEdit!, /Content memory\./u, "content NOTE persists as an ordinary receipt");
+    assert.doesNotMatch(afterEdit!, /Unretained deliberation\.|\/reasoning → reasoning:\/\//u, "automatic reasoning return is off");
     const record = afterEdit!.split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     assert.ok(record);
     assert.ok(afterRead!.includes(record), "aging the replay never changes the old record's bytes or weight");
@@ -125,9 +129,11 @@ test("{§emission-history}: the complete previous program separates log and foot
     assert.ok(reads.some(({ rx }) => (JSON.parse(rx) as { content?: string }).content === body), "the actual EDIT wrote the full replacement");
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
     assert.equal(source?.content, first, "the immutable source is untouched");
+    const reasoningSource = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "reasoning", sequence: 0 });
+    assert.equal(reasoningSource?.content, reasoning, "reasoning remains addressable without automatic return");
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, workerId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(packet, "emission-history"), op("SEND [200]", "Finished."), "reply bodies are not special-cased away");
+    assert.equal(PacketWire.sectionContent(packet, "emission-history"), [first, second, op("SEND [200]", "Finished.")].join("\n\n"), "reply bodies are not special-cased away");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, workerId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, workerId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
@@ -140,7 +146,7 @@ for (const [name, content, reasoning, expected] of [
     ["reasoning-only turn", "", op("NOTE", "Only reasoning."), ""],
     ["empty turn", "", null, ""],
 ] as const) {
-    test(`{§emission-history}: ${name} is evaluated on the immediate turn, never an older program`, async (t) => {
+    test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, name);
@@ -152,7 +158,7 @@ for (const [name, content, reasoning, expected] of [
         assert.equal(provider.received.length, 3);
         assert.equal(previousProgram(provider.received[1]!), first);
         assert.equal(previousProgram(provider.received[2]!), expected);
-    });
+    }));
 }
 
 for (const mode of ["latest", "all"]) test(`{§emission-history} {§context-own-rows-fit}: the wall omits ${mode} replay whole before any result body, then decides afresh`, async (t) => withHistory(mode, async () => {

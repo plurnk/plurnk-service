@@ -52,8 +52,8 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // {§markerless-first-page} — the page's two knobs ship: 100 lines, 16000 characters.
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");
-    assert.equal(env.get("PLURNK_SERVICE_EMISSION_HISTORY"), "latest");
-    assert.equal(env.get("PLURNK_SERVICE_REASONING_ROWS"), "1");
+    assert.equal(env.get("PLURNK_SERVICE_EMISSION_HISTORY"), "all");
+    assert.equal(env.get("PLURNK_SERVICE_REASONING_ROWS"), "0");
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the gauge names the five largest retained rows");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });

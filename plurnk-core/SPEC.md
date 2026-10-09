@@ -2474,7 +2474,7 @@ Eligible programs supply {§emission-history}; every source remains readable reg
 
 ### §reasoning-row The reasoning row
 
-The model's memory of its own reasoning, behind `PLURNK_SERVICE_REASONING_ROWS` (default `1`):
+The model's optional memory of its own reasoning, behind `PLURNK_SERVICE_REASONING_ROWS` (default `0`):
 when it is `1`, every model turn that reasoned lands its reasoning as one row of its
 own, `log:///<loop>/<turn>/<sequence>/reasoning → reasoning://<worker>/<loop>/<turn>`, the harness's
 READ of the turn's reasoning source, immediately before the turn's emission row (or its first
@@ -2488,7 +2488,7 @@ reads what the model thought and where its content program can be found
 | Body | `PLURNK_SERVICE_REASONING_TRAILING_LINES=-1` selects the complete reasoning without either shared preview bound. A positive value selects that many trailing lines within `PLURNK_SERVICE_PREVIEW_CHARS`; unset/empty uses `PLURNK_SERVICE_PREVIEW_LINES`. Zero is invalid. Keep complete final lines where possible; if the last line alone exceeds the character bound, select its suffix with the ordinary exact column scope. Unicode code points count once and CRLF is one indivisible separator, as in {§body-projection}. The statement carries the scope it took and the receipt its `range` ({§packet-extent-metadata}); the complete reasoning stays readable at its address by any scope ({§turn-source-resources}). This setting does not change ordinary READ/FIND previews. |
 | Weight | Charged like any row, visible in the gauge and its `largest` ({§context-gauge}). |
 | Curation | The verbs alone: a KILL retires it like any row ({§context-verbs}); the daemon reorders nothing and un-bodies nothing on its account. |
-| Absence | Means no room or no reasoning; the model tells them apart by reading `reasoning://` for the turn. |
+| Absence | Disabled, no room, or no reasoning. The setting does not affect reasoning-operation admission or the readable `reasoning://` source ({§reasoning-operations}, {§turn-source-resources}). |
 
 ### §turn-source-resources Immutable turn-source resources
 
@@ -5008,7 +5008,7 @@ adjacent nonempty sections of the same remaining role form one message. With an 
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
 | 2 | `user` | the complete current log; selected native parts ({§packet-attachment-parts}) remain with this message |
-| 3 | `assistant` | selected complete admitted content programs, without a heading or wrapper; the immediately preceding program by default |
+| 3 | `assistant` | selected complete admitted content programs, without a heading or wrapper; all eligible programs in this loop by default |
 | 4 | `user` | the current-status footer, from Worker through Open Messages and optional Recap |
 
 Without selected programs, the log and footer coalesce into one user message: system + user.
@@ -5023,7 +5023,7 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 
 | Concern | Contract |
 |---|---|
-| Choice | `PLURNK_SERVICE_EMISSION_HISTORY`: `none`, `latest` (default), or `all`. Reasoning return is independent ({§reasoning-row}). |
+| Choice | `PLURNK_SERVICE_EMISSION_HISTORY`: `none`, `latest`, or `all` (default). Reasoning return is independent ({§reasoning-row}). |
 | Selection | `latest` considers only the immediately preceding completed model inference turn in this loop, never falling back to an older eligible program. `all` considers every completed model inference turn in this loop, in ascending turn order. |
 | Eligibility | An admitted content program with no syntax errors and an active emission row. Rejected attempts, syntactically partial emissions, empty or reasoning-only turns, initialization and other loops supply none. Runtime failures do not disqualify an admitted program. |
 | Content | Each frozen canonical program, whole: every body, NOTE, WAIT and reply retained. Multiple programs are joined with one blank line. No placeholders, redaction, preview or nested-body interpretation. Reasoning operations remain in their own source and receipts. |
@@ -5268,7 +5268,7 @@ their boundaries ({§log-wire-format}).
 | `budget`        | user   | JSON curation usage and ceiling                                                               | {§context-gauge} |
 | `messages`      | user   | JSON pointers to the loop's unanswered immutable messages, path and source                    | {§message-arrival}              |
 | `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
-| `emission-history` | assistant | Complete preceding content program, whole or absent; between log and footer | {§emission-history} |
+| `emission-history` | assistant | Selected complete content programs, whole or absent; between log and footer | {§emission-history} |
 
 §packet-stored-shape **A model packet preserves the rendered request and, only
 when an emission is admitted, its response.** Core assembles and measures the
