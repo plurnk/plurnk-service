@@ -1,5 +1,15 @@
 # @plurnk/plurnk-execs-jq
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies [06960fc]
+- Updated dependencies [8d9fb11]
+- Updated dependencies [f1bbc46]
+- Updated dependencies [503ea87]
+  - @plurnk/plurnk-execs@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

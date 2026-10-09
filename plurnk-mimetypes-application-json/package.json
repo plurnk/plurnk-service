@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-json",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "application/json and application/jsonc mimetype handler for plurnk-service.",
     "keywords": [
         "plurnk",
@@ -62,7 +62,7 @@
         "jsonc-parser": "^3.3.1"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^2.0.0"
+        "@plurnk/plurnk-mimetypes": "^3.0.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-application-json#readme",
     "bugs": {

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler packages.",
     "keywords": [
         "plurnk",
@@ -105,7 +105,7 @@
         "@types/picomatch": "^4.0.3"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^2.0.0",
+        "@plurnk/plurnk-contracts": "^3.0.1",
         "@plurnk/plurnk-meta": "^2.0.0",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",

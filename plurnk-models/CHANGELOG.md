@@ -1,5 +1,12 @@
 # @plurnk/plurnk-models
 
+## 3.0.0
+
+### Major Changes
+
+- 8d9fb11: `retiredProviderNames()` is removed. A provider segment resolves only as a
+  Models.dev id; any other segment resolves to nothing.
+
 ## 2.0.0
 
 ### Major Changes

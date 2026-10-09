@@ -1,5 +1,17 @@
 # @plurnk/plurnk-execs-sqlite
 
+## 2.0.1
+
+### Patch Changes
+
+- 8d9fb11: Model-facing documents describe a proposal as reviewed by the worker's owner
+  unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
+- Updated dependencies [06960fc]
+- Updated dependencies [8d9fb11]
+- Updated dependencies [f1bbc46]
+- Updated dependencies [503ea87]
+  - @plurnk/plurnk-execs@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

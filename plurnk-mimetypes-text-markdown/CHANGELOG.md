@@ -1,5 +1,13 @@
 # @plurnk/plurnk-mimetypes-text-markdown
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies [06960fc]
+- Updated dependencies [8d9fb11]
+  - @plurnk/plurnk-mimetypes@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

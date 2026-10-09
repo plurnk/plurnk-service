@@ -1,5 +1,24 @@
 # @plurnk/plurnk-agent-skills
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies [8d9fb11]
+- Updated dependencies [85bcf56]
+- Updated dependencies [85bcf56]
+- Updated dependencies [06960fc]
+- Updated dependencies [69f3ffe]
+- Updated dependencies [8d9fb11]
+- Updated dependencies [4153042]
+- Updated dependencies [6c33cec]
+- Updated dependencies [06960fc]
+- Updated dependencies [f1bbc46]
+- Updated dependencies [85bcf56]
+- Updated dependencies [85bcf56]
+  - @plurnk/plurnk-contracts@3.0.1
+  - @plurnk/plurnk-schemes@3.0.0
+
 ## 2.0.0
 
 ### Major Changes
