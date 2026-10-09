@@ -156,7 +156,7 @@ test("{§packet-attachment-parts} a stored packet admits attachments of a known 
     assert.deepEqual(JSON.parse(StoredPacket.stringify(withAttachment)), bag, "stored request evidence retains its native deliveries");
 });
 
-test("{§packet-wire-envelope} {§emission-row} native attachments stay with the log before the assistant program and footer", async () => {
+test("{§packet-wire-envelope}: historical unbound native attachments retain their recorded whole-log placement", async () => {
     const emissionRow = {
         coordinate: "1/1/1", op: "READ", origin: "_plurnk", producer: "model", status: 200,
         attrs: { kind: "emission" },
@@ -223,4 +223,44 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
             { type: "text", text: `\n\n## Previous Emission\n\n${program}` },
         ] },
     ], "reading evidence must not retrofit current message roles or move retained native evidence");
+});
+
+test("{§packet-attachment-parts} interpolated native parts remain at their READ boundary as history grows", async () => {
+    const attachment = { ...PacketWire.renderLogWithAccounting([readRow()], weigh).attachments[0]!, section: "log/1/1/2" };
+    const record = "### log:///1/1/2/READ → logo.png · 410";
+    const packet: RequestPacket = {
+        weight: 500, attributions: [], attachments: [attachment],
+        sections: [
+            { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/emission · 25", weight: 25 },
+            { name: "emission-history/1/1/1", slot: "assistant", header: null, content: "```READ (logo.png)\n```", weight: 12 },
+            { name: attachment.section, slot: "user", header: null, content: record, weight: 410 },
+            { name: "worker", slot: "user", header: "Worker", content: '{"turn":2}', weight: 10 },
+        ],
+    };
+    const bytes = new Uint8Array([1, 2, 3]);
+    const wire = await PacketWire.wireMessages(packet, async () => bytes);
+    assert.deepEqual(wire.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    const parts = wire[3]!.content;
+    assert.ok(Array.isArray(parts));
+    assert.deepEqual(parts, [
+        { type: "text", text: record },
+        { type: "text", text: `\n\n${PacketWire.attachmentCaption(attachment)}` },
+        { type: "file", data: bytes, mediaType: "image/png" },
+        { type: "text", text: '\n\n## Worker\n{"turn":2}' },
+    ]);
+    const extended = {
+        ...packet,
+        sections: [
+            ...packet.sections.slice(0, -1),
+            { name: "log/1/2/1", slot: "user" as const, header: null, content: "### log:///1/2/1/emission · 25", weight: 25 },
+            { name: "emission-history/1/2/1", slot: "assistant" as const, header: null, content: "```SEND\nProgress.\n```", weight: 10 },
+            { ...packet.sections.at(-1)!, content: '{"turn":3}' },
+        ],
+    };
+    const later = await PacketWire.wireMessages(extended, async () => bytes);
+    assert.deepEqual(later.slice(0, 3), wire.slice(0, 3));
+    assert.ok(Array.isArray(later[3]!.content));
+    assert.deepEqual(later[3]!.content.slice(0, 3), parts.slice(0, 3), "new log records never move ahead of the picture");
+    assert.deepEqual(StoredPacket.parse(JSON.stringify(packet)), packet, "native section placement survives storage");
+    await assert.rejects(PacketWire.wireMessages({ ...packet, attachments: [{ ...attachment, section: "missing" }] }, async () => bytes), /requires its recorded user section/u);
 });

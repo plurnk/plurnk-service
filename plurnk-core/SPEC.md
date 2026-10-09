@@ -2390,8 +2390,11 @@ Authored `metadata` retains its opaque ordered block strings under {§scheme-met
   byte sequence once; the result's `nativeContentHash`, enforced by the log's foreign key, identifies it.
   This is retained evidence, not a separate visibility or delivery lifecycle. Source mutation/deletion
   cannot change a retained observation. Explicit READ of its still-active log source can acquire the same media again.
-  Every compatible-model packet includes one file part per retained, admitted READ observation, after the
-  packet text, in observation order, each preceded by a text part that names the observation's log
+  Every compatible-model packet includes one file part per retained, admitted READ observation, directly
+  after the user section ending at that READ record, in observation order. The attachment retains that
+  section's name in request evidence; later log records or emissions never move ahead of it. Packets
+  stored without a section binding retain their recorded whole-log placement. Each file part is
+  preceded by a text part that names the observation's log
   coordinate, source path and projection facts and states that the bytes are that READ's own, retained
   until its row is KILLed: an uncaptioned native part on the user turn reads as a fresh arrival (#899).
   Model-response settlement never consumes an observation. KILL follows
@@ -4992,9 +4995,8 @@ rendered or measured; {§context-fit} remains an engine-owned post-build rail.
 
 ```mermaid
 flowchart LR
-    defaults[Engine section drafts] --> transforms[Trusted scheme transforms<br/>and boundary validation]
-    transforms --> continuity[Insert selected complete operations]
-    continuity --> render[Render ordered message roles]
+    defaults[Engine sections<br/>log records interleaved with complete programs] --> transforms[Trusted scheme transforms<br/>and boundary validation]
+    transforms --> render[Render ordered message roles]
     render --> measure[Budget substitution and<br/>core-owned measurement]
     measure --> rail[Engine budget admission and dispatch]
 ```
@@ -5008,12 +5010,13 @@ adjacent nonempty sections of the same remaining role form one message. With an 
 | Message | Role | Content |
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
-| 2 | `user` | the complete current log; selected native parts ({§packet-attachment-parts}) remain with this message |
-| 3 | `assistant` | complete operations selected by {§emission-history}, without a heading or wrapper; from all eligible programs in this loop by default |
-| 4 | `user` | the current-status footer, from Worker through Open Messages and optional Recap |
+| 2 | `user` | initial retained log records through the first selected emission record |
+| 3… | alternating `assistant`, `user` | each selected complete content program, then the following log records through the next selected emission record; native parts remain beside their READ records ({§packet-attachment-parts}) |
+| last | `user` | remaining log records and the current-status footer, from Worker through Open Messages and optional Recap |
 
 Without selected programs, the log and footer coalesce into one user message: system + user.
-The log includes the programs' results; continuity does not reorder those results.
+Each program follows its own emission record and precedes its subsequent results.
+Log records retain their order; interpolation never groups or relocates their bodies.
 Stored sections retain their original roles and order: reading evidence
 never converts an earlier request into a different envelope.
 
@@ -5028,11 +5031,17 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 | Selection | `latest` considers only the immediately preceding completed model inference turn in this loop, never falling back to an older eligible program. `all` considers every completed model inference turn in this loop, in ascending turn order. |
 | Eligibility | An admitted content program with no syntax errors and an active emission row. Rejected attempts, syntactically partial emissions, empty or reasoning-only turns, initialization and other loops supply none. Runtime failures do not disqualify an admitted program. |
 | Vocabulary | Executor identities come from that turn's admitted operation evidence ({§packet-stored-shape}), not the current registry. Disabling or removing a runtime never changes its admitted history. |
-| Content | Omit NOTE and KILL operations addressed to `log://`; their memory and curation already belong to the log. Retain every other admitted content operation whole, including its body, WAIT, replies, and KILLs of files, entries, workers or streams. Selection uses parsed operations, never text inside their bodies; a multi-path operation is selected per resolved statement. Join nonempty projected programs with one blank line. No placeholders, body redaction or preview. Reasoning operations remain in their own source and receipts. |
-| Placement | One assistant message between the log and current-status footer, without a heading. Selection is rebuilt each turn, never inserted into the reusable log prefix. With `none` or no retained operations, the section is empty; filtering does not make `latest` fall back to an older turn. |
-| Authority | After trusted section transforms, core inserts this section immediately after `log` (before the first user section if the extension removed `log`). The extension seam does not rewrite the frozen programs. Each active emission row owns its program's curation lifetime; retiring it removes only that program, never its immutable source. |
-| Capacity | At the hard context wall, omit the section whole before suppressing any result body or native part ({§context-own-rows-fit}). Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet is changed. |
-| Accounting | Its text is charged once as its assistant message; the emission row charges only its record. |
+| Content | Omit NOTE and KILL operations addressed to `log://`; their memory and curation already belong to the log. Retain every other admitted content operation whole, including its body, WAIT, replies, and KILLs of files, entries, workers or streams. Selection uses parsed operations, never text inside their bodies; a multi-path operation is selected per resolved statement. Join retained operations within each program with one blank line. No placeholders, body redaction or preview. Reasoning operations remain in their own source and receipts. |
+| Placement | Interpolate each selected program immediately after its durable emission record, as an assistant message without a heading or wrapper. Split the user log at that record; following observations stay after the program. No history is collected at the end. With `none` or no retained operations, no assistant section is added; filtering does not make `latest` fall back to an older turn. |
+| Authority | Core assembles the chronological sections before the trusted whole-list transform ({§packet-extension-transform}). Each active emission row owns its program's curation lifetime; retiring it removes only that program, never its immutable source. |
+| Capacity | At the hard context wall, omit the selected history whole before suppressing any result body or native part ({§context-own-rows-fit}). Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet is changed. |
+| Accounting | Each program is charged once as its assistant message; the emission row charges only its record. |
+
+The initial user segment is `log`; later segments are `log/<first-record-coordinate>`.
+Programs are `emission-history/<emission-record-coordinate>`. These are durable, unique section
+names, not model-facing headings. Only the initial segment has the `Log` header. Section-family
+inspection joins segments in recorded order; wire projection uses their individual roles and
+positions. Stored packets retain the sections actually sent, including older packet layouts.
 
 ### §packet-cache-monotone Default order and cache locality
 
@@ -5043,8 +5052,7 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|     4 | user   | `log`                 | Append-mostly model-visible history; the first user section, so the cached prefix ends inside it. |
-|     5 | assistant | `emission-history` | Selected complete operations, if eligible and within capacity ({§emission-history}). |
+|   4–5 | user / assistant | `log` and `emission-history` segments | Append-mostly chronological history: each selected program follows its emission record and precedes its results ({§emission-history}). |
 |     6 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
 |     7 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
 |     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
@@ -5056,9 +5064,10 @@ Conditional absence never reorders the surviving default sections.
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly
-log leads the selected programs and volatile user-status clump. Changing this selection
-does not rewrite the log prefix. Retiring an emission row breaks the prefix at its row like any
-other curation. It does **not** claim that every system byte is
+log and interpolated programs lead the volatile user-status clump. With `all`, appending new
+observations and programs preserves the existing history's roles and text prefix; no old program
+moves past newly appended observations. Changing selection or curating a row may invalidate the
+prefix at the affected position. It does **not** claim that every system byte is
 immutable or that the complete packet is globally monotone in volatility:
 operator notes and policies can change. Trust is a separate
 admission rule. The system slot contains trusted control-plane material;
@@ -5075,8 +5084,10 @@ Each initial or returned list passes the schemes-owned validator, including
 unique-name enforcement, before the next transformer or renderer. Each
 transformer may inspect the section content and add, remove, or reorder
 sections. It receives no separate engine, database, actor, or request context.
-Core then attaches the optional frozen programs ({§emission-history}); transforms own
-section drafts, not the worker's source evidence.
+The complete default list already includes the interpolated programs ({§emission-history}) and
+native READ boundaries. Transforms own section drafts, not the worker's immutable source evidence.
+Removing a section removes its native deliveries too; a retained native delivery requires its
+named section to remain user-authored. Core measures the transformed composition.
 
 This is strictly a trusted in-process seam, admitted through the common extension
 trust gate; an external client action cannot invoke it. Whole-list transformation is
@@ -5261,7 +5272,7 @@ their boundaries ({§log-wire-format}).
 | `definition`    | system | Bare `plurnk.md`; no wrapper heading                                                          | {§definition-table-projection}  |
 | `system-policy` | system | Authored Markdown                                                                             | {§policy-sections}              |
 | `inject`        | system | Authored Markdown                                                                             | {§packet-inject}                |
-| `log`           | user   | Markdown H3 records with JSON metadata                                                        | {§log-wire-format}              |
+| `log`, `log/<coordinate>` | user | Chronological Markdown H3 records with JSON metadata | {§log-wire-format} |
 | `worker`        | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `loop`, `turn`     | {§packet-current-turn}          |
 | `delegation`    | user   | JSON `{workers, streams}`                                                                    | {§child-orientation}            |
 | `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
@@ -5270,7 +5281,7 @@ their boundaries ({§log-wire-format}).
 | `budget`        | user   | JSON curation usage and ceiling                                                               | {§context-gauge} |
 | `messages`      | user   | JSON pointers to the loop's unanswered immutable messages, path and source                    | {§message-arrival}              |
 | `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
-| `emission-history` | assistant | Complete retained operations; section whole or absent, between log and footer | {§emission-history} |
+| `emission-history/<coordinate>` | assistant | Complete retained operations at their emission records; replay omitted whole at capacity | {§emission-history} |
 
 §packet-stored-shape **A model packet preserves the rendered request and, only
 when an emission is admitted, its response.** Core assembles and measures the

@@ -77,6 +77,10 @@ test("{§emission-row}: initialization has no replay; canonical content excludes
     assert.equal(previous(provider.received[1]!), surveyRead);
     assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program");
     assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/3\/READ/u);
+    const request = provider.received[1]!;
+    assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    assert.match(chatMessageText(request[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming rows in the same turn precede the program's own anchor");
+    assert.match(chatMessageText(request[3]!), /^### log:\/\/\/1\/2\/3\/READ/u, "the program's results follow it, not the incoming message");
     assert.doesNotMatch(previous(provider.received[1]!), /Let me look around|Done for now/u);
 });
 

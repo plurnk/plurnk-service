@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AiSdkProvider } from "@plurnk/plurnk-providers";
+import { AiSdkProvider, Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
@@ -10,6 +11,43 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
+
+test("{§emission-history} {§digest-forensic-fidelity}: stored and shared requests preserve interpolated assistant messages byte for byte", async () => {
+    const dir = await mkdtemp(join(await testArtifactDirectory("core"), "interpolated-evidence-"));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const frame = PlurnkParser.frame;
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        { assistant: { content: frame("EDIT (worker:///memo.md)", "The complete replacement."), reasoning: null } },
+        { assistant: { content: frame("READ (worker:///memo.md)", null), reasoning: null } },
+        { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
+    ] });
+    const db = await openMigrated(dbPath);
+    try {
+        const workspaceId = await insertWorkspace(db, "interpolated-evidence");
+        const workerId = await insertWorker(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, workerId, 1, "Write and read.");
+        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
+        assert.equal(result.result.status, 200);
+        assert.equal(provider.received.length, 3);
+    } finally { await db.close(); }
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
+    const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { turns: Array<{ producer: string; artifact: string }> };
+    const turns = report.turns.filter(({ producer }) => producer === "model");
+    assert.equal(turns.length, 3);
+    for (const [index, { artifact }] of turns.entries()) {
+        const wire = JSON.parse(await readFile(join(digestDir, `${artifact}.wire.json`), "utf8"));
+        assert.deepEqual(wire, provider.received[index], "the stored packet reconstructs what the provider received");
+        const request = await readFile(join(digestDir, `${artifact}.request.md`), "utf8");
+        let cursor = 0;
+        for (const message of wire as Array<{ role: string; content: string }>) {
+            const at = request.indexOf(message.content, cursor);
+            assert.ok(at >= cursor, `${artifact}: the navigable request retains ${message.role} text in order`);
+            cursor = at + message.content.length;
+        }
+    }
+    assert.deepEqual(provider.received[2]!.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
+});
 
 test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {
     // The surveys are the initialization program; with the preview off there is none and no digest stem for it.

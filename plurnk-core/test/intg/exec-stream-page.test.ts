@@ -6,9 +6,10 @@ import { serverProposals } from "./_approval.ts";
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { chatMessageText } from "@plurnk/plurnk-providers";
 import StreamMock from "./_stream-mock.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
@@ -30,7 +31,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\nseq 1 40\n````\n\n````WAIT\nwaiting\n````", 10),
+            makeRawMockResponse("````sh\nseq 1 40\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````READ ($STREAM#stdout) <38,40>````\n````NOTE\nreading the tail\n````", 10),
             makeMockResponse("````SEND [200]\ndone\n````", 10),
         ],
@@ -46,7 +47,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.ok(foisted, "the stream's terminal observation was foisted");
             assert.equal(foisted.source, null, "invocation correlation is not copied into actor attribution");
             assert.equal((await db.test_stream_observation_source.get<{ source: string }>({ id: foisted.id }))?.source,
-                "log:///1/2/2/sh", "publication identity retains the exact durable invocation relationship");
+                "log:///1/2/3/sh", "publication identity retains the exact durable invocation relationship");
             const rx = JSON.parse(foisted.rx) as { exitCode: number; content: string; mimetype: string; startLine: number; range: { unit: string; total: number; returned: [number, number] } };
             assert.equal(rx.exitCode, 0, "the exact subprocess conclusion remains durable");
             assert.equal(rx.content.split("\n").filter((l) => l !== "").length, 40, "the whole output: 40 lines fit the first page");
@@ -82,6 +83,12 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
             assert.equal(explicit.range, "<38,40> of 40 lines");
+            const request = provider.received.at(-1)!;
+            const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
+            const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("<38,40>"));
+            assert.ok(launch >= 0 && observed > launch && tailRead > observed,
+                `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
             ws.close();
         }

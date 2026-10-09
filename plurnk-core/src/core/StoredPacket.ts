@@ -17,6 +17,7 @@ export type PacketAssistant = {
 
 // {§packet-attachment-parts} — one READ-selected native delivery, weighed and addressable for the wire.
 export interface PacketAttachment {
+    readonly section?: string;
     readonly contentHash: string;
     readonly coordinate: string;
     readonly path: string;
@@ -100,7 +101,10 @@ export default class StoredPacket {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
-            StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages", "duration"], `${subject}[${index}]`);
+            StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages", "duration", "section"], `${subject}[${index}]`);
+            if (own(attachment, "section") && (typeof attachment.section !== "string" || attachment.section.length === 0)) {
+                throw new TypeError(`${subject}[${index}].section must be a non-empty string`);
+            }
             for (const key of ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype"]) {
                 if (typeof attachment[key] !== "string" || attachment[key] === "") throw new TypeError(`${subject}[${index}].${key} must be a non-empty string`);
             }

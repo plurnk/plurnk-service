@@ -304,8 +304,13 @@ export default class PacketWire {
     // The legible accessor — consumers name the section they want instead of
     // indexing a fixed shape. Missing section / non-string content → "".
     static sectionContent(packet: Packet, name: string): string {
-        const s = packet.sections?.find((x) => x.name === name);
-        return typeof s?.content === "string" ? s.content : "";
+        return (packet.sections ?? [])
+            .filter((section) => PacketWire.#isSection(section, name) && typeof section.content === "string" && section.content.length > 0)
+            .map(({ content }) => content).join("\n\n");
+    }
+
+    static #isSection(section: SectionView, name: string): boolean {
+        return section.name === name || typeof section.name === "string" && section.name.startsWith(`${name}/`);
     }
 
     // {§packet-wire-envelope}: retained roles and order, not today's section names, define a
@@ -1133,8 +1138,7 @@ export default class PacketWire {
         return null;
     }
 
-    // {§packet-attachment-parts} — the wire form with native parts: user text first, then each accepted
-    // retained native part in observation order.
+    // {§packet-attachment-parts} — project retained native parts at their recorded user boundaries.
     static async wireMessages(
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
@@ -1144,6 +1148,27 @@ export default class PacketWire {
         const attachments = (packet.attachments ?? []).filter(({ kind }) => accepts(kind));
         if (attachments.length === 0) return messages;
         const groups = PacketWire.#messageSections(packet);
+        // {§packet-attachment-parts}: current packets bind each native part to the section
+        // ending at its READ. Preserve the recorded placement of older, unbound packets below.
+        if (attachments.some(({ section }) => section !== undefined)) {
+            for (const attachment of attachments) {
+                if (attachment.section === undefined || !groups.some(({ role, sections }) => role === "user" && sections.some(({ name }) => name === attachment.section))) {
+                    throw new Error("native packet attachment requires its recorded user section");
+                }
+            }
+            return Promise.all(groups.map(async ({ role, sections }, index) => {
+                if (!sections.some(({ name }) => attachments.some(({ section }) => section === name))) return messages[index]!;
+                const parts: ChatContentPart[] = [];
+                for (const [at, section] of sections.entries()) {
+                    parts.push({ type: "text", text: `${at === 0 ? "" : "\n\n"}${PacketWire.renderSection(section)}` });
+                    for (const attachment of attachments.filter((attachment) => attachment.section === section.name)) {
+                        parts.push({ type: "text", text: `\n\n${PacketWire.attachmentCaption(attachment)}` });
+                        parts.push({ type: "file", data: await bytesOf(attachment), mediaType: attachment.mimetype });
+                    }
+                }
+                return { role, content: parts };
+            }));
+        }
         const logIndex = groups.findIndex(({ role, sections }) => role === "user" && sections.some(({ name }) => name === "log"));
         const index = logIndex < 0 ? groups.findIndex(({ role }) => role === "user") : logIndex;
         if (index < 0) throw new Error("native packet attachments require a user message");

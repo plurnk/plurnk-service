@@ -94,7 +94,7 @@ WITH completed AS (
     WHERE loop_id = $loop_id AND sequence < $current_turn_seq
       AND producer = 'model' AND kind = 'inference' AND completed_at IS NOT NULL
 )
-SELECT json_extract(le.rx, '$.content') AS content,
+SELECT le.id, json_extract(le.rx, '$.content') AS content,
     (SELECT json_group_array(DISTINCT json_extract(value, '$.runtime'))
      FROM json_each(p.packet, '$.assistant.ops')
      WHERE json_type(value, '$.runtime') = 'text') AS executors

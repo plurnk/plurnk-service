@@ -13,12 +13,46 @@ import { readStmt, urlPath } from "./_dsl.ts";
 const op = PlurnkParser.frame;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
 const previousProgram = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
+const observations = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 const withHistory = async (mode: string, fn: () => Promise<void>): Promise<void> => {
     const name = "PLURNK_SERVICE_EMISSION_HISTORY";
     const previous = process.env[name];
     process.env[name] = mode;
     try { await fn(); } finally { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; }
 };
+
+test("{§emission-history} {§packet-cache-monotone}: programs precede their results and settled history stays a prefix", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "interpolated-history");
+    const workerId = await insertWorker(db, workspaceId, null, "writer");
+    const loopId = await insertLoop(db, workerId, 1, "Write, inspect, and reply.");
+    const edit = op("EDIT (worker:///memo.md)", "Persist this exact body.");
+    const read = op("READ (worker:///memo.md)", null);
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        say(edit, op("NOTE", "Memory before writing.")),
+        say(read),
+        say(op("SEND [200]", "Done.")),
+    ] });
+    await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
+    const [opening, afterEdit, afterRead] = provider.received;
+    assert.ok(opening && afterEdit && afterRead);
+    assert.deepEqual(afterRead.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
+    assert.equal(chatMessageText(afterRead[2]!), edit);
+    assert.match(chatMessageText(afterRead[3]!), /### log:\/\/\/1\/2\/\d+\/EDIT/u, "the EDIT receipt follows its program");
+    assert.equal(chatMessageText(afterRead[4]!), read);
+    assert.match(chatMessageText(afterRead[5]!), /### log:\/\/\/1\/3\/\d+\/READ/u, "the READ receipt follows its program");
+    for (const [index, turn] of [[2, 2], [4, 3]] as const) {
+        assert.equal(afterRead[index - 1]!.role, "user");
+        const preceding = chatMessageText(afterRead[index - 1]!).split("\n\n").at(-1)!;
+        assert.match(preceding, new RegExp(`^### log:///1/${turn}/\\d+/emission → ops://writer/1/${turn} · \\d+$`, "u"), "each program has its own curatable link immediately before it");
+    }
+    assert.match(afterRead.filter(({ role }) => role === "user").map(chatMessageText).join("\n"), /Memory before writing\./u, "reasoning NOTE remains an ordinary observation");
+    assert.doesNotMatch(previousProgram(afterRead), /Memory before writing\./u, "reasoning operations never become content history");
+    assert.deepEqual(afterRead.slice(0, 3), afterEdit.slice(0, 3), "the earlier roles and bytes stay identical");
+    const oldResults = chatMessageText(afterEdit[3]!).split("\n\n## Worker\n")[0]!;
+    assert.ok(chatMessageText(afterRead[3]!).startsWith(oldResults), "new observations append after retained results");
+});
 
 for (const mode of ["none", "latest", "all"]) {
     test(`{§emission-history}: ${mode} retains complete content programs without changing execution or source evidence`, async () => withHistory(mode, async () => {
@@ -85,6 +119,10 @@ test("{§emission-history}: retiring an emission removes only that program, not 
         assert.equal(provider.received.length, 4);
         assert.equal(previousProgram(provider.received[2]!), `${first}\n\n${second}`);
         assert.equal(previousProgram(provider.received[3]!), second, "curation removes the retired program without replaying the KILL itself");
+        const request = provider.received[3]!;
+        const index = request.findIndex(({ role }) => role === "assistant");
+        assert.match(chatMessageText(request[index - 1]!).split("\n\n").at(-1)!, /^### log:\/\/\/1\/3\/\d+\/emission → ops:\/\/writer\/1\/3 · \d+$/u, "the surviving program keeps its own preceding link");
+        assert.doesNotMatch(observations(request), /### log:\/\/\/1\/2\/\d+\/emission/u, "only the retired program's link is gone");
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
         assert.equal(source?.content, first);
     } finally { await db.close(); }
@@ -108,7 +146,7 @@ test("{§emission-history}: mixed KILL targets execute normally; distillation st
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 3);
     assert.equal(previousProgram(provider.received[2]!), `${edit}\n\n${op("KILL (worker:///memo.md)", null)}`);
-    const log = chatMessageText(provider.received[2]![1]!);
+    const log = observations(provider.received[2]!);
     assert.doesNotMatch(log, /Superseded memory\./u, "curated NOTE has no automatic replay duplicate");
     assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE");
     const missing = await engine.look({ ...ids, statement: readStmt(urlPath("worker", "/memo.md")) });
@@ -142,12 +180,12 @@ test("{§emission-history} {§operator-config-shipped-defaults}: default memory 
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 3);
     assert.deepEqual(provider.received[0]!.map(({ role }) => role), ["system", "user"]);
-    for (const request of provider.received.slice(1)) {
-        assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    for (const [index, request] of provider.received.slice(1).entries()) {
+        assert.deepEqual(request.map(({ role }) => role), ["system", "user", ...Array.from({ length: index + 1 }, () => ["assistant", "user"]).flat()]);
         assert.match(chatMessageText(request[1]!), /^## Log\n/u);
-        assert.match(chatMessageText(request[3]!), /^## Worker\n/u);
+        assert.match(chatMessageText(request.at(-1)!), /\n\n## Worker\n/u);
     }
-    const [opening, afterEdit, afterRead] = provider.received.map((request) => chatMessageText(request[1]!));
+    const [opening, afterEdit, afterRead] = provider.received.map(observations);
     assert.doesNotMatch(opening!, /## Previous Emission/u);
     assert.equal(previousProgram(provider.received[1]!), retained, "NOTE is omitted; every retained operation's body, including nested fences, survives unchanged");
     assert.equal(previousProgram(provider.received[2]!), `${retained}\n\n${second}`, "retained operations accumulate in turn order");

@@ -17,7 +17,7 @@ test("{§packet-wire-envelope}: retained user-role evidence keeps its original e
     ]);
 });
 
-test("{§packet-wire-envelope} {§emission-history}: the whole program is assistant-authored between the unchanged log and footer", () => {
+test("{§packet-wire-envelope}: historical whole-log and assistant-tail sections keep their recorded placement", () => {
     const content = "````EDIT (a.md)\nFull replacement.\n```NOTE\nNested example.\n```\n````\n\n```NOTE\nMemory.\n```";
     const log = "### log:///1/2/1/READ · 24\n1: ## Worker\n2: ## Previous Emission";
     const packet: RequestPacket = { weight: 0, attributions: [], sections: [

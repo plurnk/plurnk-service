@@ -366,7 +366,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
     } finally { await db.close(); }
 });
 
-test("the default wire preserves canonical order with optional continuity after the Recap override", async () => {
+test("the initial wire preserves canonical order and the Recap override without invented history", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -386,15 +386,14 @@ test("the default wire preserves canonical order with optional continuity after 
         const packet = await getPacket(db, result.turnId);
 
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
-        // append-mostly log precedes continuity, per-turn status, open message pointers and Recap.
+        // append-mostly history precedes per-turn status, open message pointers and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"]);
-        assert.deepEqual(slot("assistant"), ["emission-history"]);
+        assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
         assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL");
-        assert.equal(packet.sections.find(({ name }) => name === "emission-history")?.header, null);
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
         assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith("## Recap\n\nCUSTOM_RECAP_SENTINEL"));
     } finally { await db.close(); }

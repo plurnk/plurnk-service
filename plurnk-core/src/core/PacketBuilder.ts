@@ -20,7 +20,7 @@ import { acceptedKinds } from "./attachments.ts";
 // drift between wire and digest possible.
 import PacketWire, { type BodiedLogRow, type StoredLogRow } from "./packet-wire.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
-import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
+import type { PacketAttachment, RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
@@ -282,7 +282,38 @@ export default class PacketBuilder {
                 ...(bodiless === undefined ? {} : { bodiless }),
             },
         );
-        const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
+        // {§emission-history}: the durable emission row, not its turn's first observation,
+        // anchors content replay without moving incoming observations or reasoning receipts.
+        const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
+        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ id: number; content: string; executors: string }>({
+            loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
+        });
+        const emissions = new Map(programs.map(({ id, content, executors }) =>
+            [id, TurnOps.renderHistory(content, JSON.parse(executors) as string[])]));
+        const nativeRows = new Map(renderedLog.attachments.map((attachment) => [attachment.coordinate, attachment]));
+        const nativeParts: PacketAttachment[] = [];
+        const logSections: PacketSectionDraft[] = [];
+        const sectionItems = new Map<string, string[]>();
+        let items: string[] = [];
+        let name = "log";
+        const flush = (): void => {
+            if (items.length === 0 && logSections.length > 0) return;
+            logSections.push({ name, slot: "user", header: name === "log" ? "Log" : null, content: items.join("\n\n") });
+            sectionItems.set(name, items);
+            items = [];
+        };
+        for (const [index, row] of log.entries()) {
+            if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
+            items.push(renderedLog.records[index]!);
+            const native = nativeRows.get(String(row.coordinate));
+            const emission = row.id == null ? undefined : emissions.get(row.id);
+            if (native !== undefined || emission) {
+                flush();
+                if (native !== undefined) nativeParts.push({ ...native, section: name });
+                if (emission) logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });
+            }
+        }
+        flush();
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.
@@ -291,12 +322,7 @@ export default class PacketBuilder {
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
             // ({§packet-cache-monotone}).
-            {
-                name: "log",
-                slot: "user",
-                header: "Log",
-                content: renderedLog.content,
-            },
+            ...logSections,
             // {§packet-current-turn} — the Worker block opens the status clump below the log: who
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
             // the one fact the sources cannot state about themselves (which `reasoning://<worker>/L/T` is
@@ -320,27 +346,13 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§emission-history}: core projects the frozen programs and inserts readback after transforms,
-        // between the log and footer. Empty content produces no assistant message.
-        if (drafts.some(({ name }) => name === "emission-history")) throw new Error("emission-history is a core-owned packet section");
-        const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
-        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ content: string; executors: string }>({
-            loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
-        });
-        const logIndex = drafts.findIndex(({ name }) => name === "log");
-        const userIndex = drafts.findIndex(({ slot }) => slot === "user");
-        const insertion = logIndex >= 0 ? logIndex + 1 : userIndex >= 0 ? userIndex : drafts.length;
-        drafts = drafts.toSpliced(insertion, 0, {
-            name: "emission-history", slot: "assistant", header: null,
-            content: programs.map(({ content, executors }) => TurnOps.renderHistory(content, JSON.parse(executors) as string[]))
-                .filter((content) => content.length > 0).join("\n\n"),
-        });
+        const unchangedLog = logSections.filter((section) => section.slot === "user").every((section) =>
+            drafts.some((candidate) => candidate.name === section.name && candidate.content === section.content && candidate.slot === section.slot));
+        const attachments = nativeParts.filter(({ section }) => drafts.some(({ name }) => name === section));
+        const attachmentsWeight = attachments.reduce((sum, { weight }) => sum + weight, 0);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
-            const transformedLog = drafts.find((section) => section.name === "log");
-            const curationTargets = transformedLog?.content === renderedLog.content
-                ? renderedLog.curationTargets
-                : [];
+            const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
             const content = BudgetReadout.resolve(budgetSection.content, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
@@ -349,21 +361,19 @@ export default class PacketBuilder {
             }, curationTargets);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
-        // Core alone turns validated drafts into measured durable sections. {§packet-items} — the
-        // log section's items are its records when no transformer touched it; any other section,
-        // or a transformed log, is one item.
+        // {§packet-items}: unchanged log segments retain their content-addressed records.
         const sections = drafts.map((section): StoredPacketSection => ({
             ...section,
             weight: weighContent(PacketWire.renderSection(section)),
-            items: section.name === "log" && section.content === renderedLog.content ? renderedLog.records : [section.content],
+            items: sectionItems.get(section.name)?.join("\n\n") === section.content ? sectionItems.get(section.name)! : [section.content],
         }));
         const renderWeight = PacketWire.packetToWireMessages({ sections })
             .reduce((sum, { content }) => sum + weighContent(content), 0);
-        // {§packet-attachment-parts}: text, including the previous program, is already in the messages.
-        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
+        // {§packet-attachment-parts}: all text is already in the ordered messages.
+        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments };
         this.#allowances.set(packet.sections, { budget: curationBudget, factor });
         // {§context-own-rows-fit} — a transformed log is one item the wall cannot take row by row.
-        this.#bodiedRows.set(packet.sections, drafts.find((section) => section.name === "log")?.content === renderedLog.content ? renderedLog.bodied : []);
+        this.#bodiedRows.set(packet.sections, unchangedLog ? renderedLog.bodied : []);
         this.#streamObservations.set(packet.sections, openChannels);
         return packet;
     }
@@ -478,7 +488,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, turnId: number | null): Promise<object[]> {
+    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
