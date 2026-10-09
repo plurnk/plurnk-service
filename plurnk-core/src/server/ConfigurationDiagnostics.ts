@@ -30,6 +30,16 @@ export default class ConfigurationDiagnostics {
         this.#notices.set(JSON.stringify(notice), notice);
     }
 
+    // {§operator-config-undeclared-key} — information about the operator's file: never a refusal, and
+    // never in a model's packet.
+    undeclared(key: string, file: string): void {
+        const notice: Notice = {
+            source: "engine:configuration", kind: "configuration_undeclared", level: "info", key,
+            message: `\`${key}\` is set in ${file} and no installed package declares it.`,
+        };
+        this.#notices.set(JSON.stringify(notice), notice);
+    }
+
     // {§module-http-mounts} — a module the host left out: information, never a failure.
     leftOut(owner: string, message: string): void {
         const notice: Notice = { source: "engine:configuration", kind: "module_left_out", level: "info", owner, message };

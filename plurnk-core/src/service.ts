@@ -3,6 +3,7 @@
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { isIPv6 } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -13,6 +14,7 @@ import HttpListener from "./server/HttpListener.ts";
 import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
+import EnvCatalog from "./core/env-catalog.ts";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
@@ -323,6 +325,7 @@ export default class Service {
         const unavailable = Service.#configuration.notices().filter(({ level }) => level === "warn" || level === "error");
         if (unavailable.length > 0) throw new Error(unavailable.map(({ message }) => message).join("\n"));
         await Service.#validateConfiguration();
+        for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
         const { aliases, active } = Service.#modelConfiguration();
         process.stdout.write([
             "configuration valid",
@@ -437,6 +440,12 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
         for (const cause of configurationErrors) Service.#configuration.record("extensions", cause);
         Service.#configuration.pluginReports(reports);
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
+        // {§operator-config-undeclared-key} — the operator's files, never the process environment.
+        const declares = EnvCatalog.declares(defaultsFiles);
+        for (const file of new Set([...(configFile === null ? [] : [resolve(configFile)]), Service.#hostPaths.configFile])) {
+            if (!existsSync(file)) continue;
+            for (const key of OperatorConfig.undeclared(await readFile(file, "utf8"), declares)) Service.#configuration.undeclared(key, file);
+        }
 
         const command = typeof positionals[0] === "string" ? positionals[0] : "start";
         const action = typeof positionals[1] === "string" ? positionals[1] : null;

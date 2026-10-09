@@ -11,6 +11,13 @@
 // CONSUMER. `FOO=bar` is valid and nothing reads it; `PAGER=less` is valid and something does.
 import EnvDefaults, { type EnvDefaultsFile } from "./env-defaults.ts";
 
+// A declaration line: `KEY=value` is live, `# KEY=value` optional. A `<placeholder>` segment in the
+// name declares a family of keys ({§operator-config-undeclared-key}), only ever written commented.
+const DECLARATION = /^#?\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^<>\s=]+>[A-Za-z0-9_]*)*)=/u;
+const PLACEHOLDER = /<[^<>\s=]+>/gu;
+// What a placeholder, or the scope after a declared name's `_`, stands for: an alias, a name, a tag.
+const SEGMENT = "[\\p{L}\\p{N}_.-]+";
+
 export interface EnvCatalogQuery {
     // Substring match over a declaration's name and its comment, case-insensitive.
     readonly query?: string;
@@ -34,15 +41,44 @@ export default class EnvCatalog {
         const out: Declaration[] = [];
         let pending: string[] = [];
         for (const line of text.split("\n")) {
-            const bare = line.trim();
-            if (bare.length === 0) { pending.push(line); continue; }
-            const assignment = /^#?\s*([A-Za-z_][A-Za-z0-9_]*)=/u.exec(bare);
-            // A comment that is not an assignment introduces whatever comes next.
-            if (assignment === null) { pending.push(line); continue; }
-            out.push({ name: assignment[1]!, text: [...pending, line].join("\n") });
+            const name = EnvCatalog.declaredName(line);
+            // A blank line, or a comment that is not an assignment, introduces whatever comes next.
+            if (name === null) { pending.push(line); continue; }
+            out.push({ name, text: [...pending, line].join("\n") });
             pending = [];
         }
         return out;
+    }
+
+    // The name one panel line declares, or null for prose. Every reader of a panel shares it.
+    static declaredName(line: string): string | null {
+        return DECLARATION.exec(line.trim())?.[1] ?? null;
+    }
+
+    // The declaration grammar admits `<` only to open a placeholder.
+    static isFamily(name: string): boolean {
+        return name.includes("<");
+    }
+
+    // {§operator-config-undeclared-key} Whether an installed package declares a key: by name, as a
+    // declared name's `_` scope (a per-alias knob, `PLURNK_MODEL_<alias>`), or as a family member.
+    static declares(files: readonly EnvDefaultsFile[]): (key: string) => boolean {
+        const names = new Set<string>();
+        const families: RegExp[] = [];
+        for (const { text } of files) {
+            for (const { name } of EnvCatalog.declarations(text)) {
+                if (EnvCatalog.isFamily(name)) families.push(new RegExp(`^${name.replaceAll(PLACEHOLDER, SEGMENT)}$`, "u"));
+                else names.add(name);
+            }
+        }
+        const scope = new RegExp(`^${SEGMENT}$`, "u");
+        const scoped = (key: string): boolean => {
+            for (let at = key.indexOf("_"); at !== -1; at = key.indexOf("_", at + 1)) {
+                if (names.has(key.slice(0, at)) && scope.test(key.slice(at + 1))) return true;
+            }
+            return false;
+        };
+        return (key) => names.has(key) || scoped(key) || families.some((family) => family.test(key));
     }
 
     // The name, or the comment that documents it — a Worker looks for a variable by what it is
@@ -63,6 +99,8 @@ export default class EnvCatalog {
         const out = [];
         for (const file of selected) {
             for (const declaration of EnvCatalog.declarations(file.text)) {
+                // A family is no name a Worker can set; only its members are.
+                if (EnvCatalog.isFamily(declaration.name)) continue;
                 if (term !== undefined && !EnvCatalog.#matches(declaration, term)) continue;
                 const lines = declaration.text.split("\n");
                 const assignment = lines[lines.length - 1]!.trim().replace(/^#+\s*/u, "");

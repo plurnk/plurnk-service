@@ -4,7 +4,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Meta from "@plurnk/plurnk-meta";
+import { PROVIDERS_KNOBS } from "@plurnk/plurnk-providers";
 import Paths from "../../src/Paths.ts";
+import EnvCatalog from "../../src/core/env-catalog.ts";
+import EnvDefaults from "../../src/core/env-defaults.ts";
+import OperatorConfig from "../../src/core/OperatorConfig.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -84,4 +91,21 @@ test("{§operator-config-shared-keys} a key the daemon and its clients both read
     assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
     const core = await shippedEnv();
     for (const key of declared.keys()) assert.equal(core.get(key), undefined, `${key} has one owner, and it is not the service`);
+});
+
+test("{§operator-config-undeclared-key} the installed panels declare every family their packages read, and a fresh seed draws no notice", async () => {
+    const root = fileURLToPath(new URL("../..", import.meta.url));
+    const { files } = await EnvDefaults.collect(root, Meta.nearestNodeModules(root) ?? join(root, "node_modules"));
+    const declares = EnvCatalog.declares(files);
+    const computed = [
+        ...PROVIDERS_KNOBS.map((knob) => `${knob}_fixture`),  // every provider knob, scoped to an alias
+        "PLURNK_PROVIDERS_GBNF_fixture",
+        "PLURNK_MODEL_fixture", "PLURNK_BASEURL_fixture",
+        "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_ON_BODY",
+        "PLURNK_EXECS_NODE",
+        ...["MCP", "A2A", "SCHEDULE", "MEMBERS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
+        "PLURNK_MCP_fixture_TOOLS", "PLURNK_SKILLS_分析", "PLURNK_SKILLS_分析_ENABLED",
+    ];
+    assert.deepEqual(computed.filter((key) => !declares(key)), [], "a key a package reads by a computed name belongs to a declared family");
+    assert.deepEqual(OperatorConfig.undeclared(OperatorConfig.renderSeed(), declares), []);
 });

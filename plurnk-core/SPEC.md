@@ -3795,6 +3795,24 @@ persisting another copy or exposing effective values. Duplicate key ownership fa
 owners. Invalid optional native panels are diagnosed and prevent that extension from loading;
 they do not block the remaining floor or the repair path ({§configuration-repair-path}).
 
+§operator-config-undeclared-key **A key no panel declares is reported, never refused.** At boot the
+daemon checks each `PLURNK_*` key the operator's configuration files set — `$XDG_CONFIG_HOME/plurnk/.env`
+and a `--config` file, never an `--env-file*` layer or the process environment — against the
+assembled panels' declarations, live and commented alike. A declaration whose name holds a
+`<placeholder>` segment declares a family and is only ever commented. A placeholder, like the scope
+after a declared name's `_`, stands for one or more letters, digits, `_`, `.` or `-`.
+
+| Key the file sets | Outcome |
+|---|---|
+| A declared name | none |
+| A declared name, `_`, and a scope (`PLURNK_PROVIDERS_EFFORT_<alias>`, `PLURNK_MODEL_<alias>`) | none |
+| A family member (`# PLURNK_MCP_<alias>=` declares `PLURNK_MCP_docs_ENABLED`) | none |
+| Another component's: the client's `PLURNK_CLIENT_*` and `PLURNK_COMPOSITION_*`; the bench's `PLURNK_BENCH*`, `PLURNK_SWEBENCH_*`, `PLURNK_PI_*` and `PLURNK_CANDIDATE_*` | none |
+| Any other `PLURNK_*` key | one `info` Notice from `engine:configuration`, kind `configuration_undeclared`, naming the `key` and the file |
+
+Boot continues. The notice is the operator's information: `start`, `config` and `config check` print
+it, `config check` still passes, and it never enters a model's packet.
+
 §operator-config-only-home **The cascading environment is the only home for a choice.** The principle and its reasons are ARCHITECTURE.md's (*Configuration authority*); this is what `scripts/env-surface-policy.mjs` enforces in `root:lint`, over the source Git tracks:
 
 | Rule | What it refuses |

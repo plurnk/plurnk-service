@@ -2,7 +2,11 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdir, mkdtempDisposable, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { parseEnv } from "node:util";
 import type HostPaths from "./HostPaths.ts";
+
+// The client and the bench lanes read their own keys from the operator's file, too.
+const FOREIGN = /^PLURNK_(?:CLIENT_|COMPOSITION_|BENCH|SWEBENCH_|PI_|CANDIDATE_)/u;
 
 const exists = async (path: string): Promise<boolean> => access(path, constants.F_OK)
     .then(() => true)
@@ -67,6 +71,12 @@ export default class OperatorConfig {
             "# PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract",
             "",
         ].join("\n");
+    }
+
+    // {§operator-config-undeclared-key} The daemon's keys an operator file sets that no installed
+    // package declares, in file order.
+    static undeclared(text: string, declares: (key: string) => boolean): readonly string[] {
+        return Object.keys(parseEnv(text)).filter((key) => key.startsWith("PLURNK_") && !FOREIGN.test(key) && !declares(key));
     }
 
     static async ensure(paths: HostPaths, policySource: string): Promise<boolean> {

@@ -39,3 +39,13 @@ test("{§configuration-repair-path} repeated discovery diagnostics are deduplica
         { kind: "plugin_configuration", level: "warn" },
     ]);
 });
+
+test("{§operator-config-undeclared-key} an undeclared key is one warn notice naming the key and the file, recorded once", () => {
+    const diagnostics = new ConfigurationDiagnostics();
+    diagnostics.undeclared("PLURNK_FIXTURE_TYPO", "/home/operator/.config/plurnk/.env");
+    diagnostics.undeclared("PLURNK_FIXTURE_TYPO", "/home/operator/.config/plurnk/.env");
+    assert.deepEqual(diagnostics.notices(), [{
+        source: "engine:configuration", kind: "configuration_undeclared", level: "info", key: "PLURNK_FIXTURE_TYPO",
+        message: "`PLURNK_FIXTURE_TYPO` is set in /home/operator/.config/plurnk/.env and no installed package declares it.",
+    }]);
+});

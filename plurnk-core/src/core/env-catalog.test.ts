@@ -102,3 +102,47 @@ test("EnvCatalog.candidates omits summary rather than inventing one", () => {
     const [bare] = EnvCatalog.candidates([{ owner: "@plurnk/x", parsed: {}, text: "BARE=1" }]);
     assert.equal(bare!.summary, undefined, "a templated instance is self-documenting; an empty string would be a lie");
 });
+
+// {§operator-config-undeclared-key} — a `<placeholder>` in a declared name declares a family.
+const FAMILIES = {
+    owner: "@plurnk/plurnk-fixture",
+    parsed: {},
+    text: [
+        "# Per-alias switch.",
+        "PLURNK_FIXTURE_EFFORT=adaptive",
+        "# PLURNK_FIXTURE_BUDGET=8192",
+        "# Any alias: its definition and its own controls.",
+        "# PLURNK_FIXTURE_DEF_<alias>=<definition>",
+        "# PLURNK_FIXTURE_PROVIDER_<NAME>_<SETTING>=<value>",
+        "# What a pager does.",
+        "PAGER=cat",
+    ].join("\n"),
+};
+
+test("{§operator-config-undeclared-key} a family declaration is its own declaration, never prose documenting the next key", () => {
+    const found = EnvCatalog.declarations(FAMILIES.text);
+    assert.deepEqual(found.map(({ name }) => name), [
+        "PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PLURNK_FIXTURE_DEF_<alias>", "PLURNK_FIXTURE_PROVIDER_<NAME>_<SETTING>", "PAGER",
+    ]);
+    assert.equal(found.at(-1)!.text, "# What a pager does.\nPAGER=cat", "the family's lines stay with the family");
+    assert.deepEqual(EnvCatalog.candidates([FAMILIES]).map(({ alias }) => alias), ["PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PAGER"],
+        "a family is no name a Worker can set, so it is no candidate");
+});
+
+test("{§operator-config-undeclared-key} a key is declared by name, as a declared name's scope, or as a family member", () => {
+    const declares = EnvCatalog.declares([FAMILIES]);
+    for (const key of [
+        "PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PAGER",          // by name, live or commented
+        "PLURNK_FIXTURE_EFFORT_deep12", "PLURNK_FIXTURE_BUDGET_my-box.2",   // a declared name's scope
+        "PLURNK_FIXTURE_DEF_docs", "PLURNK_FIXTURE_DEF_docs_ENABLED",       // family members
+        "PLURNK_FIXTURE_DEF_分析", "PLURNK_FIXTURE_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS",
+    ]) assert.equal(declares(key), true, key);
+    for (const key of [
+        "PLURNK_FIXTURE_EFORT",            // nothing declares a misspelling
+        "PLURNK_FIXTURE",                  // a prefix of a declared name is not that name
+        "PLURNK_FIXTURE_EFFORT_",          // a scope is never empty
+        "PLURNK_FIXTURE_DEF_",             // nor is a placeholder
+        "PLURNK_FIXTURE_DEF_a b",          // and it holds no space
+        "PLURNK_FIXTURE_PROVIDER_ACME",    // two placeholders need two segments
+    ]) assert.equal(declares(key), false, key);
+});

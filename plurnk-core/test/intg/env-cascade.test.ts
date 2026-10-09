@@ -630,3 +630,61 @@ for (const built of [false, true]) {
         } finally { await rm(fx.root, { recursive: true, force: true }); }
     });
 }
+
+for (const built of [false, true]) {
+    test(`{§operator-config-undeclared-key} ${built ? "built executable" : "source launcher"} reports a key no panel declares, and boots`, async (t) => {
+        const fx = await fixture();
+        t.after(() => rm(fx.root, { recursive: true, force: true }));
+        await mkdir(dirname(fx.homeEnv), { recursive: true });
+        await writeFile(fx.homeEnv, [
+            "PLURNK_UNDECLARED_FIXTURE=1",          // no panel declares it
+            "PLURNK_PROVIDERS_EFFORT_fixture=low",  // a declared knob's alias scope
+            "PLURNK_SCHEDULE_fixture_ENABLED=0",    // a member of a declared family
+            "PLURNK_CLIENT_FIXTURE=1",              // the client's own
+            "",
+        ].join("\n"));
+        const message = `\`PLURNK_UNDECLARED_FIXTURE\` is set in ${fx.homeEnv} and no installed package declares it.`;
+        const env: NodeJS.ProcessEnv = {
+            ...process.env, HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
+            PLURNK_SHELL_ONLY_FIXTURE: "1",         // the process environment is not the operator's file
+        };
+        delete env.PLURNK_MODEL;
+        delete env.PLURNK_SERVICE_DB_PATH;
+        const daemon = await Launch.start({
+            command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
+            cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
+        });
+        t.after(() => daemon.stop());
+        const response = await fetch(daemon.url, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                threadId: "undeclared-key", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                forwardedProps: { plurnk: { action: { kind: "discover" } } },
+            }),
+        });
+        assert.equal(response.status, 200);
+        const notices = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown })
+            .filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice)
+            .filter(({ kind }) => kind === "configuration_undeclared");
+        assert.deepEqual(notices, [{
+            source: "engine:configuration", kind: "configuration_undeclared", level: "info", key: "PLURNK_UNDECLARED_FIXTURE", message,
+        }]);
+        assert.equal(daemon.child.exitCode, null, "an undeclared key is never a refusal");
+        // `close` follows the drained stdio, so the boot diagnostic has arrived whole.
+        const closed = once(daemon.child, "close");
+        await daemon.stop();
+        await closed;
+        assert.ok(daemon.stderr().includes(`plurnk-service: ${message}`), daemon.stderr());
+
+        const check = await runService(fx, ["config", "check"], { built });
+        assert.equal(check.code, 0, "an undeclared key never fails the check");
+        assert.ok(check.stderr.includes(message), check.stderr);
+        const explicit = join(fx.root, "explicit.env");
+        await writeFile(explicit, "PLURNK_EXPLICIT_FIXTURE=1\n");
+        const selected = await runService(fx, ["--config", explicit, "config", "check"], { built });
+        assert.equal(selected.code, 0, selected.stdout);
+        assert.ok(selected.stderr.includes(`\`PLURNK_EXPLICIT_FIXTURE\` is set in ${explicit}`), selected.stderr);
+        assert.ok(selected.stderr.includes(message), "the user file is still checked beside the selected one");
+    });
+}

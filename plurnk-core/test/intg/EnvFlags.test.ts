@@ -76,6 +76,17 @@ test("parseEnvDefaultsContent: an optional knob's commented declaration ends its
     assert.deepEqual(flags.map(({ envName, description }) => [envName, description]), [["PLURNK_SERVICE_MAX_TURNS", "Turn ceiling; -1 = none."]]);
 });
 
+test("{§operator-config-undeclared-key} parseEnvDefaultsContent: a family's commented declaration ends its own description", () => {
+    const flags = EnvFlags.parseEnvDefaultsContent([
+        "# Any alias: its glob, and its own _ENABLED control.",
+        "# PLURNK_MEMBERS_<alias>=<glob>",
+        "# Matched paths a members definition lists as its sample.",
+        "PLURNK_SERVICE_MEMBERS_SAMPLE=20",
+    ].join("\n"));
+    assert.deepEqual(flags.map(({ envName, description }) => [envName, description]),
+        [["PLURNK_SERVICE_MEMBERS_SAMPLE", "Matched paths a members definition lists as its sample."]]);
+});
+
 test("parseEnvDefaultsContent: strips quotes from default values", () => {
     const content = `# desc
 PLURNK_QUOTED="hello world"`;

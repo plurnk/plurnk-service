@@ -11,6 +11,7 @@
 //   - Vars without a comment are still accepted as flags but hidden from -h.
 
 import { readFile } from "node:fs/promises";
+import EnvCatalog from "./env-catalog.ts";
 
 export interface FlagDescriptor {
     flagName: string;
@@ -47,9 +48,9 @@ export default class EnvFlags {
             if (EnvFlags.#isSectionDelimiter(line)) { buffer = []; continue; }
             if (EnvFlags.#isCommentLine(line)) {
                 const text = EnvFlags.#extractCommentText(line);
-                // An optional knob's commented declaration ends its own description; what follows
-                // describes the next key.
-                if (text.length === 0 || /^[A-Za-z_][A-Za-z0-9_]*=/u.test(text)) { buffer = []; continue; }
+                // An optional knob's or a family's commented declaration ends its own description;
+                // what follows describes the next key.
+                if (text.length === 0 || EnvCatalog.declaredName(text) !== null) { buffer = []; continue; }
                 buffer.push(text);
                 continue;
             }

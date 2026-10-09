@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import EnvCatalog from "./env-catalog.ts";
 import HostPaths from "./HostPaths.ts";
 import OperatorConfig from "./OperatorConfig.ts";
 
@@ -109,4 +110,28 @@ test("{§host-path-layout} a partial first-run write rolls back the owned config
     } finally {
         await rm(root, { recursive: true, force: true });
     }
+});
+
+test("{§operator-config-undeclared-key} an operator file's undeclared daemon keys, in file order; other components' and non-plurnk keys pass", () => {
+    const declares = EnvCatalog.declares([{
+        owner: "@plurnk/plurnk-fixture", parsed: {},
+        text: "PLURNK_FIXTURE_EFFORT=adaptive\n# PLURNK_MODEL=cloud\n# PLURNK_MCP_<alias>=<definition>\n",
+    }]);
+    const text = [
+        "# PLURNK_COMMENTED_OUT=1",
+        "PLURNK_FIXTURE_TYPO=1",
+        "PLURNK_FIXTURE_EFFORT=low",           // declared
+        "PLURNK_FIXTURE_EFFORT_deep12=off",    // a declared name's scope
+        "PLURNK_MODEL_deep12=deepseek/v4",     // the scope of a commented declaration
+        "PLURNK_MCP_brave_TOOLS=[]",           // a family member
+        "PLURNK_CLIENT_COLOR=0",               // the client's
+        "PLURNK_BENCHLET_TIMEOUT=1",           // the bench's
+        "PLURNK_SWEBENCH_RESOLV_CONF=/etc/x",  // the bench's
+        "PLURNK_PI_MODEL=fixture",             // the bench's
+        "PLURNK_CANDIDATE_GRADE_DEADLINE_SEC=1", // the bench's
+        "PLURNK_COMPOSITION_ROOT=/tmp/x",      // the client's
+        "OPENROUTER_API_KEY=fixture",          // not the daemon's namespace
+        "PLURNK_UNREAD_KNOB=1",
+    ].join("\n");
+    assert.deepEqual(OperatorConfig.undeclared(text, declares), ["PLURNK_FIXTURE_TYPO", "PLURNK_UNREAD_KNOB"]);
 });
