@@ -78,7 +78,7 @@ const fixture = async () => {
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     // The next request as it would be built now, with the given rows taken.
-    const probe = async (provider: Mock, taken: { omitPreviousEmission?: boolean; bodiless?: Set<number> } = {}): Promise<RequestPacket> => {
+    const probe = async (provider: Mock, taken: { omitEmissionHistory?: boolean; bodiless?: Set<number> } = {}): Promise<RequestPacket> => {
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         return await builder.buildRequestPacket({
             initialMessages: messages, workspaceId, workerId, loopId, provider, currentTurnSeq: next!.next, gitStatus: null, ...taken,
@@ -100,8 +100,8 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
         // The next request by both measures, and as each shedding step would leave it.
         const full = await probe(roomy);
         const estimate = Math.ceil(full.weight * factor);
-        const withoutReplay = await exact(roomy, PacketWire.packetToWireMessages(await probe(roomy, { omitPreviousEmission: true })));
-        const asReceipt = await exact(roomy, PacketWire.packetToWireMessages(await probe(roomy, { omitPreviousEmission: true, bodiless: new Set([codeRow.id]) })));
+        const withoutReplay = await exact(roomy, PacketWire.packetToWireMessages(await probe(roomy, { omitEmissionHistory: true })));
+        const asReceipt = await exact(roomy, PacketWire.packetToWireMessages(await probe(roomy, { omitEmissionHistory: true, bodiless: new Set([codeRow.id]) })));
         const wall = Math.floor((Math.max(estimate, asReceipt) + withoutReplay) / 2);
         assert.ok(estimate + 300 < wall, `calibrated on prose, the estimate admits the packet: ${estimate} under ${wall}`);
         assert.ok(withoutReplay > wall + 300, `the previous program alone does not make room: ${withoutReplay} over ${wall}`);
@@ -114,7 +114,7 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
         assert.ok(await exact(tight, tight.received[0]!) <= wall, "what was sent fits the wall by the provider's own count");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        assert.equal(packetSection(packet, "previous-emission"), "", "the previous program went whole, first");
+        assert.equal(packetSection(packet, "emission-history"), "", "the previous program went whole, first");
         const rows = logEntries(packet);
         const notes = rows.filter(({ logPath }) => String(logPath).endsWith("/NOTE"));
         const code = notes.at(-1)!;

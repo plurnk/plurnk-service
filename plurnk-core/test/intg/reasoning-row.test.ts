@@ -10,6 +10,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 
 const frame = PlurnkParser.frame;
 const KNOB = "PLURNK_SERVICE_REASONING_ROWS";
@@ -44,7 +45,7 @@ const story = async (contextWindow: number, reasoning: string) => {
     return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1]!, engine, ids: { workspaceId, workerId, loopId } };
 };
 
-test("{§reasoning-row} {§previous-emission}: reasoning stays in the log and only the complete content program is assistant-authored", async () => {
+test("{§reasoning-row} {§emission-history}: reasoning stays in the log and only the complete content program is assistant-authored", async () => {
     await withKnob("1", async () => {
         const reasoning = "I think the fix is in the resolver.\nBecause the converter raises before the view is named.";
         const { db, first, second, rows, program, log, envelope } = await story(100_000, reasoning);
@@ -161,7 +162,8 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
     const evidence = Array.from({ length: 40 }, (_, i) => `fact ${i}: ${"evidence ".repeat(12)}`).join("\n");
     const reasoning = "Consider the evidence. ".repeat(100);
     const outcomes: unknown[] = [];
-    for (const enabled of ["0", "1"]) await withKnob(enabled, async () => {
+    let budget = 0;
+    for (const enabled of ["reference", "0", "1"]) await withKnob(enabled === "reference" ? "0" : enabled, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `reasoning-priority-${enabled}`);
@@ -172,9 +174,8 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
             await seedEntryWithChannel(db, { workspaceId, pathname: "/evidence.txt", content: evidence });
             const messages = [{ role: "user" as const, content: "Read the evidence." }];
             const builder = new PacketBuilder({ db, schemes, executors: () => undefined });
-            const floor = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId,
-                provider: new Mock({ contextWindow: 1_000_000, responses: [] }), currentTurnSeq: 1, gitStatus: null });
-            await withEnv("PLURNK_PROVIDERS_OUTPUT_BUDGET", String(1_000_000 - floor.weight - 3_000), async () => {
+            const output = enabled === "reference" ? process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET : String(1_000_000 - budget);
+            await withEnv("PLURNK_PROVIDERS_OUTPUT_BUDGET", output, async () => {
                 const provider = new Mock({ contextWindow: 1_000_000, responses: [
                     { assistant: { content: frame("READ (worker:///evidence.txt) <1,-1>", null), reasoning } },
                 ] });
@@ -186,11 +187,57 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
                 assert.equal(result.status, 200, `the requested result fits with reasoning previews ${enabled}`);
                 assert.equal(result.content, evidence, "the requested result remains complete");
                 assert.equal(rows.some((row) => kindOf(row) === "reasoning"), false, "no room remains for optional reasoning");
-                outcomes.push(result);
+                if (enabled === "reference") {
+                    const completed = await db.engine_loop_turn_seqs.get<{ turn_seq: number }>({ loop_id: loopId, turn_id: turn.turnId });
+                    assert.ok(completed);
+                    const complete = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId,
+                        provider, currentTurnSeq: completed.turn_seq + 1, gitStatus: null });
+                    budget = complete.weight + Math.floor(contentWeight(reasoning) / 2);
+                } else outcomes.push(result);
             });
         } finally { await db.close(); }
     });
     assert.deepEqual(outcomes[1], outcomes[0], "the optional preview does not change the requested result");
+});
+
+test("{§reasoning-row}: -1 returns complete reasoning independently of the shared preview bounds", async () => {
+    await withKnob("1", () => withEnv(TRAILING, "-1", () => withEnv("PLURNK_SERVICE_PREVIEW_CHARS", "64", async () => {
+        const reasoning = Array.from({ length: 150 }, (_, i) => `thought ${i + 1}: ${"evidence ".repeat(20)}`).join("\n");
+        const { db, rows, envelope, engine, ids } = await story(100_000, reasoning);
+        try {
+            const row = rows.find((r) => kindOf(r) === "reasoning");
+            assert.ok(row, "complete reasoning fits and lands");
+            assert.equal(JSON.parse(row.rx!).content, reasoning);
+            assert.equal(JSON.parse(row.rx!).range, undefined);
+            assert.equal(JSON.parse(row.tx!).lineMarker, null);
+            const wire = envelope.filter((m) => m.role === "user").map(chatMessageText).join("\n");
+            assert.match(wire, /thought 1:/u);
+            assert.match(wire, /thought 150:/u);
+            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2)", null)).items[0];
+            assert.ok(item?.kind === "statement");
+            const ordinary = await engine.look({ ...ids, statement: item.statement });
+            assert.equal(ordinary.status, 200);
+            assert.ok(typeof ordinary.content === "string" && ordinary.content.length <= 64, "an ordinary markerless READ still uses the shared preview");
+        } finally { await db.close(); }
+    })));
+});
+
+test("{§reasoning-row}: complete reasoning is omitted whole when it cannot fit, without displacing results", async () => {
+    await withKnob("1", () => withEnv(TRAILING, "-1", async () => {
+        const reasoning = "An extended deliberation. ".repeat(10_000);
+        const { db, first, second, rows, engine, ids } = await story(100_000, reasoning);
+        try {
+            assert.equal(first.status, 102);
+            assert.equal(second.status, 200);
+            assert.equal(rows.some((row) => kindOf(row) === "reasoning"), false);
+            assert.ok(rows.some((row) => row.op === "READ" && row.origin === "model"));
+            assert.equal(rows.some((row) => row.op === "error"), false);
+            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
+            assert.ok(item?.kind === "statement");
+            const source = await engine.look({ ...ids, statement: item.statement });
+            assert.equal(source.content, reasoning, "omission retains the full immutable source");
+        } finally { await db.close(); }
+    }));
 });
 
 for (const content of ["", frame("NOTE", "content note")]) {

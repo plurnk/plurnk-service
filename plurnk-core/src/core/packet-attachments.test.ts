@@ -171,7 +171,7 @@ test("{§packet-wire-envelope} {§emission-row} native attachments stay with the
         sections: [
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
-            { name: "previous-emission", slot: "assistant", header: null, content: emissionRow.rx.content, weight: 20 },
+            { name: "emission-history", slot: "assistant", header: null, content: emissionRow.rx.content, weight: 20 },
             { name: "worker", slot: "user", header: "Worker", content: '{"loop":1,"turn":2}', weight: 8 },
         ],
     };
@@ -210,7 +210,7 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
             { name: "worker", slot: "user", header: "Worker", content: '{"turn":2}', weight: 8 },
-            { name: "previous-emission", slot: "user", header: "Previous Emission", content: program, weight: 20 },
+            { name: "emission-history", slot: "user", header: "Previous Emission", content: program, weight: 20 },
         ],
     };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);

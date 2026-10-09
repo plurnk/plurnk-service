@@ -57,8 +57,8 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
         const names = (packet.sections as StoredPacketSection[]).map(({ name }) => name);
-        assert.equal(names[names.indexOf("log") + 1], "previous-emission", "core inserts the source after the transformed log");
-        assert.equal((packet.sections as StoredPacketSection[]).find(({ name }) => name === "previous-emission")?.slot, "assistant");
+        assert.equal(names[names.indexOf("log") + 1], "emission-history", "core inserts the source after the transformed log");
+        assert.equal((packet.sections as StoredPacketSection[]).find(({ name }) => name === "emission-history")?.slot, "assistant");
     } finally { await db.close(); }
 });
 

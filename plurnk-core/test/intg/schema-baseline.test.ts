@@ -106,7 +106,7 @@ test("{§db-migrations} {§packet-wire-envelope}: role evolution retains histori
         { name: "definition", slot: "system" as const, header: null, weight: 2, content: "system" },
         { name: "log", slot: "user" as const, header: "Log", weight: 10, content: "first record\n\nsecond record", items: ["first record", "second record"] },
         { name: "worker", slot: "user" as const, header: "Worker", weight: 4, content: '{"turn":3}' },
-        { name: "previous-emission", slot: "user" as const, header: "Previous Emission", weight: 20, content: previous },
+        { name: "emission-history", slot: "user" as const, header: "Previous Emission", weight: 20, content: previous },
     ];
     const packet = { weight: 36, sections, attributions: [] };
     let original: string;

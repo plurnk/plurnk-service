@@ -281,7 +281,7 @@ export class SqlRiteSync {
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_streams_reported: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	engine_previous_emission: SqlRiteSyncPreparedStatements;
+	engine_emission_history: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
@@ -881,7 +881,7 @@ export default class SqlRite {
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_streams_reported: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	engine_previous_emission: SqlRitePreparedStatements;
+	engine_emission_history: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;

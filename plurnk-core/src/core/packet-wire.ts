@@ -1149,8 +1149,8 @@ export default class PacketWire {
         if (index < 0) throw new Error("native packet attachments require a user message");
         // {§packet-attachment-parts}: native evidence belongs to the log's message. A retained
         // packet may also hold its previous program in that message; keep its recorded tail.
-        const preceding = groups[index]!.sections.filter(({ name }) => name !== "previous-emission");
-        const previous = groups[index]!.sections.find(({ name }) => name === "previous-emission");
+        const preceding = groups[index]!.sections.filter(({ name }) => name !== "emission-history");
+        const previous = groups[index]!.sections.find(({ name }) => name === "emission-history");
         const parts: ChatContentPart[] = [{ type: "text", text: PacketWire.renderSlot(preceding, "user") }];
         for (const attachment of attachments) {
             const bytes = await bytesOf(attachment);

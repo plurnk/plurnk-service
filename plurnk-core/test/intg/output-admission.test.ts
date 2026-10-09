@@ -268,11 +268,11 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
         const settled = JSON.parse(settledTurn.packet) as { weight: number };
         const betaRow = logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
         assert.ok(betaRow, "the newest large NOTE is a bodied row of the settled packet");
-        // {§previous-emission}: pin the wall below this request even without its optional replay,
+        // {§emission-history}: pin the wall below this request even without its optional replay,
         // so fitting still requires a result body. The preceding packet had a different replay.
         const baseline = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
             initialMessages: messages, workspaceId, workerId, loopId, provider: wide,
-            currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitPreviousEmission: true,
+            currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitEmissionHistory: true,
         });
         const contextWindow = Math.ceil((baseline.weight - 600) / 0.9);
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
@@ -285,7 +285,7 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
         assert.equal(tight.remaining, 2);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: fourth.turnId }))!.packet) as { weight: number };
         assert.ok(packet.weight <= wall, `the packet fits the wall: ${packet.weight} of ${wall}`);
-        assert.equal(packetSection(packet, "previous-emission"), "", "optional replay is omitted before a result body");
+        assert.equal(packetSection(packet, "emission-history"), "", "optional replay is omitted before a result body");
         const entries = logEntries(packet);
         const taken = entries.find((row) => row.logPath === betaRow.logPath)!;
         assert.equal(taken.body, undefined, "the newest bodied row is a receipt");

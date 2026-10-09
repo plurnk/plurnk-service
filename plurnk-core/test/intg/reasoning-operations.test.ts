@@ -119,7 +119,7 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
             assert.deepEqual(provider.received[1]!.map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"]);
-            assert.equal(packetSection(packet, "previous-emission"), content, "only the content program is replayed; reasoning OPs stay in their own channel");
+            assert.equal(packetSection(packet, "emission-history"), content, "only the content program is replayed; reasoning OPs stay in their own channel");
             if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply retains its own log row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
             const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });

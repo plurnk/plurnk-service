@@ -1,4 +1,4 @@
-// {§emission-row} {§previous-emission}: durable programs, curatable records, one complete replay.
+// {§emission-row} {§emission-history}: durable programs, curatable records, one complete replay.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
@@ -32,7 +32,7 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
     return { db, result, provider, rows, workspaceId, workerId, loopId, engine, schemes };
 };
 
-test("{§previous-emission}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
+test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
     const first = `${frame("EDIT (worker:///memory.md) <!-- remember -->", body)}\n\n${frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
     const curate = frame("KILL (log:///1/2/*/NOTE)", null);
@@ -83,12 +83,12 @@ test("{§emission-row}: curation retires the immediately preceding emission with
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
-    assert.equal(PacketWire.sectionContent(await build(), "previous-emission"), frame("NOTE", "Newest program."));
+    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), frame("NOTE", "Newest program."));
     const last = f.rows.at(-1)!;
     const turnId = await insertTurn(f.db, f.loopId, 4);
     const result = await f.engine.dispatch({ ...f, turnId, sequence: 1, origin: "model", statement: killStmt(urlPath("log", `/${last.coordinate}/emission`)) });
     assert.equal(result.status, 200);
-    assert.equal(PacketWire.sectionContent(await build(), "previous-emission"), "");
+    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), "");
     assert.ok(PacketWire.sectionContent(await build(), "log").includes("log:///1/2/2/emission"), "an older live emission is not replayed");
 });
 

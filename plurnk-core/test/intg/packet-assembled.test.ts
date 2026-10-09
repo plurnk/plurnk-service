@@ -390,12 +390,12 @@ test("the default wire preserves canonical order with optional continuity after 
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"]);
-        assert.deepEqual(slot("assistant"), ["previous-emission"]);
+        assert.deepEqual(slot("assistant"), ["emission-history"]);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
         assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL");
-        assert.equal(packet.sections.find(({ name }) => name === "previous-emission")?.header, null);
-        assert.equal(packetSection(packet, "previous-emission"), "", "the first turn has no previous program");
+        assert.equal(packet.sections.find(({ name }) => name === "emission-history")?.header, null);
+        assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
         assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith("## Recap\n\nCUSTOM_RECAP_SENTINEL"));
     } finally { await db.close(); }
 });

@@ -1303,11 +1303,10 @@ export default class Dispatcher {
     }): Promise<number | null> {
         if (reasoning.length === 0) return null;
         const pathname = `/${loopSeq}/${turnSeq}`;
-        // The row's page: its own length when the operator names one, the shared page otherwise; the
-        // character bound is always the shared one.
-        const pageLines = Knob.optionalInteger("PLURNK_SERVICE_REASONING_TRAILING_LINES", 1) ?? Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
-        const tail = BodyPreview.selectTail(reasoning, pageLines);
-        const lineMarker = tail.whole ? null : tail.marker;
+        const pageLines = Knob.optionalInteger("PLURNK_SERVICE_REASONING_TRAILING_LINES", -1) ?? Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
+        if (pageLines === 0) throw new ConfigurationError("PLURNK_SERVICE_REASONING_TRAILING_LINES", "PLURNK_SERVICE_REASONING_TRAILING_LINES must be -1 or a positive integer.");
+        const tail = pageLines === -1 ? null : BodyPreview.selectTail(reasoning, pageLines);
+        const lineMarker = tail === null || tail.whole ? null : tail.marker;
         const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
         const statement: ReadStatement = {
             op: "READ", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,

@@ -297,7 +297,7 @@ type PacketFacts = {
     readonly notices: Notice[];
     readonly transientOpenLogEntryId: number | null;
     // {§context-own-rows-fit} — the rows the wall took for this turn's packet, shared by every rebuild.
-    readonly projection: { readonly bodiless: Set<number>; omitPreviousEmission: boolean };
+    readonly projection: { readonly bodiless: Set<number>; omitEmissionHistory: boolean };
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
@@ -850,7 +850,7 @@ export default class TurnRunner {
             turnId: initializationTurn.id,
             fromSequence: 1,
             failOnOperationError: true,
-            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitPreviousEmission: false } }),
+            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitEmissionHistory: false } }),
             signal: this.#loopSignal(loopId),
             onDispatch,
             onSettled,
@@ -978,7 +978,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, turnId);
         // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
         // would render now. The drained notices join the same facts below.
-        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitPreviousEmission: false } };
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitEmissionHistory: false } };
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
@@ -1083,12 +1083,12 @@ export default class TurnRunner {
             transientOpenLogEntryId: facts.transientOpenLogEntryId,
             turnId: facts.turnId,
             bodiless: facts.projection.bodiless,
-            omitPreviousEmission: facts.projection.omitPreviousEmission,
+            omitEmissionHistory: facts.projection.omitEmissionHistory,
         });
-        // {§previous-emission}: all builds, including result-admission probes, shed the optional
+        // {§emission-history}: all builds, including result-admission probes, shed the optional
         // replay before taking result bodies. Share the decision across this request's rebuilds.
-        if (PacketWire.sectionContent(packet, "previous-emission").length > 0 && this.#packets.windowOverflow(packet, provider) !== null) {
-            facts.projection.omitPreviousEmission = true;
+        if (PacketWire.sectionContent(packet, "emission-history").length > 0 && this.#packets.windowOverflow(packet, provider) !== null) {
+            facts.projection.omitEmissionHistory = true;
             return this.#buildPacket(args, facts);
         }
         return packet;
@@ -1152,12 +1152,12 @@ export default class TurnRunner {
     }
 
     // {§context-own-rows-fit} — one shedding step for whichever measure found the request over the wall: the
-    // previous program goes whole first ({§previous-emission}), then the newest rows still carrying a body,
+    // previous program goes whole first ({§emission-history}), then the newest rows still carrying a body,
     // enough of them by their rendered tokens to shed the excess; every body stays stored. Null when nothing
     // is left to take.
     async #shed(args: TurnArgs, request: TurnRequest, overflow: WindowOverflow): Promise<TurnRequest | null> {
-        if (!request.projection.omitPreviousEmission && PacketWire.sectionContent(request.packet, "previous-emission").length > 0) {
-            request.projection.omitPreviousEmission = true;
+        if (!request.projection.omitEmissionHistory && PacketWire.sectionContent(request.packet, "emission-history").length > 0) {
+            request.projection.omitEmissionHistory = true;
         } else {
             let shed = 0;
             let taken = 0;

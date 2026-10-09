@@ -1,4 +1,5 @@
 import type { Notice } from "@plurnk/plurnk-contracts";
+import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -173,7 +174,7 @@ export default class PacketBuilder {
         transientOpenLogEntryId = null,
         turnId = null,
         bodiless,
-        omitPreviousEmission = false,
+        omitEmissionHistory = false,
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -193,8 +194,8 @@ export default class PacketBuilder {
         turnId?: number | null;
         // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id.
         bodiless?: ReadonlySet<number>;
-        // {§previous-emission} — omitted whole before the wall takes any result bodies.
-        omitPreviousEmission?: boolean;
+        // {§emission-history} — omitted whole before the wall takes any result bodies.
+        omitEmissionHistory?: boolean;
     }): Promise<RequestPacket> {
         await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
@@ -318,14 +319,17 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§previous-emission}: core owns the frozen program and inserts it after transforms,
+        // {§emission-history}: core owns the frozen program and inserts it after transforms,
         // between the log and footer. Empty content produces no assistant message.
-        if (drafts.some(({ name }) => name === "previous-emission")) throw new Error("previous-emission is a core-owned packet section");
-        const previous = omitPreviousEmission ? undefined : await this.#db.engine_previous_emission.get<{ content: string }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
+        if (drafts.some(({ name }) => name === "emission-history")) throw new Error("emission-history is a core-owned packet section");
+        const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
+        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ content: string }>({
+            loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
+        });
         const logIndex = drafts.findIndex(({ name }) => name === "log");
         const userIndex = drafts.findIndex(({ slot }) => slot === "user");
         const insertion = logIndex >= 0 ? logIndex + 1 : userIndex >= 0 ? userIndex : drafts.length;
-        drafts = drafts.toSpliced(insertion, 0, { name: "previous-emission", slot: "assistant", header: null, content: previous?.content ?? "" });
+        drafts = drafts.toSpliced(insertion, 0, { name: "emission-history", slot: "assistant", header: null, content: programs.map(({ content }) => content).join("\n\n") });
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const transformedLog = drafts.find((section) => section.name === "log");

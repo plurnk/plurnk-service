@@ -9,7 +9,7 @@ test("{§packet-wire-envelope}: retained user-role evidence keeps its original e
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: "### log:///1/2/1/emission · 24", weight: 0 },
         { name: "recap", slot: "user", header: "Recap", content: "Current context", weight: 0 },
-        { name: "previous-emission", slot: "user", header: "Previous Emission", content, weight: 0 },
+        { name: "emission-history", slot: "user", header: "Previous Emission", content, weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
         { role: "system", content: "The language" },
@@ -17,13 +17,13 @@ test("{§packet-wire-envelope}: retained user-role evidence keeps its original e
     ]);
 });
 
-test("{§packet-wire-envelope} {§previous-emission}: the whole program is assistant-authored between the unchanged log and footer", () => {
+test("{§packet-wire-envelope} {§emission-history}: the whole program is assistant-authored between the unchanged log and footer", () => {
     const content = "````EDIT (a.md)\nFull replacement.\n```NOTE\nNested example.\n```\n````\n\n```NOTE\nMemory.\n```";
     const log = "### log:///1/2/1/READ · 24\n1: ## Worker\n2: ## Previous Emission";
     const packet: RequestPacket = { weight: 0, attributions: [], sections: [
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: log, weight: 0 },
-        { name: "previous-emission", slot: "assistant", header: null, content, weight: 0 },
+        { name: "emission-history", slot: "assistant", header: null, content, weight: 0 },
         { name: "worker", slot: "user", header: "Worker", content: '{"turn":3}', weight: 0 },
         { name: "messages", slot: "user", header: "Open Messages", content: "[]", weight: 0 },
     ] };
@@ -35,11 +35,11 @@ test("{§packet-wire-envelope} {§previous-emission}: the whole program is assis
     ], "roles and boundaries come from sections, never headings inside source text");
 });
 
-test("{§previous-emission}: an empty stored section emits no heading, placeholder or assistant message", () => {
+test("{§emission-history}: an empty stored section emits no heading, placeholder or assistant message", () => {
     const packet: RequestPacket = { weight: 0, attributions: [], sections: [
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: "retained log", weight: 0 },
-        { name: "previous-emission", slot: "assistant", header: null, content: "", weight: 0 },
+        { name: "emission-history", slot: "assistant", header: null, content: "", weight: 0 },
         { name: "messages", slot: "user", header: "Open Messages", content: "[]", weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
