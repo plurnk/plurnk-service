@@ -196,14 +196,14 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
         const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the image." });
         assert.equal(result.finalStatus, 200);
     });
-    const user = provider.received[1]?.at(-1);
+    const user = provider.received[1]?.find(({ role }) => role === "user");
     assert.ok(Array.isArray(user?.content), "the skill asset reaches the native request");
     const image = user.content.find((part) => part.type === "file");
     assert.ok(image?.type === "file");
     assert.equal(image.mediaType, "image/png");
     assert.deepEqual(Buffer.from(image.data), PNG);
     assert.match(userText(provider.received[1]!), /1:89\n2:50\n3:4e/);
-    const later = provider.received[2]?.at(-1);
+    const later = provider.received[2]?.find(({ role }) => role === "user");
     assert.ok(Array.isArray(later?.content), "the native observation stays in context");
     const retained = later.content.find((part) => part.type === "file");
     assert.ok(retained?.type === "file");

@@ -101,7 +101,11 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             }
         }
         assert.equal(parts[5]!.length, 0, "curating the READ removes the attachment from context");
-        const restoredText = provider.received[6]!.map(chatMessageText).join("\n\n");
+        const restoredMessage = provider.received[6]!.find(({ role }) => role === "user");
+        assert.ok(restoredMessage, "the retained log is a user message");
+        const restoredContent = restoredMessage.content;
+        const restoredText = typeof restoredContent === "string" ? restoredContent : restoredContent[0]?.type === "text" ? restoredContent[0].text : null;
+        assert.ok(restoredText, "the log precedes native captions and parts within its message");
         const log = /(?:^|\n)## Log\n\n([\s\S]*?)(?=\n\n## |$)/u.exec(restoredText)?.[1];
         assert.ok(log, "the provider packet contains the materialized Log section");
         const restoredRead = parseLogRecords(log).find((row) => row.path === `${resource}#bytes`);

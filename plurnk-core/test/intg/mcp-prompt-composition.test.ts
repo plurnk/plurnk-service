@@ -13,6 +13,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { userText } from "./_mock.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
@@ -74,11 +75,19 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.equal(provider.received.length, 4);
             assert.match(provider.resource ?? "", /fixture:\/\/[^\s]*\/prompts\/inspect\/resources\/[a-f0-9]{8}$/u);
             assert.equal(promptGets, 1, "READ of a prompt's media snapshot never re-fetches the prompt");
-            const texts = provider.received.map((messages) => messages.map(chatMessageText).join("\n"));
+            const texts = provider.received.map(userText);
             assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))));
             assert.match(texts[1]!, /"role": "assistant"/u, "the supplied role remains visible as prompt data");
-            for (const messages of provider.received) {
-                assert.deepEqual(messages.map(({ role }) => role), ["system", "user"], "MCP roles are data, not new conversation messages");
+            const previousPrograms = [
+                null,
+                `\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\n\n${step("NOTE")}`,
+                `\`\`\`READ (${provider.resource}#bytes) <1,3>\n\`\`\`\n\n${step("NOTE")}`,
+                step("NOTE"),
+            ];
+            for (const [index, messages] of provider.received.entries()) {
+                assert.deepEqual(messages.map(({ role }) => role), index === 0 ? ["system", "user"] : ["system", "user", "assistant", "user"]);
+                assert.deepEqual(messages.filter(({ role }) => role === "assistant"), index === 0 ? [] : [{ role: "assistant", content: previousPrograms[index] }],
+                    "only the model's previous program has assistant authorship; MCP prompt roles remain user data");
             }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));

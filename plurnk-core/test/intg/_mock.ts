@@ -4,8 +4,8 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { chatMessageText, type ChatMessage, type MockResponse } from "@plurnk/plurnk-providers";
 
-// {§packet-wire-envelope} — the packet's text as the model reads it: every user message in order.
-// Native parts ride the closing message alone; read `messages.at(-1)` for those.
+// {§packet-wire-envelope} — role-filtered user text, not the complete request.
+// Native parts belong to the log's user message; the footer can be a separate message.
 export const userText = (messages: readonly ChatMessage[]): string =>
     messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 
