@@ -277,8 +277,18 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
 
     it("throws InvalidExpressionError on malformed filter syntax", () => {
         assert.throws(() => queryJsonpathObject(outline, "$[?(@.x == "), (err: unknown) => {
-            return err instanceof InvalidExpressionError && err.dialect === "jsonpath";
+            assert.ok(err instanceof InvalidExpressionError);
+            assert.equal(err.dialect, "jsonpath");
+            assert.equal(err.expression, "$[?(@.x == ");
+            assert.ok(err.cause instanceof Error, "the upstream syntax failure remains available");
+            return true;
         });
+    });
+
+    it("{§jsonpath-query-failures} preserves an evaluation failure for a valid expression", () => {
+        const failure = new Error("fixture data accessor failed");
+        const data = { get value() { throw failure; } };
+        assert.throws(() => queryJsonpathObject(data, "$.value"), (error: unknown) => error === failure);
     });
 });
 

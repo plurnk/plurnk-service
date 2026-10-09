@@ -10,6 +10,7 @@ import {
     UnsupportedDialectError,
     InvalidExpressionError,
     QueryParseFailureError,
+    queryJsonpathObject,
 } from "@plurnk/plurnk-mimetypes";
 import Matcher from "./Matcher.ts";
 
@@ -233,6 +234,23 @@ test("matcher: unexpected error propagates (not caught)", async () => {
     await assert.rejects(
         Matcher.matchAgainstContent(regexBody, "x", "text/markdown", mts),
         /something else entirely/,
+    );
+});
+
+test("{§jsonpath-query-failures} real JSONPath syntax and evaluation failures stay distinct through the scheme adapter", async () => {
+    const malformed: MatcherBody = { dialect: "jsonpath", raw: "$[?(@.value == " };
+    const refused = await Matcher.fromQuery(malformed, "application/json", () =>
+        queryJsonpathObject({ value: 42 }, malformed.raw));
+    assert.equal(refused.status, 400);
+    assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/schemes/matcher/invalid-expression");
+    assert.equal(refused.problem?.dialect, "jsonpath");
+
+    const valid: MatcherBody = { dialect: "jsonpath", raw: "$.value" };
+    const failure = new Error("fixture data accessor failed");
+    const data = { get value() { throw failure; } };
+    await assert.rejects(
+        Matcher.fromQuery(valid, "application/json", () => queryJsonpathObject(data, valid.raw)),
+        (error: unknown) => error === failure,
     );
 });
 

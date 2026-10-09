@@ -735,6 +735,7 @@ precise source evidence while preserving the same result contract.
 | Expression is malformed                     | `InvalidExpressionError`                        | 400                            |
 | Content cannot be parsed for the dialect    | `QueryParseFailureError` (`MimetypeInputError`) | 203 with readable content      |
 | Matcher succeeds with zero findings         | `[]`                                            | 204                            |
+| §jsonpath-query-failures Unexpected JSONPath compilation, evaluation, or projection failure | Original exception, not `InvalidExpressionError` | Propagates |
 
 ### 11.5 Notices and failures
 

@@ -1,4 +1,4 @@
-import { JSONPathEnvironment, type JSONValue } from "json-p3";
+import { JSONPathEnvironment, JSONPathError, type JSONPathQuery, type JSONValue } from "json-p3";
 import picomatch from "picomatch";
 import { PathSyntax, type TextRegion } from "@plurnk/plurnk-contracts";
 
@@ -115,22 +115,21 @@ export function queryJsonpathObject(
     regionFor?: (pointer: string, value: unknown) => readonly TextRegion[] | undefined,
     readableText?: string,
 ): QueryMatch[] {
-    // RFC 9535 engine.
-    // Grammar-closed filters — no expression evaluator on the model-authored
-    // input path (the jsonpath-plus predecessor sandboxed an eval with a CVE
-    // history). Normalized paths per RFC §2.7; pointers per RFC 6901.
-    let results: Array<{ value: unknown; path: string; pointer: string }>;
+    // {§jsonpath-query-failures}: only typed compilation failures describe an
+    // invalid expression; evaluation and projection failures retain their cause.
+    let query: JSONPathQuery;
     try {
-        // deepJson is JSON-shaped by {§mimetype-channel-architecture}; the
-        // cast is the seam.
-        results = JP3.query(pattern, obj as JSONValue).nodes.map((n) => ({
-            value: n.value,
-            path: n.path,
-            pointer: String(n.toPointer()),
-        }));
+        query = JP3.compile(pattern);
     } catch (cause) {
+        if (!(cause instanceof JSONPathError)) throw cause;
         throw new InvalidExpressionError({ dialect: "jsonpath", expression: pattern, cause });
     }
+    // deepJson is JSON-shaped by {§mimetype-channel-architecture}; the cast is the seam.
+    const results = query.query(obj as JSONValue).nodes.map((n) => ({
+        value: n.value,
+        path: n.path,
+        pointer: String(n.toPointer()),
+    }));
 
     const coordinates = readableText === undefined
         ? undefined
