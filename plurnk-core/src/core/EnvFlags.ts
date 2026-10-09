@@ -8,7 +8,7 @@
 //     -h description. Section headers (# --- xxx ---) are delimiters,
 //     not descriptions.
 //   - Multi-line descriptions are joined with spaces.
-//   - Vars without a comment are still accepted as flags but hidden from -h.
+//   - Vars without a comment show their environment name and default in -h.
 
 import { readFile } from "node:fs/promises";
 import EnvCatalog from "./env-catalog.ts";

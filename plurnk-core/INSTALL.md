@@ -101,6 +101,24 @@ Extension settings remain environment/configuration values; they do not extend t
 service CLI. Boolean flags use `1` and `0`. An empty value is not an unset value;
 the owning declaration specifies its meaning.
 
+## Manual and shell completions
+
+The installed package includes a generated manual and static completions. They
+require no running daemon. Find the global npm package at
+`$(npm root -g)/@plurnk/plurnk-service`; the paths below are relative to it.
+
+| Artifact | Use |
+| --- | --- |
+| `dist/man/plurnk-service.1` | Open with `man /path/to/plurnk-service.1`, or copy into a directory on `MANPATH` (commonly `~/.local/share/man/man1/`). |
+| `dist/completions/plurnk-service.bash` | Source from your Bash configuration. |
+| `dist/completions/_plurnk-service` | Copy into a directory on Zsh's `fpath` before `compinit`. |
+| `dist/completions/plurnk-service.fish` | Copy into `~/.config/fish/completions/`, or the corresponding `XDG_CONFIG_HOME` location. |
+
+Completion offers command names, long options and filenames. Configuration
+values remain in `plurnk-service config defaults`, not a separate static catalog.
+Package installation does not edit shell configuration or install these files
+outside the package.
+
 ## Choose the right scope
 
 | Change | Owner and effect |

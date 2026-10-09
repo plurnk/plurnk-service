@@ -3948,7 +3948,14 @@ Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
 External extensions declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
 
-§operator-config-cli-flags **Admin CLI flags derive only from the service package's `.env.defaults`.** Every `PLURNK_*` declared there becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description. Installed extension defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
+§operator-config-cli-flags **Admin CLI configuration flags derive from the service panel and the contracts-owned shared keys ({§operator-config-shared-keys}).** Each active `PLURNK_*` declaration becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description; undescribed flags still show their environment name and default. Installed extension defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
+
+§service-posix-artifacts The service package ships `dist/man/plurnk-service.1`
+and Bash, Zsh and Fish scripts in `dist/completions/`, generated at build time
+from the same help and panel descriptors as the executable. Completion supplies
+command and long-option names plus ordinary filename completion; it does not
+start the service, inspect configuration values, or contact a provider. Installing
+the manual or enabling completion is explicit and documented in `INSTALL.md`.
 
 ### Loop limits
 

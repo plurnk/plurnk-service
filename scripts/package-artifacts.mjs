@@ -20,6 +20,11 @@ const projections = new Map([
             // {§systemd-user-unit} — available to npm consumers, not only source checkouts.
             "plurnk.service",
             "docs/copy-move.md",
+            // {§service-posix-artifacts} — generated from executable help during the build.
+            "dist/man/plurnk-service.1",
+            "dist/completions/plurnk-service.bash",
+            "dist/completions/_plurnk-service",
+            "dist/completions/plurnk-service.fish",
         ],
         forbiddenPrefixes: [
             "dist/core/world-state.",

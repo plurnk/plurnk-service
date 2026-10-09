@@ -49,6 +49,10 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "INSTALL.md",
         "plurnk.service",
         "docs/copy-move.md",
+        "dist/man/plurnk-service.1",
+        "dist/completions/plurnk-service.bash",
+        "dist/completions/_plurnk-service",
+        "dist/completions/plurnk-service.fish",
         "dist/index.js",
     ]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
@@ -63,6 +67,10 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "plurnk-core: required runtime artifact is absent: INSTALL.md",
         "plurnk-core: required runtime artifact is absent: plurnk.service",
         "plurnk-core: required runtime artifact is absent: docs/copy-move.md",
+        "plurnk-core: required runtime artifact is absent: dist/man/plurnk-service.1",
+        "plurnk-core: required runtime artifact is absent: dist/completions/plurnk-service.bash",
+        "plurnk-core: required runtime artifact is absent: dist/completions/_plurnk-service",
+        "plurnk-core: required runtime artifact is absent: dist/completions/plurnk-service.fish",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",
         "plurnk-core: test-only artifact leaked into package: dist/core/zero-pin.d.ts",

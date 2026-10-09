@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
+import ServiceHelp from "../../src/core/ServiceHelp.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -377,6 +378,7 @@ test("bin: --help prints usage without booting daemon", async () => {
     });
     assert.equal(result.code, 0, `--help exits 0; got ${result.code}, stderr=${result.stderr}`);
     assert.match(result.stdout, /usage: plurnk-service/);
+    assert.equal(result.stdout, ServiceHelp.format(await ServiceHelp.flags()), "{§service-posix-artifacts}: executable help matches the packaged reference source");
 });
 
 test("{§operator-config-precedence} a working directory's .env configures nothing", async () => {

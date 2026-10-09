@@ -5,6 +5,9 @@ operation dispatch. Its client surface is AG-UI over HTTP/SSE through
 `@plurnk/plurnk-agui`. The user-facing CLI lives in
 [plurnk](https://github.com/plurnk/plurnk).
 
+See [installation and configuration](INSTALL.md), including the packaged
+[manual and shell completions](INSTALL.md#manual-and-shell-completions).
+
 ## What an agent can do
 
 The exact model-facing language and operation set are owned by

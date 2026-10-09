@@ -13,7 +13,7 @@ import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import Daemon from "./server/Daemon.ts";
 import HttpListener from "./server/HttpListener.ts";
 import DaemonLock from "./server/DaemonLock.ts";
-import EnvFlags from "./core/EnvFlags.ts";
+import ServiceHelp from "./core/ServiceHelp.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import EnvCatalog from "./core/env-catalog.ts";
 import HostPaths from "./core/HostPaths.ts";
@@ -373,35 +373,13 @@ export default class Service {
         Service.#loadEnv(Service.#hostPaths.configFile, false);
         // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
         // shares with every client ({§operator-config-shared-keys}), which contracts declares.
-        const flagDescriptors = [
-            ...await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults")),
-            ...await EnvFlags.parseEnvDefaults(Paths.sharedDefaults),
-        ];
+        const flagDescriptors = await ServiceHelp.flags();
         const flagOptions: Record<string, { type: "string" }> = {};
         for (const f of flagDescriptors) {
             flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };
         }
 
-        const usage = `usage: plurnk-service [options] [start|migrate]
-       plurnk-service [options] config [edit|defaults|check]
-       plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
-       plurnk-service [options] requiem <file.db> <folder>
-
-${EnvFlags.formatFlagsHelp(flagDescriptors)}
-
-  --env-file=<path>            layer env from <path> (repeatable; later wins; errors if missing)
-  --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
-  --config=<path>              layer additional env from <path>
-  config defaults             print every installed package's annotated .env.defaults
-  config check                validate configuration without contacting a provider
-  share                        share a consistent copy of the database as a digest <folder>
-                               (default database: the service's; default folder: a stamped child
-                               of PLURNK_SERVICE_SHARE_FOLDER); --workspace=<id> limits it to one
-                               workspace; --requiem adds the forensic interview (calls a model)
-  requiem                      add the forensic interview to a digest <folder> of <file.db> (calls a model)
-  -v, --version                show executable provenance
-  -h, --help                   show this help
-`;
+        const usage = ServiceHelp.format(flagDescriptors);
 
         const { positionals, values } = parseArgs({
             allowPositionals: true,
