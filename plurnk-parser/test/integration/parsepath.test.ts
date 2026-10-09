@@ -228,9 +228,9 @@ test("{§worker-name}: parser preserves worker authority case and underscores", 
     assert.notEqual(upper.hostname, lower.hostname);
 });
 
-test("worker-name contract: `~` decomposes as a one-char authority but is outside the mintable alphabet", () => {
-    const p = AstBuilder.parsePath("worker://~/draft");
-    if (p?.kind !== "url") { assert.fail("~ authority must decompose"); return; }
-    assert.equal(p.hostname, "~");
-    assert.ok(!WORKER_NAME.test("~"));
+for (const authority of ["!", "a.b", "a+b"]) test(`{§worker-name}: URL authority ${authority} decomposes independently of the mintable alphabet`, () => {
+    const p = AstBuilder.parsePath(`worker://${authority}/draft`);
+    if (p?.kind !== "url") { assert.fail("authority must decompose"); return; }
+    assert.equal(p.hostname, authority);
+    assert.ok(!WORKER_NAME.test(authority));
 });

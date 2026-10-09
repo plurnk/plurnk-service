@@ -1,6 +1,6 @@
 // {§operator-grammar} and {§grammar-configuration-admission} across a real core turn: an
 // operator's GBNF file reaches the provider verbatim, unrelated alias settings never leak, an
-// unreadable or bare-named grammar fails instead of running unconstrained, and the turn records
+// unreadable grammar fails instead of running unconstrained, and the turn records
 // transport as evidence (#588).
 
 import test from "node:test";
@@ -137,44 +137,49 @@ test("{§grammar-configuration-admission} an alias-free provider ignores unrelat
     }
 });
 
-test("{§operator-grammar} a configured but unloadable grammar fails instead of running unconstrained", async () => {
+for (const path of ["/nonexistent/rail/never-here.gbnf", `missing-${crypto.randomUUID()}.gbnf`]) test(`{§operator-grammar} unreadable ${path} fails before inference`, async () => {
     const db = await openMigrated();
     const key = "PLURNK_PROVIDERS_GBNF_railbroken";
     const prior = process.env[key];
     try {
-        process.env[key] = "/nonexistent/rail/never-here.gbnf";
-        const { provider } = recordingProvider();
+        process.env[key] = path;
+        const { provider, calls } = recordingProvider();
         ProviderInstantiate.registerConfigurationScope(provider, "railbroken");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         await assert.rejects(
             () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
-            /ENOENT|no such file/,
+            { code: "ENOENT" },
         );
+        assert.equal(calls.length, 0, "unreadable grammar never falls back to unconstrained inference");
     } finally {
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
         await db.close();
     }
 });
 
-test("{§operator-grammar} a bare profile name fails by name: the service ships no grammar", async () => {
+test("{§operator-grammar} a filename in the daemon working directory reaches the provider verbatim", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const previousCwd = process.cwd();
     const db = await openMigrated();
     const key = "PLURNK_PROVIDERS_GBNF_railnamed";
     const prior = process.env[key];
     try {
-        process.env[key] = "plurnk.qwen.gbnf";
+        const grammar = 'root ::= "LOCAL-GRAMMAR"\n';
+        await writeFile(join(dir, "local.gbnf"), grammar);
+        process.chdir(dir);
+        process.env[key] = "local.gbnf";
         const { provider, calls } = recordingProvider();
         ProviderInstantiate.registerConfigurationScope(provider, "railnamed");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
-        await assert.rejects(
-            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
-            /names a bundled grammar profile; the service ships none/,
-        );
-        assert.equal(calls.length, 0, "nothing reached the provider");
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        assert.deepEqual(calls, [{ grammar }]);
     } finally {
+        process.chdir(previousCwd);
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
         await db.close();
+        await rm(dir, { recursive: true, force: true });
     }
 });
 

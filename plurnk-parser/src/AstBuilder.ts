@@ -1143,8 +1143,8 @@ export default class AstBuilder {
         if (raw.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(raw, pos);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
-            const range = AstBuilder.#sedRange(raw);
-            if (range !== null) return AstBuilder.#unreadable(raw, range, range.slice(range.indexOf("Match ")));
+            if (AstBuilder.#isSedRange(raw)) return AstBuilder.#unreadable(raw,
+                "Regex matcher contains a range suffix after its closing `/`.", AstBuilder.#REGEX_FORM);
             if (regex.reason === "trailing") {
                 return AstBuilder.#unreadable(raw, "Regex matcher has trailing text after `/pattern/flags`.",
                     "Write only `/pattern/flags` in the matcher; flags are optional.");
@@ -1206,15 +1206,9 @@ export default class AstBuilder {
         return { pattern: pattern.slice(inline[0].length), flags: lifted };
     }
 
-    // {§regex-sed-range} — `/a/,/b/` and `/a/,+N` are sed line ranges, not flags; say what they are
-    // and give the two-step form that addresses the same lines.
-    static #sedRange(raw: string): string | null {
-        const range = /^\/((?:\\.|[^\\/])+)\/\s*,\s*(?:\/((?:\\.|[^\\/])+)\/|\+(\d+))?\s*$/u.exec(raw);
-        if (range === null) return null;
-        const [, first, last, count] = range;
-        const locate = last === undefined ? `/${first}/` : `/${first}|${last}/`;
-        const scope = count === undefined ? "`<first,last>`" : `\`<N,M>\`, M being N + ${count}`;
-        return `\`${raw}\` is a sed line range; a matcher is one regex and selects only the lines it matches, never the lines between matches. Match ${last === undefined ? "the start" : "both ends"} with \`${locate}\` to learn ${last === undefined ? "its line number" : "their line numbers"}, then address the span by scope: ${scope}.`;
+    // {§regex-sed-range}
+    static #isSedRange(raw: string): boolean {
+        return /^\/(?:\\.|[^\\/])+\/\s*,\s*(?:\/(?:\\.|[^\\/])+\/|\+\d+)?\s*$/u.test(raw);
     }
 
     static #tryParseSlashRegex(raw: string, pos: Position):

@@ -102,7 +102,8 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         assert.ok(errors.length > 0, `${input} is refused`);
         assert.equal(errors[0]!.recovery, recovery, input);
     }
-    assert.match(refusedMatcher("```FIND (a) /x/ ,/y/\n```").recovery, /^Match both ends with `\/x\|y\/`/u, "{§regex-sed-range} keeps its forms as the recovery");
+    assert.equal(refusedMatcher("```FIND (a) /x/ ,/y/\n```").recovery,
+        "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.", "{§regex-sed-range} gives the dialect's working form without synthesizing a query");
 });
 
 test("{§matcher-refusal} {§parse-recovery} every refused matcher carries its working form on the admitted statement", () => {

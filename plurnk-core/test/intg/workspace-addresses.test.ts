@@ -41,7 +41,7 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
         assert.equal((await run("READ (worker://bob/notes.md)")).status, 404);
         assert.equal((await run("EDIT (worker://bob/_plurnk/example.md)", "ordinary generated area")).status, 201);
         assert.equal((await run("READ (worker://bob/_plurnk/example.md) <1,-1>")).content, "ordinary generated area");
-        assert.equal((await run("READ (worker://~/notes.md)")).status, 404, "tilde is not a caller-relative alias");
+        assert.equal((await run("READ (worker://missing/notes.md)")).status, 404, "an absent namespace does not resolve through the calling worker");
     });
 }
 

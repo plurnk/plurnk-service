@@ -37,13 +37,10 @@ import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
-// {§operator-grammar} — an operator's own GBNF is a file path: absolute, `~`-relative, or
-// relative to the daemon's working directory. The service ships no grammar profile, so a bare
-// name (no separator) is refused by name rather than resolved against anything.
+// {§operator-grammar}
 export const resolveOperatorGrammarPath = (value: string): string => {
     if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
-    if (value.startsWith("/") || value.startsWith(".") || value.includes("/")) return resolvePath(value);
-    throw new Error(`PLURNK_PROVIDERS_GBNF=${value} names a bundled grammar profile; the service ships none (#588). Give the path of a grammar file you wrote.`);
+    return resolvePath(value);
 };
 // Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no

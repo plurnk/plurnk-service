@@ -1466,10 +1466,9 @@ unrelated suffixes.
 does nothing with it (#588).** `PLURNK_PROVIDERS_GBNF[_<alias>]` is a file
 path — absolute, `~`-relative, or relative to the daemon's working directory —
 whose text is read once per daemon and handed to the provider verbatim
-({§provider-grammar-transport}). The service ships no grammar profile: a bare
-name with no path separator is refused with an error that says so, and an
-unreadable file fails the constrained generation loudly; neither ever silently
-becomes unconstrained. Nothing generates, validates, or grades a grammar, and
+({§provider-grammar-transport}). A filename without a path separator is relative
+to the daemon's working directory too. An unreadable file fails the constrained
+generation; it never silently becomes unconstrained. Nothing generates, validates, or grades a grammar, and
 no effort is implied by one. The turn records transport as evidence:
 `railsAttached: "client"` when the provider reports it sent the grammar, or
 `"withheld"` when it reports it did not ({§provider-grammar-evidence}); there

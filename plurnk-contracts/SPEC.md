@@ -1834,9 +1834,8 @@ diagnostics are:
   refusal ({§matcher-refusal}).
 - §regex-sed-range **A sed line range is named as one.** A regex matcher written as a sed
   address range — `/a/,/b/` or `/a/,+N` — is refused ({§matcher-refusal}) as a range, never as invalid flags: the
-  diagnostic says a matcher selects only the lines it matches, gives the one regex that
-  locates the ends (`/a|b/`, or `/a/`) and the scope that then addresses the span
-  (`<first,last>`, or `<N,M>` with M being N plus the range's count).
+  diagnostic names the range suffix and gives the regex matcher's working form.
+  It does not synthesize a different selector or a workflow ({§diagnostic-observation}).
 - §unclosed-regex **A regex that never closes.** A `/pattern` matcher with no closing
   `/` is read as the whole pattern with no flags, with one warning-severity advisory
   naming the closing slash and the flag position. The reading is deterministic because
