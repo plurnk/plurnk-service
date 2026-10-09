@@ -324,7 +324,7 @@ export default class PacketBuilder {
         // between the log and footer. Empty content produces no assistant message.
         if (drafts.some(({ name }) => name === "emission-history")) throw new Error("emission-history is a core-owned packet section");
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
-        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ content: string }>({
+        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ content: string; executors: string }>({
             loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
         });
         const logIndex = drafts.findIndex(({ name }) => name === "log");
@@ -332,7 +332,8 @@ export default class PacketBuilder {
         const insertion = logIndex >= 0 ? logIndex + 1 : userIndex >= 0 ? userIndex : drafts.length;
         drafts = drafts.toSpliced(insertion, 0, {
             name: "emission-history", slot: "assistant", header: null,
-            content: programs.map(({ content }) => TurnOps.renderHistory(content)).filter((content) => content.length > 0).join("\n\n"),
+            content: programs.map(({ content, executors }) => TurnOps.renderHistory(content, JSON.parse(executors) as string[]))
+                .filter((content) => content.length > 0).join("\n\n"),
         });
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {

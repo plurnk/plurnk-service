@@ -1,5 +1,5 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PlurnkParser, type ParseOptions } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 
@@ -19,8 +19,8 @@ export default class TurnOps {
     }
 
     // {§emission-history} — select whole operations from the frozen program, never from its bodies.
-    static renderHistory(source: string): string {
-        return TurnOps.renderEmission(TurnOps.parseInternal(source).filter((statement) =>
+    static renderHistory(source: string, executors: readonly string[]): string {
+        return TurnOps.renderEmission(TurnOps.parseInternal(source, { executors }).filter((statement) =>
             statement.op !== "NOTE" && !(statement.op === "KILL" && schemeNameOf(statement.target) === "log")));
     }
 
@@ -31,8 +31,8 @@ export default class TurnOps {
         return PlurnkParser.stringify(statements);
     }
 
-    static parseInternal(source: string): PlurnkStatement[] {
-        const parsed = PlurnkParser.parse(source);
+    static parseInternal(source: string, options?: ParseOptions): PlurnkStatement[] {
+        const parsed = PlurnkParser.parse(source, options);
         const statements: PlurnkStatement[] = [];
         const failures: string[] = [];
         for (const item of parsed.items) {

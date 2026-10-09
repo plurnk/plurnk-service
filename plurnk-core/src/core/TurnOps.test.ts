@@ -78,13 +78,13 @@ test("{§emission-history}: readback omits NOTE and log curation without inspect
         ...kept,
         PlurnkParser.frame("KILL (log:///1/2/*/READ) <2,4> <!-- curate -->", "The distilled memory."),
     ].join("\n\n");
-    assert.equal(TurnOps.renderHistory(source), kept.join("\n\n"));
+    assert.equal(TurnOps.renderHistory(source, []), kept.join("\n\n"));
     assert.equal(TurnOps.renderEmission(TurnOps.parseInternal(source)), source, "the frozen program is not changed by readback");
 });
 
 test("{§emission-history} {§target-group}: mixed KILL targets retain the non-log operations", () => {
     const source = PlurnkParser.frame("KILL (log:///1/2/*) (worker:///draft.md) (sh:///abcd1234)", null);
-    assert.equal(TurnOps.renderHistory(source), [
+    assert.equal(TurnOps.renderHistory(source, []), [
         PlurnkParser.frame("KILL (worker:///draft.md)", null),
         PlurnkParser.frame("KILL (sh:///abcd1234)", null),
     ].join("\n\n"));
@@ -95,7 +95,16 @@ test("{§emission-history}: memory-only content has no assistant readback", () =
         PlurnkParser.frame("NOTE", "Retain this memory."),
         PlurnkParser.frame("KILL (log:///1/2/*)", "Distilled memory."),
     ].join("\n\n");
-    assert.equal(TurnOps.renderHistory(source), "");
+    assert.equal(TurnOps.renderHistory(source, []), "");
+});
+
+test("{§emission-history}: retained executor identities come from admission, not current registration", () => {
+    const calls = [
+        PlurnkParser.frame("sh", "printf '%s\\n' finished"),
+        PlurnkParser.frame("gitea (list_issues)", '{"query":"all"}'),
+        PlurnkParser.frame("a-removed-plugin (skill://example/task.js)", null),
+    ].join("\n\n");
+    assert.equal(TurnOps.renderHistory(`${calls}\n\n${PlurnkParser.frame("NOTE", "Log memory.")}`, ["sh", "gitea", "a-removed-plugin"]), calls);
 });
 
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {

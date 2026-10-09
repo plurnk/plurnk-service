@@ -281,8 +281,11 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
     } finally { await db.close(); }
 });
 
-for (const finishReason of [undefined, "stop", "length"] as const) {
-    test(`{§empty-turn}: reasoning without operations does not resolve a request that has only progress replies (finish=${finishReason ?? "absent"})`, async () => {
+for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop", "length"] as const) {
+    test(`{§empty-turn}: reasoning without operations does not resolve a request that has only progress replies (preview=${preview}, finish=${finishReason ?? "absent"})`, async (t) => {
+        const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
+        process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
+        t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `reasoning-only-${crypto.randomUUID()}`);
@@ -312,7 +315,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });
             const previews = emptyRows.filter(({ attrs }) => JSON.parse(attrs).kind === "reasoning");
-            assert.deepEqual(previews.map(({ sequence, rx }) => [sequence, JSON.parse(rx).content]), [[1, reasoning]],
+            assert.deepEqual(previews.map(({ sequence, rx }) => [sequence, JSON.parse(rx).content]), preview === "1" ? [[1, reasoning]] : [],
                 "the ordinary preview belongs to the empty turn and does not count as authored progress");
             assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike sends no notice");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[3]! }))
@@ -320,7 +323,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             assert.deepEqual(readBack, [], "no runtime READ follows the empty turn: its preview and source belong to that turn");
             const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
-            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/2/error"]], "the strike rides the next packet's errors, after the empty turn's reasoning row");
+            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, `log:///1/3/${preview === "1" ? 2 : 1}/error`]], "the strike rides the next packet's errors, after any reasoning row");
         } finally { await db.close(); }
     });
 }

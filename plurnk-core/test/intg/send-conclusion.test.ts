@@ -334,12 +334,15 @@ test("{§empty-turn}: operations beside stray text reset the no-operation strike
     } finally { await db.close(); }
 });
 
-for (const [label, response, reasoning, notes, outside] of [
+for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes, outside] of [
     ["prose", "Four.", null, [], "Four."],
     ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
     ["empty response", "", null, [], undefined],
 ] as const) {
-    test(`{§empty-turn} {§reasoning-row}: ${label} preserves sources and strikes; an optional preview is not authored work`, async () => {
+    test(`{§empty-turn} {§reasoning-row}: ${label} preserves sources and strikes; preview=${preview} is not authored work`, async (t) => {
+        const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
+        process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
+        t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -352,7 +355,7 @@ for (const [label, response, reasoning, notes, outside] of [
             const { id: modelTurn, sequence } = turns.findLast(({ producer }) => producer === "model")!;
             const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ worker_id: ids.workerId });
             assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`)
-                .map(({ turn_id, rx }) => [turn_id, JSON.parse(rx).content]), reasoning === null ? [] : [[modelTurn, reasoning]],
+                .map(({ turn_id, rx }) => [turn_id, JSON.parse(rx).content]), preview === "0" || reasoning === null ? [] : [[modelTurn, reasoning]],
                 "the optional preview belongs to this turn and does not prevent its no-operation strike");
             assert.equal(provider.received.length, 1, "the preview causes no extra inference");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
@@ -443,7 +446,10 @@ test("{§message-completion}: a provider output cutoff cannot certify a final re
     } finally { await db.close(); }
 });
 
-test("{§empty-turn} {§reasoning-operations}: a reasoning NOTE is the turn's work; a response with no content program is not empty", async () => {
+for (const preview of ["0", "1"]) test(`{§empty-turn} {§reasoning-operations}: a reasoning NOTE is the turn's work; no content program is not empty (preview=${preview})`, async (t) => {
+    const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
+    process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
+    t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
     const { db, turn, provider } = await setup([said("", PlurnkParser.frame("NOTE", "Still calculating.")), said(conclude("Four."))]);
     try {
         const noted = await turn();
@@ -451,7 +457,7 @@ test("{§empty-turn} {§reasoning-operations}: a reasoning NOTE is the turn's wo
         assert.equal(noted.emptyTurn, false, "an admitted reasoning NOTE is an authored operation, exactly as a content NOTE");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: noted.turnId });
         assert.deepEqual(rows.map(({ origin, op }) => `${origin}:${op}`).filter((row) => row !== "_plurnk:SEND"),
-            ["_plurnk:READ", "model:NOTE"], "the optional reasoning preview and authored NOTE, with no strike row");
+            preview === "1" ? ["_plurnk:READ", "model:NOTE"] : ["model:NOTE"], "the authored NOTE and any optional reasoning preview, with no strike row");
         assert.equal((await turn()).status, 200);
         assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
             "the next packet carries the turn, not a complaint about it");

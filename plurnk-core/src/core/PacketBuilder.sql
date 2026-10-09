@@ -90,11 +90,14 @@ ORDER BY t.sequence, le.sequence;
 -- PREP: engine_emission_history
 -- {§emission-history}: rank completed model turns BEFORE testing eligibility.
 WITH completed AS (
-    SELECT id, sequence, row_number() OVER (ORDER BY sequence DESC) AS recency FROM turns
+    SELECT id, sequence, packet, row_number() OVER (ORDER BY sequence DESC) AS recency FROM turns
     WHERE loop_id = $loop_id AND sequence < $current_turn_seq
       AND producer = 'model' AND kind = 'inference' AND completed_at IS NOT NULL
 )
-SELECT json_extract(le.rx, '$.content') AS content
+SELECT json_extract(le.rx, '$.content') AS content,
+    (SELECT json_group_array(DISTINCT json_extract(value, '$.runtime'))
+     FROM json_each(p.packet, '$.assistant.ops')
+     WHERE json_type(value, '$.runtime') = 'text') AS executors
 FROM completed p
 JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
 JOIN turn_sources source ON source.turn_id = p.id AND source.kind = 'ops'

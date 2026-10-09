@@ -3,6 +3,8 @@ import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -61,6 +63,12 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const started = await turn(frame("receiptfixture (inspect)", body));
             assert.deepEqual(started.outcomes.map(({ op, status }) => [op, status]), [["receiptfixture", 200]]);
             await quiesceExecs(schemes);
+            const detached = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
+                workspaceId, workerId, loopId, currentTurnSeq: 3,
+                provider: new Mock({ contextWindow: 100_000, responses: [] }), initialMessages: [], gitStatus: null,
+            });
+            assert.equal(PacketWire.sectionContent(detached, "emission-history"), frame("receiptfixture (inspect)", body),
+                "{§emission-history}: removing the runtime registration cannot erase an admitted invocation");
             const observed = await observe();
             const invocation = observed.rows.find((row) => String(row.logPath).endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");
