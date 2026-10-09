@@ -40,23 +40,23 @@ const partsWithResources = (parts: unknown, authority: string, parent: string): 
     });
 };
 
-const messageJson = (message: unknown, authority: string): unknown => {
+const messageJson = (message: unknown, authority: string, prefix: string): unknown => {
     if (!isRecord(message) || typeof message.messageId !== "string") return message;
-    return { ...message, parts: partsWithResources(message.parts, authority, A2aProjection.messagePath(message.messageId)) };
+    return { ...message, parts: partsWithResources(message.parts, authority, A2aProjection.messagePath(message.messageId, prefix)) };
 };
 
-const artifactJson = (artifact: unknown, authority: string, taskId: string): unknown => {
+const artifactJson = (artifact: unknown, authority: string, taskId: string, prefix: string): unknown => {
     if (!isRecord(artifact) || typeof artifact.artifactId !== "string") return artifact;
-    return { ...artifact, parts: partsWithResources(artifact.parts, authority, A2aProjection.artifactPath(taskId, artifact.artifactId)) };
+    return { ...artifact, parts: partsWithResources(artifact.parts, authority, A2aProjection.artifactPath(taskId, artifact.artifactId, prefix)) };
 };
 
-const taskJson = (task: unknown, authority: string): unknown => {
+const taskJson = (task: unknown, authority: string, prefix: string): unknown => {
     if (!isRecord(task) || typeof task.id !== "string") return task;
-    const status = isRecord(task.status) ? { ...task.status, ...("message" in task.status ? { message: messageJson(task.status.message, authority) } : {}) } : task.status;
+    const status = isRecord(task.status) ? { ...task.status, ...("message" in task.status ? { message: messageJson(task.status.message, authority, prefix) } : {}) } : task.status;
     return {
         ...task,
-        ...(Array.isArray(task.artifacts) ? { artifacts: task.artifacts.map((artifact) => artifactJson(artifact, authority, task.id as string)) } : {}),
-        ...(Array.isArray(task.history) ? { history: task.history.map((message) => messageJson(message, authority)) } : {}),
+        ...(Array.isArray(task.artifacts) ? { artifacts: task.artifacts.map((artifact) => artifactJson(artifact, authority, task.id as string, prefix)) } : {}),
+        ...(Array.isArray(task.history) ? { history: task.history.map((message) => messageJson(message, authority, prefix)) } : {}),
         ...(status === undefined ? {} : { status }),
     };
 };
@@ -66,16 +66,20 @@ const serialized = <T>(codec: { toJSON(value: T): unknown }, value: T, project: 
 
 /** Model-oriented projections of canonical A2A v1 resources. */
 export default class A2aProjection {
-    static taskPath(taskId: string): string {
-        return `/tasks/${encodeURIComponent(taskId)}`;
+    static contextPath(contextId: string): string {
+        return `/contexts/${encodeURIComponent(contextId)}`;
     }
 
-    static messagePath(messageId: string): string {
-        return `/messages/${encodeURIComponent(messageId)}`;
+    static taskPath(taskId: string, prefix = ""): string {
+        return `${prefix}/tasks/${encodeURIComponent(taskId)}`;
     }
 
-    static artifactPath(taskId: string, artifactId: string): string {
-        return `${A2aProjection.taskPath(taskId)}/artifacts/${encodeURIComponent(artifactId)}`;
+    static messagePath(messageId: string, prefix = ""): string {
+        return `${prefix}/messages/${encodeURIComponent(messageId)}`;
+    }
+
+    static artifactPath(taskId: string, artifactId: string, prefix = ""): string {
+        return `${A2aProjection.taskPath(taskId, prefix)}/artifacts/${encodeURIComponent(artifactId)}`;
     }
 
     static taskIdentity(pathname: string): string | null {
@@ -117,8 +121,8 @@ export default class A2aProjection {
         };
     }
 
-    static taskEntry(task: Task, authority: string): A2aEntryProjection {
-        const content = A2aProjection.taskContent(task, authority);
+    static taskEntry(task: Task, authority: string, prefix = ""): A2aEntryProjection {
+        const content = A2aProjection.taskContent(task, authority, prefix);
         return {
             resources: content.resources,
             entry: {
@@ -135,7 +139,7 @@ export default class A2aProjection {
         };
     }
 
-    static taskContent(task: Task, authority: string): A2aTaskContent {
+    static taskContent(task: Task, authority: string, prefix = ""): A2aTaskContent {
         const state = taskStateToJSON(task.status?.state ?? 0)
             .replace(/^TASK_STATE_/, "")
             .toLowerCase()
@@ -146,17 +150,17 @@ export default class A2aProjection {
         if (currentMessage !== undefined) messages.set(currentMessage.messageId, currentMessage);
         let statusMessage: string[] = [];
         for (const message of messages.values()) {
-            const projected = A2aProjection.messageEntry(message, authority);
+            const projected = A2aProjection.messageEntry(message, authority, prefix);
             resources.push(...projected.resources, {
-                pathname: A2aProjection.messagePath(message.messageId),
+                pathname: A2aProjection.messagePath(message.messageId, prefix),
                 entry: projected.entry,
             });
             if (message === currentMessage) statusMessage = ["message:", projected.entry.channels.body!.content];
         }
         for (const artifact of task.artifacts) {
-            const projected = A2aProjection.artifactEntry(task, artifact, authority);
+            const projected = A2aProjection.artifactEntry(task, artifact, authority, prefix);
             resources.push(...projected.resources, {
-                pathname: A2aProjection.artifactPath(task.id, artifact.artifactId),
+                pathname: A2aProjection.artifactPath(task.id, artifact.artifactId, prefix),
                 entry: projected.entry,
             });
         }
@@ -164,7 +168,7 @@ export default class A2aProjection {
             ? "none"
             : task.artifacts.map((artifact) => {
                 const label = artifact.name.length > 0 ? artifact.name : artifact.artifactId;
-                return `- ${label}: a2a://${authority}${A2aProjection.artifactPath(task.id, artifact.artifactId)}`;
+                return `- ${label}: a2a://${authority}${A2aProjection.artifactPath(task.id, artifact.artifactId, prefix)}`;
             }).join("\n");
         return {
             body: [
@@ -176,13 +180,13 @@ export default class A2aProjection {
                 artifacts,
                 "",
             ].join("\n"),
-            json: serialized(Task, task, (json) => taskJson(json, authority)),
+            json: serialized(Task, task, (json) => taskJson(json, authority, prefix)),
             resources,
         };
     }
 
-    static messageEntry(message: Message, authority: string): A2aEntryProjection {
-        const parts = A2aProjection.#parts(message.parts, authority, A2aProjection.messagePath(message.messageId));
+    static messageEntry(message: Message, authority: string, prefix = ""): A2aEntryProjection {
+        const parts = A2aProjection.parts(message.parts, authority, A2aProjection.messagePath(message.messageId, prefix));
         return {
             resources: parts.resources,
             entry: {
@@ -196,7 +200,7 @@ export default class A2aProjection {
                         ].join("\n"),
                         mimetype: "text/markdown",
                     },
-                    json: { content: serialized(Message, message, (json) => messageJson(json, authority)), mimetype: "application/json" },
+                    json: { content: serialized(Message, message, (json) => messageJson(json, authority, prefix)), mimetype: "application/json" },
                 },
                 attributes: {
                     kind: "message",
@@ -207,8 +211,8 @@ export default class A2aProjection {
         };
     }
 
-    static artifactEntry(task: Task, artifact: Artifact, authority: string): A2aEntryProjection {
-        const parts = A2aProjection.#parts(artifact.parts, authority, A2aProjection.artifactPath(task.id, artifact.artifactId));
+    static artifactEntry(task: Task, artifact: Artifact, authority: string, prefix = ""): A2aEntryProjection {
+        const parts = A2aProjection.parts(artifact.parts, authority, A2aProjection.artifactPath(task.id, artifact.artifactId, prefix));
         return {
             resources: parts.resources,
             entry: {
@@ -225,7 +229,7 @@ export default class A2aProjection {
                         ].join("\n"),
                         mimetype: "text/markdown",
                     },
-                    json: { content: serialized(Artifact, artifact, (json) => artifactJson(json, authority, task.id)), mimetype: "application/json" },
+                    json: { content: serialized(Artifact, artifact, (json) => artifactJson(json, authority, task.id, prefix)), mimetype: "application/json" },
                 },
                 attributes: {
                     kind: "artifact",
@@ -261,7 +265,7 @@ export default class A2aProjection {
         };
     }
 
-    static #parts(parts: readonly Part[], authority: string, parent: string): {
+    static parts(parts: readonly Part[], authority: string, parent: string): {
         body: string;
         resources: A2aResource[];
     } {

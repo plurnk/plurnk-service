@@ -4,6 +4,8 @@
 |---|---|---|
 | Package integration tests | Independent demo actors using the official SDK | Discovery, binding, lifecycle and resource translation against a reference peer. |
 | Core `A2a.*.test.ts` | Real daemon, persistence, Mock inference | The adapter drives ordinary Workers and Loops; literal HTTP tests do not reuse Plurnk's client or request builders. |
+| Core `A2a.context.test.ts` | Related Tasks with independent Workers | Sibling lifecycle isolation, retained conversation and media after curation, opaque Context identities, and unchanged historical Task evidence. |
+| Package observation tests and Core HTTP tests | Concurrent requests over durable Tasks | Independent initial snapshots, completion during admission/read/cancellation, exact-Loop continuation, and observer cleanup. |
 | Core `A2a.media.test.ts` | Remote SDK peer → daemon → READ → capturing provider | Received Message/Artifact media becomes exact native parts or scoped bytes; offline retention and log curation use ordinary Core behavior. |
 | Upstream TCK | Independent Python HTTP+JSON client against that same real daemon | External conformance assertions and their remaining gaps, with unmodified reports. |
 
@@ -52,7 +54,7 @@ current attachment contract; a JSON resource is delivered as typed file bytes.
 Direct Message responses are an optional protocol branch, whereas inbound
 Plurnk work consistently creates Tasks. These unexercised branches remain
 visible in the checker report. Follow investigation in #663, binary translation
-in #702, and complete Message history in #705. Nonblocking
-SDK event processing can outlive HTTP and executor completion; the reconnect
-witness does not establish shutdown safety (#704). Current behavior belongs to
+in #702, and complete Message history in #705. Hosted execution uses no SDK event
+manager. The module joins its own observations at close, including pending application
+reads; this is distinct from the SDK's HTTP disconnect behavior. Current behavior belongs to
 {§a2a-inbound-exposure} and {§a2a-resource-projection}.

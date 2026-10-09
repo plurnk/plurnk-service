@@ -178,8 +178,7 @@ export class SqlRiteSync {
 	drain_ready_loop: SqlRiteSyncPreparedStatements;
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
-	drain_current_loop_for_worker: SqlRiteSyncPreparedStatements;
-	drain_injection_target: SqlRiteSyncPreparedStatements;
+	drain_message_recipient: SqlRiteSyncPreparedStatements;
 	drain_message_source: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
@@ -779,8 +778,7 @@ export default class SqlRite {
 	drain_ready_loop: SqlRitePreparedStatements;
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
-	drain_current_loop_for_worker: SqlRitePreparedStatements;
-	drain_injection_target: SqlRitePreparedStatements;
+	drain_message_recipient: SqlRitePreparedStatements;
 	drain_message_source: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;

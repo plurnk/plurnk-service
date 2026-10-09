@@ -974,7 +974,7 @@ never replay interrupted effects to reconstruct time. Future messages use
 the separate schedule contract ({§schedule-delivery}).
 
 §worker-message-admission **Recipient selection and admission are one decision.**
-An arrival to a worker selects its running loop, otherwise its oldest parked
+An unaddressed arrival to a worker selects its running loop, otherwise its oldest parked
 loop, otherwise a new queued loop. Compatibility is checked against the exact
 loop that receives the message; the writer does not reselect another recipient.
 The worker's admission lock covers selection, compatibility, message admission,
@@ -988,6 +988,15 @@ atomically; no drain may claim partially configured work.
 | Admitted but not observed before ordinary completion | Preserve through the existing orphan-message admission path. |
 | Cancelled as part of the worker scope | Preserve the frame as evidence; never promote it into executable work, including after restart. |
 | Explicit new arrival after cancellation | Admit under ordinary current worker policy; never revive a terminal loop. |
+
+§loop-addressed-admission **An explicit Loop recipient never falls back to new work.**
+`runLoop` may name `loopId` alongside its owning `workerId`. Selection requires that
+exact Loop to belong to the Worker and remain queued, running or parked. The inbox
+insert atomically requires the recipient to remain unfinished; completion winning
+that race leaves the message unadmitted. Missing, foreign or terminal recipients
+produce `409 daemon/admission/loop-not-open`, without creating another Loop or
+delivering to a different one. Compatibility checks and wake behavior are the same
+as ordinary Worker delivery. This is address selection, not a lifecycle policy.
 
 §stream-catalog-lifecycle Streams are independently durable subscriptions owned by a worker. Payload and
 lifecycle are orthogonal: zero bytes is a valid payload for both success and
@@ -4585,7 +4594,7 @@ Core's behavior behind them.
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Validates the recorded recipient before delivering one resolved payload or cancellation. Unknown, mismatched, and already-resolved identities fail before affecting an operation. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§loop-addressed-admission}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, statement, perspectiveWorkerId? })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
@@ -4754,6 +4763,8 @@ packets or state snapshots.
 
 §worker-model-selection **Worker-owned model selection.** Every model worker
 owns one durable model, persisted as a nullable `model_routes` foreign key.
+Concurrent first selections of the same resolved tuple share one identity;
+an insertion conflict returns the existing route without changing its fields.
 The root conversation worker is seeded once — from an explicit selection, else
 the daemon default — and never re-seeded from a later default change. A
 deliberately modelless daemon leaves the worker unset and rejects model work

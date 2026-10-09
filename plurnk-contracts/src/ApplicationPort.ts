@@ -201,6 +201,7 @@ export interface ApplicationPort extends HttpHost {
     runLoop(args: {
         readonly workspaceId: number;
         readonly workerId: number;
+        readonly loopId?: number;
         readonly prompt: string;
         readonly source?: string;
         readonly messageAddress?: string;

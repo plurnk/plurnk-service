@@ -25,6 +25,8 @@ import {
 } from "@plurnk/plurnk-schemes";
 import A2aMessage from "./A2aMessage.ts";
 import A2aProjection, { type A2aEntryProjection, type A2aResource } from "./A2aProjection.ts";
+import HostedResources from "./HostedResources.ts";
+import type { HostedTasksPort } from "./HostedTasks.ts";
 
 const OWNER = "scheme:a2a";
 
@@ -58,6 +60,11 @@ export default class A2a {
         defaultChannel: "body",
     } as const;
     readonly #messages = new MessageScheme("a2a");
+    #hosted: HostedResources | null = null;
+
+    attach(port: HostedTasksPort): void {
+        this.#hosted = new HostedResources(port);
+    }
 
     static #hostedMessage(target: ParsedPath | null): boolean {
         return target?.kind === "url" && /^\/contexts\/[^/]+\/tasks\/[^/]+\/messages\/[^/]+$/.test(target.pathname);
@@ -88,6 +95,12 @@ export default class A2a {
             return A2a.#problem("metadata-unsupported", 400, "A2A READ does not accept the [metadata] modifier.", {
                 retryable: false,
             });
+        }
+        if (request.authority === "anonymous" && request.pathname.startsWith("/contexts/")) {
+            const projection = await this.#hosted?.read(ctx.workspaceId, request.pathname);
+            return projection == null
+                ? A2a.#problem("resource-not-found", 404, `No retained A2A resource exists at a2a://anonymous${request.pathname}.`, { retryable: false })
+                : A2a.#prepared(await A2a.#publish(request.pathname, projection, ctx));
         }
         const { authority, pathname } = request;
         if (authority.length === 0) {

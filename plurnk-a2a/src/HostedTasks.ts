@@ -7,13 +7,11 @@ import {
     type Message,
     type Task,
 } from "@a2a-js/sdk";
-import {
-    type ServerCallContext,
-    type TaskStore,
-} from "@a2a-js/sdk/server";
+import type { ServerCallContext } from "@a2a-js/sdk/server";
 import { RequestMalformedError } from "@a2a-js/sdk/errors";
 import {
     WORKER_NAME,
+    type ApplicationMessage,
     type ApplicationLoopProjection,
     type ApplicationPort,
     type ApplicationWorkerProjection,
@@ -24,12 +22,14 @@ import type WorkspaceBinding from "./WorkspaceBinding.ts";
 // A2A ListTasks: a request that names no page size asks for fifty. The protocol's, not ours.
 const UNSPECIFIED_PAGE = 50;
 
-// {§a2a-inbound-exposure} A Task is a Loop of its Context worker.
-export interface PlurnkTaskBinding {
+// {§a2a-inbound-exposure} Protocol identity comes from retained messages, not log placement.
+export interface HostedTaskBinding {
     readonly workspaceId: number;
-    readonly context: ApplicationWorkerProjection;
+    readonly contextId: string;
+    readonly worker: ApplicationWorkerProjection;
     readonly taskId: string;
     readonly loop: ApplicationLoopProjection;
+    readonly firstLoopId: number;
 }
 
 const OPEN_LOOP = new Set([100, 102, 202]);
@@ -105,15 +105,15 @@ const terminalArtifact = (result: OperationResult | null, content: string | unde
     }];
 };
 
-// The port functions the store calls.
-export type TaskStorePort = Pick<ApplicationPort,
-    "cancelWorker" | "listWorkerLoops" | "listWorkers" | "readMessages" | "readWorker">;
+// The read-only projection boundary.
+export type HostedTasksPort = Pick<ApplicationPort,
+    "listWorkerLoops" | "listWorkers" | "readMessages">;
 
-export default class PlurnkTaskStore implements TaskStore {
-    readonly #port: TaskStorePort;
+export default class HostedTasks {
+    readonly #port: HostedTasksPort;
     readonly #workspace: WorkspaceBinding;
 
-    constructor(port: TaskStorePort, workspace: WorkspaceBinding) {
+    constructor(port: HostedTasksPort, workspace: WorkspaceBinding) {
         this.#port = port;
         this.#workspace = workspace;
     }
@@ -123,79 +123,41 @@ export default class PlurnkTaskStore implements TaskStore {
         return OPEN_LOOP.has(loop.status);
     }
 
-    async binding(taskId: string): Promise<PlurnkTaskBinding | null> {
+    async binding(taskId: string): Promise<HostedTaskBinding | null> {
         // Identities this exposure never mints cannot name one of its Tasks;
         // they are not malformed Core calls.
         if (!WORKER_NAME.test(taskId)) return null;
         const workspaceId = await this.#workspace.existingId();
         if (workspaceId === null) return null;
-        for (const context of await this.#contexts(workspaceId)) {
-            const task = (await this.#tasks(workspaceId, context)).find((candidate) => candidate.taskId === taskId);
-            if (task !== undefined) return task;
+        return (await HostedTasks.bindings(this.#port, workspaceId)).find((task) => task.taskId === taskId) ?? null;
+    }
+
+    static async bindings(port: HostedTasksPort, workspaceId: number): Promise<HostedTaskBinding[]> {
+        const byTask = new Map<string, HostedTaskBinding>();
+        const workers = await port.listWorkers(workspaceId, { origin: "model" });
+        for (const worker of workers) {
+            if (worker.parentWorkerId === null) continue;
+            for (const loop of await port.listWorkerLoops({ workspaceId, workerId: worker.id })) {
+                const identity = HostedTasks.#identity(loop.promptSource);
+                if (identity === null) continue;
+                const previous = byTask.get(identity.taskId);
+                if (previous !== undefined && (previous.contextId !== identity.contextId || previous.worker.id !== worker.id)) {
+                    throw new Error(`A2A Task '${identity.taskId}' has conflicting durable ownership.`);
+                }
+                byTask.set(identity.taskId, {
+                    workspaceId, ...identity, worker,
+                    loop: previous !== undefined && previous.loop.id > loop.id ? previous.loop : loop,
+                    firstLoopId: Math.min(previous?.firstLoopId ?? loop.id, loop.id),
+                });
+            }
         }
-        return null;
-    }
-
-    async ownsContext(context: ApplicationWorkerProjection): Promise<boolean> {
-        if (context.origin !== "model" || context.parentWorkerId === null) return false;
-        const workspaceId = await this.#workspace.existingId();
-        if (workspaceId === null) return false;
-        return (await this.#tasks(workspaceId, context)).length > 0;
-    }
-
-    // {§a2a-inbound-exposure} A Context runs one Task at a time: its open Loop, if any.
-    async openTask(workspaceId: number, context: ApplicationWorkerProjection): Promise<{ readonly taskId: string | null } | null> {
-        const loops = await this.#port.listWorkerLoops({ workspaceId, workerId: context.id });
-        const open = loops.find(({ status }) => OPEN_LOOP.has(status));
-        return open === undefined ? null : { taskId: PlurnkTaskStore.#identity(open.promptSource)?.taskId ?? null };
-    }
-
-    // Model children are candidate Contexts; the A2A sources on their Loops decide.
-    async #contexts(workspaceId: number): Promise<ApplicationWorkerProjection[]> {
-        return (await this.#port.listWorkers(workspaceId, { origin: "model" }))
-            .filter(({ parentWorkerId }) => parentWorkerId !== null);
-    }
-
-    // A Task's Loop is the newest Loop its own messages started.
-    async #tasks(workspaceId: number, context: ApplicationWorkerProjection): Promise<PlurnkTaskBinding[]> {
-        const byTask = new Map<string, ApplicationLoopProjection>();
-        for (const loop of await this.#port.listWorkerLoops({ workspaceId, workerId: context.id })) {
-            const identity = PlurnkTaskStore.#identity(loop.promptSource);
-            if (identity?.contextId === context.name) byTask.set(identity.taskId, loop);
-        }
-        return [...byTask].map(([taskId, loop]) => ({ workspaceId, context, taskId, loop }));
+        return [...byTask.values()].toSorted((left, right) => left.firstLoopId - right.firstLoopId);
     }
 
     async load(taskId: string, context: ServerCallContext): Promise<Task | undefined> {
         this.#assertTenant(context);
         const binding = await this.binding(taskId);
-        return binding === null ? undefined : await this.#project(binding);
-    }
-
-    async save(task: Task, context: ServerCallContext): Promise<void> {
-        this.#assertTenant(context);
-        const binding = await this.binding(task.id);
-        if (binding === null) {
-            // The SDK turns an executor-side admission rejection into an
-            // ephemeral FAILED Task event. It is protocol evidence, not
-            // authority to create a second Task store or adopt a Worker.
-            if (task.status?.state === TaskState.TASK_STATE_FAILED) return;
-            throw new Error(`A2A Task '${task.id}' has no Plurnk loop.`);
-        }
-        if (binding.context.name !== task.contextId) {
-            throw new Error(
-                `A2A Task '${task.id}' belongs to Context '${binding.context.name}', not '${task.contextId}'.`,
-            );
-        }
-        // Core state is authoritative. SDK merge writes validate identity but
-        // never create a parallel Task lifecycle in this projection store.
-        if (task.status?.state === TaskState.TASK_STATE_CANCELED && OPEN_LOOP.has(binding.loop.status)) {
-            await this.#port.cancelWorker({
-                workspaceId: binding.workspaceId,
-                workerId: binding.context.id,
-                reason: "A2A caller cancelled the Task",
-            });
-        }
+        return binding === null ? undefined : await HostedTasks.project(this.#port, binding);
     }
 
     async list(
@@ -208,26 +170,9 @@ export default class PlurnkTaskStore implements TaskStore {
         const workspaceId = await this.#workspace.existingId();
         if (workspaceId === null) return { tasks: [], nextPageToken: "", pageSize, totalSize: 0 };
 
-        let contexts: ApplicationWorkerProjection[];
-        if (params.contextId.length > 0) {
-            if (!WORKER_NAME.test(params.contextId)) {
-                return { tasks: [], nextPageToken: "", pageSize, totalSize: 0 };
-            }
-            const contextWorker = await this.#port.readWorker({
-                workspaceId,
-                identity: { name: params.contextId },
-            });
-            contexts = contextWorker === null
-                || contextWorker.origin !== "model"
-                || contextWorker.parentWorkerId === null
-                ? []
-                : [contextWorker];
-        } else {
-            contexts = await this.#contexts(workspaceId);
-        }
-
-        const bindings = (await Promise.all(contexts.map((worker) => this.#tasks(workspaceId, worker)))).flat();
-        const projected = (await Promise.all(bindings.map((binding) => this.#project(binding))))
+        const bindings = (await HostedTasks.bindings(this.#port, workspaceId))
+            .filter((binding) => params.contextId.length === 0 || binding.contextId === params.contextId);
+        const projected = (await Promise.all(bindings.map((binding) => HostedTasks.project(this.#port, binding))))
             .filter((task) => params.status === TaskState.TASK_STATE_UNSPECIFIED
                 || task.status?.state === params.status)
             .filter((task) => params.statusTimestampAfter === undefined
@@ -250,23 +195,23 @@ export default class PlurnkTaskStore implements TaskStore {
         };
     }
 
-    async #project(binding: PlurnkTaskBinding): Promise<Task> {
-        const { workspaceId, context, taskId, loop } = binding;
-        // The Context worker holds every Task's messages; each Task projects its own.
-        const rows = await this.#port.readMessages({
-            workspaceId,
-            workerId: context.id,
-        });
-        const state = PlurnkTaskStore.#state(loop.status);
-        const statusMessage = PlurnkTaskStore.#statusMessage(
-            context.name,
+    static async project(port: HostedTasksPort, binding: HostedTaskBinding): Promise<Task> {
+        const rows = await port.readMessages({ workspaceId: binding.workspaceId, workerId: binding.worker.id });
+        return HostedTasks.#project(binding, rows);
+    }
+
+    static #project(binding: HostedTaskBinding, rows: readonly ApplicationMessage[]): Task {
+        const { contextId, taskId, loop } = binding;
+        const state = HostedTasks.#state(loop.status);
+        const statusMessage = HostedTasks.#statusMessage(
+            contextId,
             taskId,
             loop.terminalResult,
         );
         const history = rows
             .filter((row) => row.direction === "inbound"
                 && typeof row.source === "string"
-                && PlurnkTaskStore.#ownsSource(row.source, context.name, taskId))
+                && HostedTasks.#ownsSource(row.source, contextId, taskId))
             .map((row) => {
                 if (row.envelope === undefined) throw new Error(`A2A message ${row.id} lost its protocol envelope.`);
                 const admitted = SendMessageRequest.fromJSON(row.envelope).message;
@@ -274,7 +219,7 @@ export default class PlurnkTaskStore implements TaskStore {
                 return admitted;
             });
         const replies = rows.filter((row) => row.direction === "outbound"
-            && row.answers.some((address) => PlurnkTaskStore.#ownsSource(address, context.name, taskId)));
+            && row.answers.some((address) => HostedTasks.#ownsSource(address, contextId, taskId)));
         const artifacts: Artifact[] = replies
             .flatMap((row) => row.attachments.map((attachment, index) => ({
                 artifactId: createHash("sha256").update(`${taskId}/${row.id}/${index}`).digest("hex").slice(0, 8),
@@ -286,7 +231,7 @@ export default class PlurnkTaskStore implements TaskStore {
             })));
         return {
             id: taskId,
-            contextId: context.name,
+            contextId,
             status: {
                 state,
                 message: statusMessage,
@@ -297,6 +242,31 @@ export default class PlurnkTaskStore implements TaskStore {
             history,
             metadata: {},
         };
+    }
+
+    // {§a2a-context-resource} Conversation includes every delivered reply, not just the final artifact.
+    static async conversation(port: HostedTasksPort, binding: HostedTaskBinding): Promise<Task> {
+        const rows = await port.readMessages({ workspaceId: binding.workspaceId, workerId: binding.worker.id });
+        const task = HostedTasks.#project(binding, rows);
+        const incoming = new Map(task.history.map((item) => [item.messageId, item]));
+        const history: Message[] = [];
+        for (const row of rows) {
+            if (row.direction === "inbound") {
+                if (!HostedTasks.#ownsSource(row.source, task.contextId, task.id)) continue;
+                const admitted = SendMessageRequest.fromJSON(row.envelope).message;
+                if (admitted !== undefined && incoming.has(admitted.messageId)) history.push(admitted);
+            } else if (row.answers.some((address) => HostedTasks.#ownsSource(address, task.contextId, task.id))) {
+                const reply = message(createHash("sha256").update(`${task.id}/reply/${row.id}`).digest("hex").slice(0, 8),
+                    task.contextId, task.id, Role.ROLE_AGENT, row.body, "text/markdown");
+                reply.metadata = { answers: [...row.answers] };
+                reply.parts.push(...row.attachments.map((attachment) => ({
+                    content: { $case: "raw" as const, value: Buffer.from(attachment.bytes) },
+                    filename: attachment.name, mediaType: attachment.mediaType, metadata: {},
+                })));
+                history.push(reply);
+            }
+        }
+        return { ...task, history };
     }
 
     #assertTenant(context: ServerCallContext): void {
@@ -344,7 +314,7 @@ export default class PlurnkTaskStore implements TaskStore {
     }
 
     static #ownsSource(source: string | null, contextId: string, taskId: string): boolean {
-        const identity = PlurnkTaskStore.#identity(source);
+        const identity = HostedTasks.#identity(source);
         return identity?.contextId === contextId && identity.taskId === taskId;
     }
 }

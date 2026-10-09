@@ -36,6 +36,7 @@ export default class Module implements DaemonModule<OutboundSetupSeam, ExposureP
     }
 
     async start(port: ExposurePort): Promise<StartedModule | void> {
+        this.#outbound.start(port);
         return await this.#exposure?.start(port);
     }
 }

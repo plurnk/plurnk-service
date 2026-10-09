@@ -520,9 +520,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
+        const recipientLoopId = args.loopId === undefined ? undefined : ClientInput.assertId("runLoop", "loopId", args.loopId);
         await this.#assertModelWorker(workspaceId, workerId);
         const attachments = ClientInput.assertMessageResources("runLoop", args.attachments);
         const body = ClientInput.assertPrompt("runLoop", args.prompt, attachments.length > 0);
@@ -568,6 +569,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             workspaceId,
             workerId,
             prompt: delivered.body,
+            ...(recipientLoopId === undefined ? {} : { loopId: recipientLoopId }),
             evidence: delivered.evidence,
             ...(messageAddress === undefined ? {} : { messageAddress }),
             ...(source === undefined ? {} : { source }),

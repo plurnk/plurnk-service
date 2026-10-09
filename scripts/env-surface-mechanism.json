@@ -1,5 +1,5 @@
 {
-    "plurnk-a2a/src/PlurnkTaskStore.ts:UNSPECIFIED_PAGE": "the A2A protocol's own page size for a ListTasks request that names none",
+    "plurnk-a2a/src/HostedTasks.ts:UNSPECIFIED_PAGE": "the A2A protocol's own page size for a ListTasks request that names none",
     "plurnk-contracts/src/types.ts:MAX_TIMER_MS": "the platform's setTimeout ceiling (2^31-1 ms); the bound on any delay a knob may name, and a farther schedule occurrence arms in hops",
     "plurnk-core/src/core/attachments.ts:AUDIO_TOKENS_PER_SECOND": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/attachments.ts:PDF_BYTES_PER_TOKEN": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",

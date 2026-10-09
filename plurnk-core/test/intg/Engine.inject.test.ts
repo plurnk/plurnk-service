@@ -88,7 +88,7 @@ test("concurrent injects are contained as distinct ordered messages with their o
     } finally { await db.close(); }
 });
 
-test("engine.inject: returns null when no loop is currently active (status=102)", async () => {
+test("engine.inject: returns null when the addressed Loop is missing or finished", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -107,5 +107,41 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
         });
         const result2 = await engine.injectIntoLoop(closedLoop, "still orphan");
         assert.equal(result2, null, "loop at status=200 doesn't count as active");
+    } finally { await db.close(); }
+});
+
+test("{§loop-addressed-admission}: a queued recipient accepts messages without changing its lifecycle", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "queued-recipient");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "queued");
+        await db.test_set_loop_status.run({ id: loopId, status: 100, terminal_result: null });
+        const recipient = await db.drain_message_recipient.get<{ id: number }>({ worker_id: workerId, loop_id: loopId });
+        assert.equal(recipient?.id, loopId);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        assert.equal((await engine.injectIntoLoop(loopId, "before execution"))?.loopId, loopId);
+        assert.deepEqual((await db.test_messages_by_loop.all<{ body: string }>({ loop_id: loopId })).map(({ body }) => body), ["queued", "before execution"]);
+        assert.equal((await db.drain_message_recipient.get<{ id: number }>({ worker_id: workerId, loop_id: loopId }))?.id, loopId);
+    } finally { await db.close(); }
+});
+
+test("{§loop-addressed-admission}: completion between recipient lookup and insertion admits no message", async (t) => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "injection-completion-race");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "original");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const query = db.drain_next_turn_seq_for_loop;
+        const get = query.get.bind(query);
+        t.mock.method(query, "get", async (...args: Parameters<typeof get>) => {
+            const result = await get(...args);
+            await db.test_set_loop_status.run({ id: loopId, status: 200, terminal_result: JSON.stringify({ status: 200 }) });
+            return result;
+        });
+        assert.equal(await engine.injectIntoLoop(loopId, "too late"), null);
+        const messages = await db.test_messages_by_loop.all<{ body: string }>({ loop_id: loopId });
+        assert.deepEqual(messages.map(({ body }) => body), ["original"]);
     } finally { await db.close(); }
 });

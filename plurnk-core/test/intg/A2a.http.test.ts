@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { setImmediate } from "node:timers/promises";
 import test, { type TestContext } from "node:test";
-import { Exposure as A2aExposure, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
+import { Exposure as A2aExposure, OutboundModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
@@ -32,7 +33,9 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
         projectRoot: null,
     });
     let endpoint = "";
+    let exposure: A2aExposure;
     const expose = () => {
+        daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
         daemon.registerModule({
             mounts: A2A_MOUNTS,
             start: async (port) => {
@@ -43,6 +46,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
                     token,
                 }).start(port);
                 endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
+                exposure = adapter;
                 return adapter;
             },
         }, "test-module");
@@ -82,8 +86,32 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
         expose();
         await daemon.start();
     };
-    return { request, send, daemon, workspace, endpoint, restart };
+    return { request, send, daemon, workspace, endpoint, restart, closeExposure: () => exposure.close() };
 };
+
+test("{§a2a-task-observation}: module close joins an in-progress retrieval before application resources close", async (t) => {
+    const f = await fixture(t, [answer("retained result")]);
+    const task = await f.send("Finish this task.");
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const read = f.daemon.readMessages.bind(f.daemon);
+    t.mock.method(f.daemon, "readMessages", async (args: Parameters<Daemon["readMessages"]>[0]) => {
+        entered.resolve();
+        await release.promise;
+        return read(args);
+    });
+    const request = f.request(`/tasks/${task.id}`);
+    await entered.promise;
+    let closed = false;
+    const closing = f.closeExposure().then(() => { closed = true; });
+    try {
+        await setImmediate();
+        assert.equal(closed, false);
+        release.resolve();
+        await closing;
+        assert.equal((await request).status.state, "TASK_STATE_COMPLETED");
+    } finally { release.resolve(); await request; await closing; }
+});
 
 // The first inference waits for release, so a Task created first can finish after a later one.
 class GatedMock extends Mock {
@@ -117,7 +145,7 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
         configuration: { returnImmediately: true },
     });
     await provider.started.promise;
-    // A Context runs one Task at a time, so the overlapping Task has a Context of its own.
+    // Separate Contexts also let the listing witness exercise context filtering.
     const second = await send("Complete the second Task.");
     assert.notEqual(second.contextId, first.contextId);
     provider.release();
@@ -230,7 +258,7 @@ for (const modes of [undefined, [], ["application/json", "text/plain"]]) {
         assert.ok(!packet.includes("request-only-evidence"), "opaque metadata is retained, not injected as instructions");
         const admitted = { ...message, contextId: result.task.contextId, taskId: result.task.id };
         assert.deepEqual(result.task.history, [admitted]);
-        const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: result.task.contextId } });
+        const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: result.task.id } });
         assert.ok(worker);
         const incoming = (await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: worker.id }))
             .find(row => row.direction === "inbound");

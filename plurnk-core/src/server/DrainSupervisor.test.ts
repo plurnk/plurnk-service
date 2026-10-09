@@ -231,7 +231,7 @@ test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery 
     let wakes = 0;
     const drains = supervisor(async () => "system", undefined, {
         db: {
-            drain_current_loop_for_worker: { get: async () => ({ id: 7 }) },
+            drain_message_recipient: { get: async () => ({ id: 7 }) },
         } as unknown as Db,
         lifecycle: { wake: async () => { wakes++; return true; } } as never,
         injectPrompt: async (loopId) => {
@@ -318,7 +318,7 @@ test("{§worker-causal-admission}: cancellation follows accepted delivery withou
     const drains = supervisor(async () => "system", undefined, {
         db: {
             drain_message_source: { get: async ({ loop_id }: { loop_id: number }) => ({ workspace_id: loop_id === 10 ? 1 : 2, status: 102 }) },
-            drain_current_loop_for_worker: { get: async ({ worker_id }: { worker_id: number }) => ({ id: worker_id }) },
+            drain_message_recipient: { get: async ({ worker_id }: { worker_id: number }) => ({ id: worker_id }) },
             drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
         } as unknown as Db,
         lifecycle: {
@@ -353,7 +353,7 @@ test("{§worker-causal-admission}: cancellation wins before a queued causal deli
     const drains = supervisor(async () => "system", undefined, {
         db: {
             drain_message_source: { get: async () => ({ workspace_id: 1, status: sourceStatus }) },
-            drain_current_loop_for_worker: { get: async () => ({ id: 20 }) },
+            drain_message_recipient: { get: async () => ({ id: 20 }) },
             drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
         } as unknown as Db,
         lifecycle: {

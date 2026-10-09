@@ -145,7 +145,7 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
     }]);
 });
 
-test("{§a2a-worker-ownership} inbound contexts name a parent worker", () => {
+test("{§a2a-worker-ownership} inbound tasks name a parent worker", () => {
     const hosted = {
         ...floor,
         PLURNK_A2A_EXPOSE: "1",

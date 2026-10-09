@@ -10,6 +10,8 @@ WHERE alias IS $alias AND provider = $provider AND model = $model AND base_url I
 -- PREP: model_route_create
 INSERT INTO model_routes (alias, provider, model, base_url)
 VALUES ($alias, $provider, $model, $base_url)
+ON CONFLICT (coalesce(alias, ''), provider, model, coalesce(base_url, ''))
+DO UPDATE SET id = model_routes.id
 RETURNING id;
 
 -- PREP: model_route_by_id
@@ -41,16 +43,14 @@ RETURNING id, sequence, prompt, max_turns;
 -- PREP: drain_get_loop_max_turns
 SELECT max_turns FROM loops WHERE id = $loop_id;
 
--- PREP: drain_current_loop_for_worker
--- {§loop-wake-identity}: unaddressed arrivals choose the running loop first,
--- otherwise the oldest parked loop. Admission checks and writes that exact id.
+-- PREP: drain_message_recipient
+-- {§loop-addressed-admission} {§loop-wake-identity}
 SELECT id, sequence FROM loops
-WHERE worker_id = $worker_id AND status IN (102, 202)
+WHERE worker_id = $worker_id
+  AND (($loop_id IS NULL AND status IN (102, 202))
+    OR (id = $loop_id AND status IN (100, 102, 202)))
 ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
-
--- PREP: drain_injection_target
-SELECT worker_id, sequence FROM loops WHERE id = $loop_id AND status IN (100, 102, 202);
 
 -- PREP: drain_message_source
 SELECT l.worker_id, w.workspace_id, l.status
@@ -72,8 +72,9 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 -- {§message-arrival}: append one message to the loop's inbox in arrival order. Ordinal 1 is the
 -- loop's initial message; a later arrival takes the next ordinal.
 INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths, evidence, address)
-VALUES ($loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
-        $source, $body, $open_paths, $evidence, $address)
+SELECT $loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
+       $source, $body, $open_paths, $evidence, $address
+WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
 RETURNING id, ordinal;
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-loop-containment}: the messages the loop contains but has not yet published, oldest

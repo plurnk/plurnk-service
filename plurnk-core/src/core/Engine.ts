@@ -658,8 +658,6 @@ export default class Engine {
     async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}, messageAddress?: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
-        const loopRow = await this.#db.drain_injection_target.get<{ worker_id: number; sequence: number }>({ loop_id: loopId });
-        if (loopRow === undefined) return null;
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
         // {§message-loop-containment}: the inbox keeps arrival order; the next turn boundary publishes.
@@ -668,7 +666,7 @@ export default class Engine {
             evidence: JSON.stringify(evidence),
             address: messageAddress ?? null,
         });
-        if (appended === undefined) throw new Error(`Engine.injectIntoLoop: loop ${loopId} accepted no message`);
+        if (appended === undefined) return null;
         return { loopId, turnSeq };
     }
 

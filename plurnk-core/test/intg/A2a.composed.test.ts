@@ -63,6 +63,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     const caller = new Daemon({ db: callerDb, provider: routedProvider });
     const agentHttp = await bindListener();
     const agent = new Daemon({ db: agentDb, provider: routedProvider, http: agentHttp });
+    agent.registerModule(A2aOutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     const callerWorkspace = await caller.createWorkspace({
         name: `a2a-caller-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -157,10 +158,9 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             origin: "model",
             parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId),
         });
-        assert.equal(agentRoots.length, 1, "the remote A2A Context is one child of the configured runtime parent");
+        assert.equal(agentRoots.length, 1, "the remote A2A Task is one child of the configured runtime parent");
         assert.equal(agentRoots[0]!.owner, "_plurnk");
-        const agentTasks = await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: agentRoots[0]!.id });
-        assert.equal(agentTasks.length, 1, "the remote A2A Task is one Loop of its Context worker");
+        assert.equal((await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: agentRoots[0]!.id })).length, 1);
         assert.equal(callerProvider.remaining, 0);
         assert.equal(agentProvider.remaining, 0);
     } finally {
@@ -174,7 +174,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 // {§a2a-functionality} {§a2a-catalog} — the production composed
 // path: the caller attaches the peer service through its environment and the
 // Worker `a2a` family (no injected resolver), delegates twice, and the
-// composition respects both the Context ↔ Worker, Task ↔ Loop mapping on the hosted
+// composition respects independent Task workers on the hosted
 // side and topology-scoped ambience on the calling side.
 test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -206,6 +206,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
     const routedProvider = new WorkspaceRoutedMock();
     const agentHttp = await bindListener();
     const agent = new Daemon({ db: agentDb, provider: routedProvider, http: agentHttp });
+    agent.registerModule(A2aOutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     const unrelatedWorkspace = await agent.createWorkspace({
         name: `a2a-unrelated-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -298,19 +299,16 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         const replies = await caller.readMessages({ workspaceId: callerWorkspace.workspaceId, workerId: worker.workerId });
         assert.deepEqual(replies.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["First delegation done.", "Second delegation done."]);
 
-        // Each delegation is one remote Context under the runtime parent, holding exactly
-        // one Task (a Loop of that Context's worker); nothing lands in the unrelated workspace.
-        const contexts = await agent.listWorkers(agentWorkspace.workspaceId, { origin: "model", parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId) });
-        assert.equal(contexts.length, 2, "two delegations are two remote A2A Contexts");
-        for (const context of contexts) {
-            const tasks = await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: context.id });
-            assert.equal(tasks.length, 1, "each remote Context holds exactly one Task Loop");
+        const tasks = await agent.listWorkers(agentWorkspace.workspaceId, { origin: "model", parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId) });
+        assert.equal(tasks.length, 2, "two delegations create two independent Task Workers");
+        for (const task of tasks) {
+            assert.equal((await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: task.id })).length, 1);
         }
         assert.deepEqual(await agent.listWorkers(unrelatedWorkspace.workspaceId, { origin: "model" }), [], "hosted execution never leaks into an unrelated workspace");
 
         // Topology-scoped ambience on the calling side: an independent root in
         // the same workspace, running after both delegations, materializes no
-        // delegation activity — worker-private a2a resources are not commons.
+        // delegation activity — addressability does not imply ambient delivery.
         assert.equal((await runToTerminal(bystander.workerId, "Report what you observed.")).status, 200);
         const bystanderRows = await callerDb.engine_render_log.all<{ scheme: string | null; origin: string; source: string | null }>({ worker_id: bystander.workerId });
         assert.deepEqual(bystanderRows.filter(({ scheme }) => scheme === "a2a"), [], "an independent root sees none of the delegation's a2a resources");

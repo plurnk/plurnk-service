@@ -5,11 +5,12 @@
 import type { DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import A2aFunctionality from "./Functionality.ts";
+import type { HostedTasksPort } from "./HostedTasks.ts";
 
 // {§module-seam-slices} — the slice this module uses: its adapter carries the `a2a://` facet.
 export type OutboundSetupSeam = FunctionalitySeam<never, RuntimeSchemeFacet>;
 
-export default class OutboundModule implements DaemonModule<OutboundSetupSeam> {
+export default class OutboundModule implements DaemonModule<OutboundSetupSeam, HostedTasksPort> {
     readonly #functionality: A2aFunctionality;
 
     static init(env: NodeJS.ProcessEnv = process.env): OutboundModule {
@@ -26,5 +27,9 @@ export default class OutboundModule implements DaemonModule<OutboundSetupSeam> {
 
     async setup(seam: OutboundSetupSeam): Promise<void> {
         this.#functionality.attach(seam.registerFunctionalityAdapter(this.#functionality));
+    }
+
+    start(port: HostedTasksPort): void {
+        this.#functionality.scheme.attach(port);
     }
 }

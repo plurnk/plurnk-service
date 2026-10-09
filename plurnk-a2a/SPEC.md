@@ -22,7 +22,7 @@ cards are protocol projections, not configuration files.
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound exposure | `PLURNK_A2A_EXPOSE`, `_TOKEN`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. `_TOKEN` is the bearer the endpoint requires and the card declares ({§a2a-hosted-bearer}); empty is an unauthenticated exposure. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
-| Inbound parent | `PLURNK_A2A_PARENT_WORKER` | Existing parent for new Context workers; `_plurnk` uses the workspace runtime actor. Ownership follows {§worker-ownership}. |
+| Inbound parent | `PLURNK_A2A_PARENT_WORKER` | Existing parent for new Task workers; `_plurnk` uses the workspace runtime actor. Ownership follows {§worker-ownership}. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
 
 Definitions use {§resource-environment}, including nonempty values and distinct
@@ -68,42 +68,61 @@ The inbound HTTP+JSON exposure is an exterior adapter over the
 public Agent Card at the standard well-known path and the interface at
 `PLURNK_A2A_ENDPOINT_PATH`, both on the service address and both claimed before
 setup ({§module-http-mounts}), and it opens no
-socket of its own. The official SDK owns A2A framing and request handling;
+socket of its own. The official SDK owns HTTP+JSON framing, wire types and errors;
+the adapter implements its public `A2ARequestHandler` interface.
 Plurnk Workers, Loops, logs, and terminal results remain the only execution
-state. The SDK `TaskStore` implementation is a projection of that durable
-state, not an independent Task database.
+state. Task retrieval projects that durable state; no SDK execution manager or
+independent Task database participates in execution.
 
 ```mermaid
 flowchart LR
-    Parent["Configured parent Worker"] --> Context["Context Worker\nname = contextId"]
-    Caller["A2A caller"] -->|messages| Context
-    Context --> Loop1["Task Loop\nfirst message names taskId"]
-    Context --> Loop2["Task Loop\nfirst message names taskId"]
+    Parent["Configured parent Worker"] --> Task1["Task A Worker"]
+    Parent --> Task2["Task B Worker"]
+    Caller["A2A caller"] -->|Task messages| Task1
+    Caller -->|Task messages| Task2
+    History["Retained Context conversation"] -->|READ| Task1
+    History -->|READ| Task2
 ```
 
-A Context is one conversation, and Plurnk's conversation is a Worker. The SDK generates new
-Context and Task UUIDs before execution; a Context UUID already satisfies Plurnk's worker-name
-contract ({§worker-name}) and names its Context Worker verbatim. A Task is one Loop of that
-Worker, started by the Task's first message, whose source
-`a2a://anonymous/contexts/<context>/tasks/<task>/messages/<message>` names it. Every Task's
-messages and replies therefore stay in one Worker log, and a later Task sees the whole
-conversation. No adapter binding table, synthetic actor, or second scheduler exists.
+A Context is conversation identity, not an executing actor or a Worker. Each new Task is a
+fresh model child of the configured parent (WORK semantics), named by its server-generated
+Task UUID; no parent execution history is forked. A caller's Context identity is protocol
+data, not a worker name. Task/Context association comes from initial message sources:
+`a2a://anonymous/contexts/<context>/tasks/<task>/messages/<message>`.
+Core's worker scheduler, obligations, approval ownership and cancellation remain unchanged.
+No adapter binding table or second scheduler exists.
 
 | Request | Behavior |
 |---|---|
-| New Task, Context idle | Starts a fresh Loop of the Context Worker. |
-| Message continuing the open Task | Folds into that Task's Loop ({§methods-loop-run-fold-consistency}). |
-| New Task while another Task is open | Refused before execution with `UNSUPPORTED_OPERATION`, naming the open Task: a Context runs one Task at a time. |
-| Cancel the open Task | Cancels the Context Worker's unfinished work, which is exactly that Task. |
+| New Task | Creates its own Worker and starts its Loop; other Tasks in the Context do not prevent admission. |
+| Message continuing the open Task | Delivers to its exact unfinished Loop ({§loop-addressed-admission}), never a sibling or a replacement Loop. |
+| Task completion | Projects its own Loop outcome; another Task's streams and children do not become its obligations. |
+| Cancel the open Task | Cancels that Task Worker's subtree, never its configured parent or siblings. |
+| Message naming a terminal Task | Refused; subsequent work requires a new Task. |
 
 Only a Loop whose initial message source matches exact A2A Context, Task, and Message
-identities projects as a Task, and a Task's newest such Loop is its state. A Worker is
-reusable as an A2A Context only after this adapter created it in the running exposure or one
-of its Tasks proves its durable ownership after restart. Ordinary model Workers in the same
-workspace are neither discoverable nor adoptable through A2A. Foreign Task identities this
+identities projects as a Task, and a Task's newest such Loop is its state. Retained evidence
+is read from the Worker that owns that Loop; changing admission topology neither relocates
+past loops nor changes their message or log addresses. Context identity never selects or
+creates a parent Worker. Ordinary model Workers are neither discoverable nor adoptable
+through A2A. Foreign Task identities this
 exposure never minted are unknown Tasks, not Core validation failures. Unsupported Message content is rejected before execution
 with the standard protocol error; it does not create Workers or alter an existing
-Task. Other executor failures follow the SDK's failed-Task behavior.
+Task. Admission refusal is a request error, not a fabricated failed Task. Once admitted,
+the Task's outcome comes only from its durable Loop result.
+
+§a2a-task-observation Each streaming request receives exactly one initial Task snapshot,
+then Artifact/status updates from ordinary application events and durable projections.
+Subscribe before admission or retrieval, then re-read state: fast completion cannot be
+lost between those steps. Overlapping requests observe the same Task independently;
+starting or losing an HTTP response neither starts another execution nor cancels the Task.
+Nonblocking sends return its admitted snapshot; blocking sends await its actual terminal
+state. Resubscription observes existing work without inference or inbox changes. Terminal
+Tasks refuse further messages and subscriptions. Cancellation reports `CANCELED` only
+after Core has settled that Task; completion winning the race remains completion.
+The module's stop phase refuses new HTTP requests. Its close phase ends and joins
+its observations and admitted application calls before releasing application
+resources ({§module-lifecycle}); it does not cancel Tasks to end an observation.
 
 | Durable Plurnk state | A2A projection |
 |---|---|
@@ -142,12 +161,12 @@ reads anything. The card at the well-known path is never behind the bearer, so a
 caller can discover the scheme. Empty is an unauthenticated exposure: the panel
 states it, the adapter never infers it.
 
-§a2a-worker-ownership New Context workers are fresh model children of the configured
-existing parent and inherit its approval owner; a Task is a Loop of its Context, so it has
-that owner. The default `_plurnk` parent is runtime-owned and cannot review. A missing
-configured parent refuses admission, without creating a substitute. Existing contexts
-retain their parent and owner when configuration changes. Released root contexts are
-attached to the runtime actor during migration; their task identities and evidence remain.
+§a2a-worker-ownership New Task workers are fresh model children of the configured
+existing parent and inherit its approval owner.
+The default `_plurnk` parent is runtime-owned and cannot review. A missing
+configured parent refuses admission, without creating a substitute. Changing configuration
+affects new Tasks only; existing Tasks retain their Worker, parent, owner and evidence,
+including Tasks sharing the same Context.
 
 | Boundary | Recipient |
 |---|---|
@@ -159,6 +178,26 @@ The caller is a conversation partner, not a client: A2A carries no answer schema
 model asks it in a reply and its answer arrives as a later message, normally a later Task
 in the same Context. A Task never enters `INPUT_REQUIRED`.
 The adapter defines no approval policy of its own.
+
+### §a2a-context-resource Context conversation
+
+`a2a://anonymous/contexts/<context>` is a read-only projection of retained conversation
+evidence, scoped to the workspace of the hosted exposure. It is not an ambient log or a
+second conversation store.
+
+| Content | Representation |
+|---|---|
+| Tasks | Most recently admitted first, each with its identity and current state; no invented total order between concurrent Tasks' messages. |
+| Incoming messages | Original message body and source, attributed to the caller. |
+| Delivered replies | Body and answered message addresses, attributed to the agent; intermediate replies remain available. |
+| Attachments | Retained resource addresses, names and media types, never inline base64. |
+| Working internals | Reasoning, exploratory operations and sibling log bodies are absent. |
+
+Each new Task selects the Context resource through {§methods-loop-run-open-paths}, producing
+an ordinary READ before inference. Its own message remains its inbox obligation; historical
+messages in the resource are evidence, not additional open messages. Normal preview bounds,
+further READs and log curation apply. Re-reading refreshes the projection, and curation does
+not erase its retained source. Continuation within a Task retains that Worker's working log.
 
 §a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,
@@ -179,7 +218,7 @@ not the Worker directory's creation order.
 | Ordering | Status timestamp descending; equal or absent timestamps use Task ID ascending. Absent timestamps sort last. |
 | Pagination | Opaque cursor after the last returned timestamp/ID, not an offset. Newer Tasks do not shift subsequent pages. This is a live listing, not a frozen snapshot. |
 | Filtering | Context, state, and inclusive status timestamp bound apply before paging; `totalSize` counts the filtered Tasks. |
-| Content | Artifacts are omitted unless requested; the SDK applies the requested history limit. |
+| Content | Artifacts are omitted unless requested; the requested history limit applies to each returned Task. |
 | Invalid cursor | Standard `RequestMalformedError`; never silently restart at the first page. |
 
 ## §a2a-functionality Outbound agents as workspace Functionality

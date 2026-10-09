@@ -33,6 +33,7 @@ export type TurnCeilingSelection = Readonly<{
 export type DrainInjectionArgs = {
     workspaceId: number;
     workerId: number;
+    loopId?: number;
     prompt: string;
     source?: string;
     messageAddress?: string;
@@ -238,7 +239,7 @@ export default class DrainSupervisor {
                     ));
                 }
             }
-            const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
+            const active = await this.#db.drain_message_recipient.get<{ id: number }>({ worker_id: workerId, loop_id: args.loopId ?? null });
             if (active !== undefined) {
                 await this.#assertInjectionCompatibility({
                     workerId,
@@ -258,6 +259,13 @@ export default class DrainSupervisor {
                 // the serialized park-boundary check below supplies the wake edge.
                 await this.#wakeLoop(workspaceId, workerId, result.loopId);
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
+            }
+            if (args.loopId !== undefined) {
+                throw new OperationFailureError(Results.failure(
+                    "daemon:admission", "loop-not-open", 409,
+                    `Loop ${args.loopId} is not an unfinished recipient of Worker ${workerId}; no message was admitted.`,
+                    {}, { loopId: args.loopId, workerId, retryable: false },
+                ));
             }
             const accepted = await this.#enqueueFreshLoop({
                 workerId,
