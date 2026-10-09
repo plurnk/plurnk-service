@@ -5268,7 +5268,7 @@ their boundaries ({§log-wire-format}).
 | `budget`        | user   | JSON curation usage and ceiling                                                               | {§context-gauge} |
 | `messages`      | user   | JSON pointers to the loop's unanswered immutable messages, path and source                    | {§message-arrival}              |
 | `recap`         | user   | Optional authored operational recap                                                           | {§recap}                        |
-| `emission-history` | assistant | Selected complete content programs, whole or absent; between log and footer | {§emission-history} |
+| `emission-history` | assistant | Complete retained operations; section whole or absent, between log and footer | {§emission-history} |
 
 §packet-stored-shape **A model packet preserves the rendered request and, only
 when an emission is admitted, its response.** Core assembles and measures the
