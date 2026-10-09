@@ -1,6 +1,7 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { schemeNameOf } from "./plurnk-uri.ts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
@@ -15,6 +16,12 @@ export default class TurnOps {
                 : "";
             return PlurnkParser.frame(PlurnkParser.heading(statement), body.length === 0 ? null : body);
         }).join("\n\n");
+    }
+
+    // {§emission-history} — select whole operations from the frozen program, never from its bodies.
+    static renderHistory(source: string): string {
+        return TurnOps.renderEmission(TurnOps.parseInternal(source).filter((statement) =>
+            statement.op !== "NOTE" && !(statement.op === "KILL" && schemeNameOf(statement.target) === "log")));
     }
 
     static renderInternal(statements: readonly InternalTurnStatement[]): string {

@@ -27,6 +27,7 @@ import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plu
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
+import TurnOps from "./TurnOps.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -319,7 +320,7 @@ export default class PacketBuilder {
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
-        // {§emission-history}: core owns the frozen program and inserts it after transforms,
+        // {§emission-history}: core projects the frozen programs and inserts readback after transforms,
         // between the log and footer. Empty content produces no assistant message.
         if (drafts.some(({ name }) => name === "emission-history")) throw new Error("emission-history is a core-owned packet section");
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
@@ -329,7 +330,10 @@ export default class PacketBuilder {
         const logIndex = drafts.findIndex(({ name }) => name === "log");
         const userIndex = drafts.findIndex(({ slot }) => slot === "user");
         const insertion = logIndex >= 0 ? logIndex + 1 : userIndex >= 0 ? userIndex : drafts.length;
-        drafts = drafts.toSpliced(insertion, 0, { name: "emission-history", slot: "assistant", header: null, content: programs.map(({ content }) => content).join("\n\n") });
+        drafts = drafts.toSpliced(insertion, 0, {
+            name: "emission-history", slot: "assistant", header: null,
+            content: programs.map(({ content }) => TurnOps.renderHistory(content)).filter((content) => content.length > 0).join("\n\n"),
+        });
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const transformedLog = drafts.find((section) => section.name === "log");

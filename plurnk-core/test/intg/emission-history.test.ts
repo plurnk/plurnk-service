@@ -8,6 +8,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { readStmt, urlPath } from "./_dsl.ts";
 
 const op = PlurnkParser.frame;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
@@ -58,7 +59,7 @@ test("{§emission-history}: all retains older eligible programs across a reasoni
         const workspaceId = await insertWorkspace(db, "history-eligibility");
         const workerId = await insertWorker(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, workerId, 1, "Work.");
-        const first = op("NOTE", "Complete content memory.");
+        const first = op("SEND", "Progress update.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             say(first), say("", op("NOTE", "Reasoning memory.")),
             say(`${op("NOTE", "Partial program.")}\n\n\`\`\`READ (unclosed`),
@@ -76,20 +77,52 @@ test("{§emission-history}: retiring an emission removes only that program, not 
         const workspaceId = await insertWorkspace(db, "history-curation");
         const workerId = await insertWorker(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, workerId, 1, "Work.");
-        const first = op("NOTE", "First content memory.");
-        const second = op("NOTE", "Second content memory.");
+        const first = op("SEND", "First progress update.");
+        const second = op("SEND", "Second progress update.");
         const curate = op("KILL (log:///1/2/*/emission)", null);
         const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say(curate), say(op("SEND [200]", "Done."))] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 5 });
         assert.equal(provider.received.length, 4);
         assert.equal(previousProgram(provider.received[2]!), `${first}\n\n${second}`);
-        assert.equal(previousProgram(provider.received[3]!), `${second}\n\n${curate}`);
+        assert.equal(previousProgram(provider.received[3]!), second, "curation removes the retired program without replaying the KILL itself");
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
         assert.equal(source?.content, first);
     } finally { await db.close(); }
 }));
 
-test("{§emission-history} {§operator-config-shipped-defaults}: default memory accumulates complete programs and retains NOTEs without automatic reasoning", async (t) => {
+test("{§emission-history}: mixed KILL targets execute normally; distillation stays in the log and original operations stay readable", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "history-mixed-curation");
+    const workerId = await insertWorker(db, workspaceId, null, "writer");
+    const loopId = await insertLoop(db, workerId, 1, "Draft and curate.");
+    const edit = op("EDIT (worker:///memo.md)", "Draft.");
+    const first = `${edit}\n\n${op("NOTE", "Superseded memory.")}`;
+    const mixed = op("KILL (log:///1/2/*/NOTE) (worker:///memo.md)", null);
+    const distilled = op("KILL (log:///1/2/*/EDIT)", "The draft was removed.");
+    const second = `${mixed}\n\n${distilled}`;
+    const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say(op("SEND [200]", "Done."))] });
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const ids = { workspaceId, workerId, loopId };
+    const result = await engine.runLoop({ ...ids, provider, messages: [], maxTurns: 4 });
+    assert.equal(result.result.status, 200);
+    assert.equal(provider.received.length, 3);
+    assert.equal(previousProgram(provider.received[2]!), `${edit}\n\n${op("KILL (worker:///memo.md)", null)}`);
+    const log = chatMessageText(provider.received[2]![1]!);
+    assert.doesNotMatch(log, /Superseded memory\./u, "curated NOTE has no automatic replay duplicate");
+    assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE");
+    const missing = await engine.look({ ...ids, statement: readStmt(urlPath("worker", "/memo.md")) });
+    assert.equal(missing.status, 404, "the retained file KILL executed");
+    for (const [turn, original] of [[2, first], [3, second]] as const) {
+        const parsed = PlurnkParser.parse(op(`READ (ops://writer/1/${turn}) <1,-1>`, null)).items[0];
+        assert.ok(parsed?.kind === "statement");
+        const source = await engine.look({ ...ids, statement: parsed.statement });
+        assert.equal(source.status, 200);
+        assert.equal(source.content, original, "explicit source READ retains NOTE, curation, grouped targets and every body");
+    }
+});
+
+test("{§emission-history} {§operator-config-shipped-defaults}: default memory accumulates complete operations and retains NOTEs only in the log, without automatic reasoning", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "previous-whole");
@@ -97,6 +130,7 @@ test("{§emission-history} {§operator-config-shipped-defaults}: default memory 
     const loopId = await insertLoop(db, workerId, 1, "Edit, inspect, and reply.");
     const body = "Actual replacement.\n```NOTE\nA literal nested example, not an operation.\n```\nLast line.";
     const first = [op("EDIT (worker:///memo.md)", body), op("NOTE", "Content memory."), op("WAIT [0]", null)].join("\n\n");
+    const retained = [op("EDIT (worker:///memo.md)", body), op("WAIT [0]", null)].join("\n\n");
     const second = op("READ (worker:///memo.md)", null);
     const reasoning = `Unretained deliberation.\n\n${op("NOTE", "Reasoning memory.")}`;
     const provider = new Mock({ contextWindow: 100000, responses: [
@@ -115,8 +149,8 @@ test("{§emission-history} {§operator-config-shipped-defaults}: default memory 
     }
     const [opening, afterEdit, afterRead] = provider.received.map((request) => chatMessageText(request[1]!));
     assert.doesNotMatch(opening!, /## Previous Emission/u);
-    assert.equal(previousProgram(provider.received[1]!), first, "all content operations and every body, including nested fences, survive unchanged");
-    assert.equal(previousProgram(provider.received[2]!), `${first}\n\n${second}`, "all complete programs accumulate in turn order");
+    assert.equal(previousProgram(provider.received[1]!), retained, "NOTE is omitted; every retained operation's body, including nested fences, survives unchanged");
+    assert.equal(previousProgram(provider.received[2]!), `${retained}\n\n${second}`, "retained operations accumulate in turn order");
     assert.doesNotMatch(previousProgram(provider.received[1]!), /Reasoning memory/u, "reasoning operations stay in their channel");
     assert.match(afterEdit!, /Reasoning memory\./u, "reasoning NOTE persists as an ordinary receipt");
     assert.match(afterEdit!, /Content memory\./u, "content NOTE persists as an ordinary receipt");
@@ -133,7 +167,7 @@ test("{§emission-history} {§operator-config-shipped-defaults}: default memory 
     assert.equal(reasoningSource?.content, reasoning, "reasoning remains addressable without automatic return");
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, workerId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(packet, "emission-history"), [first, second, op("SEND [200]", "Finished.")].join("\n\n"), "reply bodies are not special-cased away");
+    assert.equal(PacketWire.sectionContent(packet, "emission-history"), [retained, second, op("SEND [200]", "Finished.")].join("\n\n"), "reply bodies are not special-cased away");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, workerId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, workerId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
@@ -144,6 +178,8 @@ for (const [name, content, reasoning, expected] of [
     ["runtime refusal", op("READ (worker:///missing.md)", null), null, op("READ (worker:///missing.md)", null)],
     ["syntax failure after a valid operation", `${op("NOTE", "admitted")}\n\n\`\`\`READ (unclosed`, null, ""],
     ["reasoning-only turn", "", op("NOTE", "Only reasoning."), ""],
+    ["content NOTE only", op("NOTE", "Log memory only."), null, ""],
+    ["log curation only", op("KILL (log:///1/1/*/FIND)", null), null, ""],
     ["empty turn", "", null, ""],
 ] as const) {
     test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
@@ -152,7 +188,7 @@ for (const [name, content, reasoning, expected] of [
         const workspaceId = await insertWorkspace(db, name);
         const workerId = await insertWorker(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, workerId, 1, "Work.");
-        const first = op("NOTE", "OLDER PROGRAM");
+        const first = op("SEND", "OLDER PROGRAM");
         const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(content, reasoning), say(op("SEND [200]", "Done."))] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(provider.received.length, 3);
@@ -170,7 +206,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history} {§context-own-
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes });
     const body = Array.from({ length: 1500 }, (_, i) => `Durable observation ${i + 1}.`).join("\n");
-    const first = op("NOTE", body);
+    const first = op("SEND", body);
     const wide = new Mock({ contextWindow: 200000, responses: [say(first)] });
     await engine.runTurn({ workspaceId, workerId, loopId, provider: wide, messages: [] });
     const builder = new PacketBuilder({ db, schemes, executors: () => undefined });
@@ -180,7 +216,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history} {§context-own-
     assert.equal(PacketWire.sectionContent(full, "emission-history"), first);
     assert.equal(PacketWire.sectionContent(full, "log"), PacketWire.sectionContent(without, "log"));
     const wall = Math.floor((full.weight + without.weight) / 2);
-    const small = op("NOTE", "New observation.");
+    const small = op("SEND", "New observation.");
     const limited = new class extends Mock {
         override get inputWall(): number { return wall; }
     }({ contextWindow: 200000, responses: [say(small), say(op("SEND [200]", "Done."))] });
@@ -209,7 +245,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     const workerId = await insertWorker(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, workerId, 1, "Work.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say(op("NOTE", "Old admitted program.")),
+        say(op("SEND", "Old admitted program.")),
         say(`### log:///1/2/9/READ\nInvented receipt.\n\n${op("NOTE", "Rejected program.")}`),
         say(op("SEND [200]", "Done.")),
     ] });
@@ -220,5 +256,5 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     assert.equal(rejected.emissionExhausted, true);
     await engine.runTurn(args);
     assert.equal(provider.received.length, 3);
-    assert.equal(previousProgram(provider.received[2]!), mode === "all" ? op("NOTE", "Old admitted program.") : "");
+    assert.equal(previousProgram(provider.received[2]!), mode === "all" ? op("SEND", "Old admitted program.") : "");
 }));

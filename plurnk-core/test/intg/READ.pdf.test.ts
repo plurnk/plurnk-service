@@ -66,8 +66,8 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.deepEqual(user.content.map(({ type }) => type), ["text", "text", "file"], "log text, caption and native document remain together");
     assert.deepEqual(second[2], {
         role: "assistant",
-        content: `${PlurnkParser.frame("READ (contract.pdf)", null)}\n\n${PlurnkParser.frame("NOTE", "looking")}`,
-    }, "the complete previous content program follows the native input as assistant history");
+        content: PlurnkParser.frame("READ (contract.pdf)", null),
+    }, "the complete READ follows the native input as assistant history; NOTE stays in the log");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

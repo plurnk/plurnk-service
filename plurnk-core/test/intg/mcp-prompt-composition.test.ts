@@ -78,16 +78,18 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             const texts = provider.received.map(userText);
             assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))));
             assert.match(texts[1]!, /"role": "assistant"/u, "the supplied role remains visible as prompt data");
+            const promptRead = PlurnkParser.frame("READ (fixture:///prompts/inspect) <1,-1>", null);
+            const resourceRead = PlurnkParser.frame(`READ (${provider.resource}#bytes) <1,3>`, null);
             const previousPrograms = [
                 null,
-                `\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\n\n${step("NOTE")}`,
-                `\`\`\`READ (${provider.resource}#bytes) <1,3>\n\`\`\`\n\n${step("NOTE")}`,
-                step("NOTE"),
+                promptRead,
+                `${promptRead}\n\n${resourceRead}`,
+                `${promptRead}\n\n${resourceRead}`,
             ];
             for (const [index, messages] of provider.received.entries()) {
                 assert.deepEqual(messages.map(({ role }) => role), index === 0 ? ["system", "user"] : ["system", "user", "assistant", "user"]);
                 assert.deepEqual(messages.filter(({ role }) => role === "assistant"), index === 0 ? [] : [{ role: "assistant", content: previousPrograms[index] }],
-                    "only the model's previous program has assistant authorship; MCP prompt roles remain user data");
+                    "only the model's retained operations have assistant authorship; MCP prompt roles remain user data");
             }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));

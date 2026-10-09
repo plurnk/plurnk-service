@@ -219,9 +219,9 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         assert.equal(second.status, 200);
         assert.equal(requests.length, 2);
         assert.match(JSON.stringify(requests[1]!.messages), /Established fact/u);
-        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [{ role: "assistant", content }],
-            "only the complete content program reaches assistant history; reasoning OPs stay in their receipts");
+        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user"]);
+        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [],
+            "NOTE-only content and reasoning OPs stay in their receipts, not assistant history");
     } finally {
         release.resolve();
         try { await running; } finally {

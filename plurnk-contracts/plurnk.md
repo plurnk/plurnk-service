@@ -14,7 +14,7 @@ body?
 
 ## Plurnk Workflow OPs
 
-* NOTE: Free text, facts, findings, conclusions, decisions, and plans.
+* NOTE: Carry your reasoning forward—facts, findings, conclusions, decisions, and plans.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -27,6 +27,12 @@ body?
 * SEND: Message endpoints or workers.
 
 ## Workflow Management
+
+> [!IMPORTANT]
+> YOU MUST NOTE every fact, finding, conclusion, decision, and plan you will need later.
+
+> [!TIP]
+> Reasoning is not carried forward automatically. NOTE OPs work during reasoning.
 
 ```WAIT [60] <!-- example: yield to children and streams for up to 60 seconds -->
 This is an example of a waiting turn progress update response.

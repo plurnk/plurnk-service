@@ -1,4 +1,4 @@
-// {§emission-row} {§emission-history}: durable programs, curatable records, one complete replay.
+// {§emission-row} {§emission-history}: durable programs, curatable records, complete retained operations.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
@@ -44,11 +44,12 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    assert.equal(previous(provider.received[1]!), first);
+    const retained = frame("EDIT (worker:///memory.md) <!-- remember -->", body);
+    assert.equal(previous(provider.received[1]!), retained);
     assert.match(userText(provider.received[1]!), /REASONING-MEMORY/u);
-    assert.equal(previous(provider.received[2]!), curate);
+    assert.equal(previous(provider.received[2]!), retained);
     assert.doesNotMatch(userText(provider.received[2]!), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]!), read);
+    assert.equal(previous(provider.received[3]!), `${retained}\n\n${read}`);
     assert.match(userText(provider.received[3]!), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]!), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
@@ -73,17 +74,22 @@ test("{§emission-row}: initialization has no replay; canonical content excludes
         assert.equal(row.active, 1);
     }
     assert.equal(previous(provider.received[0]!), "");
-    assert.equal(previous(provider.received[1]!), canonical);
+    assert.equal(previous(provider.received[1]!), surveyRead);
+    assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program");
     assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/3\/READ/u);
     assert.doesNotMatch(previous(provider.received[1]!), /Let me look around|Done for now/u);
 });
 
 test("{§emission-row}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
-    const f = await run("envelope-retire", "Work.", [say(surveyRead), say(frame("NOTE", "Newest program."))], 2);
+    const mode = process.env.PLURNK_SERVICE_EMISSION_HISTORY;
+    process.env.PLURNK_SERVICE_EMISSION_HISTORY = "latest";
+    t.after(() => { if (mode === undefined) delete process.env.PLURNK_SERVICE_EMISSION_HISTORY; else process.env.PLURNK_SERVICE_EMISSION_HISTORY = mode; });
+    const newest = frame("SEND", "Newest program.");
+    const f = await run("envelope-retire", "Work.", [say(surveyRead), say(newest)], 2);
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
-    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), frame("NOTE", "Newest program."));
+    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), newest);
     const last = f.rows.at(-1)!;
     const turnId = await insertTurn(f.db, f.loopId, 4);
     const result = await f.engine.dispatch({ ...f, turnId, sequence: 1, origin: "model", statement: killStmt(urlPath("log", `/${last.coordinate}/emission`)) });

@@ -63,6 +63,41 @@ test("{§emission-row} a long body is frozen whole", () => {
     assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
 });
 
+test("{§emission-history}: readback omits NOTE and log curation without inspecting retained bodies", () => {
+    const kept = [
+        PlurnkParser.frame("EDIT (worker:///notes.md)", "Literal examples:\n```NOTE\nKeep this text.\n```\n```KILL (log:///*)\n```\n"),
+        PlurnkParser.frame("READ (log:///1/2/*)", null),
+        PlurnkParser.frame("FIND (note://writer/**)", null),
+        PlurnkParser.frame("SEND [200]", "The complete reply."),
+        PlurnkParser.frame("WAIT [0]", "The complete progress update."),
+        ...["notes.md", "file:///tmp/notes.md", "worker:///notes.md", "worker://helper", "sh:///abcd1234", "note://writer/1/2/3"].map((path) =>
+            PlurnkParser.frame(`KILL (${path})`, null)),
+    ];
+    const source = [
+        PlurnkParser.frame("NOTE", "Already retained in the log."),
+        ...kept,
+        PlurnkParser.frame("KILL (log:///1/2/*/READ) <2,4> <!-- curate -->", "The distilled memory."),
+    ].join("\n\n");
+    assert.equal(TurnOps.renderHistory(source), kept.join("\n\n"));
+    assert.equal(TurnOps.renderEmission(TurnOps.parseInternal(source)), source, "the frozen program is not changed by readback");
+});
+
+test("{§emission-history} {§target-group}: mixed KILL targets retain the non-log operations", () => {
+    const source = PlurnkParser.frame("KILL (log:///1/2/*) (worker:///draft.md) (sh:///abcd1234)", null);
+    assert.equal(TurnOps.renderHistory(source), [
+        PlurnkParser.frame("KILL (worker:///draft.md)", null),
+        PlurnkParser.frame("KILL (sh:///abcd1234)", null),
+    ].join("\n\n"));
+});
+
+test("{§emission-history}: memory-only content has no assistant readback", () => {
+    const source = [
+        PlurnkParser.frame("NOTE", "Retain this memory."),
+        PlurnkParser.frame("KILL (log:///1/2/*)", "Distilled memory."),
+    ].join("\n\n");
+    assert.equal(TurnOps.renderHistory(source), "");
+});
+
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {
     const emitted = [
         `${PlurnkParser.frame("EDIT (worker:///notes.md)", "complete body")} <!-- imitated aside -->`,

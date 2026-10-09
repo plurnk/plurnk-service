@@ -53,14 +53,17 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2]!.content, "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
-        "the exact complete canonical program is the one assistant input");
+    assert.equal(draft[2]!.content, "```EDIT (worker:///a.md)\nalpha\n```",
+        "the complete EDIT is the assistant input; NOTE remains in the log");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user", "assistant", "user"]);
-    assert.equal(last[2]!.content, "```KILL (log:///1/2/2/emission)\n```\n\n```NOTE\nRetired the first emission.\n```");
+    assert.deepEqual(roles(last), ["system", "user"], "curation retires the old program; NOTE and log KILL add no assistant history");
+    assert.match(last[1]!.content, /Retired the first emission\./u, "NOTE is still log memory");
+    const curation = await readFile(join(digestDir, "analyst-1-3.assistant.md"), "utf8");
+    assert.match(curation, /KILL \(log:\/\/\/1\/2\/2\/emission\)/u, "forensics keep the curation operation");
+    assert.match(curation, /Retired the first emission\./u, "forensics keep the curation NOTE");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
     const prose = report.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gmu, "");

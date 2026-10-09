@@ -45,7 +45,7 @@ const story = async (contextWindow: number, reasoning: string) => {
     return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1]!, engine, ids: { workspaceId, workerId, loopId } };
 };
 
-test("{§reasoning-row} {§emission-history}: reasoning stays in the log and only the complete content program is assistant-authored", async () => {
+test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log and retained content operations are assistant-authored", async () => {
     await withKnob("1", async () => {
         const reasoning = "I think the fix is in the resolver.\nBecause the converter raises before the view is named.";
         const { db, first, second, rows, program, log, envelope } = await story(100_000, reasoning);
@@ -67,7 +67,9 @@ test("{§reasoning-row} {§emission-history}: reasoning stays in the log and onl
             const previous = chatMessageText(envelope[2]!);
             assert.match(before!, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before!, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, program, "the assistant message retains the whole content program without copying reasoning");
+            assert.equal(previous, frame("READ (worker:///fact.txt)", null), "the assistant message retains the complete READ without copying reasoning or NOTE");
+            assert.match(before, /Bearing one\./u, "the content NOTE remains in the log");
+            assert.equal(JSON.parse(emissionRow.rx!).content, program, "the frozen emission still contains every admitted operation");
         } finally { await db.close(); }
     });
 });

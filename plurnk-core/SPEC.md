@@ -2464,7 +2464,7 @@ Eligible programs supply {§emission-history}; every source remains readable reg
 | Place | After the turn's inputs (arrivals, deltas, open-path READs) and before its reasoning NOTEs and operations, written after the selection snapshot ({§turn-ops-selection-snapshot}): the emission sits between what the worker had seen and what it caused. |
 | Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission → ops://<worker>/L/T · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
 | Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of the admitted content statements, each whole in a closed fence. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
-| Wire | The record appears in the log; its complete program is eligible for {§emission-history}. No operation family or body is filtered. Dispatch and the immutable `ops://` source keep complete bodies ({§turn-source-resources}); an explicit READ returns them. |
+| Wire | The record appears in the log; its complete program supplies the readback projection in {§emission-history}. The frozen body and immutable `ops://` source keep every operation and body ({§turn-source-resources}); an explicit READ returns them. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
 | Presentation | Born folded: the log record shows its header, never an assistant message. |
 | Accounting | The row's `tokens` charges only its rendered record. The optional emission-history section is measured once as assistant-message text ({§packet-token-accounting}); replacing it never changes older row weights. An explicit source READ has its own ordinary charge. |
@@ -4992,7 +4992,7 @@ rendered or measured; {§context-fit} remains an engine-owned post-build rail.
 ```mermaid
 flowchart LR
     defaults[Engine section drafts] --> transforms[Trusted scheme transforms<br/>and boundary validation]
-    transforms --> continuity[Insert selected complete programs]
+    transforms --> continuity[Insert selected complete operations]
     continuity --> render[Render ordered message roles]
     render --> measure[Budget substitution and<br/>core-owned measurement]
     measure --> rail[Engine budget admission and dispatch]
@@ -5008,7 +5008,7 @@ adjacent nonempty sections of the same remaining role form one message. With an 
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
 | 2 | `user` | the complete current log; selected native parts ({§packet-attachment-parts}) remain with this message |
-| 3 | `assistant` | selected complete admitted content programs, without a heading or wrapper; all eligible programs in this loop by default |
+| 3 | `assistant` | complete operations selected by {§emission-history}, without a heading or wrapper; from all eligible programs in this loop by default |
 | 4 | `user` | the current-status footer, from Worker through Open Messages and optional Recap |
 
 Without selected programs, the log and footer coalesce into one user message: system + user.
@@ -5026,8 +5026,8 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 | Choice | `PLURNK_SERVICE_EMISSION_HISTORY`: `none`, `latest`, or `all` (default). Reasoning return is independent ({§reasoning-row}). |
 | Selection | `latest` considers only the immediately preceding completed model inference turn in this loop, never falling back to an older eligible program. `all` considers every completed model inference turn in this loop, in ascending turn order. |
 | Eligibility | An admitted content program with no syntax errors and an active emission row. Rejected attempts, syntactically partial emissions, empty or reasoning-only turns, initialization and other loops supply none. Runtime failures do not disqualify an admitted program. |
-| Content | Each frozen canonical program, whole: every body, NOTE, WAIT and reply retained. Multiple programs are joined with one blank line. No placeholders, redaction, preview or nested-body interpretation. Reasoning operations remain in their own source and receipts. |
-| Placement | One assistant message between the log and current-status footer, without a heading. Selection is rebuilt each turn, never inserted into the reusable log prefix. With `none` or no eligible programs, the section is empty. |
+| Content | Omit NOTE and KILL operations addressed to `log://`; their memory and curation already belong to the log. Retain every other admitted content operation whole, including its body, WAIT, replies, and KILLs of files, entries, workers or streams. Selection uses parsed operations, never text inside their bodies; a multi-path operation is selected per resolved statement. Join nonempty projected programs with one blank line. No placeholders, body redaction or preview. Reasoning operations remain in their own source and receipts. |
+| Placement | One assistant message between the log and current-status footer, without a heading. Selection is rebuilt each turn, never inserted into the reusable log prefix. With `none` or no retained operations, the section is empty; filtering does not make `latest` fall back to an older turn. |
 | Authority | After trusted section transforms, core inserts this section immediately after `log` (before the first user section if the extension removed `log`). The extension seam does not rewrite the frozen programs. Each active emission row owns its program's curation lifetime; retiring it removes only that program, never its immutable source. |
 | Capacity | At the hard context wall, omit the section whole before suppressing any result body or native part ({§context-own-rows-fit}). Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet is changed. |
 | Accounting | Its text is charged once as its assistant message; the emission row charges only its record. |
@@ -5042,7 +5042,7 @@ Conditional absence never reorders the surviving default sections.
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
 |     4 | user   | `log`                 | Append-mostly model-visible history; the first user section, so the cached prefix ends inside it. |
-|     5 | assistant | `emission-history` | Selected complete programs, if eligible and within capacity ({§emission-history}). |
+|     5 | assistant | `emission-history` | Selected complete operations, if eligible and within capacity ({§emission-history}). |
 |     6 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
 |     7 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
 |     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
