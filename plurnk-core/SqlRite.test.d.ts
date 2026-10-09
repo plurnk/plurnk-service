@@ -270,6 +270,7 @@ export class SqlRiteSync {
 	message_source_resources: SqlRiteSyncPreparedStatements;
 	message_source_by_address: SqlRiteSyncPreparedStatements;
 	message_unanswered_count: SqlRiteSyncPreparedStatements;
+	message_completion_outcome: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -283,7 +284,6 @@ export class SqlRiteSync {
 	engine_previous_emission: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
-	engine_original_message: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
@@ -870,6 +870,7 @@ export default class SqlRite {
 	message_source_resources: SqlRitePreparedStatements;
 	message_source_by_address: SqlRitePreparedStatements;
 	message_unanswered_count: SqlRitePreparedStatements;
+	message_completion_outcome: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;
@@ -883,7 +884,6 @@ export default class SqlRite {
 	engine_previous_emission: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
-	engine_original_message: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;

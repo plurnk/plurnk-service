@@ -84,7 +84,7 @@ test("{§matcher-body-redirect} {§diagnostic-observation}: a block whose closer
         "```",
         "```READ (AGENTS.md) <101,301> <!-- the rest of the field guide -->",
         "```</think>```NOTE <!-- assembling the description -->",
-        "```</think>```KILL",
+        "```</think>```SEND [200]",
         "# PLURNK",
         "",
         "The answer.",

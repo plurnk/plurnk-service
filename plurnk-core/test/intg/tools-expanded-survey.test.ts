@@ -15,7 +15,7 @@ import { isExecution } from "@plurnk/plurnk-contracts";
 
 test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        PlurnkParser.frame("KILL", "Surveyed."),
+        PlurnkParser.frame("SEND [200]", "Surveyed."),
     )] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
@@ -52,7 +52,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
     serverProposals(t, "accept");
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nsurveyed\n````")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````SEND [200]\nsurveyed\n````")] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules"), hostPaths });

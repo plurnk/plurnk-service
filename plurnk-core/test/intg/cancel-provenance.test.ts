@@ -36,7 +36,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
         }
         return build.apply(this, args);
     });
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````")] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -68,7 +68,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-        makeMockResponse("````KILL\ndone\n````"),
+        makeMockResponse("````SEND [200]\ndone\n````"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -129,7 +129,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\nawaiting the slow job\n````"),
-        makeMockResponse("````KILL\ndone\n````"),
+        makeMockResponse("````SEND [200]\ndone\n````"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

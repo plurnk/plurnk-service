@@ -37,23 +37,16 @@ test("{§log-kill-distillation} a pattern option and a distillation ride one log
 });
 
 test("{§kill-scope} {§log-kill-distillation} a bodyless KILL's advisory names only that invocation", () => {
-    for (const heading of ["KILL (sh:///ab3d5678)", "KILL (notes.md)", "KILL <1>"]) {
+    for (const heading of ["KILL (sh:///ab3d5678)", "KILL (notes.md)", "KILL (notes.md) <1>"]) {
         const source = PlurnkParser.frame(heading, "stop it");
         const [kill] = statements(source);
         assert.equal(kill?.op === "KILL" ? kill.body : "?", null, heading);
         assert.deepEqual(advisories(source), ["This KILL takes no body; line 2 was not used."], heading);
     }
-    for (const heading of ["KILL", "KILL (log:///1/2/3)", "KILL (log://alice/1/2/3)"]) {
+    for (const heading of ["KILL (log:///1/2/3)", "KILL (log://alice/1/2/3)"]) {
         const source = PlurnkParser.frame(heading, "Retained information.");
         const [kill] = statements(source);
         assert.equal(kill?.op === "KILL" ? kill.body : "?", "Retained information.", heading);
         assert.deepEqual(advisories(source), [], heading);
     }
-});
-
-test("{§kill-conclusion} the parameterless KILL is unchanged: its body is the answer and it ends the turn", () => {
-    const [kill, ...rest] = statements("```KILL\nDone.\n```READ (x.md)\n```\n```\n");
-    assert.equal(kill?.op, "KILL");
-    assert.equal(kill?.op === "KILL" ? kill.body : "?", "Done.\n```READ (x.md)\n```", "a heading inside the answer is literal text ({§terminal-kill})");
-    assert.deepEqual(rest.map(({ op }) => op), []);
 });

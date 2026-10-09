@@ -94,7 +94,7 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         ["```EDIT (a.py) <1> <2>\nx\n```", "One scope per selection, such as `<12,40>` or `<@abcde,+5>`."],
         ["```READ (a.py) <line number>\n```", "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body."],
         ["```COPY (a.py)\n```", "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body."],
-        ["```WAIT (worker://unfinished\n```", "`WAIT (path)? <seconds>?` on the opening fence line, any body on the lines below, then the closing fence."],
+        ["```WAIT (worker://unfinished\n```", "`WAIT (path)? [seconds]?` on the opening fence line, any body on the lines below, then the closing fence."],
         ["```EDIT (a.py) <@ab>\nx\n```", "`EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence."],
         ["```sh <1,2,3,4,5,6> [x\n```", "`sh (program)? [{\"cwd\": \"…\"}]?` on the opening fence line, the input on the lines below, then the closing fence."],
     ] as const) {

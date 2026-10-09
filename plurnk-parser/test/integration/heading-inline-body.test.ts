@@ -1,5 +1,5 @@
 // {§heading-inline-body} — every operation, every kind of heading text, every place it is written: the operation
-// is never lost, no text is dropped silently, and the reading follows the shape table and {§terminal-kill}.
+// is never lost, no text is dropped silently, and the reading follows the shape table.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
@@ -55,7 +55,7 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["sh", "sh", optioned("sh", undefined)],
     ["NOTE", "NOTE", bodied("NOTE")],
     ["WAIT", "WAIT", bodied("WAIT")],
-    ["KILL", "KILL", bodied("KILL")],
+    ["SEND [200]", "SEND", (kind, text, inline) => ({ ...bodied("SEND")(kind, text, inline), metadata: ["200"] })],
     // Beside an option block's pattern the heading text is not the matcher.
     [`FIND (a.md)${PATTERN}`, "FIND", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("FIND", inline) })],
     [`READ (a.md)${PATTERN}`, "READ", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("READ", inline) })],
@@ -95,12 +95,7 @@ for (const [heading, op, read] of SHAPES) {
                 const tail = `\n\n${fence}READ (z.md)\n${fence}`;
                 const followed = parse(`${source}${tail}`);
                 const following = followed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-                if (heading === "KILL") {
-                    assert.deepEqual(following.map(nameOf), ["KILL"], `${label} — the apparent operation is answer text`);
-                    assert.equal(reading(following[0] as unknown as Record<string, unknown>).body, `${text}${place === "open" || place === "below" ? `\n${fence}` : ""}${tail}`, label);
-                } else {
-                    assert.deepEqual(following.map(nameOf), [op, "READ"], `${label} — the operation after it still runs`);
-                }
+                assert.deepEqual(following.map(nameOf), [op, "READ"], `${label} — the operation after it still runs`);
 
                 const canonical = PlurnkParser.stringify([statements[0] as never]);
                 const again = parse(canonical);

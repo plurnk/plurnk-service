@@ -51,7 +51,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
     serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("````KILL\nScheduled message received.\n````", 10)],
+        responses: [makeMockResponse("````SEND [200]\nScheduled message received.\n````", 10)],
     });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");

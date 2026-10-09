@@ -31,15 +31,15 @@ test("PlurnkStatement: KILL with regex matcher", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("{§kill-conclusion}: parameterless KILL preserves its literal answer and optional aside", () => {
+test("{§send-body}: a completion reply preserves its literal answer and optional aside", () => {
     for (const body of [null, "The answer is **42**.", "SEND (worker://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
-        const source = PlurnkParser.frame("KILL <!-- final answer -->", body);
+        const source = PlurnkParser.frame("SEND [200] <!-- final answer -->", body);
         const result = PlurnkParser.parse(source);
         assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
         const item = result.items[0];
         assert.equal(item.kind, "statement");
-        if (item.kind !== "statement" || item.statement.op !== "KILL") assert.fail("expected KILL");
-        assert.equal(item.statement.body, body);
+        if (item.kind !== "statement" || item.statement.op !== "SEND") assert.fail("expected SEND");
+        assert.equal(item.statement.body?.raw ?? null, body);
         assert.equal(item.statement.aside, "final answer");
         assert.equal(validateRoundTrip(source)?.valid, true);
     }
@@ -131,17 +131,17 @@ test("PlurnkStatement: KILL with bare target", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: targeted KILL's body warning does not prohibit completion bodies ({§matcher-body-redirect})", () => {
+test("PlurnkStatement: resource KILL's body warning does not prohibit log distillation ({§matcher-body-redirect})", () => {
     const r = validateRoundTrip("````KILL (sh:///3/1/2) <!-- runaway; no output for 4 turns -->````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
     const ignored = PlurnkParser.parseStatements("````KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n````");
     assert.equal(ignored.items[0]?.kind, "statement", "the KILL still parses without its body");
     assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /This KILL takes no body/u.test(item.error.message)));
-    const completion = PlurnkParser.parseStatements("````KILL\nThe final answer.\n````");
+    const completion = PlurnkParser.parseStatements("````KILL (log:///1/2/3/READ)\nThe retained finding.\n````");
     assert.equal(completion.items.length, 1);
     const final = completion.items[0];
     assert.ok(final?.kind === "statement" && final.statement.op === "KILL");
-    assert.equal(final.statement.body, "The final answer.");
+    assert.equal(final.statement.body, "The retained finding.");
     const empty = PlurnkParser.parseStatements("````KILL (notes.md)\n\n````");
     assert.equal(empty.items.length, 1, "an empty targeted body remains valid without an advisory");
 });
@@ -167,6 +167,7 @@ const baseFields = (op: string) => ({
     metadata: null,
     lineMarker: null,
     ...(MATCHER_OPS.has(op) ? { matcher: null } : {}),
+    ...(op === "WAIT" ? { seconds: null } : {}),
     body: null,
     position: { line: 1, column: 0 },
 });
@@ -202,8 +203,8 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("{§send-wait-scope} PlurnkStatement: structured WAIT tolerates a numeric scope", () => {
-    const stmt = { ...baseFields("WAIT"), body: null, lineMarker: { marks: [30] } };
+test("{§send-wait-scope} PlurnkStatement: structured WAIT carries its duration separately from resource scopes", () => {
+    const stmt = { ...baseFields("WAIT"), body: null, seconds: 30 };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });
@@ -228,7 +229,7 @@ test("PlurnkStatement: WAIT rejects numeric signal", () => {
 test("{§turn-disposition} PlurnkStatement: WAIT accepts an optional resource target but no metadata or lifecycle status", () => {
     const task = { ...baseFields("WAIT"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
-    assert.equal(Validator.validatePlurnkStatement({ ...task, lineMarker: { marks: [1] } }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...task, seconds: 0 }).valid, true);
     for (const address of ["notes.md", "worker://child", "schedule:///rules/reminder"]) {
         const { valid, errors } = Validator.validatePlurnkStatement({ ...task, target: parsePath(address) });
         assert.equal(valid, true, JSON.stringify(errors));
@@ -237,6 +238,8 @@ test("{§turn-disposition} PlurnkStatement: WAIT accepts an optional resource ta
         { target: "schedule:///rules/reminder" },
         { metadata: ["x: y"] },
         { status: 200 },
+        { lineMarker: { marks: [1] } },
+        { seconds: -1 },
     ]) {
         const { valid } = Validator.validatePlurnkStatement({ ...task, ...patch });
         assert.equal(valid, false, JSON.stringify(patch));

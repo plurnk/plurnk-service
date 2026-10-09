@@ -1751,7 +1751,7 @@ test("HTTP rejects malformed metadata without reflecting its contents", async ()
     );
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-invalid");
-    assert.equal(result.problem?.detail, "[metadata] must be a JSON array of option objects."); // {§pinned-wording-schemes}
+    assert.equal(result.problem?.detail, "[metadata] must be a JSON array."); // {§pinned-wording-schemes}
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 

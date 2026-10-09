@@ -88,7 +88,7 @@ test("{§mcp-plugin-configuration} unsupported entries reach the model as diagno
     const file = join(root, "mcp.json");
     await writeFile(file, JSON.stringify({ $schema: MCP_SCHEMA, mcpServers: { example: entry, legacy: { type: "sse", url: "https://example.org/mcp" } } }));
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````KILL\nChecked.\n````")) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````SEND [200]\nChecked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });

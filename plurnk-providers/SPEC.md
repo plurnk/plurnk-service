@@ -888,7 +888,9 @@ re-issue, backoff, and park above the transport.
 finish reason and accounting and emits one provider warning. It is not a
 transport failure and does not trigger provider recovery. The adapter executes
 no call and invents no textual operation; the consumer owns admission and
-no-operation handling. Text-only missing-output checks do not apply because
+no-operation handling. The normalized assistant exposes `nativeToolCalls: true`
+when either wire calls or a `tool_calls` finish is present, independently of the
+preserved finish reason; consumers need not mine wire evidence. Text-only missing-output checks do not apply because
 the billed output includes structured calls.
 
 §provider-output-dropped **A completed exchange whose own evidence proves its

@@ -21,7 +21,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
         "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (worker:///note)````\n````KILL (worker:///note)````\n````NOTE\nverified\n````",
         "````NOTE\nthe mismatch has been seen; moving on\n````",
-        "````KILL\ndone\n````",
+        "````SEND [200]\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -60,8 +60,8 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             }>({ loop_id: result.loopId });
             const recordedKills = history.filter(({ op, pathname }) => op === "KILL" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
-            assert.deepEqual(history.filter(({ op, pathname }) => op === "KILL" && pathname === null)
-                .map(({ status_rx }) => status_rx), [200], "the final KILL concludes without curating a resource");
+            assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "SEND" && pathname === null && JSON.parse(rx).completion === 200)
+                .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§worker-initialization-entry})");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");

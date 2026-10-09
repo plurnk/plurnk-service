@@ -41,13 +41,13 @@ for (const c of CASES) {
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
-            makeMockResponse("````KILL\nwritten\n````", 10),
+            makeMockResponse("````SEND [200]\nwritten\n````", 10),
             makeMockResponse(`${c.read}
 
 \`\`\`\`NOTE
 reading
 \`\`\`\``, 10),
-            makeMockResponse("````KILL\ndone\n````", 10),
+            makeMockResponse("````SEND [200]\ndone\n````", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -93,8 +93,8 @@ test("a child's packet names its parent worker; the root's packet does not", asy
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````WORK (worker://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````KILL\n3\n````", 10),
-        makeMockResponse("````KILL\ndone\n````", 10),
+        makeMockResponse("````SEND [200]\n3\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -29,13 +29,13 @@ const story = async (contextWindow: number, reasoning: string) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `reasoning-row-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId, null, "alice");
-    const loopId = await insertLoop(db, workerId, 1);
+    const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
     await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An observed fact." });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     const program = `${frame("READ (worker:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`;
     const provider = new Mock({ contextWindow, responses: [
         { assistant: { content: program, reasoning } },
-        { assistant: { content: frame("KILL", "Done."), reasoning: null } },
+        { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
     ] });
     const first = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
     const second = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });

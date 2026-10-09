@@ -17,7 +17,7 @@ test("{§emission-row} the frozen projection keeps every header and body whole, 
         "WORK (worker://helper)",
         "SEND (worker://helper)",
         "NOTE",
-        "KILL",
+        "SEND [200]",
     ];
     const bodies = [
         null,
@@ -63,19 +63,19 @@ test("{§emission-row} a long body is frozen whole", () => {
     assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
 });
 
-test("{§outside-text} {§terminal-kill} comments before KILL remain outside; comments after it belong to the answer", () => {
+test("{§outside-text} comments outside operation fences are not part of a reply", () => {
     const emitted = [
         `${PlurnkParser.frame("EDIT (worker:///notes.md)", "complete body")} <!-- imitated aside -->`,
-        PlurnkParser.frame("KILL", "The answer."),
+        PlurnkParser.frame("SEND [200]", "The answer."),
         "<!-- a trailing comment of its own -->",
     ].join("\n\n");
     const parsed = PlurnkParser.parse(emitted);
     const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "KILL"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "SEND"]);
     assert.equal((statements[0] as EditStatement).body, "complete body");
-    assert.equal(statements[1]?.op === "KILL" ? statements[1].body : null, "The answer.\n```\n\n<!-- a trailing comment of its own -->");
+    assert.equal(statements[1]?.op === "SEND" ? statements[1].body?.raw : null, "The answer.");
     assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
-        ["<!-- imitated aside -->"]);
+        ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
 });
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
@@ -93,7 +93,7 @@ test("TurnOps: internal source round-trips through the public parser", () => {
             metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "WAIT", aside: null, target: null, metadata: null,
+            op: "WAIT", aside: null, target: null, metadata: null, seconds: null,
             lineMarker: null, body: "Observe the results.", position: UNKNOWN_POSITION,
         },
     ];
@@ -121,7 +121,7 @@ test("TurnOps: internal source preserves trailing body newlines across a section
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "WAIT", aside: null, target: null, metadata: null,
+            op: "WAIT", aside: null, target: null, metadata: null, seconds: null,
             lineMarker: null, body: "Edit applied.", position: UNKNOWN_POSITION,
         },
     ];

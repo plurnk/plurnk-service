@@ -64,7 +64,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.equal(agent.messages.some(({ role }) => role === "activity"), false, "lifecycle verbs do not invent an ACP Plan");
         const rows = events.filter((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.row")
             .map((event) => (event as unknown as { value: { op: string; origin: string } }).value);
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["KILL"], "the authored completion carries the answer without a synthetic operation");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND"], "the authored completion carries the answer without a synthetic operation");
         assert.equal(fixture.requests.length, 1, "one actual inference request completes the run");
         assert.equal(fixture.requests[0].journey, "cli");
         assert.equal(fixture.requests[0].body.reasoning.max_tokens, provider.reasoningBudget,

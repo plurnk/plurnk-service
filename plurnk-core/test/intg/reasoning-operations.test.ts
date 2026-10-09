@@ -68,7 +68,7 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null },
             fetch: async () => new Response([
                 { choices: [{ index: 0, delta: { reasoning_content: reasoning } }] },
-                { choices: [{ index: 0, delta: { content: frame("KILL", "Done.") }, finish_reason: "stop" }] },
+                { choices: [{ index: 0, delta: { content: frame("SEND [200]", "Done.") }, finish_reason: "stop" }] },
             ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
         });
         ProviderInstantiate.registerConfigurationScope(provider, "reasoningtest");
@@ -95,20 +95,20 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
     }
 });
 
-for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
+for (const content of ["", frame("SEND [200]", "The answer must await the facts.")]) {
     test(`{§reasoning-operations}: a reasoning READ is ordinary continuing work beside ${content === "" ? "empty content" : "completion"}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "reasoning-read");
             const workerId = await insertWorker(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, workerId, 1);
+            const loopId = await insertLoop(db, workerId, 1, "Read the fact and report it.");
             const context = { workspaceId, workerId, loopId };
             await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An externally established fact." });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const reasoning = frame("READ (worker:///fact.txt) <1,-1>", null);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning } },
-                { assistant: { content: frame("KILL", "Now the facts are available."), reasoning: null } },
+                { assistant: { content: content === "" ? frame("SEND [200]", "Now the facts are available.") : "", reasoning: null } },
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, 102);
@@ -156,7 +156,7 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
             emit(tagged ? { content: laterReasoning + "</think>" } : { reasoning_content: laterReasoning });
             emit({ content }, "stop");
         } else {
-            emit({ content: frame("KILL", "The fact is established.") }, "stop");
+            emit({ content: frame("SEND [200]", "The fact is established.") }, "stop");
         }
         response.write(`data: ${JSON.stringify({
             choices: [], charge, usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160,
@@ -172,7 +172,7 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         assert.ok(address && typeof address === "object");
         const workspaceId = await insertWorkspace(db, "reasoning-completion");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Read the fact and report it.");
         const context = { workspaceId, workerId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Established fact." });
         const phases: string[] = [];
@@ -237,13 +237,13 @@ test("{§reasoning-operations}: rejected attempts commit neither reasoning memor
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-work");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "### log:///1/2/9/READ\nInvented receipt.",
                 reasoning: frame("NOTE", "Discarded memory.") + "\n\n" + frame("READ (worker:///discarded.txt)", null) } },
-            { assistant: { content: frame("KILL", "Done."), reasoning: null } },
+            { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);
@@ -260,14 +260,14 @@ test("{§reasoning-operations}: workspace READ denial is enforced on a reasoning
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-permissions");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the restricted resource.");
         const context = { workspaceId, workerId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/restricted.txt", content: "Not authorized." });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("NOTE", "Preparing."), reasoning: null } },
             { assistant: { content: "", reasoning: frame("READ (worker:///restricted.txt)", null) } },
-            { assistant: { content: frame("KILL", "Access was refused."), reasoning: null } },
+            { assistant: { content: frame("SEND [200]", "Access was refused."), reasoning: null } },
         ] });
         await engine.runTurn({ ...context, provider, messages: [] });
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "READ", scheme: "worker" }] } }) });
@@ -302,7 +302,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: read, reasoning: `${read}\n\n${read}` } },
             { assistant: { content: frame("KILL (log:///1/2/*/READ)", null), reasoning: null } },
-            { assistant: { content: frame("KILL", "Observed and curated."), reasoning: null } },
+            { assistant: { content: frame("SEND [200]", "Observed and curated."), reasoning: null } },
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200, exitCode: 0 } });

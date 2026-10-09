@@ -7,7 +7,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { concludeStmt, noteStmt } from "./_dsl.ts";
+import { completeStmt, noteStmt } from "./_dsl.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 // {§tokenomics}: entry and log content-depth is stamped at write time in the
@@ -101,7 +101,7 @@ test("{§context-gauge} the gauge carries populated tokens, budget and largest f
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
@@ -124,7 +124,7 @@ test("context token budget carries active total and maximum without a percent", 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const state = JSON.parse(budget) as { tokens: number; budget: number };
@@ -150,7 +150,7 @@ test("{§context-wall} a packet past the window even as receipts preserves exact
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
         // scaffolding alone blows past it and cannot be recovered by suppressing the owned boundary.
-        const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "past the wall even as receipts, the loop ends rather than ask the window for what it has not got");
         const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
@@ -200,7 +200,7 @@ test("{§tokenomics-calibrated-readout} three reported prompt counts convert the
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
             { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] }, usage: charged },
-            { assistant: { content: "", reasoning: null, ops: [concludeStmt()] }, usage: charged },
+            { assistant: { content: "", reasoning: null, ops: [completeStmt()] }, usage: charged },
         ] });
         const messages = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "U" }];
         const shown: number[] = [];

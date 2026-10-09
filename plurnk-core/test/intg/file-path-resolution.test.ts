@@ -44,7 +44,7 @@ test("{§fs-namei} {§file-path-normalization} shell, native operations and clie
                 frame(`FIND (${root}/*.txt)`, null),
             ].join("\n\n"), 50),
             makeMockResponse(frame(`KILL (${moved})`, null), 50),
-            makeMockResponse(frame("KILL", "Finished."), 50),
+            makeMockResponse(frame("SEND [200]", "Finished."), 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);

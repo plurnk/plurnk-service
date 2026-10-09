@@ -58,14 +58,14 @@ test("{§heading-boundary-recovery}: a refused heading still leaves its sibling 
     assert.equal(errors[0].message, "invalid URI in path");
 });
 
-test("{§terminal-kill}: a parameterless KILL keeps operation examples literal", () => {
+test("{§operation-fences}: a reply's wider fence keeps operation examples literal", () => {
     const body = "Example:\n```READ (example.md)\n```\nThe answer continues.";
-    for (const heading of ["KILL", "KILL <!-- final -->"]) {
-        const result = PlurnkParser.parse(`\`\`\`${heading}\n${body}`);
+    for (const heading of ["SEND [200]", "SEND [200] <!-- final -->"]) {
+        const result = PlurnkParser.parse(PlurnkParser.frame(heading, body));
         const operations = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(operations.map(writtenOp), ["KILL"]);
-        assert.ok(operations[0].op === "KILL");
-        assert.equal(operations[0].body, body);
+        assert.deepEqual(operations.map(writtenOp), ["SEND"]);
+        assert.ok(operations[0].op === "SEND");
+        assert.equal(operations[0].body?.raw, body);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     }
 });

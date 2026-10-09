@@ -571,10 +571,10 @@ export default class AstBuilder {
         const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position);
-        const durations = AstBuilder.#findAll(ctx, LineMarkerContext)
+        const durations = [...AstBuilder.#findAll(ctx, MetadataContext), ...AstBuilder.#findAll(ctx, LineMarkerContext)]
             .flatMap((marker) => {
                 const raw = marker.getText();
-                const seconds = /^<-?[0-9]+(?:\.[0-9]+)?>$/u.test(raw) ? Number(raw.slice(1, -1)) : Number.NaN;
+                const seconds = /^\[\s*-?[0-9]+(?:\.[0-9]+)?\s*\]$/u.test(raw) ? Number(raw.slice(1, -1)) : Number.NaN;
                 if (Number.isFinite(seconds) && seconds >= 0) return [seconds];
                 const at = AstBuilder.#positionOf(marker);
                 AstBuilder.#advisories.push(new PlurnkParseError(at.line, at.column, "parser", `Ignored WAIT duration ${raw}.`, "warning"));
@@ -586,7 +586,8 @@ export default class AstBuilder {
             target,
             metadata: null,
             // {§send-wait-scope} Repeated duration bounds compose as their earliest wake.
-            lineMarker: durations.length === 0 ? null : { marks: [Math.min(...durations)] },
+            lineMarker: null,
+            seconds: durations.length === 0 ? null : Math.min(...durations),
             body: AstBuilder.#headingBody(op, ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position),
             position,
         };
@@ -668,14 +669,9 @@ export default class AstBuilder {
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
         const first = slots[0]!;
+        if (first.target === null) throw new PlurnkParseError(position.line, position.column, "parser", "KILL requires a target.");
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const shape = StatementShape.body("KILL", first);
-        if (shape === "terminal") {
-            return [{
-                op: "KILL", aside: AstBuilder.#asideOf(ctx), ...first, matcher: null,
-                body: AstBuilder.#headingBody("KILL", ctx, split.inline, position), position,
-            }];
-        }
         // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
         const distilling = shape === "distillation";

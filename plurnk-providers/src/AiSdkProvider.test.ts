@@ -3007,6 +3007,7 @@ for (const streaming of [true, false]) {
             }).generate({ workerId: "fixture", messages: [{ role: "user", content: "Read the fact." }] });
             assert.equal(result.assistant.content, content);
             assert.equal(result.assistant.finishReason, finish);
+            assert.equal(result.assistant.nativeToolCalls, true, "the normalized boundary exposes unexecuted calls without rewriting the finish reason");
             assert.equal(result.accounting.length, 1);
             assert.match(JSON.stringify(result.assistantRaw), /call-native/u);
             assert.equal(result.notices?.filter(({ message }) => message === "The response included native tool calls, but no tools were declared.").length, 1);

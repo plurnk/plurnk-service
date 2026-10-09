@@ -11,12 +11,17 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { concludeStmt, dispositionStmt } from "./_dsl.ts";
+import { completeStmt, dispositionStmt } from "./_dsl.ts";
 
 async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `race-${crypto.randomUUID()}`);
     const parent = await insertWorker(db, workspaceId);
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    await engine.runTurn({
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nCollect the child result.\n```", reasoning: null } }] }),
+        workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+    });
     const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });
     // A child spawned by the parent concludes after the parent's turn opened.
     const child = await insertWorker(db, workspaceId, parent, "worker-x");
@@ -27,7 +32,6 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
         content: "the value is 42",
         mimetype: "text/markdown",
     });
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
@@ -74,10 +78,10 @@ test("a delivered answer cannot complete before the just-concluded child is obse
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.executeAdmittedTurn({ statements: [concludeStmt("done")], source: null, emission: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
+        const r = await engine.executeAdmittedTurn({ statements: [completeStmt("done")], source: null, emission: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
-        assert.deepEqual(r.outcomes, [{ op: "KILL", status: 102, problemType: null }]);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````KILL\nThe observed value is 42.\n````", reasoning: null } }] });
+        assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
         const observed = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);
         assert.match(JSON.stringify(provider.received[0]), /the value is 42/);

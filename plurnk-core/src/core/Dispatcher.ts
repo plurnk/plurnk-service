@@ -44,6 +44,7 @@ import WorkerControlHandler from "./WorkerControlHandler.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
+import ReplyMetadata from "./ReplyMetadata.ts";
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import DurableStatement from "./DurableStatement.ts";
@@ -71,7 +72,6 @@ export type DispatchContext = {
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
     editSequence?: EditSequence;
-    finalResponse?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -596,10 +596,6 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, loopId);
-                } else if (TurnDisposition.isCompletion(statement)) {
-                    result = await this.#disposition.completion({ workerId, loopId, turnId, origin },
-                        context.finalResponse === true);
-                    if (result.status === 200) result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
@@ -1089,7 +1085,7 @@ export default class Dispatcher {
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
     #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
-        if (TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement) || statement.op === "SEND" && statement.target === null) return null;
+        if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
 
         // An execution's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
@@ -1138,7 +1134,7 @@ export default class Dispatcher {
                 {
                     target: statement.target?.raw ?? String(target),
                     stage: "dispatch",
-                    recovery: "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND.",
+                    recovery: "Name a message address or a recipient that implements SEND.",
                     retryable: false,
                 },
             );
@@ -1447,19 +1443,18 @@ export default class Dispatcher {
 
 
     // {§send-response-receipt}: message content is literal; only its header selects a destination.
-    async #respond(statement: SendStatement | KillStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
-        const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
-        if ("failure" in captured) return captured.failure;
+    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
+        const options = ReplyMetadata.read(statement.metadata);
+        if ("failure" in options) return options.failure;
         const target = statement.target;
         let answers: string[];
         if (target === null) {
-            const content = typeof statement.body === "string" ? statement.body : statement.body?.raw ?? "";
-            if (content.trim() === "" && captured.attachments.length === 0) return { status: 200 };
-            answers = await this.#openMessages(loopId);
-            if (answers.length === 0) {
-                const original = await this.#db.engine_original_message.get<{ path: string }>({ loop_id: loopId });
-                if (original !== undefined) answers = [original.path];
-            }
+            const message = await this.#db.engine_open_messages.get<{ path: string }>({ loop_id: loopId });
+            if (message === undefined) return Dispatcher.#failure(
+                "send-target-required", 400, "SEND has no recipient and no Open Messages.", {},
+                { recovery: "Name a recipient address.", retryable: false },
+            );
+            answers = [message.path];
         } else {
             const message = await this.#db.message_source_by_address.get<{ path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,
@@ -1469,18 +1464,19 @@ export default class Dispatcher {
             );
             answers = [message.path];
         }
+        const captured = await MessageAttachments.capture(options.metadata, schemeCtx.resources!, "message:reply");
+        if ("failure" in captured) return captured.failure;
         return { status: 200, answers,
+            ...(options.completion === null ? {} : { completion: options.completion }),
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 
-    // {§send-response-receipt}: published unanswered source addresses, oldest first.
-    async #openMessages(loopId: number): Promise<string[]> {
-        const rows = await this.#db.engine_open_messages.all<{ path: string }>({ loop_id: loopId });
-        return rows.map((row) => row.path);
-    }
-
-    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, waits: readonly DispositionStatement[], finalResponse: boolean): Promise<number> {
-        return this.#disposition.settle(ctx, waits, finalResponse);
+    async settleProgram(ctx: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }, waits: readonly DispositionStatement[], completionAllowed: boolean): Promise<number> {
+        const result = await this.#disposition.settle(ctx, waits, completionAllowed);
+        if (typeof result.detail === "string") this.#notices.push(ctx.workspaceId, ctx.workerId, ctx.loopId, {
+            source: "engine:turn", kind: "results_pending", level: "info", message: result.detail,
+        });
+        return result.status;
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
@@ -1572,7 +1568,7 @@ export default class Dispatcher {
     // {§proposal}/{§send} — native dispositions park; other 202 results propose.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
         if (result.status !== 202) return false;
-        return !TurnDisposition.is(statement) && !TurnDisposition.isCompletion(statement);
+        return !TurnDisposition.is(statement);
     }
 
     // Normalize a parsed target for log storage. Bare paths and `file:///...`

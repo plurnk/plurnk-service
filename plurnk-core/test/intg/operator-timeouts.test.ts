@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { makeMockResponse } from "./_mock.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
@@ -128,7 +128,7 @@ test("the panel's wall never intrudes — a short loop concludes 200 untouched",
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "quick");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt("done")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.result.status, 200, "the panel's execution allowance is invisible to a normal loop");
     } finally { await db.close(); }

@@ -21,7 +21,7 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
         "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
         `\`\`\`\`KILL (log:///1/**/{READ,NOTE}) <!-- retire the read and the note; keep what they taught -->\n${distillation}\n\`\`\`\`\n\`\`\`\`KILL (log:///1/**/EDIT)\n   \n\`\`\`\`\n\`\`\`\`NOTE\ncurated\n\`\`\`\``,
         "````NOTE\nmoving on\n````",
-        "````KILL\ndone\n````",
+        "````SEND [200]\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -65,7 +65,7 @@ test("{§log-kill-distillation} a failed log KILL still keeps its body as the mo
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````NOTE\nwrote\n````",
         "````KILL (log:///9/9/9)\nnothing here\n````\n````NOTE\nchecked\n````",
-        "````KILL\ndone\n````",
+        "````SEND [200]\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

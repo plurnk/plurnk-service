@@ -278,7 +278,7 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["KILL"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["SEND"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + delivered response + observed completion\n");
@@ -319,12 +319,12 @@ try {
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");
-    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI KILL answer");
+    assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI completion reply");
     tui.write("/skills\r");
     await tui.waitFor(/plurnk\s+active/);
     await tui.exit();
     tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + KILL + status\n");
+    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + SEND + status\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-rejected",

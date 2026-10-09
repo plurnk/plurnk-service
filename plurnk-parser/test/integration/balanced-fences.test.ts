@@ -142,11 +142,11 @@ test("{§pairing-objective}: once every reading needs a repair, operations writt
         "```EDIT (a.py) <1>", "from b import c",
         "```sh", "python -m pytest -q",
         "```WAIT",
-        "```KILL", "Fixed.", "", "```python", "from b import c", "```", "",
+        "```SEND [200]", "Fixed.", "", "```python", "from b import c", "```", "",
         "Verified.",
         "```",
     ].join("\n");
     const result = PlurnkParser.parse(emission, { executors: ["sh"] });
-    assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "EDIT", "sh", "WAIT", "KILL"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "EDIT", "sh", "WAIT", "SEND"]);
     assert.equal(bodyText(statements(result).at(-1)!), "Fixed.\n\n```python\nfrom b import c\n```\n\nVerified.");
 });

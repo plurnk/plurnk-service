@@ -14,7 +14,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
-import { concludeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
+import { completeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
@@ -30,7 +30,7 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("````KILL\ndrained\n````");
+const drainTurn = contentResponse("````SEND [200]\ndrained\n````");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§operator-grammar} grades nothing).
@@ -144,13 +144,13 @@ for (const fail of [false, true]) {
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "notice-cleanup");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Record the observation, then finish.");
         const pushed = t.mock.method(NoticeChannel.prototype, "push");
         const cause = new Error("notice delivery fixture failed");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
             if (fail && notice.kind === "parse_advisory") throw cause;
         } });
-        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````KILL\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````SEND [200]\ndone\n````")] });
         const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         if (fail) await assert.rejects(running, (error) => error === cause);
         else assert.equal((await running).result.status, 200);
@@ -182,7 +182,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
             contextWindow: 100000,
             responses: [
                 stmtTurn([scopedRead, noteStmt("read")]),
-                stmtTurn([concludeStmt("done")]),
+                stmtTurn([completeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -207,7 +207,7 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
         scopedRead.lineMarker = { marks: [0, 120] };
         const provider = new Mock({ contextWindow: 100000, responses: [
             { assistant: { content: "", ops: [scopedRead], reasoning: null } },
-            { assistant: { content: "", ops: [concludeStmt("done")], reasoning: null } },
+            { assistant: { content: "", ops: [completeStmt("done")], reasoning: null } },
         ] });
         const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -246,7 +246,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                     editStmt(target, "G", { marks: [3, 2, 3] }),
                     noteStmt("edited"),
                 ]),
-                stmtTurn([concludeStmt("done")]),
+                stmtTurn([completeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -488,7 +488,7 @@ test("{§fence-boundary}: literal programs inside a longer fence produce no spur
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const emission = "`````EDIT (worker:///a.md) <!-- first note -->\nalpha\n````EDIT (worker:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (worker:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````KILL\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````SEND [200]\ndone\n````")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

@@ -349,11 +349,13 @@ test("empty sections normalize to their operation-owned empty values", () => {
     assert.equal("body" in task ? task.body : undefined, null);
 });
 
-test("{§lifecycle-slots} WAIT ignores metadata while NOTE still has no target operand", () => {
+test("{§lifecycle-slots} WAIT warns on invalid duration while NOTE still has no target operand", () => {
     const inlineArray = "````WAIT [{\"trace\":true}]\n````";
     const result = PlurnkParser.parseStatements(inlineArray);
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
-    assert.deepEqual(errors, []);
+    assert.deepEqual(errors.map(({ message, severity }) => ({ message, severity })), [
+        { message: 'Ignored WAIT duration [{"trace":true}].', severity: "warning" },
+    ]);
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(statements.length, 1);
     assert.ok(statements[0]?.op === "WAIT");
@@ -827,12 +829,14 @@ test("the displayed row prefix copied whole — digits before the scope — read
 });
 
 test("{§send-wait-scope} WAIT retains a positive duration while execution keeps its distinct timing tuple", () => {
-    const terminal = oneStatement(section("WAIT", " <30>", "polling"));
+    const terminal = oneStatement(section("WAIT", " [30]", "polling"));
     if (terminal.op !== "WAIT") assert.fail("expected WAIT");
-    assert.deepEqual(terminal.lineMarker, { marks: [30] });
-    const appended = oneStatement(section("WAIT", " <-1>", "standing by"));
+    assert.equal(terminal.seconds, 30);
+    assert.equal(terminal.lineMarker, null);
+    const appended = oneStatement(section("WAIT", "", "standing by"));
     if (appended.op !== "WAIT") assert.fail("expected WAIT");
     assert.equal(appended.lineMarker, null);
+    assert.equal(appended.seconds, null);
     const exec = oneStatement("````node (./) <60,5>\ncommand\n````");
     if (!isExecution(exec)) assert.fail("expected an execution");
     assert.deepEqual(exec.lineMarker, { marks: [60, 5] });

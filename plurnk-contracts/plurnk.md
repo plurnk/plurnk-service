@@ -20,7 +20,7 @@ body?
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: Copy files, entries, streams, or text regions.
 * MOVE: Move files, entries, streams, or text regions.
-* KILL: Kill things. Delete an entry, stop a process, retire log items, or end the loop.
+* KILL: Kill things. Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams.
@@ -28,23 +28,27 @@ body?
 
 ## Workflow Management
 
-> [!IMPORTANT]
-> YOU MAY end the loop with a turn emitting only a parameterless KILL containing the final deliverable response.
-
-> [!CAUTION]
-> Turns containing multiple OPs, active workers, or open streams will not end the loop.
-
-```SEND <!-- example: a parameterless send messages user -->
-This is an example of a continuing turn progress update for the user.
+```WAIT [60] <!-- example: yield to children and streams for up to 60 seconds -->
+This is an example of a waiting turn progress update response.
 ```
 
-```WAIT <60> <!-- example: yield to children and streams for up to 60 seconds -->
-This is an example of a waiting turn progress update for the user.
+```SEND
+This is an example of a continuing turn progress update response.
 ```
 
-```KILL
-This is an example of the final deliverable response that ends the loop.
+```SEND [200]
+This is an example of the final deliverable response.
 ```
+
+> [!TIP]
+> SEND with the path to respond to a specific Open Message.
+
+> [!NOTE]
+> The loop continues until:
+>
+> * Every Open Message has a `[200]` completion or `[499]` cancellation reply.
+> * All required operation results have been observed.
+> * All work held by the loop has settled.
 
 ## `pattern` (worker:///_plurnk/plurnk/pattern.md)
 

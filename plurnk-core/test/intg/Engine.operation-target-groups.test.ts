@@ -314,18 +314,19 @@ for (const limit of [0, 1, 2]) {
             if (limit === 0) await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ maxCommands: 0 }) });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
-            const source = "```READ (worker:///alpha.md) (worker:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```KILL\n```";
+            const source = "```READ (worker:///alpha.md) (worker:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```SEND [200]\n```\n\n```WAIT\n```";
             const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
             const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
-            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
             const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
             assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
                 [["/alpha.md", 200], ["/beta.md", 200]].slice(0, limit));
             assert.equal(rows.some(({ op }) => op === "NOTE"), false);
-            assert.ok(rows.some(({ op }) => op === "KILL"), "lifecycle intent is never silently dropped by the action cap");
+            assert.equal(rows.some(({ op, origin }) => origin === "model" && op === "SEND"), false, "reply delivery counts as an operation");
+            assert.ok(rows.some(({ op }) => op === "WAIT"), "the yield remains outside the action cap");
             const error = rows.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("max-commands-exceeded"));
             assert.ok(error !== undefined, "omitted operations have the ordinary durable limit notice");
-            assert.equal(error.problem.omittedOperations, 3 - limit);
+            assert.equal(error.problem.omittedOperations, 4 - limit);
             assert.notEqual(result.status, 200, "dropped work cannot be reported as completed");
         } finally {
             await db.close();

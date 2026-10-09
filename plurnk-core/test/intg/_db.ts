@@ -151,13 +151,13 @@ export const insertOperationTurn = async (
 export const seedEnvelope = async (
     db: Db,
     label: string,
-    options: { producer?: "model" | "client" | "_plurnk" } = {},
+    options: { producer?: "model" | "client" | "_plurnk"; prompt?: string } = {},
 ): Promise<{
     workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const workspaceId = await insertWorkspace(db, label);
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
+    const loopId = await insertLoop(db, workerId, 1, options.prompt);
     const producer = options.producer ?? "model";
     const { id: turnId } = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
     return { workspaceId, workerId, loopId, turnId };

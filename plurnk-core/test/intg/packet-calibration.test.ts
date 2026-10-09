@@ -11,7 +11,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
-import { concludeStmt, editStmt, findStmt, killStmt, readStmt, urlPath } from "./_dsl.ts";
+import { completeStmt, editStmt, findStmt, killStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const messages = [{ role: "system" as const, content: "S" }, { role: "user" as const, content: "review" }];
 const outputBudget = Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
@@ -21,7 +21,7 @@ const providerAt = (capacity: number | null, responses: MockResponse[] = [], mod
         responses,
     });
 const response = (reported = 0): MockResponse => ({
-    assistant: { content: "", reasoning: null, ops: [concludeStmt("done")] },
+    assistant: { content: "", reasoning: null, ops: [completeStmt("done")] },
     usage: { inputTokens: reported, totalTokens: reported },
 });
 

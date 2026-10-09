@@ -431,21 +431,19 @@ export default class Translator {
     }
 
     // {§loop-response-messages}: share admission with reattach orientation.
-    static isResponse(entry: Record<string, unknown>, threadId?: string): boolean {
+    static isResponse(entry: Record<string, unknown>, threadId: string): boolean {
         if (entry.op !== "SEND" && entry.op !== "KILL") return false;
         const deliveredReply = Translator.#attrKind(entry.attrs) === "reply";
         if ((!deliveredReply && entry.source != null) || entry.inherited_history === 1) return false;
         const tx: unknown = typeof entry.tx === "string" ? JSON.parse(entry.tx) : entry.tx;
         if (tx === null || typeof tx !== "object") return false;
         if (!(typeof entry.status_rx === "number" && entry.status_rx >= 200 && entry.status_rx < 300)) return false;
-        if (Translator.#txBody(entry.tx).length === 0) return false;
+        if (Translator.#txBody(entry.tx).trim().length === 0) return false;
         const rx: unknown = typeof entry.rx === "string" ? JSON.parse(entry.rx) : entry.rx;
         if (rx === null || typeof rx !== "object") return false;
         const answers = (rx as { answers?: unknown }).answers;
         if (!Array.isArray(answers)) return false;
-        if (threadId === undefined) return true;
-        return !deliveredReply && entry.origin === "model" && answers.length === 0
-            || answers.some((address) => MessageAddress.messageId(address, threadId) !== null);
+        return answers.some((address) => MessageAddress.messageId(address, threadId) !== null);
     }
 
     // The model-facing textual statement body out of the tx. The real

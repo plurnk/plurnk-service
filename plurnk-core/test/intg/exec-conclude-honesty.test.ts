@@ -13,7 +13,7 @@ import Results from "../../src/core/results.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import { concludeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
+import { completeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -51,6 +51,11 @@ const wire = async (run: Executor["run"]) => {
     const workspaceId = await insertWorkspace(db, `honesty-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "honesty test");
+    await engine.runTurn({
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nInspect execution results.\n```", reasoning: null } }] }),
+        workspaceId, workerId, loopId, messages: [],
+    });
+    notices.length = 0;
     const { id: turnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
     return { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
 };
@@ -252,13 +257,13 @@ for (const specimen of [
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
             const completed = await engine.executeAdmittedTurn({
-                statements: [concludeStmt()], source: null, emission: null,
+                statements: [completeStmt()], source: null, emission: null,
                 workspaceId, workerId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
-            assert.deepEqual(completed.outcomes, [{ op: "KILL", status: 102, problemType: null }]);
+            assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "````KILL\nObserved the actual execution result.\n````", reasoning: null,
+                content: "", reasoning: null,
             } }] });
             const observed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(observed.status, 200);
@@ -280,10 +285,10 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
         await Turn.complete(db, turnId, 102);
         const { id: nextTurnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const completed = await engine.executeAdmittedTurn({
-            statements: [concludeStmt()], source: null, emission: null,
+            statements: [completeStmt()], source: null, emission: null,
             workspaceId, workerId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.deepEqual(completed.outcomes, [{ op: "KILL", status: 102, problemType: null }], "the earlier execution is not invented in this program");
+        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "the earlier execution is not invented in this program");
     } finally { await db.close(); }
 });

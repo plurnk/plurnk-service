@@ -11,7 +11,7 @@ import { makeMockResponse } from "./_mock.ts";
 // Run a loop against a provider whose generate() is shadowed, with the workspace created carrying
 // settings.client, and report whether any `client` field reached the provider call.
 const captureClient = async (clientId: string | null): Promise<string | undefined> => {
-    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````KILL\ndone\n````", 5)] });
+    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND [200]\ndone\n````", 5)] });
     let captured: string | undefined;
     let seen = false;
     const real = mock.generate.bind(mock);

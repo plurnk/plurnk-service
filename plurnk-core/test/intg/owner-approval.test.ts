@@ -72,7 +72,7 @@ test("{§worker-owner-resolution} server acceptance resolves through Core withou
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("````KILL\ndone\n````", 0),
+        makeMockResponse("````SEND [200]\ndone\n````", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -95,7 +95,7 @@ test("{§proposal-ownership-notification} server rejection settles the same admi
     serverProposals(t, "reject");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
-        makeMockResponse("````KILL\nthe edit was declined; concluding\n````", 50),
+        makeMockResponse("````SEND [200]\nthe edit was declined; concluding\n````", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

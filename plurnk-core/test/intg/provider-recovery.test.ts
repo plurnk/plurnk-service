@@ -21,7 +21,7 @@ class Flaky extends Mock {
             contextWindow: viableWindow() * 4,
             responses: signals.map((signal) => makeMockResponse(signal === 102
                 ? "\n````FIND (worker:///**)````\n````NOTE\ncontinue\n````"
-                : "````KILL\ndone\n````", 20)),
+                : "````SEND [200]\ndone\n````", 20)),
         });
         this.failures = failures;
     }
@@ -116,7 +116,7 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
                 });
                 const content = requests.length === 2
                     ? "````FIND (worker:///**)\n````"
-                    : "````KILL\nRecovered.\n````";
+                    : "````SEND [200]\nRecovered.\n````";
                 return new Response(`data: ${JSON.stringify({
                     id: `response-${requests.length}`, model: "deadline-recovery",
                     choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
@@ -186,7 +186,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
         await ownWorker(db, workspaceId, workerId);
-        const provider = new Flaky(99, [200]);
+        const provider = new Flaky(99, [200, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];

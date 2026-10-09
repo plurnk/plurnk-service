@@ -7,11 +7,13 @@ import test, { beforeEach, type TestContext } from "node:test";
 import { serverProposals } from "./_approval.ts";
 beforeEach((t) => serverProposals(t as TestContext, "review"));
 import assert from "node:assert/strict";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { RepresentationPreparationRequest, SchemeCtx } from "@plurnk/plurnk-schemes";
 import type { CapabilityPolicy, ProposalPolicy } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import Turn from "../../src/core/Turn.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -19,7 +21,7 @@ import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
-import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt, noteStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
@@ -128,10 +130,11 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
     t.after(() => db.close());
     const source = new TraitSource("attachment-source", ["web"]);
     schemes.register("attachment-source", source);
+    await engine.injectIntoLoop(loopId, "Return the resource.", [], undefined, {}, "message://request/attachment");
     await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
     const result = await engine.dispatch({
         workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
-        statement: { ...sendStmt(null, "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
+        statement: { ...sendStmt(parsePath("message://request/attachment"), "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
     });
     assert.equal(result.status, 403);
     assert.match(result.problem!.type, /capability-denied$/u);
@@ -222,14 +225,15 @@ test("proposal disposition cannot deny or resurrect a capability", async () => {
 });
 
 test("an operation with no external capability demand remains available under an empty only-set", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
+        const { id: turnId } = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
         await setPolicies(db, workspaceId, policies({ only: [] }));
         const result = await engine.dispatch({
-            statement: sendStmt(null),
+            statement: noteStmt("Retained finding."),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
-        assert.equal(result.status, 200);
+        assert.equal(result.status, 200, JSON.stringify(result));
     } finally { await db.close(); }
 });
 

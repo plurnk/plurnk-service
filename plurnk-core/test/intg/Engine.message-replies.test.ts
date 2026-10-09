@@ -1,24 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import { parsePath } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { lastReply } from "./_packet.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
-import { concludeStmt, noteStmt, sendStmt, urlPath } from "./_dsl.ts";
+import { completeStmt, noteStmt, sendStmt, urlPath } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { prompt: "Deliver the result." });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     return { db, env, engine, lifecycle: new LoopLifecycle(db) };
 };
 
-for (const statement of [sendStmt(null, "An answer."), noteStmt("A determination.")]) {
+for (const statement of [sendStmt(parsePath("message://request/reply"), "An answer."), noteStmt("A determination.")]) {
     test(`{§turn-disposition} dispatching ${statement.op} alone does not settle the enclosing program`, async () => {
         const { db, env, engine, lifecycle } = await setup();
         try {
+            await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
             const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "model" });
             assert.equal(result.status, 200);
             assert.equal(await lifecycle.status(env.loopId), 102);
@@ -39,12 +41,12 @@ test("{§send-response-receipt} a failed endpoint SEND neither answers a message
     } finally { await db.close(); }
 });
 
-test("{§loop-response-messages} every SEND in a program executes before a later explicit conclusion", async () => {
+test("{§loop-response-messages} every progress SEND executes before a later completion reply", async () => {
     const { db, env, engine, lifecycle } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: {
             content: "", reasoning: null, ops: [sendStmt(null, "First."), sendStmt(null, "Second."), noteStmt("Both delivered.")],
-        } }, { assistant: { content: "", reasoning: null, ops: [concludeStmt("")] } }] });
+        } }, { assistant: { content: "", reasoning: null, ops: [completeStmt("")] } }] });
         const turn = await engine.runTurn({ ...env, provider, messages: [] });
         assert.equal(turn.status, 102);
         assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["SEND", 200], ["NOTE", 200]]);
@@ -58,7 +60,7 @@ test("{§loop-terminals} a later cancellation cannot overwrite a successful conc
     const { db, env, engine, lifecycle } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: {
-            content: "", reasoning: null, ops: [concludeStmt("Answer.")],
+            content: "", reasoning: null, ops: [completeStmt("Answer.")],
         } }] });
         assert.equal((await engine.runTurn({ ...env, provider, messages: [] })).status, 200);
         await lifecycle.cancelTree(env.workerId, "Late cancellation.", true);

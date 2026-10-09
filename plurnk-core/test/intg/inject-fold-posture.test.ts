@@ -9,8 +9,8 @@ import { makeMockResponse } from "./_mock.ts";
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto execution proposal holds loop 1 live (paused at the review) while injects arrive.
     makeMockResponse("\n````sh\necho hold\n````\n\n````NOTE\nworking\n````", 10),
-    makeMockResponse("````KILL\ndone\n````", 10),
-    makeMockResponse("````KILL\ndone again\n````", 10),
+    makeMockResponse("````SEND [200]\ndone\n````", 10),
+    makeMockResponse("````SEND [200]\ndone again\n````", 10),
 ] });
 
 test("{§worker-ownership}: injecting a message preserves the owner's pending review", async () => {
@@ -71,7 +71,7 @@ test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked
         contextWindow: 16384,
         responses: [
             makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\npark\n````", 10),
-            makeMockResponse("````KILL\ndone\n````", 10),
+            makeMockResponse("````SEND [200]\ndone\n````", 10),
         ],
     });
 

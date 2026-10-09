@@ -107,7 +107,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-file-repair-${crypto.randomUUID()}`);
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````KILL\nConfiguration checked.\n````")) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````SEND [200]\nConfiguration checked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -162,7 +162,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`mcp (list)\n\`\`\`\``),
         makeMockResponse("````repaired (echo)\n{\"message\":\"same-turn-repair\"}\n````"),
-        makeMockResponse("````KILL\nConfiguration repaired.\n````"),
+        makeMockResponse("````SEND [200]\nConfiguration repaired.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
@@ -196,7 +196,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-configuration-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client", "client");
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````KILL\ndone\n````", 20)) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const directory = join(hostPaths.plurnkPluginsDir, "added");
@@ -259,7 +259,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-hotload-${crypto.randomUUID()}`);
     const model = await insertWorker(db, workspaceId, null, "conversation", "model");
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````KILL\ndone\n````", 20)) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const events: Array<{ method: string; params: unknown }> = [];

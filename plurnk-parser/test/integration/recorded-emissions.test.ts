@@ -21,8 +21,8 @@ test("{§recorded-emissions}: every recorded emission still parses, and to the s
         const now = classify(record.emission);
         if (JSON.stringify(now.ops) !== JSON.stringify(record.ops)
             || now.outsideText !== record.outsideText
-            || now.bareKills !== record.bareKills) {
-            const was = { ops: record.ops, outsideText: record.outsideText, bareKills: record.bareKills };
+            || JSON.stringify(now.errors) !== JSON.stringify(record.errors)) {
+            const was = { ops: record.ops, outsideText: record.outsideText, errors: record.errors };
             moved.push(`${record.specimen}/${record.packet} (${record.turns} recorded turns)`
                 + `: was ${JSON.stringify(was)}, now ${JSON.stringify(now)}`);
         }
@@ -44,9 +44,9 @@ test("{§recorded-emissions}: the corpus spans the contract, not one corner of i
         assert.ok(ops.has(op), `no recorded emission authored ${op}; the corpus has a blind spot`);
     }
     assert.ok(records.some(({ outsideText }) => outsideText), "no outside text");
-    assert.ok(records.some(({ bareKills }) => bareKills > 0), "no parameterless KILL: the conclusion path is uncovered");
-    assert.ok(records.some(({ recordedStatus, bareKills }) => recordedStatus === 200 && bareKills === 0),
-        "no recorded conclusion without a parameterless KILL: the corpus holds no turn the current contract would reject");
+    assert.ok(records.some(({ errors }) => errors.length > 0), "no parser refusals: the corpus holds only valid programs");
+    assert.ok(records.some(({ recordedStatus, errors }) => recordedStatus === 200 && errors.length > 0),
+        "no historic success that is refused by the current grammar");
 });
 
 test("{§recorded-emissions}: the corpus carries no identifier of the machine that recorded or runs it", () => {

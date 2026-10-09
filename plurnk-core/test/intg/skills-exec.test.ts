@@ -31,7 +31,7 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     await symlink(join(root, "versions", "first"), installed);
     const responses = [
         { assistant: { content: "````READ (skill://sample/guide.md) <1,-1>````\n````NOTE\nInspect the source.\n````", reasoning: null } },
-        { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
+        { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
     ];
     const provider = new PacketCapturingMock({ contextWindow: 32768, responses: [...responses, ...responses] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -61,9 +61,9 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "\n````KILL\nobserved.\n````", reasoning: null } },
+            { assistant: { content: "\n````SEND [200]\nobserved.\n````", reasoning: null } },
             { assistant: { content: "\n````READ (skill://review/SKILL.md) <1,-1>````\n````NOTE\nRead the skill.\n````", reasoning: null } },
-            { assistant: { content: "\n````KILL\nobserved.\n````", reasoning: null } },
+            { assistant: { content: "\n````SEND [200]\nobserved.\n````", reasoning: null } },
         ],
     });
     try {

@@ -39,7 +39,7 @@ test("{§previous-emission}: curation removes memory receipts; source READ still
     const read = frame("READ (ops://analyst/1/2) <1,-1>", null);
     const { db, result, provider, rows, workerId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
         say(first, frame("NOTE", "REASONING-MEMORY: independent reasoning note.")),
-        say(curate), say(read), say(frame("KILL", "Complete.")),
+        say(curate), say(read), say(frame("SEND [200]", "Complete.")),
     ], 5);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -59,7 +59,7 @@ test("{§previous-emission}: curation removes memory receipts; source READ still
 test("{§emission-row}: initialization has no replay; canonical content excludes interstitial text and preserves row chronology", async (t) => {
     const canonical = `${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
-        say(`Let me look around first.\n\n${canonical}\n\nDone for now.`), say(frame("KILL", "Answer.")),
+        say(`Let me look around first.\n\n${canonical}\n\nDone for now.`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -97,7 +97,7 @@ test("{§emission-row}: a whole scope retires an emission; a partial scope refus
         say(frame("EDIT (worker:///scope.md)", "line one\nline two\nline three")),
         say(frame("KILL (log:///1/2/2/emission) <2,3>", null)),
         say(frame("KILL (log:///1/2/*) <2,3>", null)),
-        say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)), say(frame("KILL", "Answer.")),
+        say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)), say(frame("SEND [200]", "Answer.")),
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -113,7 +113,7 @@ test("{§emission-row}: a whole scope retires an emission; a partial scope refus
 
 test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is tolerated outside text, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission → ops://exampleWorkerName/1/2 · 30\n\n${surveyRead}`), say(frame("KILL", "Answer.")),
+        say(`### log:///1/2/2/emission → ops://exampleWorkerName/1/2 · 30\n\n${surveyRead}`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);

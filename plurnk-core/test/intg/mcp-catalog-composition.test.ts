@@ -48,7 +48,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
-        "````KILL\nCatalog tool result observed.\n````",
+        "````SEND [200]\nCatalog tool result observed.\n````",
     ].map(makeMockResponse) });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();

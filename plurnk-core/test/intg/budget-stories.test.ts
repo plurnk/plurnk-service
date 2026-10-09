@@ -11,7 +11,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
-import { concludeStmt, urlPath, editStmt, readStmt, noteStmt } from "./_dsl.ts";
+import { completeStmt, urlPath, editStmt, readStmt, noteStmt } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat visible READ
@@ -21,7 +21,7 @@ const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([concludeStmt("ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([completeStmt("ok")]));
 // A turn that writes a fat entry then READS it back (the read RESULT renders into
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.

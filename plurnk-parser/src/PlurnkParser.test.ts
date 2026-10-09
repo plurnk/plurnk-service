@@ -147,8 +147,8 @@ test("{§forgotten-tag}: at the top level, an operation heading under a bare fen
     const malformed = (tag: string) => `\`${tag}\` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line.`;
     assert.deepEqual(ran("```\nREAD (notes.md) <1,-1>\n```"), ["READ"]);
     assert.deepEqual(warnings("```\nREAD (notes.md) <1,-1>\n```"), [malformed("READ")]);
-    assert.deepEqual(ran("```\nKILL\nDone.\n```"), ["KILL"], "a native name alone qualifies");
-    assert.deepEqual(warnings("```\nKILL\nDone.\n```"), [malformed("KILL")]);
+    assert.deepEqual(ran("```\nNOTE\nDone.\n```"), ["NOTE"], "a native name alone qualifies");
+    assert.deepEqual(warnings("```\nNOTE\nDone.\n```"), [malformed("NOTE")]);
     assert.deepEqual(ran("```\ngitea (list_issues)\n{\"owner\": \"plurnk\"}\n```"), ["gitea"], "an executor with its operand");
     assert.deepEqual(warnings("```\nsh\n$ npm test\n```"), [], "an executor's bare name is a word in a transcript");
     assert.deepEqual(warnings("```\ndef f():\n    pass\n```"), [], "a code snippet draws nothing");

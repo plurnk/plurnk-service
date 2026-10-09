@@ -35,7 +35,7 @@ for (const fixture of [
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````KILL\nread\n````", 50),
+            makeMockResponse("````SEND [200]\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -46,7 +46,7 @@ for (const fixture of [
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````KILL\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

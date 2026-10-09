@@ -26,7 +26,7 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: the digest counts reasonin
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````READ (worker:///test.txt)````", reasoning: "First turn thinking." } },
             { assistant: { content: "````KILL (log:///1/2/2/reasoning)````", reasoning: "Second turn thinking." } },
-            { assistant: { content: "````KILL\nDone.\n````", reasoning: "Third turn thinking." } },
+            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: "Third turn thinking." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
@@ -58,7 +58,7 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: when reasoning rows are di
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````KILL\nDone.\n````", reasoning: "Thinking occurred." } },
+            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: "Thinking occurred." } },
         ] });
         const db = await openMigrated(dbPath);
         try {

@@ -26,7 +26,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("NOTE", "Inspect the parser next."), reasoning } },
             { assistant: { content: frame("KILL (log:///1/2/*/NOTE)", null), reasoning: null } },
-            { assistant: { content: frame("KILL", "Finished."), reasoning: frame("NOTE", "Both checks passed.") } },
+            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: frame("NOTE", "Both checks passed.") } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -73,13 +73,13 @@ test("#713: empty WAIT falls through and SEND plus a retrieval observes before c
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-fallthrough");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the recorded operations, then answer.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("WAIT", "Wait for results."), reasoning: null } },
             { assistant: { content: [frame("SEND", "The answer."), frame("READ (ops://alice/1/1) <1,-1>", null)].join("\n\n"), reasoning: null } },
-            { assistant: { content: frame("KILL", null), reasoning: null } },
+            { assistant: { content: frame("SEND [200]", null), reasoning: null } },
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
@@ -92,13 +92,13 @@ test("{§reasoning-operations} {§unparsed-tail-boundary}: a lost boundary admit
     try {
         const workspaceId = await insertWorkspace(db, "lost-boundary-reasoning-note");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reasoning = frame("NOTE", "Kept despite the broken program.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````READ (unfinished", reasoning } },
-            { assistant: { content: frame("KILL", "Finished."), reasoning: null } },
+            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -116,7 +116,7 @@ test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission can
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const rejectedReasoning = frame("NOTE", "This belongs to the rejected attempt.");
@@ -124,7 +124,7 @@ test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission can
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§fabricated-log-entry} — the model writing the harness's log is the refusal that remains.
             { assistant: { content: "### log:///1/2/1/NOTE\nI am the harness.", reasoning: rejectedReasoning } },
-            { assistant: { content: frame("KILL", "Finished."), reasoning: acceptedReasoning } },
+            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);

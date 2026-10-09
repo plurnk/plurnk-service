@@ -11,7 +11,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
-        makeMockResponse("````KILL\nthe answer\n````", 10),
+        makeMockResponse("````SEND [200]\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -26,11 +26,10 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
             const problem = (JSON.parse(sends[0]!.rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
             assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§problems-dispatch}
-            assert.equal(problem?.recovery, "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND."); // {§problems-dispatch}
+            assert.equal(problem?.recovery, "Name a message address or a recipient that implements SEND."); // {§problems-dispatch}
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400]);
-            assert.ok(rows.some(({ op, origin, status_rx }) => op === "KILL" && origin === "model" && status_rx === 200));
+            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400, 200]);
             const turns = await db.test_list_turns_in_loop.all<{ producer: string; status: number }>({ loop_id: loopId });
             assert.deepEqual(turns.filter(({ producer }) => producer === "model").map(({ status }) => status), [102, 200], "the next turn observes the failure and delivers the answer");
         } finally { ws.close(); }
@@ -41,7 +40,7 @@ test("a SEND addressed to a file path preserves the scheme's factual 501", async
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),
-        makeMockResponse("````KILL\ndone\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

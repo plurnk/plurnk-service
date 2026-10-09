@@ -432,7 +432,7 @@ test("a read-only management Run does not duplicate its conversation's model set
                 worker_id: 20,
                 loop_id: 9,
                 origin: "model",
-                op: "SEND", status_rx: 200, rx: { answers: [] },
+                op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/agui-t/messages/m1"] },
                 coordinate: "1/1/1/SEND",
                 tx: { body: "one answer" },
                 turn_id: 1,
@@ -1857,7 +1857,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     loop_id: 9,
                     turn_id: 12,
                     coordinate: "1/12/3/SEND",
-                    op: "SEND", status_rx: 200, rx: { answers: [] },
+                    op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/verified-interrupt/messages/m1"] },
                     origin: "model",
                     tx: { body: "Command approved." },
                 },
@@ -1946,7 +1946,7 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
     seam.readLog = async () => logRows([
         { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
         { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/workspace/messages/m1"] }, turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
         { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
     ]);
     seam.runLoop = async (args) => {
@@ -1986,7 +1986,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         return logRows([
             { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
             { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answered the prior question." } },
-            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/sync-client/messages/m1"] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         ]);
     };
     const mod = await host(seam);
@@ -2124,7 +2124,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => logRows([
-        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/replay-client/messages/m1"] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ]);
@@ -2170,7 +2170,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => logRows([
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
+        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/oriented-client/messages/m1"] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ]);
     seam.runLoop = async (args) => {

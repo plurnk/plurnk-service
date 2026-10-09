@@ -29,7 +29,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("````READ (contract.pdf)````\n````NOTE\nlooking\n````"), mockTurn("````KILL\nseen\n````")],
+        responses: [mockTurn("````READ (contract.pdf)````\n````NOTE\nlooking\n````"), mockTurn("````SEND [200]\nseen\n````")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {

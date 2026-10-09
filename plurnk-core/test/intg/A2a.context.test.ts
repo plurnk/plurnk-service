@@ -370,7 +370,7 @@ test("{§a2a-context-resource}: conversation and exact attachment bytes survive 
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse([frame("NOTE", "private-exploration-marker"), frame("SEND", "intermediate-retained-reply")].join("\n\n")),
-        makeMockResponse([frame("KILL (log:///*/*/*/*)", null), frame("KILL", "first-retained-answer")].join("\n\n")),
+        makeMockResponse([frame("KILL (log:///*/*/*/*)", null), frame("SEND [200]", "first-retained-answer")].join("\n\n")),
         makeMockResponse(frame(`READ (${address}) <1,-1>`, null)),
         answer("second-retained-answer"),
     ] });

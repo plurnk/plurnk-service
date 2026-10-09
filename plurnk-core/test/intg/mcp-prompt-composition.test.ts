@@ -56,7 +56,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             turn(`\`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
-            turn(step("KILL")),
+            turn(step("SEND [200]")),
         ] });
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
         const db = await openMigrated();

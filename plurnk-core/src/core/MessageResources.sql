@@ -14,6 +14,8 @@ FROM message_responses e
 JOIN workers w ON w.id = e.worker_id
 WHERE w.workspace_id = $workspace_id AND w.id = $worker_id
   AND ($loop_id IS NULL OR e.loop_id = $loop_id)
+  AND (length(trim(e.content, char(9) || char(10) || char(13) || ' ')) > 0
+       OR json_array_length(e.rx, '$.attachments') > 0)
 ORDER BY loop_id, id;
 -- PREP: message_source_resources
 -- A message keeps the address its minter gave it (`a2a://…`, `agui://…`), and {§message-short-identity}
@@ -34,3 +36,26 @@ SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address = $
 
 -- PREP: message_unanswered_count
 SELECT count(*) AS count FROM unanswered_messages WHERE loop_id = $loop_id;
+
+-- PREP: message_completion_outcome
+-- {§message-completion}: any completed request wins; all-cancelled is cancellation.
+SELECT CASE WHEN COUNT(*) > 0 AND MIN(c.status) = 499 THEN 499 ELSE 200 END AS status
+FROM message_completions c JOIN loop_messages m ON m.id = c.message_id
+WHERE m.loop_id = $loop_id;
+
+-- INIT: message_complete_on_reply
+DROP TRIGGER IF EXISTS message_complete_on_reply;
+CREATE TRIGGER message_complete_on_reply
+AFTER INSERT ON log_entries
+WHEN NEW.op = 'SEND' AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+    AND NEW.source IS NULL AND NEW.inherited_history = 0 AND json_valid(NEW.rx)
+    AND json_extract(NEW.rx, '$.completion') IN (200, 499)
+BEGIN
+    INSERT INTO message_completions (message_id, response_id, status)
+    SELECT m.id, NEW.id, json_extract(NEW.rx, '$.completion')
+    FROM message_sources m
+    JOIN workers w ON w.id = NEW.worker_id AND w.workspace_id = m.workspace_id
+    JOIN json_each(NEW.rx, '$.answers') a ON a.value = m.path
+    WHERE true
+    ON CONFLICT(message_id) DO UPDATE SET response_id = excluded.response_id, status = excluded.status;
+END;

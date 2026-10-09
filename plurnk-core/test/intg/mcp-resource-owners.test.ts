@@ -251,7 +251,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
 test("{§runtime-resource-binding}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
         `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
-        PlurnkParser.frame("KILL", "The resource was read."),
+        PlurnkParser.frame("SEND [200]", "The resource was read."),
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);

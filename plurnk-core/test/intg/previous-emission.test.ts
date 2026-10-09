@@ -20,11 +20,11 @@ test("{§previous-emission}: the complete previous program separates log and foo
     const workerId = await insertWorker(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, workerId, 1, "Edit, inspect, and reply.");
     const body = "Actual replacement.\n```NOTE\nA literal nested example, not an operation.\n```\nLast line.";
-    const first = [op("EDIT (worker:///memo.md)", body), op("NOTE", "Content memory."), op("WAIT <0>", null)].join("\n\n");
+    const first = [op("EDIT (worker:///memo.md)", body), op("NOTE", "Content memory."), op("WAIT [0]", null)].join("\n\n");
     const second = op("READ (worker:///memo.md)", null);
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(first, op("NOTE", "Reasoning memory.")),
-        say(second), say(op("KILL", "Finished.")),
+        say(second), say(op("SEND [200]", "Finished.")),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const result = await engine.runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
@@ -51,7 +51,7 @@ test("{§previous-emission}: the complete previous program separates log and foo
     assert.equal(source?.content, first, "the immutable source is untouched");
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, workerId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(packet, "previous-emission"), op("KILL", "Finished."), "reply bodies are not special-cased away");
+    assert.equal(PacketWire.sectionContent(packet, "previous-emission"), op("SEND [200]", "Finished."), "reply bodies are not special-cased away");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, workerId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, workerId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
@@ -71,7 +71,7 @@ for (const [name, content, reasoning, expected] of [
         const workerId = await insertWorker(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, workerId, 1, "Work.");
         const first = op("NOTE", "OLDER PROGRAM");
-        const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(content, reasoning), say(op("KILL", "Done."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(content, reasoning), say(op("SEND [200]", "Done."))] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(provider.received.length, 3);
         assert.equal(previousProgram(provider.received[1]!), first);
@@ -101,7 +101,7 @@ test("{§previous-emission} {§context-own-rows-fit}: the wall omits the entire 
     const small = op("NOTE", "New observation.");
     const limited = new class extends Mock {
         override get inputWall(): number { return wall; }
-    }({ contextWindow: 200000, responses: [say(small), say(op("KILL", "Done."))] });
+    }({ contextWindow: 200000, responses: [say(small), say(op("SEND [200]", "Done."))] });
     await engine.runTurn({ workspaceId, workerId, loopId, provider: limited, messages: [] });
     const request = limited.received[0]!;
     assert.equal(previousProgram(request), "");
@@ -129,7 +129,7 @@ test("{§previous-emission}: an exhausted rejected turn does not revive the prec
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(op("NOTE", "Old admitted program.")),
         say(`### log:///1/2/9/READ\nInvented receipt.\n\n${op("NOTE", "Rejected program.")}`),
-        say(op("KILL", "Done.")),
+        say(op("SEND [200]", "Done.")),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const args = { workspaceId, workerId, loopId, provider, messages: [] };

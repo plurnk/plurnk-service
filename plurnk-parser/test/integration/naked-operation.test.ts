@@ -11,22 +11,22 @@ const RECEIPT = (op: string) => `\`${op}\` opened with no fence; the taught form
 for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkParser.parseStatements], ["client", PlurnkParser.parseClient]] as const) {
     test(`{§naked-operation}: ${tier} opens a name alone on a line as the operation, its body whole to the end of the turn`, () => {
         const answer = "The answer is **42**.\n\n```python\nprint(42)\n```\n\nDone.";
-        const result = parse(`KILL\n${answer}\n`);
+        const result = parse(`SEND\n${answer}\n`);
         assert.equal(result.unparsedTail, undefined);
-        assert.deepEqual(statements(result).map((s) => s.op), ["KILL"]);
+        assert.deepEqual(statements(result).map((s) => s.op), ["SEND"]);
         assert.equal(bodyOf(statements(result)[0]), answer, "a three-backtick code block inside is body, and nothing is cut back");
-        assert.deepEqual(warnings(result), [RECEIPT("KILL")], "one receipt, naming the taught form");
+        assert.deepEqual(warnings(result), [RECEIPT("SEND")], "one receipt, naming the taught form");
     });
     test(`{§naked-operation}: ${tier} recovers one complete aside without changing the answer or executing its example`, () => {
-        const answer = "Example only:\n````KILL (notes.md)\n````\nNothing was deleted.";
+        const answer = "First line.\nSecond line.";
         for (const gap of ["", " ", "\t"]) {
             for (const ending of ["\n", "\r\n"]) {
-                const result = parse(`KILL${gap}<!-- deliverable (notes.md) <1,-1> \`\`\` é𝄞 -->\t${ending}${answer.replaceAll("\n", ending)}`);
+                const result = parse(`SEND${gap}<!-- deliverable (notes.md) <1,-1> \`\`\` é𝄞 -->\t${ending}${answer.replaceAll("\n", ending)}`);
                 const executed = statements(result);
-                assert.deepEqual(executed.map((s) => [s.op, "target" in s ? s.target : null]), [["KILL", null]]);
+                assert.deepEqual(executed.map((s) => [s.op, "target" in s ? s.target : null]), [["SEND", null]]);
                 assert.equal(executed[0]?.aside, "deliverable (notes.md) <1,-1> ``` é𝄞");
                 assert.equal(bodyOf(executed[0]), answer.replaceAll("\n", ending));
-                assert.deepEqual(warnings(result), [RECEIPT("KILL")]);
+                assert.deepEqual(warnings(result), [RECEIPT("SEND")]);
                 assert.equal(result.items.some((item) => item.kind === "error" && item.error.severity !== "warning"), false);
                 assert.equal(result.unparsedTail, undefined);
             }
@@ -42,36 +42,28 @@ test("{§naked-operation}: aside recovery uses every native operation's ordinary
     }
 });
 
-test("{§naked-operation}: an aside at end of input still permits an empty completion", () => {
+test("{§naked-operation}: an aside at end of input still permits an bodyless operation", () => {
     for (const aside of ["", "answer"]) {
-        const result = PlurnkParser.parse(`KILL<!--${aside}-->`);
-        assert.deepEqual(statements(result).map((s) => [s.op, s.aside, bodyOf(s)]), [["KILL", aside, null]]);
-        assert.deepEqual(warnings(result), [RECEIPT("KILL")]);
+        const result = PlurnkParser.parse(`SEND<!--${aside}-->`);
+        assert.deepEqual(statements(result).map((s) => [s.op, s.aside, bodyOf(s)]), [["SEND", aside, null]]);
+        assert.deepEqual(warnings(result), [RECEIPT("SEND")]);
     }
-});
-
-test("{§naked-kill}: an aside-bearing name inside the answer does not close it", () => {
-    const body = "Shown:\nKILL <!-- also shown -->\n```KILL (notes.md)\n```\nStill the answer.";
-    const answer = `${body}\nKILL\n\`\`\`READ (b.md)\n\`\`\``;
-    const result = PlurnkParser.parse(`KILL <!-- answer -->\n${answer}`);
-    assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["KILL", answer]]);
-    assert.deepEqual(warnings(result), [RECEIPT("KILL")]);
 });
 
 test("{§unfenced-operation}: aside recovery never admits operands, extra text, or incomplete/repeated asides", () => {
     for (const header of [
-        "KILL (notes.md) <!-- delete -->", "KILL <1,-1> <!-- scope -->", "KILL [{\"x\":1}] <!-- metadata -->",
-        "KILL <!-- aside --> (notes.md)", "KILL <!-- aside --> trailing", "KILL <!-- a --> <!-- b -->", "KILL <!-- unclosed",
-        `KILL${" ".repeat(65_536)}still prose`,
+        "SEND (notes.md) <!-- delete -->", "SEND <1,-1> <!-- scope -->", "SEND [{\"x\":1}] <!-- metadata -->",
+        "SEND <!-- aside --> (notes.md)", "SEND <!-- aside --> trailing", "SEND <!-- a --> <!-- b -->", "SEND <!-- unclosed",
+        `SEND${" ".repeat(65_536)}still prose`,
     ]) {
         const result = PlurnkParser.parse(`${header}\n\`\`\`NOTE\nSibling.\n\`\`\``);
         assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Sibling."]], header);
-        assert.deepEqual(warnings(result), ["Unfenced `KILL` ignored."], header);
+        assert.deepEqual(warnings(result), ["Unfenced `SEND` ignored."], header);
     }
 });
 
 test("{§naked-operation} {§quotation}: asides do not admit indented, quoted, or reasoning-channel names", () => {
-    for (const op of ["NOTE", "FIND", "READ", "KILL"]) {
+    for (const op of ["NOTE", "FIND", "READ", "SEND"]) {
         const text = `${op} <!-- example -->\nOnly an example.\n`;
         for (const prefix of [" ", "\t", "> "]) assert.deepEqual(statements(PlurnkParser.parse(`${prefix}${text}`)), [], prefix + op);
         assert.deepEqual(statements(PlurnkParser.parse(`\`\`\`text\n${text}\`\`\``)), [], op);
@@ -81,16 +73,15 @@ test("{§naked-operation} {§quotation}: asides do not admit indented, quoted, o
 });
 
 test("{§naked-operation}: the name alone again closes the block; a heading ends it; the end of the turn ends it", () => {
-    const closed = PlurnkParser.parse("KILL\nThe answer.\nKILL\n");
-    assert.deepEqual(statements(closed).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer."]]);
-    assert.deepEqual(warnings(closed), [RECEIPT("KILL")], "the closing name draws nothing of its own");
+    const closed = PlurnkParser.parse("SEND\nThe answer.\nSEND\n");
+    assert.deepEqual(statements(closed).map((s) => [s.op, bodyOf(s)]), [["SEND", "The answer."]]);
+    assert.deepEqual(warnings(closed), [RECEIPT("SEND")], "the closing name draws nothing of its own");
     const headed = PlurnkParser.parse("NOTE\nRemember this.\n```READ (x.md)\n```");
     assert.deepEqual(statements(headed).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Remember this."], ["READ", null]]);
-    // {§naked-kill} — a naked KILL is a completion: a heading inside it is shown, never run.
-    const shown = PlurnkParser.parse("KILL\nThe answer.\n```READ (x.md)\n```");
-    assert.deepEqual(statements(shown).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer.\n```READ (x.md)\n```"]]);
-    const last = PlurnkParser.parse("Text first.\nKILL");
-    assert.deepEqual(statements(last).map((s) => [s.op, bodyOf(s)]), [["KILL", null]], "a bare name as the last line concludes with no body");
+    const shown = PlurnkParser.parse("SEND\nThe answer.\n```READ (x.md)\n```");
+    assert.deepEqual(statements(shown).map((s) => [s.op, bodyOf(s)]), [["SEND", "The answer."], ["READ", null]]);
+    const last = PlurnkParser.parse("Text first.\nSEND");
+    assert.deepEqual(statements(last).map((s) => [s.op, bodyOf(s)]), [["SEND", null]], "a bare name as the last line has no body");
 });
 
 test("{§naked-operation}: bare native names open, but prose and executor names do not", () => {
@@ -98,14 +89,14 @@ test("{§naked-operation}: bare native names open, but prose and executor names 
     const note = PlurnkParser.parse("NOTE\nRemember this.\n");
     assert.deepEqual(statements(note).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Remember this."]]);
     assert.deepEqual(statements(PlurnkParser.parse("READ\n")).map((s) => [s.op, (s as { target?: unknown }).target ?? null]), [["READ", null]], "a naked READ has no target; dispatch refuses it as any targetless READ");
-    assert.deepEqual(statements(PlurnkParser.parse("  KILL\nThe answer.\n")), [], "an offset name is prose, as every offset example is");
-    assert.deepEqual(statements(PlurnkParser.parse("KILL is what ends a loop.\n")), [], "prose after a name is not an aside or a naked heading");
-    assert.deepEqual(warnings(PlurnkParser.parse("KILL is what ends a loop.\n")), ["Unfenced `KILL` ignored."], "it is the unfenced form, and still says so");
+    assert.deepEqual(statements(PlurnkParser.parse("  SEND\nThe answer.\n")), [], "an offset name is prose, as every offset example is");
+    assert.deepEqual(statements(PlurnkParser.parse("SEND delivers messages.\n")), [], "prose after a name is not an aside or a naked heading");
+    assert.deepEqual(warnings(PlurnkParser.parse("SEND delivers messages.\n")), ["Unfenced `SEND` ignored."], "it is the unfenced form, and still says so");
     assert.deepEqual(statements(PlurnkParser.parse("sh\necho hi\n", { executors: ["sh"] })), [], "an executor's name is a runtime, not an operation");
 });
 
 test("{§unfenced-operation}: a name with an operand and no fence still did not run, and says so", () => {
-    for (const line of ["KILL (notes.md)", "READ (a.md) <1,-1>", "EDIT <3>", "FIND [{\"pattern\":\"x\"}]"]) {
+    for (const line of ["SEND (notes.md)", "READ (a.md) <1,-1>", "EDIT <3>", "FIND [{\"pattern\":\"x\"}]"]) {
         const result = PlurnkParser.parse(`${line}\n`);
         assert.deepEqual(statements(result), [], line);
         assert.deepEqual(warnings(result), [`Unfenced \`${line.split(/[ (<[]/u)[0]}\` ignored.`], line);

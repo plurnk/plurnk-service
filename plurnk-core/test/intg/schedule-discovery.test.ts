@@ -48,7 +48,7 @@ test("{§schedule-module} a discovered schedule arms a persisted rule at restart
     assert.equal(added.status, 201);
     await first.stop();
 
-    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "````KILL\nReceived.\n````", reasoning: null } }] });
+    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "````SEND [200]\nReceived.\n````", reasoning: null } }] });
     const second = new Daemon({ db, provider });
     t.after(async () => { await second.stop(); await db.close(); });
     await second.start();

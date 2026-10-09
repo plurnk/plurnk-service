@@ -93,9 +93,9 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
             "````WORK (worker://child)\nComplete the delegated work.\n````\n\n````WAIT\nAwait the child.\n````",
-            "````KILL\nChild work completed.\n````",
-            "````KILL\nParent work completed.\n````",
-        ] : ["````KILL\nWork completed.\n````"]).map((response) => makeMockResponse(response)) });
+            "````SEND [200]\nChild work completed.\n````",
+            "````SEND [200]\nParent work completed.\n````",
+        ] : ["````SEND [200]\nWork completed.\n````"]).map((response) => makeMockResponse(response)) });
         if (outcome === "failure") {
             provider.generate = async () => { throw new ProviderError("mock", "request_rejected", "Fixture request rejected."); };
         }
@@ -143,7 +143,7 @@ test("{§notifications-operation-event} tool hooks bracket real dispatch, not fa
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
         makeMockResponse("````EDIT (worker:///one.txt)\nalpha\n````\n\n````EDIT (worker:///two.txt)\nbeta\n````\n\n````READ (worker:///*.txt)\n````\n\n````READ (worker:///missing.txt)\n````"),
-        makeMockResponse("````KILL\nInspected both entries and the missing path.\n````"),
+        makeMockResponse("````SEND [200]\nInspected both entries and the missing path.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
@@ -164,7 +164,7 @@ test("{§notifications-operation-event} tool hooks bracket real dispatch, not fa
         ["PreToolUse", "EDIT"], ["PostToolUse", "EDIT"],
         ["PreToolUse", "READ"], ["PostToolUse", "READ"],
         ["PreToolUse", "READ"], ["PostToolUseFailure", "READ"],
-        ["PreToolUse", "KILL"], ["PostToolUse", "KILL"],
+        ["PreToolUse", "SEND"], ["PostToolUse", "SEND"],
     ]);
     for (let index = 0; index < tools.length; index += 2) {
         const start = tools[index]!;
@@ -188,7 +188,7 @@ test("{§notifications-operation-event} concurrent BARE starts precede inference
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
         makeMockResponse("````BARE\nFirst isolated question.\n````\n\n````BARE\nSecond isolated question.\n````"),
-        makeMockResponse("````KILL\nBoth calls answered.\n````"),
+        makeMockResponse("````SEND [200]\nBoth calls answered.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -231,7 +231,7 @@ for (const decision of ["accept", "reject"] as const) {
         const command = `node -e 'const fs = require("node:fs"); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) { console.log("hook-stream-finished"); clearInterval(timer); } }, 10);' '${release}'`;
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
             makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`\n\n\`\`\`\`WAIT\nAwait the command.\n\`\`\`\``),
-            makeMockResponse("````KILL\nThe command settled.\n````"),
+            makeMockResponse("````SEND [200]\nThe command settled.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });

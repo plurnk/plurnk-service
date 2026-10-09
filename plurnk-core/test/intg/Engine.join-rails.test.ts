@@ -36,7 +36,7 @@ Await results.
             response(collect),
             response(collect),
             response(collect),
-            response("````KILL\n42\n````"),
+            response("````SEND [200]\n42\n````"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -99,8 +99,8 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
     const provider = new Mock({ contextWindow: 100000, responses: [
         response("````WAIT\nAwait instructions.\n````"),
         response(collect),
-        response("````KILL\nChild answer: 42.\n````"),
-        response("````KILL\nChild answer received: 42.\n````"),
+        response("````SEND [200]\nChild answer: 42.\n````\n\n````SEND [200]\nFollow-up acknowledged.\n````"),
+        response("````SEND [200]\nChild answer received: 42.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
@@ -124,13 +124,14 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
             assert.equal(provider.received.length, 4, "actual child completion resumes the same parent loop exactly once");
             const parentRail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: parent.loopId });
             assert.equal(parentRail?.strike_streak, 0, "neither the join nor its wake consumes recovery allowance");
-            const delivered = await db.test_log_entries_by_loop.all<{ attrs: string; initial_folded: string; folded: string }>({ loop_id: parent.loopId });
+            const delivered = await db.test_log_entries_by_loop.all<{ tx: string; attrs: string; initial_folded: string; folded: string }>({ loop_id: parent.loopId });
             // {§loop-answer}: the child's answer to its parent's own task arrives as the conclusion.
             const conclusion = delivered.find(({ attrs }) => JSON.parse(attrs).kind === "loop_termination");
             assert.ok(conclusion);
             assert.equal(conclusion.initial_folded, "[]", JSON.stringify(conclusion));
             assert.equal(conclusion.folded, "[]", JSON.stringify(conclusion));
-            assert.deepEqual(delivered.filter(({ attrs }) => JSON.parse(attrs).kind === "reply"), [], "and never twice");
+            assert.deepEqual(delivered.filter(({ attrs }) => JSON.parse(attrs).kind === "reply").map(({ tx }) => JSON.parse(tx).body.raw),
+                ["Follow-up acknowledged."], "the follow-up gets its own reply; the original child answer is not duplicated");
             assert.match(JSON.stringify(provider.received.at(-1)), /Child answer: 42\./,
                 "the resumed parent packet contains the child's completed response");
             assert.equal(await new StrikeRail(db).streak(parent.loopId), 0);

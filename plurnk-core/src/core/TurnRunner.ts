@@ -1,7 +1,7 @@
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { PathSyntax, PlurnkParseError, TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import WorkerOwners from "./WorkerOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
@@ -146,8 +146,8 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
-    // {§kill-conclusion}: an explicit completion request, without new operational work.
-    finalResponse: boolean;
+    // {§loop-completion}: an incomplete or malformed emission cannot conclude.
+    completionAllowed: boolean;
     // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
     outside: { text: string; tokens: number } | null;
     // {§emission-row}: the admitted content program; null when none was admitted. The emission
@@ -1775,7 +1775,7 @@ export default class TurnRunner {
             fit: request.fit,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
-            finalResponse: split.finalResponse,
+            completionAllowed: split.completionAllowed,
             bare: {
                 provider: childProvider,
                 loopSequence: request.loopSeq,
@@ -1840,6 +1840,7 @@ export default class TurnRunner {
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
         let hasUnparsedTail = false;
+        let operationOmitted = false;
         const parseNotices: Notice[] = [];
         const fabrications: ParseErrorInfo[] = [];
         // {§outside-text}: every span outside an operation, verbatim and in source order; never an
@@ -1877,6 +1878,7 @@ export default class TurnRunner {
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
+                        operationOmitted ||= err.operationOmitted;
                         if (err.severity === "warning") {
                             parseNotices.push({
                                 source: "grammar",
@@ -1930,9 +1932,9 @@ export default class TurnRunner {
         parseErrors.unshift(...fabrications.slice(0, 1));
         const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
         ops.unshift(...reasoningOps);
-        const finalResponse = TurnDisposition.requestsCompletion(ops)
-            && !hasUnparsedTail && parseErrors.length === 0
-            && assistant.finishReason !== "length";
+        const completionAllowed = !hasUnparsedTail && !operationOmitted && !assistant.nativeToolCalls
+            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
+            && !["length", "content_filter", "tool_calls"].includes(assistant.finishReason ?? "");
         const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
         // {§unparsed-tail-boundary}: outside text is not operational work.
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
@@ -1949,7 +1951,7 @@ export default class TurnRunner {
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             emptyTurn,
-            finalResponse,
+            completionAllowed,
             parseNotices,
             emissionValid,
             outside: outside.length === 0 ? null : { text: outsideText, tokens: contentWeight(outsideText) },

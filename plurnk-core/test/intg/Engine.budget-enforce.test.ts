@@ -15,11 +15,11 @@ import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
-import { concludeStmt, noteStmt } from "./_dsl.ts";
+import { completeStmt, noteStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([concludeStmt("ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([completeStmt("ok")]));
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
@@ -200,7 +200,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
         );
         const provider = new UpstreamPromptCapacityMock({
             contextWindow: 100_000,
-            responses: [response([concludeStmt("recovered")])],
+            responses: [response([completeStmt("recovered")])],
         });
         const result = await plainEngine(db).runTurn({
             provider,
@@ -277,7 +277,7 @@ test("a proven request-token upper bound can authorize provider admission", asyn
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const mock = Object.assign(mockAt(199_998, [response([concludeStmt("recovered")])], 200_000), {
+        const mock = Object.assign(mockAt(199_998, [response([completeStmt("recovered")])], 200_000), {
             countPromptTokens: async () => ({
                 kind: "upper_bound" as const,
                 tokens: 1,

@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 // Mock can't return `meta`; wrap it so the turn still concludes but the
 // response carries an opaque blob — exactly what a real hosted provider does.
@@ -17,7 +17,7 @@ class MetaProvider implements Provider {
     #base: Mock;
     #meta: Record<string, unknown>;
     constructor(meta: Record<string, unknown>) {
-        this.#base = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        this.#base = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         this.#meta = meta;
     }
     get contextWindow(): number | null { return this.#base.contextWindow; }
@@ -68,7 +68,7 @@ test("no provider meta → empty {} (never null, never fabricated)", async () =>
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // A plain Mock returns no `meta`.
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);

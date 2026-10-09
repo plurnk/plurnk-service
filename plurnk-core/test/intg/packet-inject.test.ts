@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 // {§packet-inject} — PLURNK_SERVICE_PACKET_INJECT lands after capability teaching
 // in the cached system slot. The operator-side pressure valve.
@@ -24,7 +24,7 @@ test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section afte
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

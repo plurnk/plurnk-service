@@ -156,9 +156,9 @@ test(`{§oauth-continuation}: AG-UI accepts authorization in an ${busy ? "active
         ...httpEntry(served.url),
         authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" },
     } }, [
-        ...(busy ? [makeMockResponse("```KILL\nThe held turn finished.\n```")] : []),
+        ...(busy ? [makeMockResponse("```SEND [200]\nThe held turn finished.\n```")] : []),
         makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````KILL\nObserved the authorized result.\n````"),
+        makeMockResponse("````SEND [200]\nObserved the authorized result.\n````"),
     ]);
     const enabled = await action("authorization", "workspace.mcp.enable", { alias: "fixture" });
     assert.equal(enabled.ok, true, JSON.stringify(enabled));
@@ -286,7 +286,7 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
     const authorization = { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" };
     const { action, post, provider } = await setup(t, { fixture: { ...httpEntry(served.url), authorization } }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````KILL\nObserved the application result.\n````"),
+        makeMockResponse("````SEND [200]\nObserved the application result.\n````"),
     ], {
         MCP_APP_SECRET: "fixture-app-secret",
     });
@@ -364,7 +364,7 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
     const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
         makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````KILL\nThe observation completed.\n````"),
+        makeMockResponse("````SEND [200]\nThe observation completed.\n````"),
     ]);
     const received = Promise.withResolvers<Event>();
     const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
@@ -434,7 +434,7 @@ for (const deferred of [false, true]) {
 \`\`\`\`WAIT
 Observe the result.
 \`\`\`\``),
-                makeMockResponse("````KILL\nInspected the result.\n````"),
+                makeMockResponse("````SEND [200]\nInspected the result.\n````"),
             ]);
             const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
             assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));

@@ -24,7 +24,7 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
 
         const firstReply = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````KILL\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
             workspaceId, workerId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(firstReply.result.status, 200);
@@ -37,7 +37,7 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
 
         const second = await insertLoop(db, workerId, 2, "And three plus three?");
         const sent = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nSix.\n````\n\n````KILL\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nSix.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
             workspaceId, workerId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
         });
         assert.equal(sent.result.status, 200);
@@ -56,7 +56,7 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
 for (const [shape, body] of [
     ["ordinary", "The draft is sound."],
     ["early closer", "The draft is sound.\n````\n```EDIT (worker:///must-not-execute)\nNot an operation.\n```\nThe entire report is the answer.\n````"],
-] as const) test(`{§loop-answer} {§terminal-kill}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
+] as const) test(`{§loop-answer} {§message-completion}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-child-${crypto.randomUUID()}`);
@@ -65,7 +65,7 @@ for (const [shape, body] of [
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`KILL\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`SEND [200]\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
             workspaceId, workerId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);

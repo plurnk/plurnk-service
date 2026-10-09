@@ -29,7 +29,7 @@ test("observe: an invalid first emission retries under the turn without failing 
                 },
                 {
                     assistant: {
-                        content: "\n````KILL\nrecovered.\n````",
+                        content: "\n````SEND [200]\nrecovered.\n````",
                         reasoning: null,
                     },
                 },

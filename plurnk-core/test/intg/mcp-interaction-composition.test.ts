@@ -32,7 +32,7 @@ const setup = async (
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
-        makeMockResponse(PlurnkParser.frame("KILL", "MCP result observed.")),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "MCP result observed.")),
     ] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();

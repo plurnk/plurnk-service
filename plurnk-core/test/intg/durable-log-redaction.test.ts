@@ -21,7 +21,7 @@ import Envelope from "../../src/server/envelope.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorkspace, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 const REDACTED = "__redacted__";
 const STRUCTURAL_SECRETS = [
@@ -154,7 +154,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }],
         });
         const nextTurn = await engine.runTurn({
             provider,

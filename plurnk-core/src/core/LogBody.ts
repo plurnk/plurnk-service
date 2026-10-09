@@ -1,4 +1,4 @@
-import { TurnDisposition, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -131,7 +131,9 @@ export default class LogBody {
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "EDIT" || row.op === "KILL" && !(tx !== null && typeof tx === "object" && TurnDisposition.isCompletion(tx as PlurnkStatement))) {
+        // Historical reply receipts remain readable after their former operation is retired.
+        const reply = rx !== null && typeof rx === "object" && Array.isArray((rx as { answers?: unknown }).answers);
+        if (row.op === "EDIT" || row.op === "KILL" && !reply) {
             if (rx !== null && typeof rx === "object") {
                 const result = rx as Record<string, unknown>;
                 if (Object.hasOwn(result, "receipt")) {

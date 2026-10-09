@@ -40,7 +40,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n````KILL\ntask complete.\n````",
+                    content: "\n````SEND [200]\ntask complete.\n````",
                     reasoning: null,
                 },
             }],

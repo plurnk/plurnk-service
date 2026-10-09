@@ -1,10 +1,12 @@
 import test from "node:test";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { Mock } from "@plurnk/plurnk-providers";
 import assert from "node:assert/strict";
 import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, NoteStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import { sendStmt  } from "./_dsl.ts";
 import Engine from "../../src/core/Engine.ts";
+import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
@@ -255,25 +257,37 @@ for (const op of ["READ", "FIND"] as const) {
 test("{§completion-defers-to-results}: retiring a failed receipt does not make it observed", async () => {
     const { db, engine, env } = await setup();
     try {
-        const failed = await engine.dispatch({
+        await engine.injectIntoLoop(env.loopId, "Report the result.", [], undefined, {}, "message://request/result");
+        await engine.runTurn({ ...env, messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
+            content: "```NOTE\nInspect the result.\n```", reasoning: null,
+        } }] }) });
+        const { id: turnId } = await Turn.open(db, { loopId: env.loopId, producer: "model", kind: "inference" });
+        const coordinates = await db.engine_loop_turn_seqs.get({ loop_id: env.loopId, turn_id: turnId });
+        assert.ok(coordinates);
+        const failed = await engine.dispatch({ ...env, turnId, sequence: 1, origin: "model",
             statement: readStmt({ target: urlPath("worker", "/missing.md") }),
-            ...env, sequence: 1, origin: "model",
         });
         assert.equal(failed.status, 404);
-        const result = await engine.executeAdmittedTurn({
-            statements: [killStmt({ target: urlPath("log", "/1/1/1/READ") }), sendStmt(null)],
-            source: null, emission: null, ...env, fromSequence: 2, origin: "model",
+        const result = await engine.executeAdmittedTurn({ ...env, turnId, fromSequence: 2, origin: "model",
+            source: null, emission: null, statements: [
+                killStmt({ target: urlPath("log", `/${coordinates.loop_seq}/${coordinates.turn_seq}/1/READ`) }),
+                { ...sendStmt(null), metadata: ["200"] },
+            ],
         });
         assert.equal(result.status, 102, "retiring the receipt cannot remove the observation barrier");
         assert.deepEqual(result.outcomes, [
             { op: "KILL", status: 200, problemType: null },
             { op: "SEND", status: 200, problemType: null },
         ], "curation and delivery succeed independently of continuation");
-        const history = await db.test_log_entries_by_turn.all<{ sequence: number; active: number; status_rx: number }>({ turn_id: env.turnId });
-        const receipt = history.find(({ sequence }) => sequence === 1);
+        const history = await db.test_log_entries_by_turn.all<{ op: string; origin: string; active: number; status_rx: number }>({ turn_id: turnId });
+        const receipt = history.find(({ op, origin }) => op === "READ" && origin === "model");
         assert.equal(receipt?.active, 0, "the failed receipt was actually removed from the model's curated view");
         assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
-
+        assert.equal((await db.message_unanswered_count.get({ loop_id: env.loopId }))?.count, 0,
+            "the failed result, not an unanswered or unpublished message, prevents settlement");
+        assert.equal((await engine.runTurn({ ...env, messages: [], provider: new Mock({ contextWindow: 100_000,
+            responses: [{ assistant: { content: "", reasoning: null } }],
+        }) })).status, 200);
     } finally { await db.close(); }
 });
 
@@ -980,11 +994,12 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", async () => {
+test("Engine.dispatch: a model reply needs no external capability", async () => {
     const { db, engine, env } = await setup();
     try {
+        await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
         const result = await engine.dispatch({
-            statement: { metadata: null, op: "SEND", aside: null, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: sendStmt(parsePath("message://request/reply")),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

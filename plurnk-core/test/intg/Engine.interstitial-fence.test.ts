@@ -40,7 +40,7 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] }),
             workspaceId, workerId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
@@ -77,7 +77,7 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] }),
             workspaceId, workerId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
@@ -109,7 +109,7 @@ test("{§unfenced-operation}: an ignored content heading does not deny a success
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: heading, reasoning } },
-            { assistant: { content: PlurnkParser.frame("KILL", body), reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("SEND [200]", body), reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
@@ -133,7 +133,7 @@ test("{§unfenced-operation}: an ignored content heading does not deny a success
     } finally { await db.close(); }
 });
 
-test("{§kill-conclusion}: an explicit KILL, code block and all, answers the open message and concludes", async () => {
+test("{§message-completion}: a final reply, code block and all, answers the open message and concludes", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `send-conclusion-${crypto.randomUUID()}`);
@@ -141,7 +141,7 @@ test("{§kill-conclusion}: an explicit KILL, code block and all, answers the ope
         const loopId = await insertLoop(db, workerId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "\n" + FENCE + "KILL\n" + answer + "\n" + FENCE + "\n", reasoning: "simple question" } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: "simple question" } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3,
@@ -150,9 +150,9 @@ test("{§kill-conclusion}: an explicit KILL, code block and all, answers the ope
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 1, "one model turn: the answer");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
-        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "KILL");
+        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "SEND");
         assert.deepEqual(completions.map(({ status_rx }) => status_rx), [200]);
-        assert.equal(JSON.parse(completions[0]!.tx).body, answer, "the exact KILL body is the reply");
+        assert.equal(JSON.parse(completions[0]!.tx).body.raw, answer, "the exact SEND body is the reply");
         assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
         assert.equal(rail?.strike_streak, 0);
@@ -167,7 +167,7 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
         const loopId = await insertLoop(db, workerId, 1, "How do I read a file?");
         const answer = "An operation opens with three backticks:\n\n```text\n```READ (notes.md)\n```\n```";
         const result = await engineRun(db, workspaceId, workerId, loopId,
-            PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("KILL", null), "How do I read a file?");
+            PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("SEND [200]", null), "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
         const send = rows.find(({ origin, op }) => origin === "model" && op === "SEND");
@@ -191,7 +191,7 @@ for (const [label, content, finishReason] of [
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning, finishReason } },
-                { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
+                { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
             const result = await engine.runLoop({
@@ -217,7 +217,7 @@ for (const [label, content, finishReason] of [
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
-            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "KILL")!.tx).body, "Done.", "the later KILL answered");
+            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "SEND")!.tx).body.raw, "Done.", "the later completion reply answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
             assert.equal(rail?.strike_streak, 0, "the answer cleared the streak the empty turn earned");
         } finally { await db.close(); }
@@ -243,7 +243,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
             { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
             { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
             { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
+            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
@@ -282,7 +282,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
 });
 
 for (const finishReason of [undefined, "stop", "length"] as const) {
-    test(`{§empty-turn}: reasoning without operations does not conclude settled work (finish=${finishReason ?? "absent"})`, async () => {
+    test(`{§empty-turn}: reasoning without operations does not resolve a request that has only progress replies (finish=${finishReason ?? "absent"})`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `reasoning-only-${crypto.randomUUID()}`);
@@ -294,7 +294,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: PlurnkParser.frame("READ (worker:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
-                { assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
             const result = await engine.runLoop({
@@ -307,7 +307,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             const emptyTurn = result.turnIds[2]!;
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
-            assert.equal(packetSection(JSON.parse(turn!.packet), "messages"), "[]", "the original message is already answered");
+            assert.equal(JSON.parse(packetSection(JSON.parse(turn!.packet), "messages")).length, 1, "the progress reply has not resolved the original message");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });
@@ -357,7 +357,7 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE, reasoning: null } },
-            { assistant: { content: FENCE + "KILL\nIt says: Keep this note.\n" + FENCE, reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("SEND [200]", "It says: Keep this note."), reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
@@ -375,7 +375,7 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         assert.equal(sources.find((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside")?.content,
             "I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE, "the offset example is retained literally, never executed");
         assert.equal(
-            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "KILL")!.tx).body,
+            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
             "It says: Keep this note.",
             "the fenced answer concludes, stripped of its envelope",
         );

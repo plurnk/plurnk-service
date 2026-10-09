@@ -1,7 +1,7 @@
 // {§balanced-fences} matrix: the cells a model writes, generated, each with the reading the
 // metacontract requires (a complete nested interpretation wins; only irreconcilable shapes fall back).
 // {§fence-pairing}: an operation example quoted in a body of its own width reads as the body closing and the
-// example running, except in a KILL, whose body is the deliverable ({§terminal-kill}).
+// example running ({§operation-fences}).
 // {§unclosed-mutation-yields}: a native example at an EDIT body's own width runs, closed or not; an example
 // inside an EDIT is written with the wider outer fence ({§operation-fences}).
 export type Cell = {
@@ -14,7 +14,7 @@ export type Cell = {
 };
 
 const HEAD: Readonly<Record<string, string>> = {
-    KILL: "KILL", SEND: "SEND", NOTE: "NOTE", BARE: "BARE",
+    reply: "SEND [200]", SEND: "SEND", NOTE: "NOTE", BARE: "BARE",
     EDIT: "EDIT (docs/guide.md) <1,-1>", WORK: "WORK (worker://helper)",
 };
 const fence = (width: number, character = "`") => character.repeat(width);
@@ -22,7 +22,7 @@ const fence = (width: number, character = "`") => character.repeat(width);
 type Inner = {
     readonly name: string;
     readonly body: (outer: number) => string | null;
-    // The reading at the example's own width outside a KILL: the body before it, then what runs.
+    // The reading at the example's own width: the body before it, then what runs.
     readonly sameWidth?: { readonly body: string; readonly following: readonly string[] };
     // The reading at the example's own width inside an EDIT ({§unclosed-mutation-yields}).
     readonly mutationSameWidth?: { readonly body: string; readonly following: readonly string[] };
@@ -52,20 +52,17 @@ const TAILS: readonly Tail[] = [
 
 export const cells = (): Cell[] => {
     const out: Cell[] = [];
-    for (const [op, head] of Object.entries(HEAD)) for (const width of [3, 4, 5]) for (const inner of INNERS) for (const tail of TAILS) {
+    for (const [label, head] of Object.entries(HEAD)) for (const width of [3, 4, 5]) for (const inner of INNERS) for (const tail of TAILS) {
+        const op = label === "reply" ? "SEND" : label;
         const body = inner.body(width);
         if (body === null) continue;
         const text = `${fence(width)}${head}\n${body}\n${fence(width)}${tail.text}`;
-        if (op === "KILL" && tail.text !== "") {
-            out.push({ name: `${op} · outer ${width} · ${inner.name} · ${tail.name}`, text, op, body: `${body}\n${fence(width)}${tail.text}`, following: [] });
-            continue;
-        }
         const runs = width === 3 && op === "EDIT" && inner.mutationSameWidth !== undefined ? inner.mutationSameWidth
-            : inner.sameWidth !== undefined && width === 3 && op !== "KILL" ? inner.sameWidth : null;
+            : inner.sameWidth !== undefined && width === 3 ? inner.sameWidth : null;
         // {§unclosed-mutation-yields} then {§quotation}: once the example runs, the EDIT's written closer is a stray
         // top-level fence that quotes the operation after it (shown, not run, with its advisory).
         const quoted = runs !== null && runs === inner.mutationSameWidth && tail.name === "next operation";
-        out.push({ name: `${op} · outer ${width} · ${inner.name} · ${tail.name}`, text, op, body: runs?.body ?? body, following: [...runs?.following ?? [], ...(quoted ? [] : tail.following)], ...(tail.ambiguous ? { ambiguous: tail.ambiguous } : {}) });
+        out.push({ name: `${head} · outer ${width} · ${inner.name} · ${tail.name}`, text, op, body: runs?.body ?? body, following: [...runs?.following ?? [], ...(quoted ? [] : tail.following)], ...(tail.ambiguous ? { ambiguous: tail.ambiguous } : {}) });
     }
     return out;
 };

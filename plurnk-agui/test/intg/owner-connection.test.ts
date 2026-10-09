@@ -23,7 +23,7 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
     const db = await openTestDatabase();
     const http = await bindListener();
     const daemon = new Daemon({ db, http, nodeModulesPath: join(SERVICE, "node_modules"), provider: new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````sh\necho owner-reviewed\n````"), makeMockResponse("````KILL\nReviewed work complete.\n````"),
+        makeMockResponse("````sh\necho owner-reviewed\n````"), makeMockResponse("````SEND [200]\nReviewed work complete.\n````"),
     ] }) });
     const cancellation = new AbortController();
     const post = (path: string, threadId: string, input: Record<string, unknown> = {}) => fetch(`http://127.0.0.1:${http.httpAddress().port}${path}`, {

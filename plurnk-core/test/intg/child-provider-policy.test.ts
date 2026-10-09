@@ -70,15 +70,15 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
         contextWindow: 32768,
         responses: [
             makeMockResponse("````WORK (worker://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````KILL\ntree complete\n````"),
+            makeMockResponse("````SEND [200]\ntree complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (worker://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````KILL\nleaf complete\n````"),
-            makeMockResponse("````KILL\nchild complete\n````"),
+            makeMockResponse("````SEND [200]\nleaf complete\n````"),
+            makeMockResponse("````SEND [200]\nchild complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -129,12 +129,12 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (worker://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````KILL\nparent complete\n````"),
+            makeMockResponse("````SEND [200]\nparent complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("````KILL\nchild complete\n````")],
+        responses: [makeMockResponse("````SEND [200]\nchild complete\n````")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -168,7 +168,7 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
         contextWindow: 16_384,
         responses: [
             makeMockResponse("\n````BARE\nWhat is the capital of Germany?\n````\n\n````NOTE\nReview the answer.\n````"),
-            makeMockResponse("````KILL\nThe isolated answer was reviewed.\n````"),
+            makeMockResponse("````SEND [200]\nThe isolated answer was reviewed.\n````"),
         ],
     });
     const child = new Mock({
@@ -208,8 +208,8 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (worker://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````KILL\nchild complete\n````"),
-            makeMockResponse("````KILL\nparent complete\n````"),
+            makeMockResponse("````SEND [200]\nchild complete\n````"),
+            makeMockResponse("````SEND [200]\nparent complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -245,7 +245,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
         contextWindow: 32768,
         responses: [
             makeMockResponse("````FORK (worker://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````KILL\nobserved child failure\n````"),
+            makeMockResponse("````SEND [200]\nobserved child failure\n````"),
         ],
     });
     // {§context-wall} — a window whose wall cannot hold the inherited packet even as receipts.

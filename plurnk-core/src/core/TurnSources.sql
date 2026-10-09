@@ -28,7 +28,7 @@ WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
 SELECT l.status, l.terminal_result, l.terminated_by,
        (SELECT r.content
         FROM log_responses r, json_each(r.rx, '$.answers') a
-        WHERE r.loop_id = l.id AND a.value = m.path
+        WHERE r.loop_id = l.id AND a.value = m.path AND length(trim(r.content, char(9) || char(10) || char(13) || ' ')) > 0
         ORDER BY r.id DESC LIMIT 1) AS answer
 FROM loops l JOIN workers w ON w.id = l.worker_id
 LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
@@ -48,7 +48,7 @@ SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
        '/' || l.sequence AS pathname,
        COALESCE((SELECT r.content
                  FROM log_responses r, json_each(r.rx, '$.answers') a
-                 WHERE r.loop_id = l.id AND a.value = m.path
+                 WHERE r.loop_id = l.id AND a.value = m.path AND length(trim(r.content, char(9) || char(10) || char(13) || ' ')) > 0
                  ORDER BY r.id DESC LIMIT 1),
                 json_extract(l.terminal_result, '$.content'), '') AS content,
        NULL AS deep_hash

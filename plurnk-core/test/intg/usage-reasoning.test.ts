@@ -16,7 +16,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 for (const [label, reasoning, reasoningLine] of [
     ["readable", "thought hard", "thought hard"],
@@ -32,7 +32,7 @@ for (const [label, reasoning, reasoningLine] of [
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const resp: MockResponse = {
-            assistant: { content: "", reasoning, ops: [concludeStmt("done")] },
+            assistant: { content: "", reasoning, ops: [completeStmt("done")] },
             usage: {
                 inputTokens: 100,
                 outputTokens: 57,

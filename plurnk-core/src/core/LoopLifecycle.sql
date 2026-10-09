@@ -43,6 +43,7 @@ SET status = $status,
     terminated_by = $terminated_by
 WHERE id = $loop_id AND status IN (100, 102, 202)
   AND ($require_observed = 0 OR NOT EXISTS (SELECT 1 FROM loop_messages WHERE loop_id = loops.id AND log_entry_id IS NULL))
+  AND ($require_observed = 0 OR NOT EXISTS (SELECT 1 FROM unanswered_messages WHERE loop_id = loops.id))
   AND ($require_observed = 0 OR observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
 RETURNING terminal_result;
 

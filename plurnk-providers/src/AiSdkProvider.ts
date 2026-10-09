@@ -1071,6 +1071,7 @@ export default class AiSdkProvider implements Provider {
             : undefined;
 
         const assistant = {
+            ...(nativeCalls ? { nativeToolCalls: true } : {}),
             content: raw.content,
             reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
             model: raw.model,

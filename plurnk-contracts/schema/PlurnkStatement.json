@@ -456,7 +456,7 @@
                 },
                 "body": {
                     "type": ["string", "null"],
-                    "description": "Parameterless KILL carries the optional final answer; a `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other targeted KILLs take no body; their matcher is the `pattern` option."
+                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher is the `pattern` option."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -543,6 +543,7 @@
                 "metadata",
                 "target",
                 "lineMarker",
+                "seconds",
                 "body",
                 "position"
             ],
@@ -561,23 +562,12 @@
                     "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
-                    "description": "The optional maximum park duration in seconds; zero continues without parking.",
-                    "oneOf": [
-                        { "type": "null" },
-                        {
-                            "type": "object",
-                            "required": ["marks"],
-                            "additionalProperties": false,
-                            "properties": {
-                                "marks": {
-                                    "type": "array",
-                                    "minItems": 1,
-                                    "maxItems": 1,
-                                    "items": { "type": "number", "minimum": 0 }
-                                }
-                            }
-                        }
-                    ]
+                    "type": "null"
+                },
+                "seconds": {
+                    "description": "Optional maximum park duration from [seconds] metadata; zero continues without parking.",
+                    "type": ["number", "null"],
+                    "minimum": 0
                 },
                 "body": {
                     "type": ["string", "null"]

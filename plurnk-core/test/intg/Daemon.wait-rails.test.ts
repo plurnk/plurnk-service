@@ -30,7 +30,7 @@ Await results.
 \`\`\`\``),
                 response(`${extraSlotCopy}
 \`\`\`\`${last}\`\`\`\``),
-                response("````KILL\nMust not reach a fourth model call.\n````"),
+                response("````SEND [200]\nMust not reach a fourth model call.\n````"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -102,7 +102,7 @@ Await results.
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         ...Array.from({ length: 6 }, () => response("````READ (worker:///missing)````\n````WAIT\nAwait results.\n````")),
-        response("````KILL\nObservation complete.\n````"),
+        response("````SEND [200]\nObservation complete.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });

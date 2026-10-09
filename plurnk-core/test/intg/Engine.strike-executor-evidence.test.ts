@@ -22,7 +22,7 @@ echo attempt-${i} >&2; exit 1
 \`\`\`\`NOTE
 fixing the tests
 \`\`\`\``, 10)),
-        makeMockResponse("````KILL\ngreen\n````", 10),
+        makeMockResponse("````SEND [200]\ngreen\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

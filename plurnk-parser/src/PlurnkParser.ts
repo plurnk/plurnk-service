@@ -96,6 +96,7 @@ export default class PlurnkParser {
                     modifiers.push(`(${spelled(statement.target)})`);
                 }
                 if (statement.lineMarker !== null) modifiers.push(`<${statement.lineMarker.marks.join(",")}>`);
+                if (statement.op === "WAIT" && statement.seconds !== null) modifiers.push(`[${statement.seconds}]`);
                 modifiers.push(...metadataOf(statement.metadata, "matcher" in statement ? statement.matcher : null, true));
             }
             if (statement.aside !== null) modifiers.push(`<!-- ${statement.aside} -->`);
@@ -126,8 +127,7 @@ export default class PlurnkParser {
         return quoted;
     }
 
-    // Parse one model turn. An omitted disposition is silent continuation; a present one
-    // may sit anywhere in the turn ({§disposition-anywhere}) and the runtime executes it last.
+    // Parse one model turn. WAIT may sit anywhere ({§disposition-anywhere}); the runtime settles it last.
     // Outside text is returned separately from executable operations. {§response-text}
     static parse(input: string, options: ParseOptions = {}): ParseResult {
         const direct = PlurnkParser.#parseTurn(input, options);
@@ -154,7 +154,7 @@ export default class PlurnkParser {
         const receipt: ParseItem<PlurnkStatement> = {
             kind: "error",
             error: new PlurnkParseError(unread.line, unread.column, "parser",
-                `\`${unread.markup}\` is tool-call markup and was not executed. Use ${unread.form}.`, "warning"),
+                `\`${unread.markup}\` is tool-call markup and was not executed. Use ${unread.form}.`, "warning", undefined, true),
         };
         return { ...direct, items: [...direct.items.filter((item) => !absence(item)), receipt, ...direct.items.filter(absence)] };
     }
@@ -331,7 +331,7 @@ export default class PlurnkParser {
         }
         // {§quotation} — an unknown tag with a target slot is an operation missed by its tag; say so once.
         for (const note of lexer.takeMissedTags()) {
-            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` is not an operation or a known executor here.`, "warning") });
+            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` is not an operation or a known executor here.`, "warning", undefined, true) });
         }
         // {§forgotten-tag} — the operation ran; its opener spanned two lines, so say how it is written once.
         for (const note of lexer.takeForgottenTags()) {
@@ -405,7 +405,7 @@ export default class PlurnkParser {
                 ? native
                 : PlurnkParser.#unfencedExecutor(tokens, index, lower);
             if (name === undefined) continue;
-            items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `Unfenced \`${name}\` ignored.`, "warning") } });
+            items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `Unfenced \`${name}\` ignored.`, "warning", undefined, true) } });
         }
         return items;
     }

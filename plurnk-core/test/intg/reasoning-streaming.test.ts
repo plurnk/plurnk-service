@@ -12,7 +12,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
     try {
         const workspaceId = await insertWorkspace(db, "streaming-reasoning");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Report the finding.");
         const translator = new Translator({ threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
         const events: ReturnType<Translator["reasoning"]> = [];
         const ready = Promise.withResolvers<void>();
@@ -42,7 +42,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
             assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
         } finally {
             clearTimeout(timer);
-            send("</think>````KILL\nDone.\n````", "stop");
+            send("</think>````SEND [200]\nDone.\n````", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -116,7 +116,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
             const { name } = workers[index]!;
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`KILL
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`SEND [200]
 ONLY_${name}
 \`\`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
@@ -131,7 +131,7 @@ ONLY_${name}
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0]!.response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.equal(response.assistant.content, `\`\`\`\`KILL\nONLY_${name}
+            assert.equal(response.assistant.content, `\`\`\`\`SEND [200]\nONLY_${name}
 \`\`\`\``);
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");

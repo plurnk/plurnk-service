@@ -12,7 +12,7 @@ import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
-const done = "````KILL\nAttachment handling verified.\n````";
+const done = "````SEND [200]\nAttachment handling verified.\n````";
 
 test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
     serverProposals(approvalContext, "accept");

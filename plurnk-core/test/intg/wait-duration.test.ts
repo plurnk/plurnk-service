@@ -43,7 +43,7 @@ test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered
     });
 });
 
-for (const header of ["WAIT", "WAIT <0>"]) {
+for (const header of ["WAIT", "WAIT [0]"]) {
     test(`{§worker-lifecycle-poll-matrix} ${header} resumes a loop without closing its open stream`, async (t) => {
     serverProposals(t, "accept");
         const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
@@ -96,7 +96,7 @@ test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly onc
     process.env.PLURNK_SERVICE_WAIT_SEC = "600";
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 3; echo closed\n````\n\n````WAIT\nwaiting for closure\n````", 10),
-        makeMockResponse("````KILL\nobserved terminal closure\n````", 10),
+        makeMockResponse("````SEND [200]\nobserved terminal closure\n````", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

@@ -19,11 +19,11 @@ for (const [header, warning] of [
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "wait-feedback");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Observe the child result.");
         const childLoopId = await holdChild(db, workspaceId, workerId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
-        const provider = new Mock({ contextWindow: 100_000, responses: [header, "WAIT <0.25>", "WAIT", "KILL"].map((header) => ({
+        const provider = new Mock({ contextWindow: 100_000, responses: [header, "WAIT [0.25]", "WAIT", "SEND [200]"].map((header) => ({
             assistant: { content: PlurnkParser.frame(header, null), reasoning: null },
         })) });
         const run = () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -36,9 +36,9 @@ for (const [header, warning] of [
 
         assert.equal((await run()).result.status, 202);
         const siblingId = await insertWorker(db, workspaceId);
-        const siblingLoop = await insertLoop(db, siblingId, 1);
+        const siblingLoop = await insertLoop(db, siblingId, 1, "Finish this independent task.");
         const sibling = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } }] }),
             workspaceId, workerId: siblingId, loopId: siblingLoop, messages: [],
         });
         assert.equal(sibling.result.status, 200);
@@ -62,7 +62,7 @@ for (const [header, warning] of [
     });
 }
 
-for (const headers of [["WAIT <0>"], ["WAIT <600>", "WAIT <0>"], ["WAIT <0>", "WAIT"]]) {
+for (const headers of [["WAIT [0]"], ["WAIT [600]", "WAIT [0]"], ["WAIT [0]", "WAIT"]]) {
     test(`{§worker-wait-timing} ${headers.join(" + ")} continues silently without parking or cancelling live work`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
@@ -94,12 +94,12 @@ for (const headers of [["WAIT <0>"], ["WAIT <600>", "WAIT <0>"], ["WAIT <0>", "W
 
 for (const [headers, seconds] of [
     [["WAIT"], 300],
-    [["WAIT <600>"], 600],
-    [["WAIT (worker://missing) <0.25>"], 0.25],
-    [["WAIT <0.0001>"], 0.0001],
-    [["WAIT <600>", "WAIT <120>"], 120],
-    [["WAIT <600>", "WAIT"], 300],
-    [["KILL"], 300],
+    [["WAIT [600]"], 600],
+    [["WAIT (worker://missing) [0.25]"], 0.25],
+    [["WAIT [0.0001]"], 0.0001],
+    [["WAIT [600]", "WAIT [120]"], 120],
+    [["WAIT [600]", "WAIT"], 300],
+    [["SEND [200]"], 300],
 ] as const) {
     test(`{§worker-wait-timing} ${headers.join(" + ")} bounds the child-only park to ${seconds} seconds`, async (t) => {
         t.mock.method(Date, "now", () => 10_000);
@@ -107,7 +107,7 @@ for (const [headers, seconds] of [
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "bounded-child-wait");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Observe the child result.");
         const childLoopId = await holdChild(db, workspaceId, workerId);
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
@@ -142,7 +142,7 @@ test("{§worker-wait-timing} an early wake retires the override; a later bare WA
         provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame(header, null), reasoning: null } }] }),
         workspaceId, workerId, loopId, messages: [],
     });
-    assert.equal((await run("WAIT <600>")).status, 202);
+    assert.equal((await run("WAIT [600]")).status, 202);
     const [first] = await lifecycle.parked(workerId);
     assert.equal(first?.wait_poll_at, 610_000);
     now += 1000;
@@ -192,7 +192,7 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
     try {
         const workspaceId = await insertWorkspace(db, "continuation-inventory");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Report the outcome.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const body = "Report the findings.";
         const source = PlurnkParser.frame("WAIT", body);
@@ -203,8 +203,8 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
         assert.equal(result.status, 102, "absence of live work does not complete a waiting task");
         const terminal = await new LoopLifecycle(db).result(loopId);
         assert.equal(terminal, null, "no deliverable is manufactured from a wait");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; tx: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["WAIT"]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; tx: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter((row) => row.origin === "model" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["WAIT"]);
         const wait = rows.find(({ op }) => op === "WAIT")!;
         assert.equal(wait.status_rx, 102);
         assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
@@ -220,7 +220,7 @@ test("{§wait-obligation-matrix} every idle WAIT receives the same plain receipt
     try {
         const workspaceId = await insertWorkspace(db, `idle-wait-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Report the outcome.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const source = PlurnkParser.frame("WAIT", "Awaiting the answer.");
         const detailOf = async () => {
@@ -228,7 +228,7 @@ test("{§wait-obligation-matrix} every idle WAIT receives the same plain receipt
                 provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
                 workspaceId, workerId, loopId, messages: [],
             });
-            assert.equal(result.status, 102, "an idle WAIT never parks and never concludes");
+            assert.equal(result.status, 102, "an idle WAIT neither parks nor resolves the open message");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
             return JSON.parse(rows.find(({ op }) => op === "WAIT")!.rx).detail as string;
         };

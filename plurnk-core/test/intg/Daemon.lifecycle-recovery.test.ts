@@ -42,7 +42,7 @@ test("boot restores a drain for accepted queued work", async () => {
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````KILL\nrecovered queued work\n````")],
+        responses: [makeMockResponse("````SEND [200]\nrecovered queued work\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -89,7 +89,7 @@ test("boot restores a drain for accepted queued work", async () => {
 
 test("{§loop-wake-identity}: restart settles an interrupted child and wakes the parent parked on it", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````KILL\nThe child was interrupted.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````SEND [200]\nThe child was interrupted.\n````")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -116,7 +116,7 @@ test("{§machine-processes}: boot rejects queued provider work owned by a non-mo
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````KILL\nmust remain unused\n````")],
+        responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -222,7 +222,7 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
     const db = await openMigrated();
     const firstProvider = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````KILL\nrecovered orphan frames\n````")],
+        responses: [makeMockResponse("````SEND [200]\nFirst orphan recovered.\n````\n\n````SEND [200]\nSecond orphan recovered.\n````")],
     });
     ProviderInstantiate.registerInstance(firstProvider, providerSpec);
     const firstDaemon = new Daemon({ db, provider: firstProvider });
@@ -282,7 +282,7 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
 
         const secondProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("````KILL\nmust remain unused\n````")],
+            responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
         });
         ProviderInstantiate.registerInstance(secondProvider, providerSpec);
         secondDaemon = new Daemon({ db, provider: secondProvider });
@@ -301,7 +301,7 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
 
 test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay cancelled across restart", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````KILL\nMust not execute.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````SEND [200]\nMust not execute.\n````")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -418,7 +418,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````KILL\nparent observed the interrupted child\n````")],
+        responses: [makeMockResponse("````SEND [200]\nparent observed the interrupted child\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -495,7 +495,7 @@ test("a child drain exception still propagates the parent wake edge", async () =
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````KILL\nparent handled child failure\n````")],
+        responses: [makeMockResponse("````SEND [200]\nparent handled child failure\n````")],
     });
     const generate = mock.generate.bind(mock);
     let calls = 0;

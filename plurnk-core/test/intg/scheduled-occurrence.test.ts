@@ -85,8 +85,8 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
 test("{§schedule-delivery}: an occurrence after conclusion starts a successor loop", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        "````KILL\nDone for now; the reminder will start its own loop.\n````",
-        "````KILL\nReceived scheduled-proof.\n````",
+        "````SEND [200]\nDone for now; the reminder will start its own loop.\n````",
+        "````SEND [200]\nReceived scheduled-proof.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     let now = INITIAL;
     let serial = 0;
@@ -131,8 +131,8 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
 test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuinely parked loop and arrives there exactly once", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        { assistant: { content: "```WAIT <600>\nWaiting for the child.\n```", reasoning: null } },
-        { assistant: { content: "```NOTE\nReceived the scheduled message.\n```\n\n```WAIT <600>\nThe child is still running.\n```", reasoning: null } },
+        { assistant: { content: "```WAIT [600]\nWaiting for the child.\n```", reasoning: null } },
+        { assistant: { content: "```NOTE\nReceived the scheduled message.\n```\n\n```WAIT [600]\nThe child is still running.\n```", reasoning: null } },
     ] });
     let now = INITIAL;
     let serial = 0;

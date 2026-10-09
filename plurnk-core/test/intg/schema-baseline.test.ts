@@ -50,6 +50,55 @@ const shape = (path: string): string => {
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
 
+test("{§db-migrations} {§message-completion}: upgrades preserve resolved messages and literal replies independently of curation", async (t) => {
+    const path = await released(RELEASED);
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const before = new DatabaseSync(path);
+    let evidence: unknown[];
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'replyUpgrade');
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'requester'), (2, 1, 'responder');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
+                VALUES (1, 1, 1, 'Retain replies', '{"proposals":"reject"}', -1),
+                       (2, 2, 1, 'Reply to a peer', '{"proposals":"reject"}', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status)
+                VALUES (1, 1, 1, 'model', 'inference', 200), (2, 2, 1, 'model', 'inference', 200);
+            INSERT INTO loop_messages (id, loop_id, ordinal, message_key, body)
+                VALUES (1, 1, 1, 'first', 'First request'), (2, 1, 2, 'second', 'Second request'),
+                       (3, 1, 3, 'open', 'Still open');
+        `);
+        const reply = before.prepare(`INSERT INTO log_entries
+            (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+            VALUES (?, ?, ?, ?, ?, 'model', ?, ?, 'application/json', ?, 'application/json', ?)`);
+        reply.run(1, 1, 1, 1, 1, "SEND", '{"body":{"raw":"First answer"}}', '{"answers":["message://requester/first"]}', 200);
+        reply.run(2, 2, 2, 2, 1, "KILL", '{"body":"Historic final answer"}', '{"answers":["message://requester/second"]}', 200);
+        reply.run(3, 1, 1, 1, 2, "SEND", '{"body":{"raw":"Not delivered"}}', '{"answers":["message://requester/open"]}', 400);
+        before.exec("INSERT INTO log_entry_projections (log_entry_id, active) VALUES (1, 0), (2, 1), (3, 1)");
+        evidence = before.prepare("SELECT * FROM log_entries ORDER BY id").all();
+        assert.deepEqual(before.prepare("SELECT id FROM unanswered_messages").all().map(({ id }) => id), [3]);
+    } finally { before.close(); }
+    const migrated = await openMigrated(path);
+    await migrated.close();
+    const reopened = await openMigrated(path);
+    await reopened.close();
+    const after = new DatabaseSync(path);
+    try {
+        after.exec("PRAGMA foreign_keys = ON");
+        assert.deepEqual(after.prepare("SELECT * FROM log_entries ORDER BY id").all(), evidence!);
+        assert.deepEqual(after.prepare("SELECT * FROM message_completions ORDER BY message_id").all().map((row) => ({ ...row })), [
+            { message_id: 1, response_id: 1, status: 200 }, { message_id: 2, response_id: 2, status: 200 },
+        ]);
+        assert.deepEqual(after.prepare("SELECT id FROM unanswered_messages").all().map(({ id }) => id), [3]);
+        assert.equal(after.prepare("SELECT active FROM log_entry_projections WHERE log_entry_id = 1").get()!.active, 0);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        after.exec("DELETE FROM workspaces WHERE id = 1");
+        assert.equal(after.prepare("SELECT count(*) AS n FROM message_completions").get()!.n, 0);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations} {§packet-wire-envelope}: role evolution retains historical envelopes and every section item", async () => {
     const path = await released(RELEASED);
     const previous = "```EDIT (a.md)\nOriginal complete body.\n```";

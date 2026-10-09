@@ -2,7 +2,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 // The abort-reason protocol @plurnk/plurnk-execs' SubprocessExecutor reads off `signal.reason`:
 //   { signal }                       → deliver exactly that Unix signal, once, no escalation.
 //   { housekeeping: true, graceMs }  → loop/worker teardown: the polite signal, then SIGKILL after graceMs.
-// A { signal: null } reason (a bare KILL) carries no override, so the executor applies its own
+// A { signal: null } reason (KILL without a signal override) carries no override, so the executor applies its own
 // polite default, SIGHUP — the gentlest rung; the model escalates with explicit codes.
 export default class ExecAbort {
     // The grace a teardown straggler gets before the hard SIGKILL. The executor refuses to bake a
@@ -18,7 +18,7 @@ export default class ExecAbort {
     }
 
     // The model's KILL signal maps to exactly that signal once (15 → SIGTERM,
-    // 9 → SIGKILL). A bare KILL carries no override — the executor's SIGHUP polite default.
+    // 9 → SIGKILL). KILL without a signal override carries no override — the executor's SIGHUP polite default.
     static killReason(signal: number | null): { signal: number | null } {
         return { signal };
     }

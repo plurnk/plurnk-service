@@ -29,7 +29,7 @@ const loop = async (responses: string[], maxStrikes: number) => {
 // The recorded shape (#853, glm): a turn whose READ succeeded beside a hard 400 struck, and two such
 // turns ended productive loops.
 test("{§strike-progress-immunity}: a hard 400 beside a successful READ neither strikes nor survives into the streak", async () => {
-    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````KILL\n42\n````"], 2);
+    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````SEND [200]\n42\n````"], 2);
     try {
         assert.equal(result.result.status, 200, "no productive turn struck, and the lone failing turn was forgiven by the next productive one");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);

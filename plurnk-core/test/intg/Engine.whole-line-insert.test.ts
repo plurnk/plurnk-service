@@ -57,7 +57,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
                 assert.ok(Array.isArray(anchors) && anchors.length === 11, "the READ published one anchor per line 790..800");
                 return await respond(frames((line) => anchors[line - 790]!).join("\n\n"), args);
             }
-            return await respond(PlurnkParser.frame("KILL", "Done."), args);
+            return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
         };
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
         assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));

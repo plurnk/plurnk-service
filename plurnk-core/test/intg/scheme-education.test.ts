@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 test("{§manifest-client-display} {§schemes-directory}: stored packets carry language and policy without an injected resource catalogue", async () => {
     const db = await openMigrated();
@@ -30,7 +30,7 @@ test("{§manifest-client-display} {§schemes-directory}: stored packets carry la
             },
         });
         const engine = new Engine({ db, schemes: registry });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

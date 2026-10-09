@@ -169,7 +169,7 @@ const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const
 test("{§module-workspace-quiescence} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```KILL\nReady.\n```")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND [200]\nReady.\n```")] });
     const daemon = new Daemon({ db, provider });
     const entered = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
@@ -807,7 +807,7 @@ for (const hold of ["", "fx:host"]) {
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`${PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "ok" } }))}\n${step("NOTE")}`),
             makeMockResponse(`${PlurnkParser.frame("candidate", "fixture")}\n${step("NOTE")}`),
-            makeMockResponse(step("KILL")),
+            makeMockResponse(step("SEND [200]")),
         ] });
         const db = await openMigrated();
         const log: string[] = [];
@@ -838,7 +838,7 @@ test("{§functionality-model-mutation} authorization-required reaches the model 
     t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "auth" } }))),
-        makeMockResponse(PlurnkParser.frame("KILL", "The candidate needs sign-in.")),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "The candidate needs sign-in.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });

@@ -121,7 +121,7 @@ seeded
 \`\`\`\`NOTE
 searched
 \`\`\`\``, 10),
-        makeMockResponse("````KILL\ndone\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

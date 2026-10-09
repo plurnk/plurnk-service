@@ -9,7 +9,7 @@ import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 // Extension packet control: a trusted scheme rewrites the engine's default section
 // list through transformSections — the in-process seam that lets a third-party
@@ -41,7 +41,7 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
             },
         });
         const engine = new Engine({ db, schemes });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 

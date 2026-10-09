@@ -14,8 +14,10 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
+const message = "message://alice/assignment";
 const send = (content = "") => PlurnkParser.frame("SEND", content);
-const conclude = (content = "") => PlurnkParser.frame("KILL", content);
+const conclude = (content = "") => PlurnkParser.frame("SEND [200]", content);
+const correct = (content: string) => PlurnkParser.frame(`SEND (${message}) [200]`, content);
 
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
@@ -27,7 +29,7 @@ const setup = async (responses: MockResponse[]) => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
         noticeNotify: (_id, payload) => notices.push(payload.notice as Notice),
     });
-    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead");
+    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead", {}, message);
     const provider = new Mock({ contextWindow: 100_000, responses });
     const ids = { workspaceId, workerId, loopId };
     return {
@@ -37,8 +39,8 @@ const setup = async (responses: MockResponse[]) => {
     };
 };
 
-for (const final of ["Four, precisely.", ""]) {
-    test(`{§send-response-receipt}: a ${final ? "corrected" : "silent"} final KILL retains the child's answer for its parent`, async () => {
+for (const final of ["Four, precisely.", "", " \n\t"]) {
+    test(`{§send-response-receipt}: a ${final ? "corrected" : "empty-body"} final reply retains the child's answer for its parent`, async () => {
         const { db, engine, turn, answer, ids, parentId } = await setup([said(send("Four.")), said(conclude(final))]);
         try {
             const sent = await turn();
@@ -56,13 +58,13 @@ for (const final of ["Four, precisely.", ""]) {
             const result = await answer();
             assert.equal(result.status, 200);
             assert.ok("content" in result);
-            assert.equal(result.content, final || "Four.");
+            assert.equal(result.content, final.trim() ? final : "Four.");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).answers, final ? answers : undefined, "an empty KILL has no reply receipt");
+            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).answers, answers, "completion addresses the original message even without speech");
             const history = await db.message_history.all<{ direction: string; body: string }>({
                 workspace_id: ids.workspaceId, worker_id: ids.workerId, loop_id: ids.loopId,
             });
-            assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), final ? ["Four.", final] : ["Four."], "completion without delivery does not add an empty history message");
+            assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Four.", ...(final.trim() ? [final] : [])], "an empty completion is evidence, not another spoken message");
 
             const loopId = await insertLoop(db, parentId, 1, "Observe the result.");
             await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
@@ -71,12 +73,12 @@ for (const final of ["Four, precisely.", ""]) {
             const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
             const childRows = parentRows.filter(({ source }) => source === "worker://alice");
             assert.deepEqual(childRows.map(({ op }) => op), ["READ"], "the parent receives one conclusion, not a duplicate child message or activity");
-            assert.equal(JSON.parse(childRows[0]!.rx).content, final || "Four.", "the parent's actual conclusion READ contains the child's final answer");
+            assert.equal(JSON.parse(childRows[0]!.rx).content, final.trim() ? final : "Four.", "the parent's actual conclusion READ contains the child's final answer");
         } finally { await db.close(); }
     });
 }
 
-test("{§kill-conclusion} {§loop-answer}: a silent child concludes successfully without a fabricated answer", async () => {
+test("{§message-completion} {§loop-answer}: an empty completion succeeds without a fabricated answer", async () => {
     const { db, engine, turn, answer, ids, parentId } = await setup([said(conclude())]);
     try {
         assert.equal((await turn()).status, 200);
@@ -101,9 +103,9 @@ test("{§kill-conclusion} {§loop-answer}: a silent child concludes successfully
     } finally { await db.close(); }
 });
 
-test("{§send-response-receipt}: original-message fallback cannot acknowledge an unpublished arrival", async (t) => {
+test("{§send-response-receipt}: FIFO targeting cannot acknowledge an unpublished arrival", async (t) => {
     const { db, engine, provider, turn, answer, ids } = await setup([
-        said("Provisional answer."), said(send("Four, precisely.")), said(conclude("The follow-up is answered too.")),
+        said("Provisional answer."), said(conclude("Four, precisely.")), said(conclude("The follow-up is answered too.")),
     ]);
     const generate = provider.generate.bind(provider);
     t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
@@ -113,10 +115,10 @@ test("{§send-response-receipt}: original-message fallback cannot acknowledge an
     try {
         assert.equal((await turn()).status, 102);
         const correction = await turn();
-        assert.equal(correction.status, 102, "SEND replies do not conclude");
+        assert.equal(correction.status, 102, "an unseen follow-up prevents settlement");
         const correctedAnswer = await answer();
         assert.ok("content" in correctedAnswer);
-        assert.equal(correctedAnswer.content, "Four, precisely.", "the fallback still answers the original message");
+        assert.equal(correctedAnswer.content, "Four, precisely.", "the published queue head receives the answer");
         assert.equal((await turn()).status, 200);
         assert.match(JSON.stringify(provider.received[2]), /Also answer this follow-up\./);
         const finalAnswer = await answer();
@@ -128,41 +130,41 @@ test("{§send-response-receipt}: original-message fallback cannot acknowledge an
 for (const [label, response, reasoning, expected] of [
     ["only SEND", send("Four."), null, 102],
     ["SEND with a reasoning NOTE", send("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 102],
-    ["only KILL", conclude("Four."), null, 200],
-    ["KILL with a reasoning NOTE", conclude("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 200],
-    ["KILL with a response NOTE", `${conclude("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 200],
-    ["SEND before KILL", `${send("Four.")}\n\n${conclude()}`, null, 200],
-    ["SEND after KILL", `${conclude()}\n\n${send("Four.")}`, null, 200],
-    ["text before KILL", `Preface.\n\n${conclude("Four.")}`, null, 200],
-    ["text after KILL", `${conclude("Four.")}\n\nPostscript.`, null, 200],
+    ["only final reply", conclude("Four."), null, 200],
+    ["final reply with a reasoning NOTE", conclude("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 200],
+    ["final reply with a response NOTE", `${conclude("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 200],
+    ["SEND before final reply", `${send("Four.")}\n\n${conclude()}`, null, 200],
+    ["addressed SEND after final reply", `${conclude()}\n\n${PlurnkParser.frame(`SEND (${message})`, "Four.")}`, null, 200],
+    ["text before final reply", `Preface.\n\n${conclude("Four.")}`, null, 200],
+    ["text after final reply", `${conclude("Four.")}\n\nPostscript.`, null, 200],
     ["SEND with a response NOTE", `${send("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 102],
     ["two SENDs", `${send("Four.")}\n\n${send("Precisely four.")}`, null, 102],
     ["text before SEND", `Preface.\n\n${send("Four.")}`, null, 102],
     ["text after SEND", `${send("Four.")}\n\nPostscript.`, null, 102],
     ["NOTE only", PlurnkParser.frame("NOTE", "Still thinking."), null, 102],
 ] as const) {
-    test(`{§kill-conclusion}: ${label}`, async () => {
+    test(`{§message-completion}: ${label}`, async () => {
         const { db, turn } = await setup([said(response, reasoning)]);
         try { assert.equal((await turn()).status, expected); }
         finally { await db.close(); }
     });
 }
 
-test("{§terminal-kill}: a second KILL fence is literal answer text, not another completion request", async () => {
-    const response = "```KILL\nFour.\n```\n\n```KILL\nPrecisely four.\n```";
+test("{§message-completion}: sequential final replies both deliver and the later correction remains the loop answer", async () => {
+    const response = `${conclude("Four.")}\n\n${correct("Precisely four.")}`;
     const { db, turn, answer } = await setup([said(response)]);
     try {
         const result = await turn();
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["KILL"]);
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND", "SEND"]);
         const delivered = await answer();
         assert.ok("content" in delivered);
-        assert.equal(delivered.content, "Four.\n```\n\n```KILL\nPrecisely four.\n```", "the nested KILL remains in the delivered answer");
+        assert.equal(delivered.content, "Precisely four.");
     } finally { await db.close(); }
 });
 
-test("{§kill-conclusion}: a NOTE after the messages were answered does not silently conclude", async () => {
+test("{§message-completion}: a NOTE after progress delivery leaves messages unresolved", async () => {
     const { db, turn } = await setup([said(send("Four.")), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
     try {
         assert.equal((await turn()).status, 102);
@@ -173,7 +175,7 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
 
 {
     for (const obligation of ["child", "stream"] as const) {
-        for (const park of ["WAIT", "KILL"] as const) {
+        for (const park of ["WAIT", "SEND [200]"] as const) {
             test(`{§wait-obligation-matrix}: an earlier reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
                 const first = `${send("Working on it.")}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
                 const { db, turn, ids } = await setup([
@@ -186,7 +188,7 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
                     await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
                         channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
                     assert.equal((await turn()).status, 102);
-                    assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 0);
+                    assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 1);
                     if (obligation === "child") await holdChild(db, ids.workspaceId, ids.workerId);
                     else {
                         const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "node", pathname: "/12345678",
@@ -209,7 +211,7 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
 }
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
-    test(`{§kill-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
+    test(`{§message-completion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
         const { db, turn, answer, ids } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
@@ -404,12 +406,14 @@ test("{§empty-turn}: bounded malformed operations consume one turn and expose t
     } finally { await db.close(); }
 });
 
-test("{§kill-conclusion}: a provider output cutoff cannot certify a final response", async () => {
+test("{§message-completion}: a provider output cutoff cannot certify a final response", async () => {
     const cut = { assistant: { content: conclude("Partial answer."), reasoning: null, finishReason: "length" as const } };
-    const { db, turn, answer } = await setup([cut, said(conclude("Complete answer."))]);
+    const { db, turn, answer } = await setup([cut, said(correct("Complete answer."))]);
     try {
         assert.equal((await turn()).status, 102);
-        assert.equal((await answer()).status, 425, "a cut final answer is not delivered");
+        const partial = await answer();
+        assert.ok("content" in partial);
+        assert.equal(partial.content, "Partial answer.", "admitted speech is delivered, but cutoff prevents loop settlement");
         assert.equal((await turn()).status, 200);
     } finally { await db.close(); }
 });

@@ -30,7 +30,7 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
         ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(source, 10),
-            makeRawMockResponse("````KILL\nResult observed.\n````", 10),
+            makeRawMockResponse("````SEND [200]\nResult observed.\n````", 10),
         ] });
         await withDaemon(mock, async (db, daemon, addr) => {
             const client = await connect(addr);

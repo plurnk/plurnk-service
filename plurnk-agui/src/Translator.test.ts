@@ -17,7 +17,7 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
-    const rx = over.op === "SEND" && tx?.target == null ? { answers: [] } : { status: 200 };
+    const rx = over.op === "SEND" && tx?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
     return { entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", status_rx: 200,
         tx: { target: null, body: { raw: "message" } }, rx, coordinate: "1/1/3/READ", turn_id: 1, ...over } };
 };
@@ -40,6 +40,18 @@ test("{§agui-replay} successful conversation replies are assistant responses in
     assert.ok(live.some((event) => event.type === EventType.TOOL_CALL_START && event.toolCallId === "1/1/2/SEND"), "directed messages remain real operations, not missing events");
 });
 
+test("{§agui-replay} a SEND without a delivered recipient is an operation in live and replay", () => {
+    const message = entry({ op: "SEND", rx: { answers: [] }, tx: { body: "Unaddressed text." } });
+    const translator = t();
+    const live = translator.logEntry(message);
+    assert.equal(live.some(({ type }) => type === EventType.TEXT_MESSAGE_CONTENT), false);
+    assert.ok(live.some(({ type }) => type === EventType.TOOL_CALL_RESULT));
+    const [snapshot] = translator.replay([message.entry]);
+    assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
+    if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.equal(snapshot.messages.some(({ role }) => role === "assistant"), false);
+});
+
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
@@ -54,24 +66,26 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.match(args.delta, /worker:\/\/\/notes\.md/, "the target rides the args");
 });
 
-test("{§kill-conclusion}: only delivered KILL answers enter AG-UI live and replay messages", () => {
+test("{§message-completion}: delivered completion replies enter live and replay messages, independent of their outcome", () => {
     const messages = [
-        entry({ id: 11, coordinate: "1/1/1/KILL", op: "KILL", status_rx: 102,
-            tx: { target: null, body: "Premature answer." }, rx: { status: 102, detail: "Completion requires a KILL-only turn." } }),
-        entry({ id: 12, coordinate: "1/2/1/KILL", op: "KILL", status_rx: 202,
-            tx: { target: null, body: "Unreviewed child answer." }, rx: { status: 202 } }),
-        entry({ id: 13, coordinate: "1/3/1/KILL", op: "KILL", status_rx: 200,
-            tx: { target: null, body: "The answer is **42**." }, rx: { status: 200, answers: [] } }),
-        entry({ id: 14, coordinate: "1/4/1/KILL", op: "KILL", status_rx: 200,
-            tx: { target: null, body: null }, rx: { status: 200 } }),
+        entry({ id: 11, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 400,
+            tx: { target: null, body: { raw: "Undelivered." } }, rx: { status: 400 } }),
+        entry({ id: 12, coordinate: "1/2/1/SEND", op: "SEND", status_rx: 200,
+            tx: { target: null, body: { raw: "Cancelled this request." } }, rx: { status: 200, completion: 499, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        entry({ id: 13, coordinate: "1/3/1/SEND", op: "SEND", status_rx: 200,
+            tx: { target: null, body: { raw: "The answer is **42**." } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        entry({ id: 14, coordinate: "1/4/1/SEND", op: "SEND", status_rx: 200,
+            tx: { target: null, body: null }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        entry({ id: 15, coordinate: "1/5/1/SEND", op: "SEND", status_rx: 200,
+            tx: { target: null, body: { raw: " \n\t" } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
     ];
     const tr = t();
     const live = messages.flatMap((message) => tr.logEntry(message));
-    assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["The answer is **42**."]);
+    assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["Cancelled this request.", "The answer is **42**."]);
     const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
-    assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["The answer is **42**."]);
+    assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["Cancelled this request.", "The answer is **42**."]);
 });
 
 test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT conveys lifecycle alone and fabricates none", () => {
@@ -231,7 +245,7 @@ for (const origin of ["model", "_plurnk"] as const) {
 
 for (const streamed of [false, true]) {
     test(`{§agui-readable-reasoning}: SEND and WAIT share one reasoning projection across interrupts (streamed=${streamed})`, () => {
-        let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });
+        let tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 10 });
         const rows = [
             entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, coordinate: "1/7/1/SEND", tx: { body: "progress" }, reasoning: "checked the evidence" }),
             entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, coordinate: "1/7/2/SEND", tx: { body: "answer" }, reasoning: "checked the evidence" }),
@@ -244,7 +258,7 @@ for (const streamed of [false, true]) {
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
         ] : [];
         events.push(...tr.logEntry(rows[0]!));
-        tr = new Translator({ threadId: "th", runId: "resumed", continuation: tr.interrupt().continuation });
+        tr = new Translator({ threadId: "th-1", runId: "resumed", continuation: tr.interrupt().continuation });
         for (const row of rows.slice(1)) events.push(...tr.logEntry(row));
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 2,
             "one reasoning value per turn, including when a later turn repeats the same text");
@@ -298,7 +312,7 @@ test("a retried physical request receives a separate reasoning message instead o
 });
 
 test("a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
-    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 2 });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "end" });
@@ -375,7 +389,7 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
@@ -517,7 +531,7 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "WAIT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's conversation");
@@ -537,10 +551,10 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND chronol
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
-        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
+        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 4, op: "WAIT", origin: "model", coordinate: "1/2/1/WAIT", turn_id: 2, sequence: 1, tx: { body: "finish" } },
         { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
-        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
+        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "WAIT", origin: "model", coordinate: "1/1/1/WAIT", turn_id: 1, sequence: 1, tx: { body: "orient" } },
         { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, coordinate: "1/1/0/SEND", tx: { body: { raw: "What is the answer?" } } },
     ], { id: "current-user", role: "user", content: "Continue." });

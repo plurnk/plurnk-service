@@ -37,7 +37,7 @@ for (const enabled of [false, true]) {
             assert.ok(registry.entry(tag), `${tag} remains in the default composition`);
         }
 
-        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````KILL\nReady.\n````")] });
+        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND [200]\nReady.\n````")] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

@@ -26,9 +26,9 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const address = message!.path;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse([frame("SEND", "Original answer."), frame("KILL", null)].join("\n\n")),
+            makeRawMockResponse([frame("SEND", "Original answer."), frame("SEND [200]", null)].join("\n\n")),
             makeRawMockResponse([frame("KILL (log:///**/SEND)", null), frame("SEND", "History curated.")].join("\n\n")),
-            makeRawMockResponse(frame("KILL", null)),
+            makeRawMockResponse(frame("SEND [200]", null)),
         ] });
         const answered = await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         assert.equal(answered.status, 200);
@@ -72,7 +72,7 @@ test("{§send-response-receipt} failed exact delivery does not acknowledge the l
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeRawMockResponse(frame("SEND (message://alice/ffffffff)", "Not delivered.")),
-        makeRawMockResponse(frame("KILL", "The real answer.")),
+        makeRawMockResponse(frame("SEND [200]", "The real answer.")),
     ] });
     const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
     const failed = await run();
@@ -106,7 +106,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse(frame("SEND (worker:///_plurnk)", "Answer.")),
             makeRawMockResponse(frame(addressed ? `SEND (${address})` : "SEND", "Recovered answer.")),
-            makeRawMockResponse(frame("KILL", null)),
+            makeRawMockResponse(frame("SEND [200]", null)),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const failed = await run();
@@ -120,7 +120,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
         assert.equal((await run()).status, 102, "both reply forms are messaging, not completion");
-        assert.equal((await run()).status, 200, "KILL concludes the answered task");
+        assert.equal((await run()).status, 200, "the completion reply resolves the answered task");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 0);
         const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
         assert.deepEqual(history.map(({ direction, body }) => ({ direction, body })), [
@@ -216,11 +216,10 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
                 frame(`KILL (log:///**/SEND)${scope}`, null),
                 frame(`READ (${first}) <1,-1>`, null),
                 frame(`COPY (${first}) (worker:///copy.md)`, null),
-                frame(`SEND (${first})`, "First answer."),
+                frame(`SEND (${first}) [200]`, "First answer."),
             ].join("\n\n")),
             makeRawMockResponse(frame("NOTE", "Observed the source and copy.")),
-            makeRawMockResponse(frame(`SEND (${second})`, "Second answer.")),
-            makeRawMockResponse(frame("KILL", null)),
+            makeRawMockResponse(frame(`SEND (${second}) [200]`, "Second answer.")),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const one = await run();
@@ -240,9 +239,8 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: two.turnId }))!.packet);
         assert.match(packetSection(packet, "messages"), new RegExp(second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         assert.ok(!packetSection(packet, "messages").includes(first));
-        assert.equal((await run()).status, 102, "an addressed reply does not request completion");
+        assert.equal((await run()).status, 200, "the last completion reply discharges the remaining obligation");
         assert.equal((await db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))!.count, 0);
-        assert.equal((await run()).status, 200, "a bare KILL concludes after all messages are answered and results observed");
     } finally { await db.close(); }
 });
 
@@ -254,8 +252,8 @@ test("{§completion-defers-to-messages} a targetless reply cannot acknowledge an
         const loopId = await insertLoop(db, workerId, 1, "Observed assignment.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse(frame("SEND", "Answer to the observed assignment.")),
-            makeRawMockResponse(frame("KILL", "Answer to the later arrival.")),
+            makeRawMockResponse(frame("SEND [200]", "Answer to the observed assignment.")),
+            makeRawMockResponse(frame("SEND [200]", "Answer to the later arrival.")),
         ] });
         const generate = provider.generate.bind(provider);
         let injected = false;
@@ -284,9 +282,9 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         await engine.injectIntoLoop(peerLoop, "What did you find?", [], "worker://alice");
         const note = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("NOTE", "Awaiting Bob."))] });
         assert.equal((await engine.runTurn({ messages: [], provider: note, workspaceId, workerId, loopId })).status, 102);
-        const answer = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("KILL", "Distinct answer from Bob."))] });
+        const answer = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("SEND [200]", "Distinct answer from Bob."))] });
         assert.equal((await engine.runTurn({ messages: [], provider: answer, workspaceId, workerId: peerId, loopId: peerLoop })).status, 200);
-        const observed = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("KILL", "Bob's result is confirmed."))] });
+        const observed = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("SEND [200]", "Bob's result is confirmed."))] });
         const completed = await engine.runTurn({ messages: [], provider: observed, workspaceId, workerId, loopId });
         assert.equal(completed.status, 200);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: completed.turnId }))!.packet);
@@ -334,10 +332,10 @@ test("{§message-reply-delivery} another worker's addressed answer reaches both 
         });
         await run(senderId, senderLoop, frame("NOTE", "Waiting for the answer."));
         await run(ownerId, ownerLoop, frame("NOTE", "Reviewing the assignment."));
-        assert.equal((await run(responderId, responderLoop, frame(`SEND (${path})`, "Charlie's answer."))).status, 102);
+        assert.equal((await run(responderId, responderLoop, frame(`SEND (${path}) [200]`, "Charlie's answer."))).status, 200, "the responder has no remaining obligations");
         const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: ownerId, loop_id: ownerLoop });
         assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Charlie's answer."]);
-        const completed = await run(ownerId, ownerLoop, frame("KILL", null));
+        const completed = await run(ownerId, ownerLoop, "");
         assert.equal(completed.status, 200);
         const result = await db.lifecycle_loop_status.get<{ terminal_result: string }>({ loop_id: ownerLoop });
         assert.equal(JSON.parse(result!.terminal_result).content, undefined, "the answer remains a message, not an execution outcome");

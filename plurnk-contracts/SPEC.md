@@ -314,15 +314,14 @@ column-zero line outside any block containing a native operation's name and at m
 `<!-- aside -->`, with only horizontal whitespace otherwise, opens that operation as if it were
 fenced with the taught three backticks. The aside retains its ordinary meaning: no target or
 modifiers are inferred. Its body runs to a line that is exactly the name
-again, to the next heading ({§fence-heading-in-body}), or to the end of the turn, except
-parameterless KILL always takes the remaining answer region ({§terminal-kill}). A fence inside
+again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
 naming nothing known is body; the block expects no closer, so its body is never cut
-back ({§closer-fallback}). A naked `KILL` alone holds every fence inside it as text ({§naked-kill}). It runs, and one warning-severity receipt follows its statement —
-`` `KILL` opened with no fence; the taught form is three backticks. `` One rule for every native
+back ({§closer-fallback}). One warning-severity receipt follows a recovered statement —
+`` `NOTE` opened with no fence; the taught form is three backticks. `` One rule for every native
 operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
 missing-target refusal. A closer the author wrote anyway is still not body: when the body's last line is
 a bare backtick fence that no other fence line in the body pairs with (an odd count of fence lines), that
-line is the block's closer and leaves the body, so `KILL`, then the answer, then a closing fence delivers
+line is the block's closer and leaves the body, so `SEND`, then the answer, then a closing fence delivers
 the answer alone. An aside-bearing name inside a body is not a closer. An incomplete or repeated
 aside, an operand, or other heading text does not qualify and remains the unfenced form
 ({§unfenced-operation}). Executors are runtimes rather than operations, and reasoning is never
@@ -332,10 +331,9 @@ read this way.
 line of three or more backticks and a name that is a native operation or a known executor
 is a heading. Inside an open block it either ends that block without closing it and opens the
 next statement, or it is a literal example held by the block. {§fence-pairing} chooses between
-the two; parameterless KILL always holds the remaining input ({§terminal-kill}). Fence lines of
+the two. Fence lines of
 fewer than three backticks are never headings ({§operation-fences}). Known executors are `sh`
-plus what the host names in `ParseOptions.executors`. Inside a parameterless `KILL` a
-heading never ends the block ({§terminal-kill}).
+plus what the host names in `ParseOptions.executors`.
 
 §closer-fallback A block that ends at a heading or at the end of the input has no closer of its
 own; its body is the whole span less one terminating line ending. Where a same-character fence
@@ -446,17 +444,9 @@ heading. An operation example quoted in a body of its own width therefore reads 
 closing and the example running; the wider outer fence or the tab offset quotes it
 ({§operation-fences}).
 
-§terminal-kill **A parameterless KILL starts the final answer region.** Once its heading is
-recognized as an operation, the rest of the input is its literal body. A fence cannot return
-that region to executable operations or outside text. Apparent operations, receipts and malformed
-fences within it are answer text. An actual enclosing closer at the end is framing, not body;
-an earlier fence remains body. Compact and recovered naked spellings obey the same boundary.
-Quoted KILL examples do not open this region; targeted KILL retains ordinary statement framing.
-Earlier operations still execute and completion remains subject to {§kill-conclusion}.
-
 §prose-code-blocks **A message or a prompt shows code.** Inside a `SEND`, `WORK`, `FORK` or `BARE`
 body, at any depth, a heading that names an executor (` ```sh `, ` ```python3 `) is a code block the
-text shows, exactly as under {§terminal-kill}: it never ends the block and never runs. A native
+text shows: it never ends the block and never runs. A native
 operation's heading still ends such a block, since a message is often followed by the author's next
 operation. In the distinct recorded benchmark emissions an executor heading ended an unclosed
 `WORK` body 14 times, a `BARE` body 9 times and a `SEND` body twice; every one inspected (qflash
@@ -472,10 +462,6 @@ operations the author wrote than the best repaired reading, the repaired reading
 11,235 distinct recorded benchmark emissions this changes 26 readings: bodies that had ended at an
 inner fence keep what followed it (the qflash run192, run90 and run210 deliverables regain their last
 sections), one echoed transcript (glm run155) runs one more operation, and none loses one.
-
-§naked-kill **A naked KILL obeys the same answer boundary.** A parameterless `KILL` opened without
-a fence ({§naked-operation}), with or without an aside, takes the remaining input under
-{§terminal-kill}. A repeated name can close it only at the end; it never exposes later operations.
 
 §pairing-witness **Witnesses.**
 
@@ -561,9 +547,8 @@ opening fence, OP, parameters, and aside share one line. `` Saying that it ran k
 issuing it again. Inside a body the same lines stay literal. Measured: of 2,308 naked fences in
 12,797 recorded emissions, 51 open that way and 2,238 hold code or quoted output, which is why a
 bare fence alone draws nothing; in the 10,486-emission fence corpus every one of the 12 that open
-that way was an operation the model meant to run. With the answer carried by the final KILL,
-whose body shows and never runs ({§terminal-kill}), an example the model means only to show lives
-in a body.
+that way was an operation the model meant to run. An example the model means only to show
+belongs in a properly nested body ({§balanced-fences}) or a quotation ({§quotation}).
 So a model may show plurnk's own operations in an answer. Two exceptions keep programs whole:
 CommonMark's own rule that a backtick opener's line carries no further backtick, so
 ```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under
@@ -773,7 +758,9 @@ or multiline metadata loses its boundary.
 **House policy, not a language rule:** every first-party scheme and executor
 reads its block through the shared `MetadataOptions` reader, which takes the
 block with its brackets as a JSON array of option objects, merged left to
-right with later keys winning. A third-party owner may read its block any way
+right with later keys winning. Reply SEND additionally owns a numeric completion
+element ({§message-completion}); WAIT owns its numeric duration ({§send-wait-scope}).
+A third-party owner may read its block any way
 it likes — the language guarantees only the exact inner text. Documentation
 for a first-party owner therefore shows the bracketed array form.
 
@@ -833,10 +820,10 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
-| KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; the distillation of what a `log:///` target retires ({§kill-scope}); none for other targets |
+| KILL | required target | optional text region on a target ({§kill-scope}) | the distillation of what a `log:///` target retires ({§kill-scope}); none for other targets |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
-| WAIT | optional label ({§send-wait-scope}) | non-negative seconds | explanation of the wait |
+| WAIT | optional label ({§send-wait-scope}) | none; duration is `[seconds]` metadata | explanation of the wait |
 
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
@@ -878,19 +865,18 @@ The path names a program or tool and is never split. Metadata such as
 
 §turn-disposition WAIT requests parking; its literal body does not control
 scheduling, and its optional target is the label the row keeps, never a join;
-the AST has no independently settable lifecycle status or metadata.
+the AST retains the normalized metadata duration as `seconds`, separate from text coordinates.
 A turn admits any number of WAITs, all deferred until its other operations
 settle and together one park. End-of-program adjudication owns continuation, joining and completion
-under {§wait-obligation-matrix}. Parameterless KILL requests successful completion
-under {§kill-conclusion}; its optional body is the literal final answer.
-SEND delivers messages and NOTE retains memory, neither declaring an outcome.
+under {§wait-obligation-matrix}. SEND carries optional message-completion metadata
+under {§message-completion}. KILL requires a target; NOTE retains memory.
 
-§send-wait-scope WAIT's optional `<seconds>` is a non-negative finite scalar bounding
+§send-wait-scope WAIT's optional `[seconds]` metadata is a non-negative finite scalar bounding
 this park, not the lifetime of its work. Without it, the service supplies its
 configured bound ({§worker-wait-timing}). Repeated duration slots select the
 smallest valid scalar. Zero continues without parking or a diagnostic. Invalid
-duration scopes are ignored with a terse warning; when none is valid, the configured
-bound applies. Metadata remains ignored without diagnostics.
+duration metadata is ignored with a terse warning; when none is valid, the configured
+bound applies. A text scope cannot supply a duration and receives the same warning.
 The optional target is a label, never a selected wake source;
 the body is the wait's explanation. Neither creates a schedule or restricts ordinary
 wake events. Ordinary malformed-header rules still apply. Multiple WAITs request
@@ -908,7 +894,7 @@ anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
 selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
 Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and
 `matcher`; no grouped AST reaches execution ({§target-group}).
-The body is retained on parameterless KILL ({§kill-conclusion}) and on a `log:///` target, where
+KILL requires a target. Its body is retained on a `log:///` target, where
 it is the model's distillation of what the KILL retires and lands as its own NOTE row
 ({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one
 draws the advisory ({§matcher-body-redirect}). Beneath a `log:///` KILL the body is never read as
@@ -1196,7 +1182,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | None                                   | Lifetime uses metadata; observation cadence belongs to the daemon ({§exec-lifetime}) |
-| WAIT                  | Non-negative seconds                   | Maximum park duration ({§send-wait-scope}) |
+| WAIT                  | None                                   | Maximum park duration uses metadata ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -1271,24 +1257,23 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
 
-The runtime adjudicates a nonempty admitted program against actual messages,
+The runtime adjudicates each admitted turn against actual message resolutions,
 results and live obligations ({§wait-obligation-matrix}). A response with no
-operation receives empty-turn recovery, not successful completion ({§empty-turn}).
+operation resolves no message and creates no new observation obligation ({§empty-turn}).
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | Unobserved messages or results | 102 | Continue silently |
-| No authored response operations or fresh operation/parser failure, without WAIT | 102 | Recover before automatic parking |
-| WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
-| Eligible parameterless KILL ({§kill-conclusion}), live work remains, no fresh failure | 202 | Join the held work without delivering its body |
-| Eligible parameterless KILL, messages and results observed, no held work | 200 | Conclude under {§kill-conclusion}; deliver a nonempty body, or finish silently without inventing or repeating a reply |
-| Other admitted program | 102 | Continue regardless of earlier replies or live work |
+| No operations while messages remain unresolved, or fresh operation/parser failure, without WAIT | 102 | Recover before automatic parking |
+| WAIT with live obligations | 202 | Park with the supplied or configured duration |
+| Resolved messages, observed results, live work remains | 202 | Join the held work; replies remain delivered |
+| Resolved messages, observed results, no held work | 200 or 499 | Settle under {§loop-completion}, retaining the aggregate message outcome |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### The terminal contract (waitpid)
 
-The model may supply WAIT or request completion with parameterless KILL. The host, not the grammar, owns
+The model may supply WAIT or complete message obligations with SEND metadata. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
 the human uses the native `question` executor tool, offered only when a person attends the
 worker's owner ({§owner-interaction-ring}), not a disposition. The shape rules ARE structural:
@@ -1302,19 +1287,17 @@ worker's owner ({§owner-interaction-ring}), not a disposition. The shape rules 
   dispositions until the other admitted operations settle
   ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
   position. Omission does not synthesize a disposition ({§turn-shape}).
-  This applies to WAIT, not to the literal answer region opened by parameterless KILL
-  ({§terminal-kill}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only WAIT joins live work: an open stream or a live
-  child. With none, it continues. Its optional duration bounds parking ({§send-wait-scope});
+  child. With none, it does not park. Its optional duration bounds parking ({§send-wait-scope});
   a future message is scheduled through the schedule family.
 - §lifecycle-only-turn A WAIT-, SEND-, NOTE-, or KILL-only turn is valid.
   NOTE does not request parking or acknowledge messages.
   Ordinary repetition, strike and execution limits still apply.
 
-SEND with no `(path)` answers the open messages. SEND with `(path)` directs the
-message to that recipient. Neither form concludes the loop. Only parameterless KILL
-requests completion under {§kill-conclusion}; dispatch still executes the whole program.
+SEND with no `(path)` replies to open messages. SEND with `(path)` directs the
+message to that recipient. Completion metadata resolves message obligations
+({§message-completion}); dispatch still executes the whole program.
 
 ### §send-body SEND body projection
 
@@ -1387,7 +1370,7 @@ the executor's own spelling. Quoted blocks, offset lines and names inside a sent
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
 of every distinct parse shape observed across the live and demo drills — the operations
-authored, whether outside text appeared, how many parameterless KILLs appeared, and
+authored, whether outside text appeared, and
 the status the engine recorded at the time. A fixture encodes what we believe a model
 emits; a recording encodes what one did, so only recordings test the shapes models actually
 produce (#802, #809).
@@ -1760,8 +1743,15 @@ class PlurnkParseError extends Error {
     readonly source: ErrorSource;
     readonly severity: Severity;
     readonly recovery: string | undefined;
+    readonly operationOmitted: boolean;
 }
 ```
+
+§parse-admission **A diagnostic's severity does not describe whether an operation ran.**
+`operationOmitted` identifies unexecuted unfenced operations, unknown operation-shaped
+tags and unrecovered native calls. A warning about a retained operation or a quoted
+example does not set it. This fact survives serialization when true; consumers do
+not infer it from diagnostic wording. It does not independently prescribe a strike.
 
 §parse-recovery **Every hard diagnostic carries its working form.** A `severity: "error"`
 diagnostic names, in `recovery`, the form of the construct it refused, in the model's terms: a
@@ -1770,7 +1760,7 @@ on the opening fence line; READ takes no body. ``), a refused scope the scope's 
 matcher its dialect's form with an example (`` A pattern is a regex written `/pattern/flags`, such
 as `/timeout/i`. ``). The working form is the language's, never a reconstruction of the input
 ({§diagnostic-observation}). The runtime projects `recovery` as the Problem's `recovery` beside the
-verbatim `message`; an advisory carries none, since its statement ran. A refused matcher carries
+verbatim `message`; an advisory carries none. A refused matcher carries
 the same pair into its own operation's Problem ({§matcher-refusal}).
 
 §parser-position Parser source locations are points, not text regions. An AST
@@ -1908,7 +1898,7 @@ diagnostics are:
   matcher sigil, `READ a.py <1,4>`, cannot run: the word stands where the target goes, but on FIND it
   could as well be a pattern. The statement is one hard diagnostic,
   `` `READ` has no target: `a.py` stands where the target goes. ``, whose recovery is the operation's
-  working form ({§parse-recovery}). A targetless KILL's heading text remains its inline deliverable.
+  working form ({§parse-recovery}).
 - §bare-anchor-scope **An EDIT's anchor without its angle brackets is its scope.** On an EDIT
   heading, `@abcde` or `@abcde,@fghij` standing alone where the scope goes — nothing but an aside, a
   closer or the line end after it — is the scope `<@abcde>`, with one warning-severity advisory:
@@ -1920,7 +1910,7 @@ diagnostics are:
   KILL keep the statement but do not use text the matcher did not consume, with one warning
   naming where it stands: `READ takes no body; lines 4–38 were not used.`, or `the text after its
   heading on line 3` when it shares the heading's line. KILL's advisory says `This KILL`, limiting the claim to that invocation:
-  parameterless completion and log distillation bodies remain valid. Delivered like
+  log distillation bodies remain valid. Delivered like
   {§misplaced-aside-advisory} as a `parse_advisory` notice (a warning, never an error).
   One sigil line beneath a bodyless heading is the bare form written a line low and still lifts;
   nothing else is promoted into a matcher from below the heading. An option block's `pattern`

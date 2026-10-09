@@ -43,7 +43,7 @@ const estimatedCost = (usage: ProviderUsage) => ({
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
         content: `
-\`\`\`\`KILL
+\`\`\`\`SEND [200]
 ${body}
 \`\`\`\`
 `,
@@ -150,7 +150,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
                         },
                     );
                 }
-                const content = "\n````KILL\nrecovered\n````";
+                const content = "\n````SEND [200]\nrecovered\n````";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -358,7 +358,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "\n````KILL\naccepted\n````\n");
+        assert.equal(packet.assistant?.content, "\n````SEND [200]\naccepted\n````\n");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -407,7 +407,7 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
     try {
         const line = "if app_configs is None:\n";
         const reasoning = Array.from({ length: 40 }, (_, index) => `${line}    candidate_${index}()\n`);
-        const content = "\n````KILL\ncomplete answer\n````";
+        const content = "\n````SEND [200]\ncomplete answer\n````";
         const chunk = (delta: Record<string, string>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
         const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 80 } } })}\n\n`;
         let calls = 0;
@@ -1049,7 +1049,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
             PlurnkParser.frame("EDIT (worker:///before-loss.md)", "kept"),
             "````SEND (worker://reviewer",
         ].join("\n");
-        const corrected = PlurnkParser.frame("SEND", body) + "\n\n" + PlurnkParser.frame("KILL", null);
+        const corrected = PlurnkParser.frame("SEND [200]", body);
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(lost), invalid(corrected)],
@@ -1120,7 +1120,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         });
 
         assert.equal(result.result.status, 200);
-        assert.equal(result.reason, "external", "the admitted KILL concludes through the ordinary loop lifecycle");
+        assert.equal(result.reason, "external", "the completed message concludes through the ordinary loop lifecycle");
         assert.equal(result.turnIds.length, 4, "initialization, rejected, informed recovery, and final turns are durable");
         assert.equal(provider.packets.length, 5);
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
@@ -1190,7 +1190,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "\n````KILL\ndone\n````", reasoning: null } },
+            { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1206,7 +1206,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "\n````KILL\nnever reached\n````", reasoning: null } },
+            { assistant: { content: "\n````SEND [200]\nnever reached\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1229,7 +1229,7 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
 \`\`\`\`NOTE
 ${body}
 \`\`\`\``, reasoning: null } });
-        const done = { assistant: { content: "\n````KILL\nfinished\n````", reasoning: null } };
+        const done = { assistant: { content: "\n````SEND [200]\nfinished\n````", reasoning: null } };
         // Two exhaustions (3 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1335,7 +1335,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
             );
             assert.equal(
                 await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
-                "\n````KILL\naccepted bytes\n````\n",
+                "\n````SEND [200]\naccepted bytes\n````\n",
             );
             const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
             assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1685,7 +1685,7 @@ test("#161 {§provider-recovery}: a complete-looking resource-interrupted attemp
             false,
             "no operation from the interrupted response dispatches",
         );
-        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "KILL").length, 1, "the re-issued call's emission is the one that dispatches");
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "SEND").length, 1, "the re-issued call's emission is the one that dispatches");
         assert.equal(rows.filter(({ op }) => op === "error").length, 1, "the ProviderError remains one durable failure");
     } finally {
         await db.close();
@@ -1763,7 +1763,7 @@ test("a valid turn with a failed operation remains recoverable and model-visible
                 },
                 {
                     assistant: {
-                        content: "\n````KILL\ncannot write that resource\n````",
+                        content: "\n````SEND [200]\ncannot write that resource\n````",
                         reasoning: null,
                     },
                 },
@@ -1795,7 +1795,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
             contextWindow: 100_000,
             responses: [
                 { assistant: { content: "````SEND\nbig write, cut mid-wo\n````", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "\n````KILL\ndone\n````", reasoning: null, finishReason: "stop" } },
+                { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null, finishReason: "stop" } },
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });

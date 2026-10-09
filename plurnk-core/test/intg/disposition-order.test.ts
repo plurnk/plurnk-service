@@ -15,7 +15,7 @@ test("a KILL after SEND executes: curation and the reply persist before a later 
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Deliver the answer and curate the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (worker:///note.md)\nEvidence.\n```\n```NOTE\nReview.\n```")] }),
@@ -34,7 +34,7 @@ Answer.
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
-        assert.equal(result.status, 102, "a SEND with a sibling operation is not terminal");
+        assert.equal(result.status, 102, "a progress reply leaves the message unresolved");
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; attrs: string }>({ turn_id: result.turnId });
         assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["SEND", "KILL"]);
@@ -47,7 +47,7 @@ Answer.
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```KILL\n```")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```SEND [200]\n```")] }),
             workspaceId, workerId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }
@@ -58,7 +58,7 @@ test("SEND authored first: later operations run in authored order and completion
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Create and inspect the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });

@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
-const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````KILL\ndone\n````", 50)] });
+const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
 
 test("the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
@@ -23,7 +23,7 @@ test("the arrival row and a normal same-turn op are both born open", async () =>
             const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
             assert.ok(prompt !== undefined, "the message is logged once as an inbound SEND row");
             assert.equal(prompt!.folded, "[]", "new message delivery is visible");
-            const send = rows.find((r) => r.op === "KILL" && r.origin === "model" && r.turn_id === prompt!.turn_id);
+            const send = rows.find((r) => r.op === "SEND" && r.origin === "model" && r.turn_id === prompt!.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
             assert.equal(send!.folded, "[]", "a normal op in the same turn stays visible");
         } finally { ws.close(); }

@@ -286,6 +286,8 @@ export default class LoopDriver {
                     progressed: turn.progressed,
                     emptyTurn: turn.emptyTurn,
                     minCycles, maxCyclePeriod, maxStrikes });
+                // {§loop-terminals}: accounting cannot replace a settled loop's outcome.
+                if (await this.#lifecycle.result(loopId) !== null) continue;
                 if (verdict.thresholdCrossed) {
                     // {§engine-rails} — the source on the crossing turn classifies
                     // the engine verdict: cycle-driven is 508; every other strike is 500.

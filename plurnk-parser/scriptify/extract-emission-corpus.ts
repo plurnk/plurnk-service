@@ -32,7 +32,7 @@ export type CorpusRecord = {
     /** How the contract reads it now. This is what the replay asserts. */
     readonly ops: readonly (string | null)[];
     readonly outsideText: boolean;
-    readonly bareKills: number;
+    readonly errors: readonly string[];
     /** How many recorded turns shared this shape. A shape seen once and a shape seen four
      *  hundred times are both one row here, and the difference matters when one moves. */
     readonly turns: number;
@@ -63,7 +63,7 @@ export const redact = (text: string, identifiers = localIdentifiers()): string =
     identifiers.reduce((redacted, [pattern, standIn]) => redacted.replace(pattern, standIn), text);
 
 
-export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideText" | "bareKills"> => {
+export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideText" | "errors"> => {
     const parsed = PlurnkParser.parse(emission, {});
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     return {
@@ -72,9 +72,7 @@ export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideT
         // contract, and silently filtering it would hide the shape it belongs to.
         ops: statements.map(({ op }) => op ?? null),
         outsideText: parsed.items.some(({ kind }) => kind === "text"),
-        // {§kill-conclusion} — a parameterless KILL is the only completion request.
-        bareKills: statements.filter((s) => s.op === "KILL" && s.target === null && s.lineMarker === null
-            && s.matcher === null && s.metadata === null).length,
+        errors: parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []),
     };
 };
 
@@ -82,7 +80,7 @@ export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideT
 // plus the recorded status, so the same program reaching two different dispositions is
 // kept as two cases rather than collapsed into one.
 const shapeOf = (r: Omit<CorpusRecord, "specimen" | "packet" | "emission" | "turns">): string =>
-    JSON.stringify([[...new Set(r.ops)].sort(), r.ops.length, r.outsideText, r.bareKills, r.recordedStatus]);
+    JSON.stringify([[...new Set(r.ops)].sort(), r.ops.length, r.outsideText, r.errors, r.recordedStatus]);
 
 export const harvest = (root: string): CorpusRecord[] => {
     const chosen = new Map<string, CorpusRecord>();
@@ -119,17 +117,21 @@ export const CORPUS = new URL("../test/fixtures/recorded-emissions.jsonl", impor
 // The replay suite imports `classify` and `CORPUS` from here, so the CLI runs only when this
 // file IS the program. Harvesting walks every drill digest on disk; importing must not.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const { values, positionals } = parseArgs({ options: { write: { type: "boolean", default: false } }, allowPositionals: true });
+    const { values, positionals } = parseArgs({ options: {
+        write: { type: "boolean", default: false },
+        reclassify: { type: "boolean", default: false },
+    }, allowPositionals: true });
     const root = positionals[0];
-    if (root === undefined) throw new Error("name the drill root, e.g. scriptify/extract-emission-corpus.ts ~/benchmarks --write");
-    const records = harvest(root);
+    if (!values.reclassify && root === undefined) throw new Error("name the drill root, or use --reclassify to review the retained corpus");
+    if (values.reclassify && root !== undefined) throw new Error("--reclassify reads only the retained corpus; do not name a drill root");
+    const records = values.reclassify
+        ? readFileSync(CORPUS, "utf8").split("\n").filter(Boolean).map((line) => {
+            const { specimen, packet, recordedStatus, turns, emission } = JSON.parse(line) as CorpusRecord;
+            return { specimen, packet, recordedStatus, ...classify(emission), turns, emission };
+        }) : harvest(root!);
     const serialized = `${records.map((r) => JSON.stringify(r)).join("\n")}\n`;
     const previous = existsSync(CORPUS) ? readFileSync(CORPUS, "utf8") : "";
-    const drifted = records.filter((r) => r.recordedStatus === 200 && r.bareKills === 0);
-    const driftTurns = drifted.reduce((sum, r) => sum + r.turns, 0);
-
-    console.log(`${records.length} shapes from ${root} (${serialized.length} bytes)`);
-    console.log(`${drifted.length} shapes (${driftTurns} recorded turns) concluded when they ran but carry no parameterless KILL: the contract moved beneath them`);
+    console.log(`${records.length} shapes from ${root ?? CORPUS} (${serialized.length} bytes)`);
     if (values.write) {
         writeFileSync(CORPUS, serialized);
         console.log(previous === serialized ? "corpus unchanged" : `corpus written to ${CORPUS}`);

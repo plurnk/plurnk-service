@@ -3,6 +3,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import MetadataOptions from "./MetadataOptions.ts";
 
+test("MetadataOptions.read retains ordered scalars and objects for their owning contract", () => {
+    assert.deepEqual(MetadataOptions.read(null, "message:reply"), { elements: [] });
+    assert.deepEqual(MetadataOptions.read(['200,{"attachments":["worker:///report.txt"]}'], "message:reply"),
+        { elements: [200, { attachments: ["worker:///report.txt"] }] });
+    const refused = MetadataOptions.parse(["200"], "scheme:test");
+    assert.ok("failure" in refused, "the object-options contract still rejects scalars");
+    assert.equal(refused.failure.problem?.type, "https://problems.plurnk.xyz/scheme/test/metadata-invalid");
+});
+
 test("MetadataOptions.parse merges option objects left to right", () => {
     const read = MetadataOptions.parse(['{"a": 1}, {"b": 2, "a": 3}'], "scheme:test");
     assert.deepEqual(read, { options: { a: 3, b: 2 } });
@@ -17,7 +26,7 @@ test("MetadataOptions.parse fails malformed blocks as the owner's 400 without ec
     const read = MetadataOptions.parse(['{"secret": '], "scheme:test");
     assert.ok("failure" in read);
     assert.equal(read.failure.status, 400);
-    assert.equal(read.failure.problem?.detail, "[metadata] must be a JSON array of option objects."); // {§pinned-wording-schemes}
+    assert.equal(read.failure.problem?.detail, "[metadata] must be a JSON array."); // {§pinned-wording-schemes}
     const scalar = MetadataOptions.parse(['"cwd"'], "scheme:test");
     assert.ok("failure" in scalar);
     assert.match(String(scalar.failure.problem?.type), /metadata-invalid$/);

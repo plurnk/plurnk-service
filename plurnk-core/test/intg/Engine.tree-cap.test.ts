@@ -42,8 +42,8 @@ test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared
         makeMockResponse("````WORK (worker://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
         makeMockResponse("````WORK (worker://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
         makeMockResponse("````NOTE\nLeaf work is in progress.\n````"),
-        makeMockResponse("````KILL\nLeaf work is complete.\n````"),
-        makeMockResponse("````KILL\nThis fifth call exceeds the explicit ceiling.\n````"),
+        makeMockResponse("````SEND [200]\nLeaf work is complete.\n````"),
+        makeMockResponse("````SEND [200]\nThis fifth call exceeds the explicit ceiling.\n````"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -77,7 +77,7 @@ test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects 
     const childSpec = declaredProvider("runtime-bare", "runtime-bare-model");
     const parent = new Mock({ contextWindow: 32_768, responses: [
         makeMockResponse("````BARE\nOne allowed answer.\n````\n\n````BARE\nNo room for another answer.\n````\n\n````NOTE\nReview the results.\n````"),
-        makeMockResponse("````KILL\nThis call must not run.\n````"),
+        makeMockResponse("````SEND [200]\nThis call must not run.\n````"),
     ] });
     const child = new Mock({ contextWindow: 8_192, responses: [
         { assistant: { content: "allowed", reasoning: null } },
@@ -152,7 +152,7 @@ test("{§turn-cap-counts-the-tree}: a child's turns spend the parent's budget", 
     const mock = new Mock({ contextWindow: 16_384, responses: [
         makeMockResponse("````WORK (worker://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
         makeMockResponse("````NOTE\nchild working\n````", 10),
-        makeMockResponse("````KILL\nchild done\n````", 10),
+        makeMockResponse("````SEND [200]\nchild done\n````", 10),
         makeMockResponse("````NOTE\nparent continues\n````", 10),
         makeMockResponse("````NOTE\nnever requested: the tree's ceiling is met first\n````", 10),
     ] });

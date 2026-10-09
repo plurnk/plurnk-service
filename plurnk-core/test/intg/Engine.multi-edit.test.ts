@@ -123,7 +123,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
             published = await anchorsFromLog(ctx);
             return await respond(frames(...published).join("\n\n"), args);
         }
-        return await respond(PlurnkParser.frame("KILL", "Done."), args);
+        return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
     };
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Apply the fix." }] });
     assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));

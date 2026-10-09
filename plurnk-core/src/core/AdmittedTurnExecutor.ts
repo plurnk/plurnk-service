@@ -20,7 +20,7 @@ import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import { isContextReceipt, reserved, type ContextFit } from "./ContextFit.ts";
 import LineAnchors from "../content/line-anchors.ts";
-import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
+import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
@@ -72,7 +72,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError = false,
         recoverableParseErrors = [],
         emptyTurn = false,
-        finalResponse = TurnDisposition.requestsCompletion(statements),
+        completionAllowed = true,
         bare,
         fit,
         signal,
@@ -96,7 +96,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
         emptyTurn?: boolean;
-        finalResponse?: boolean;
+        completionAllowed?: boolean;
         bare?: BareExecution;
         // {§context-fit} — the turn's measure of the budget left for one more result; absent, rows land whole.
         fit?: ContextFit;
@@ -104,10 +104,10 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — continuation is the default; lifecycle verbs express explicit intent.
+        // {§loop-completion}: settlement follows durable message and observation obligations.
         // {§turn-disposition} — every WAIT is admitted and dispatched; together they are one park,
         // and the last of them settles the turn.
-        const dispositions = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement));
+        const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions.at(-1);
         if (statements.length === 0 && !emptyTurn) {
             throw new Error("an admitted operation batch must contain operations");
@@ -124,9 +124,7 @@ export default class AdmittedTurnExecutor {
             });
             if (id !== null) { onDispatch?.(id); await onSettled?.(id); }
         };
-        // {§empty-turn} — a model response with no operation is a turn all the same: its text and
-        // reasoning are kept, the strike rail counts it once, and its one error row is how the
-        // model hears the strike ({§operation-result-uniform-error-channel}).
+        // {§empty-turn}: preserve evidence even when no operation was admitted.
         const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
             const problem = ENGINE_PROBLEMS[kind];
             await this.#problems.record({
@@ -140,18 +138,10 @@ export default class AdmittedTurnExecutor {
             });
         };
         const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one fenced operation.", retryable: true };
-        if (statements.length === 0 && recoverableParseErrors.length === 0) {
-            if (emission !== null) throw new Error("a turn that admitted nothing announces no emission");
-            if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
-            await recordEngineProblem("no_operation", rowSequence, emptyTurnExtensions);
-            await recordReasoning();
-            await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
-            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], progressed: false, fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
-        }
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
-        const admitted = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement)
+        const admitted = statements.filter((statement) => TurnDisposition.is(statement)
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted);
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
@@ -164,7 +154,7 @@ export default class AdmittedTurnExecutor {
             (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
             ? new EditSequence() : undefined;
         const droppedCount = statements.length - admitted.length;
-        const completionEligible = finalResponse && droppedCount === 0;
+        const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
         let progressed = false;
@@ -314,7 +304,6 @@ export default class AdmittedTurnExecutor {
                             origin,
                             logSelectionMaxId,
                             editSequence,
-                            finalResponse: completionEligible,
                             ...(fit === undefined ? {} : { fit: reserved(fit, scheduled.length - index - 1) }),
                             onDispatch,
                             onSettled,
@@ -354,7 +343,9 @@ export default class AdmittedTurnExecutor {
         }
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
-        if (emptyTurn) pendingEngineErrors.push("no_operation");
+        const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
+        const emptyRecovery = emptyTurn && (!completionEligible || unresolved!.count > 0);
+        if (emptyRecovery) pendingEngineErrors.push("no_operation");
         for (const kind of pendingEngineErrors) {
             const extensions = kind === "no_operation" ? emptyTurnExtensions : {
                 operationLimit: maxCommands,
@@ -365,7 +356,7 @@ export default class AdmittedTurnExecutor {
             };
             await recordEngineProblem(kind, rowSequence++, extensions);
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, waits, completionEligible);
+        const turnStatus = await this.#dispatcher.settleProgram({ workspaceId, workerId, loopId, turnId, origin }, waits, completionEligible);
         await recordReasoning();
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
@@ -373,7 +364,7 @@ export default class AdmittedTurnExecutor {
             outcomes,
             progressed,
             fingerprint: emptyTurn ? StrikeRail.fingerprintEmptyTurn(source ?? "") : StrikeRail.fingerprintTurn(scheduled, results),
-            emptyTurn,
+            emptyTurn: emptyRecovery,
         };
     }
 

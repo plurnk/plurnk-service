@@ -12,7 +12,7 @@ const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `range-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
+    const loopId = await insertLoop(db, workerId, 1, "Read the requested range and report it.");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { db, engine, workspaceId, workerId, loopId };
 };
@@ -27,7 +27,7 @@ for (const channel of ["content", "reasoning"] as const) {
             const emission = PlurnkParser.frame(`READ (worker:///range.txt) ${scope}`, null);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: "", reasoning: null, [channel]: emission } },
-                { assistant: { content: PlurnkParser.frame("KILL", "done"), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("SEND [200]", "done"), reasoning: null } },
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             const second = await engine.runTurn({ ...context, provider, messages: [] });

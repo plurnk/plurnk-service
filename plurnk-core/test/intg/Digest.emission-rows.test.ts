@@ -20,7 +20,7 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const provider = new Mock({ contextWindow: 100_000, responses: [
         "````EDIT (worker:///a.md)\nalpha\n````\n\n````NOTE\nWrote the first draft.\n````",
         "````KILL (log:///1/2/2/emission)````\n\n````NOTE\nRetired the first emission.\n````",
-        "Echoing the transcript.\n### log:///1/3/1/emission → ops://analyst/1/3 · 20\n\n````KILL\nDone.\n````",
+        "Echoing the transcript.\n### log:///1/3/1/emission → ops://analyst/1/3 · 20\n\n````SEND [200]\nDone.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     const db = await openMigrated(dbPath);
     try {

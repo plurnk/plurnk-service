@@ -27,7 +27,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
             turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
             turn(`\`\`\`\`READ (log:///1/2/3/READ)\`\`\`\`\n${next}`),
             turn(`\`\`\`\`KILL (log:///1/2/3/READ) <42>\`\`\`\`\n${next}`),
-            turn("````KILL\nAudio inspection complete.\n````"),
+            turn("````SEND [200]\nAudio inspection complete.\n````"),
         ] });
         try {
             await withDaemon(provider, async (db, _daemon, addr) => {

@@ -14,7 +14,7 @@ test("{§methods-loop-run-open-paths} {§markerless-first-page}: one oversized a
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
         makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-        makeMockResponse(`\`\`\`\`KILL
+        makeMockResponse(`\`\`\`\`SEND [200]
 ${fixture.answer}
 \`\`\`\``),
     ] });
@@ -60,7 +60,7 @@ for (const retire of [false, true]) test(`{§context-fit}: sixteen attachments l
         contextWindow: 20_000,
         responses: [
             makeMockResponse("````KILL (log:///**/FIND)````\n````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`KILL
+            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`SEND [200]
 ${fixture.answer}
 \`\`\`\``),
         ],

@@ -31,7 +31,7 @@ test("{§fs-answer-in-canon} execution receipts and failed targets do not expose
         // target does not resolve, then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````sh\nprintf ok\n````\n\n````sh (cwd: /nowhere)\nprintf never\n````\n\n````NOTE\nran\n````", 50),
-            makeMockResponse("````KILL\ndone\n````", 50),
+            makeMockResponse("````SEND [200]\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

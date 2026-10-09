@@ -9,13 +9,13 @@ import { isReasoningOperation } from "./ReasoningOperation.ts";
 export type FenceCharacter = "`" | "~";
 
 // {§forgotten-tag}: an operation heading on the line under a bare fence, as the heading it would be.
-type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };
+type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };
 
 type Line =
     | { readonly kind: "text"; readonly blank?: boolean }
     | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean; readonly split?: Split }
     | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
-    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null }
+    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
     | { readonly kind: "name"; readonly name: string; readonly alone: boolean };
 
@@ -43,8 +43,6 @@ export type Pairing = {
     readonly lineStarts: readonly number[];
     /** Code-point offsets of heading lines that close their block on the same line. */
     readonly selfClosed: ReadonlySet<number>;
-    /** Actual parameterless KILL openers; their literal answer regions extend to the input end. */
-    readonly terminals: ReadonlySet<number>;
     /** Line classification, for diagnostics and witnesses. */
     readonly lines: readonly string[];
 };
@@ -87,7 +85,6 @@ export default class FencePairing {
             hidden,
             lineStarts,
             selfClosed: new Set(lines.flatMap((line, index) => (line.kind === "heading" || line.kind === "closeThenHeading") && line.selfClosed ? [lineStarts[index]!] : [])),
-            terminals: new Set(result.terminals.map((line) => lineStarts[line]!)),
             lines: lines.map((line) => line.kind === "text" ? "text" : line.kind === "name" ? `name ${line.name}` : line.kind === "heading" ? `heading ${line.width}${line.selfClosed ? " closed" : ""}` : line.kind === "closeThenHeading" ? `close ${line.width} then heading ${line.headingWidth}${line.selfClosed ? " closed" : ""}` : `${line.kind} ${line.character}${line.width}${line.kind === "bare" && line.underFence ? " under-fence" : ""}`),
         };
     }
@@ -171,7 +168,7 @@ export default class FencePairing {
 }
 
 type End = { kind: "closer"; line: number } | { kind: "before"; line: number } | { kind: "end" };
-type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; splits: number[]; repairs: number[]; terminals: number[] };
+type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; splits: number[]; repairs: number[] };
 
 // The objective ({§pairing-objective}): a complete reading, one with no repair, wins over any repaired one —
 // a complete nested interpretation takes precedence. Within a class readings compare lexicographically: operation
@@ -218,8 +215,6 @@ type Context = {
     readonly top: boolean;
     readonly quoted: boolean;
     readonly bodiless?: boolean;
-    // {§terminal-kill}: inside a parameterless KILL, at any depth, a heading is shown, never run.
-    readonly terminal?: boolean;
     // {§prose-code-blocks}: inside a SEND, WORK, FORK or BARE body, at any depth, an executor heading is shown.
     readonly prose?: boolean;
     // {§unclosed-mutation-yields}: a mutation body (EDIT) never hides a same-width native heading.
@@ -263,7 +258,6 @@ class Search {
     readonly #nextFence: readonly number[];
     readonly #writtenRun: readonly boolean[];
     readonly #raw: readonly string[];
-    readonly #lastContent: number;
     readonly #check: ((runtime: string, body: string) => boolean) | undefined;
     readonly #verdicts = new Map<string, boolean>();
     readonly #memo = new Map<string, Summary>();
@@ -271,7 +265,6 @@ class Search {
     constructor(lines: readonly Line[], raw: readonly string[], check: ((runtime: string, body: string) => boolean) | undefined) {
         this.#lines = lines;
         this.#raw = raw;
-        this.#lastContent = raw.findLastIndex((line) => line.trim() !== "");
         this.#check = check;
         // Text lines only mark the innermost block non-empty, so a run of them is one step.
         const next: number[] = new Array(lines.length + 1).fill(lines.length);
@@ -290,7 +283,7 @@ class Search {
         let chosen = complete.length === 0 ? bestRepaired! : complete.reduce((a, b) => lessComplete(b.cost, a.cost) ? b : a);
         // {§message-run-on}: a message's run to the end of the input never costs an operation the author wrote.
         if (chosen.cost[5] > 0 && bestRepaired !== null && bestRepaired.cost[0] < chosen.cost[0]) chosen = bestRepaired;
-        const result: Result = { ends: new Map(), surplus: [], quotations: [], splits: [], repairs: [], terminals: [] };
+        const result: Result = { ends: new Map(), surplus: [], quotations: [], splits: [], repairs: [] };
         this.#replay(chosen, null, -1, result);
         return { result, cost: chosen.cost };
     }
@@ -312,7 +305,6 @@ class Search {
                 if (move.into === null) result.ends.set(open, move.record!);
                 if (move.into !== undefined) {
                     frame = move.into; open = move.opener ?? -1;
-                    if (frame?.top && frame.terminal) result.terminals.push(open);
                 }
                 current = this.#summary(move.next, frame, move.flags)[via[0]!]!;
                 continue;
@@ -324,7 +316,7 @@ class Search {
     }
 
     #key(position: number, context: Context | null, flags: Flags): string {
-        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.terminal ? "k" : ""}${context.prose ? "p" : ""}${context.mutation ? "m" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
+        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.prose ? "p" : ""}${context.mutation ? "m" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
     }
 
     // Summaries depend only on summaries at later positions. They are evaluated on an explicit work stack, so
@@ -411,8 +403,6 @@ class Search {
     // input, so the frame of an open top-level block has one entry, not one per place the block could end.
     #framed(position: number, context: Context | null, flags: Flags): Move[] {
         return [...this.#moves(position, context, flags)]
-            // {§terminal-kill}: a closing fence can remove framing, never cut off later answer text.
-            .filter((move) => move.kind !== "end" || !context?.top || !context.terminal || move.end >= at(this.#lastContent + 1))
             .map((move): Move => {
             if (context === null && move.kind === "child") return { kind: "stay", cost: move.cost, effects: move.effects, next: move.start ?? at(move.line + 1), flags: FRESH, into: move.child, opener: move.line };
             if (context?.top && move.kind === "end") return { kind: "stay", cost: context.bodiless && flags.written || !this.#wellFormed(context, move.record) ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: FRESH, into: null, record: move.record };
@@ -463,8 +453,7 @@ class Search {
         switch (line.kind) {
             case "name":
                 if (context === null) {
-                    // {§naked-kill}: a naked KILL is a completion, so nothing can follow it — every fence inside is text.
-                    yield { kind: "child", cost: ZERO, effects: [], child: { kind: "naked", character: "`", width: Infinity, bareOpened: false, name: line.name, top: true, quoted: false, terminal: line.name === "KILL" }, line: i, flags };
+                    yield { kind: "child", cost: ZERO, effects: [], child: { kind: "naked", character: "`", width: Infinity, bareOpened: false, name: line.name, top: true, quoted: false }, line: i, flags };
                     return;
                 }
                 if (line.alone && context.kind === "naked" && context.name === line.name && context.top) yield { kind: "end", cost: ZERO, effects: [], end: at(i + 1), record: { kind: "closer", line: i } };
@@ -474,10 +463,6 @@ class Search {
                 yield* this.#heading(i, line.width, line.selfClosed, context, flags);
                 return;
             case "closeThenHeading":
-                if (context?.top && context.terminal) {
-                    yield { kind: "stay", cost: ZERO, effects: [], next: at(i + 1), flags: marked };
-                    return;
-                }
                 // The run on this line closes the open block, then the rest of the line is the next heading.
                 if (context !== null && this.#closable(context, flags, "`", line.width)) yield { kind: "end", cost: ZERO, effects: [], end: at(i, true), record: { kind: "closer", line: i } };
                 else yield { kind: "stay", cost: ZERO, effects: [], next: at(i, true), flags };
@@ -494,18 +479,16 @@ class Search {
     *#heading(i: number, width: number, selfClosed: boolean, context: Context | null, flags: Flags): Generator<Move> {
         const next = at(i + 1);
         if (context === null) {
-            if (selfClosed && !(this.#lines[i] as { terminal?: boolean }).terminal) yield { kind: "stay", cost: ZERO, effects: [], next, flags };
-            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, terminal: (this.#lines[i] as { terminal?: boolean }).terminal === true, prose: (this.#lines[i] as { prose?: boolean }).prose === true, mutation: (this.#lines[i] as { mutation?: boolean }).mutation === true, ...this.#judged(i) }, line: i, flags };
+            if (selfClosed) yield { kind: "stay", cost: ZERO, effects: [], next, flags };
+            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, prose: (this.#lines[i] as { prose?: boolean }).prose === true, mutation: (this.#lines[i] as { mutation?: boolean }).mutation === true, ...this.#judged(i) }, line: i, flags };
             return;
         }
         const example = (cost: Cost, held: Flags): Move => selfClosed
             ? { kind: "stay", cost, effects: [], next, flags: { ...held, empty: false, written: true } }
-            : { kind: "child", cost, effects: [], child: { kind: "nested", character: "`", width, bareOpened: false, name: "", top: false, quoted: context.quoted, terminal: context.terminal, prose: context.prose }, line: i, flags: { ...held, empty: false, written: true } };
+            : { kind: "child", cost, effects: [], child: { kind: "nested", character: "`", width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...held, empty: false, written: true } };
         const holding: Flags = { empty: false, holds: true, written: true };
-        // {§terminal-kill}: a KILL body is the remaining deliverable; a heading in it
-        // is a literal example, or text, and never ends it.
         // {§prose-code-blocks}: a message or a prompt shows code; a block labeled with an executor's name is part of it.
-        if (context.terminal || context.prose && (this.#lines[i] as { runtime?: string | null }).runtime != null) {
+        if (context.prose && (this.#lines[i] as { runtime?: string | null }).runtime != null) {
             yield example(ZERO, { ...flags, empty: false, written: true });
             yield { kind: "stay", cost: DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             return;
@@ -548,8 +531,8 @@ class Search {
             // {§forgotten-tag}: at the top level the fence and the heading under it are one opener.
             const { split } = line;
             const effects: Effect[] = [{ kind: "split", line: i }];
-            if (split.selfClosed && !split.terminal) yield { kind: "stay", cost: ZERO, effects, next: at(i + 2), flags };
-            else yield { kind: "child", cost: ZERO, effects, child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: split.bodiless, terminal: split.terminal, prose: split.prose, mutation: split.mutation, ...(split.runtime === null || this.#check === undefined ? {} : { runtime: split.runtime, opener: i + 1 }) }, line: i, start: at(i + 2), flags };
+            if (split.selfClosed) yield { kind: "stay", cost: ZERO, effects, next: at(i + 2), flags };
+            else yield { kind: "child", cost: ZERO, effects, child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: split.bodiless, prose: split.prose, mutation: split.mutation, ...(split.runtime === null || this.#check === undefined ? {} : { runtime: split.runtime, opener: i + 1 }) }, line: i, start: at(i + 2), flags };
             return;
         }
         if (context === null) {
@@ -560,7 +543,7 @@ class Search {
             yield { kind: "stay", cost: REPAIR, effects: [{ kind: "surplus", line: i }], next, flags };
             return;
         }
-        const nest: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character, width, bareOpened: true, name: "", top: false, quoted: context.quoted, terminal: context.terminal, prose: context.prose }, line: i, flags: marked };
+        const nest: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character, width, bareOpened: true, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: marked };
         const close: Move | null = this.#closable(context, flags, character, width) ? { kind: "end", cost: ZERO, effects: [], end: next, record: { kind: "closer", line: i } } : null;
         // Disambiguation filter: inside a quotation or a nested block the first valid closer closes, as in
         // CommonMark 0.31.2 §4.5.
@@ -590,7 +573,7 @@ class Search {
             yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character: line.character, width: line.width, bareOpened: false, name: "", top: true, quoted: true }, line: i, flags };
             return;
         }
-        const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, terminal: context.terminal, prose: context.prose }, line: i, flags: { ...flags, empty: false, written: true } };
+        const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...flags, empty: false, written: true } };
         // Outside a quotation a labeled fence is a code block the author declared; reading it as text ranks with a
         // hidden operation, so no reading ends a body early by discarding one.
         const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
@@ -609,7 +592,7 @@ class Search {
         if (context === null) { yield { kind: "end", cost: ZERO, effects: [], end, record: { kind: "end" } }; return; }
         if ((context.bareOpened && flags.empty) || flags.holds) return;
         if (context.kind === "naked") yield { kind: "end", cost: ZERO, effects: [], end, record: { kind: "end" } };
-        else if (context.top && (context.terminal || context.prose)) yield { kind: "end", cost: RUN_ON, effects: [], end, record: { kind: "end" } };
+        else if (context.top && context.prose) yield { kind: "end", cost: RUN_ON, effects: [], end, record: { kind: "end" } };
         else yield { kind: "end", cost: SUPPLY, effects: [{ kind: "repair", line: this.#lines.length }], end, record: { kind: "end" } };
     }
 }

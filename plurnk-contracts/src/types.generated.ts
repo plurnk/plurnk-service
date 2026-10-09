@@ -525,7 +525,7 @@ lineMarker: (TextLineMarker | null)
  */
 matcher: (MatcherBody | null)
 /**
- * Parameterless KILL carries the optional final answer; a `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other targeted KILLs take no body; their matcher is the `pattern` option.
+ * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher is the `pattern` option.
  */
 body: (string | null)
 position: Position
@@ -536,16 +536,11 @@ op: "WAIT"
 aside: (string | null)
 metadata: null
 target: (ParsedPath | null)
+lineMarker: null
 /**
- * The optional maximum park duration in seconds; zero continues without parking.
+ * Optional maximum park duration from [seconds] metadata; zero continues without parking.
  */
-lineMarker: (null | {
-/**
- * @minItems 1
- * @maxItems 1
- */
-marks: [number]
-})
+seconds: (number | null)
 body: (string | null)
 position: Position
 }

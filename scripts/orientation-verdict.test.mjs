@@ -63,7 +63,7 @@ test("{§emission-row} orientation verdict counts only the model's own inspectio
         ] },
         { turn: 2, ops: [
             { op: "READ", target: "ops://meta/1/2", status: 200, origin: "_plurnk" },
-            { op: "KILL", target: null, status: 200, origin: "model" },
+            { op: "SEND", target: null, status: 200, origin: "model" },
         ] },
     ];
     const verdict = evaluateOrientation(harnessOnly, digest);

@@ -99,7 +99,7 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
         await release.promise;
         return null;
     });
-    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```KILL\nOK\n```")], contextWindow: 1_000_000 });
+    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```SEND [200]\nOK\n```")], contextWindow: 1_000_000 });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
     const http = await bindListener();
@@ -172,10 +172,10 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
             makeMockResponse("\n````FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
-            makeMockResponse("````KILL\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
+            makeMockResponse("````SEND [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
             makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
             makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
-            makeMockResponse("````KILL\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
+            makeMockResponse("````SEND [200]\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
     });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
@@ -451,11 +451,11 @@ test(
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>````\n````NOTE\nSelect the configuration tool linked from the runtime document.\n````"),
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes/configuration_view.json) <1,-1>````\n````NOTE\nUse the exact contract after reading it.\n````"),
                 makeMockResponse("\n````kubernetes (configuration_view)\n{\"minified\":true}\n````\n\n````NOTE\nInspect the returned configuration.\n````"),
-                makeMockResponse("````KILL\nThe current Kubernetes context is specimen.\n````"),
+                makeMockResponse("````SEND [200]\nThe current Kubernetes context is specimen.\n````"),
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/goji.md) <1,-1>````\n````NOTE\nSelect the terminology tool linked from the runtime document.\n````"),
                 makeMockResponse("\n````READ (worker:///_plurnk/tools/goji/goji_explain_term.json) <1,-1>````\n````NOTE\nUse the documented tool and resource.\n````"),
                 makeMockResponse("\n````goji (goji_explain_term)\n{\"term\":\"AEO\"}\n````\n\n````READ (goji:///resources/goji%3A%2F%2Fabout)````\n````NOTE\nInspect both remote results.\n````"),
-                makeMockResponse("````KILL\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n````"),
+                makeMockResponse("````SEND [200]\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n````"),
             ],
         });
         const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-dogfood-"));

@@ -196,15 +196,15 @@ test("{§terminal-evidence}: the citation reaches the parent, the reader best pl
     } finally { await db.close(); }
 });
 
-test("{§terminal-evidence}: an explicit KILL concludes after a SEND without replacing the earlier answer", async () => {
+test("{§terminal-evidence}: an empty completion reply resolves the message without replacing the earlier answer", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````KILL\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````SEND [200]\n````")] });
         const loop = await engine.runLoop({
             provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
-        assert.equal(loop.result.status, 200, "{§kill-conclusion} requests completion before the rail can rule");
+        assert.equal(loop.result.status, 200, "{§message-completion} resolves the request before the rail can rule");
         const answer = await engine.look({ workspaceId, workerId, loopId, statement: statement("````READ (ops://alice/1)````") });
         assert.ok("content" in answer);
         assert.equal(answer.content, "The answer is four.", "and the loop's own address is the answer, not a citation");

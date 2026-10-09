@@ -724,5 +724,6 @@ names the address as an immutable received message:
 | sentence | arises when |
 |---|---|
 | `Range <0,end>` starts at 0, which is not a line; lines are numbered from 1 and 0 is only the `<0>` prepend position. Recovery: `<L,M>` selects lines L through M; `<0>` prepends and `<-1>` appends without replacing anything. / `Range <0,end>` starts at 0; *unit* positions are numbered from 1. | a range whose start is 0 ({§range-starts-at-one}) |
-| [metadata] must be a JSON array of option objects. | a metadata modifier that is not an array of objects |
+| [metadata] must be a JSON array. | a malformed JSON metadata modifier |
+| [metadata] must be a JSON array of option objects; every element is an object. | a non-object element supplied to an object-only metadata owner |
 | A scope requires one position or an inclusive two-position range. | a scope of unsupported arity |

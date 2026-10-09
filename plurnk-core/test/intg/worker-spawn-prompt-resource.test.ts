@@ -19,8 +19,8 @@ const parentThenChild = (brief: string, work: string) => new Mock({ contextWindo
 \`\`\`\`WAIT
 delegated
 \`\`\`\``, 10),
-    makeMockResponse("````KILL\nchild done\n````", 10),
-    makeMockResponse("````KILL\nparent done\n````", 10),
+    makeMockResponse("````SEND [200]\nchild done\n````", 10),
+    makeMockResponse("````SEND [200]\nparent done\n````", 10),
 ] });
 
 const childPrompts = async (db: Db, parentWorkerId: number) => {
@@ -82,7 +82,7 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("````WORK (missing.md)\n````\n\n````WORK (worker://bad/path)\nx\n````\n\n````NOTE\ntried\n````", 10),
-            makeMockResponse("````KILL\ngiving up\n````", 10),
+            makeMockResponse("````SEND [200]\ngiving up\n````", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

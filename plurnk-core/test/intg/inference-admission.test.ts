@@ -25,12 +25,12 @@ for (const delegated of ["WORK", "BARE"] as const) {
             active += 1;
             peak = Math.max(peak, active);
             const content = model === childModel
-                ? delegated === "BARE" ? "42" : "````KILL\nchild complete\n````"
+                ? delegated === "BARE" ? "42" : "````SEND [200]\nchild complete\n````"
                 : parentTurns++ === 0
                     ? delegated === "BARE"
                         ? "````BARE\nWhat is six times seven?\n````"
                         : "````WORK (worker://first)\nComplete your task.\n````\n\n````WORK (worker://second)\nComplete your task.\n````\n\n````WAIT\n````"
-                    : "````KILL\nDelegated results received.\n````";
+                    : "````SEND [200]\nDelegated results received.\n````";
             response.writeHead(200, { "content-type": "text/event-stream" });
             response.write(`data: ${JSON.stringify({
                 id: String(requests.length), object: "chat.completion.chunk", created: 1, model,

@@ -54,8 +54,8 @@ export const makeMockResponse = (dsl: string, completion: number = 0): MockRespo
     };
 };
 
-// The scripted model's last turn: any operations, then the answer it concludes with
-// ({§kill-conclusion}). A test that is not about that ceremony names only what the model answers.
+// {§message-completion}: the scripted model's reply, optionally beside operations
+// whose results must still be observed before the loop can settle.
 export const answer = (text: string, operations: string = ""): MockResponse => makeMockResponse(
-    [...(operations.length > 0 ? [operations] : []), "````KILL", ...(text.length > 0 ? [text] : []), "````"].join("\n"),
+    [...(operations.length > 0 ? [operations] : []), "````SEND [200]", ...(text.length > 0 ? [text] : []), "````"].join("\n"),
 );

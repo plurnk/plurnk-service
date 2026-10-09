@@ -10,7 +10,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -297,7 +297,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: {
                 content: "",
-                ops: [concludeStmt("The available project content was inspected.")],
+                ops: [completeStmt("The available project content was inspected.")],
                 reasoning: null,
             },
         }] });

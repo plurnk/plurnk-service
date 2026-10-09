@@ -45,10 +45,10 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         `${read(alpha)}\n\n${read(beta)}\n\n${step("NOTE")}`,
-        step("KILL"),
-        step("KILL"),
+        step("SEND [200]"),
+        step("SEND [200]"),
         `${read(alpha)}\n\n${step("NOTE")}`,
-        step("KILL"),
+        step("SEND [200]"),
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });

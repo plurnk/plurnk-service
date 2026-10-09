@@ -80,9 +80,9 @@ test("{§indented-fences}: up to three spaces still open, close and end a block;
 test("{§balanced-fences}: complete nested three-backtick operations stay literal bodies", () => {
     for (const width of [3, 4]) {
         const body = ["Example:", block(3, "sh", "echo example"), block(3, "KILL (notes.md)"), "Still the answer."].join("\n");
-        const result = PlurnkParser.parse(block(width, "KILL", body));
+        const result = PlurnkParser.parse(block(width, "SEND [200]", body));
         assert.equal(result.unparsedTail, undefined);
-        assert.deepEqual(statements(result).map(writtenOp), ["KILL"]);
+        assert.deepEqual(statements(result).map(writtenOp), ["SEND"]);
         assert.equal(bodyText(statements(result)[0]), body);
     }
 });
@@ -133,10 +133,10 @@ test("{§reasoning-operations}: reasoning accepts three-backtick NOTE while pres
 
 test("{§operation-fences}: canonical output is three-backtick, one wider than any fence in the body", () => {
     assert.equal(PLURNK_FENCE, "```");
-    assert.equal(PlurnkParser.frame("KILL", "Done."), block(3, "KILL", "Done."));
+    assert.equal(PlurnkParser.frame("SEND [200]", "Done."), block(3, "SEND [200]", "Done."));
     const body = block(3, "sh", "echo example");
-    assert.equal(PlurnkParser.frame("KILL", body), block(4, "KILL", body));
-    const result = PlurnkParser.parse(PlurnkParser.frame("KILL", body));
+    assert.equal(PlurnkParser.frame("SEND [200]", body), block(4, "SEND [200]", body));
+    const result = PlurnkParser.parse(PlurnkParser.frame("SEND [200]", body));
     clean(result);
     assert.equal(bodyText(statements(result)[0]), body);
 });

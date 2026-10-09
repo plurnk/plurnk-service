@@ -31,7 +31,7 @@ private fencePairing(): Pairing {
             const { selfClosed, statement } = plurnkLexer.readHeading(heading, this.knownExecutors, this.reasoning);
             const op = statement?.op ?? name;
             const body = StatementShape.body(op, statement?.op === "KILL" ? statement : undefined);
-            return { selfClosed, bodiless: body === "none", terminal: body === "terminal", prose: body === "prose", mutation: body === "mutation" };
+            return { selfClosed, bodiless: body === "none", prose: body === "prose", mutation: body === "mutation" };
         },
         wellFormed: this.wellFormed,
     });
@@ -76,8 +76,6 @@ public hasClosedBlock(line: number): boolean {
 private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
 private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }
 private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
-// {§terminal-kill}: heading framing cannot end the remaining literal answer region.
-private terminalTail(): boolean { return !this.lineOnly && this.fencePairing().terminals.has(this.lineStartOf(this.openFenceStart)); }
 private openOp: string = "";
 // {§executor-runtime-declaration} — the opener names a runtime rather than an operation keyword.
 private execFence: boolean = false;
@@ -651,7 +649,6 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 // were not written: the slots after it still belong to this operation (operator, 2026-09-13:
 // "If there's no risk of ambiguity, then we add tolerance").
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
-SLOTS_TERMINAL_CLOSER : { this.terminalTail() && this.closingAt(1) }? FENCE [ \t]* -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§log-heading-notation} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
 SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.targetClosed(); this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
@@ -668,7 +665,7 @@ SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`]
 // {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
 SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.inlineBody = true; } -> type(BODY_TEXT), mode(BODY) ;
 // {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
-SLOTS_CLOSED_EOL : { this.inlineCloserSeen && !this.terminalTail() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
+SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 
@@ -702,15 +699,13 @@ METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } ->
 METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
-// {§terminal-kill}: a compact heading's closer is framing; its answer continues below it.
-B_TERMINAL_INLINE_CLOSER : { this.inlineBody && this.terminalTail() && this.closingAt(1) }? FENCE [ \t]* -> skip ;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
 B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§transparent-inline-closer} — the heading already carried its closer, so the matcher or inline
 // body after it ends with that line and the block never reaches for the next operation.
-B_CLOSED_EOL : { this.inlineCloserSeen && !this.terminalTail() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§naked-operation} - a naked block also closes at its own name alone on a line.
 B_NAKED_END : { this.naked && this.nakedCloserAfterEol() }? EOL [ \t]* [A-Z]+ [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;

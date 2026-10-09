@@ -11,7 +11,7 @@ import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { concludeStmt, execStmt, dispositionStmt, sendStmt, killStmt, urlPath } from "./_dsl.ts";
+import { completeStmt, execStmt, dispositionStmt, sendStmt, killStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
@@ -214,7 +214,7 @@ test("a fast failed stream settles naturally and its observed failure does not i
     try {
         const result = await fixture.engine.runLoop({
             provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "SEND"), {
-                assistant: { content: "", reasoning: null, ops: [concludeStmt("")] },
+                assistant: { content: "", reasoning: null, ops: [completeStmt("")] },
             }] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,

@@ -219,7 +219,7 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
     try {
         const workspaceId = await insertWorkspace(db, `output-authorship-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const note = "Remember ".repeat(5000);
         const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${note}\n\`\`\`\``)]);
@@ -256,7 +256,7 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
     try {
         const workspaceId = await insertWorkspace(db, `own-rows-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const alpha = "alpha ".repeat(1_000);
         const beta = "beta ".repeat(1_200);

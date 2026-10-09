@@ -188,13 +188,12 @@ test("a completed client operation concludes its administrative loop", async () 
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "send-test" });
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "note-test" });
             const workspaceId = (workspace.result as { id: number }).id;
             const clientWorker = await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: workspaceId });
 
-            // op.send is the first client op — it lazily creates the
-            // client loop. After it runs we can look up that loop.
-            const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("````SEND\n````") });
+            // The first client operation lazily creates its administrative loop.
+            const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("````NOTE\nClient observation.\n````") });
             assert.equal((response.result as { status: number }).status, 200);
 
             const clientLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });

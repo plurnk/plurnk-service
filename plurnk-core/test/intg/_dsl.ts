@@ -43,7 +43,7 @@ export const sendStmt = (recipient: ParsedPath | null = null, body: string | nul
 
 export function dispositionStmt(op: DispositionStatement["op"], body: string | null = null): DispositionStatement {
     const fields = { aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
-    return { ...fields, op, body };
+    return { ...fields, op, body, seconds: null };
 }
 
 export const noteStmt = (body: string | null = null): NoteStatement => ({
@@ -58,7 +58,7 @@ export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker |
     position: { line: 1, column: 1 },
 });
 
-export const concludeStmt = (body: string | null = null): KillStatement => ({ ...killStmt(null), body });
+export const completeStmt = (body: string | null = null): SendStatement => ({ ...sendStmt(null, body), metadata: ["200"] });
 
 export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,

@@ -1011,7 +1011,6 @@ test("{§op-synchronous} KILL(worker) settles before same-turn completion", asyn
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
-        const parentTurn = await insertTurn(db, parentLoop, 1, 200);
         const worker = await insertWorker(db, workspaceId, null, "leftover-worker");
         const workerLoop = await insertLoop(db, worker, 1, "work");          // a LIVE child (status 102)
         const lifecycle = new LoopLifecycle(db);
@@ -1023,15 +1022,16 @@ test("{§op-synchronous} KILL(worker) settles before same-turn completion", asyn
             },
         });
 
-        // Killing the worker settles immediately and does not itself block completion.
-        const killWorker: KillStatement = { metadata: null, op: "KILL", aside: null, target: workerPath("leftover-worker"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
-        const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
-        assert.equal(kill.status, 200, "KILL succeeds");
-        // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
+                content: "```KILL (worker://leftover-worker)\n```\n\n```SEND [200]\nDone, worker killed.\n```", reasoning: null,
+            } }] }),
+            workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+        });
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["SEND", 200]]);
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
-        const send = await engine.dispatch({ statement: sendStmt(null, "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
-        assert.equal(send.status, 200, "the stopped worker is no longer live pending work and KILL permits completion");
+        assert.equal(result.status, 200, "the stopped worker is no longer live pending work and KILL permits completion");
     } finally { await db.close(); }
 });
 
@@ -1067,7 +1067,7 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
-        const scoped = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [600] as [number] } };
+        const scoped = { ...dispositionStmt("WAIT", "standing by"), seconds: 600 };
         const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(continued.status, 102);
         assert.equal(continued.problem, undefined);
@@ -1077,7 +1077,7 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
 });
 
 for (const answer of ["", "The module was tested."]) {
-    test(`{§kill-conclusion}: an empty join stays active until an explicit ${answer ? "answered" : "silent"} KILL`, async () => {
+    test(`{§message-completion}: an empty join stays active until an explicit ${answer ? "answered" : "silent"} completion reply`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `drained-join-${crypto.randomUUID()}`);
@@ -1092,7 +1092,7 @@ for (const answer of ["", "The module was tested."]) {
             const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
             assert.equal(collected.status, 425);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: PlurnkParser.frame("KILL", answer), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: null } },
             ] });
             const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
             assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");

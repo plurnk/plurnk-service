@@ -35,7 +35,7 @@ for (const [name, source] of [
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse(PlurnkParser.frame("KILL", "Checked.")),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "Checked.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });

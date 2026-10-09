@@ -11,7 +11,7 @@ test("killReason: a numeric override delivers exactly that signal (the executor 
     assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // SIGTERM
 });
 
-test("killReason: a bare KILL (null) carries no override — the executor's SIGHUP polite default", () => {
+test("killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
     assert.deepEqual(ExecAbort.killReason(null), { signal: null });
 });
 

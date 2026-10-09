@@ -88,8 +88,8 @@ test("{§bare-target} {§diagnostic-observation} a target written without parent
         ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. `FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line; FIND takes no body."]);
     assert.deepEqual(refusal("```EDIT a.py <1,4>\nnew\n```"),
         ["`EDIT` has no target: `a.py` stands where the target goes. `EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence."]);
-    const [kill] = statements("```KILL The answer is 42.\n```");
-    assert.equal(kill?.op === "KILL" ? kill.body : null, "The answer is 42.", "a targetless KILL's heading text stays its deliverable");
+    const [send] = statements("```SEND The answer is 42.\n```");
+    assert.equal(send?.op === "SEND" ? send.body?.raw : null, "The answer is 42.", "a targetless SEND's heading text stays its message");
 });
 
 test("{§bare-anchor-scope} an EDIT's bare `@hash` or `@start,@end` is its scope, never body (recorded rtx5070 headings)", () => {

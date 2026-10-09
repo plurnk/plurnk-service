@@ -100,9 +100,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("````KILL\nfirst done\n````", 10),
-        makeMockResponse("````KILL\nwoke done\n````", 10),
-        makeMockResponse("````KILL\nextra\n````", 10),
+        makeMockResponse("````SEND [200]\nfirst done\n````", 10),
+        makeMockResponse("````SEND [200]\nwoke done\n````", 10),
+        makeMockResponse("````SEND [200]\nextra\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -144,7 +144,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\ndone\n````", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

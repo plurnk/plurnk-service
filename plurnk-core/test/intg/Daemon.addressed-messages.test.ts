@@ -17,7 +17,7 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
             PlurnkParser.frame("SEND (worker://receiver)", null),
             PlurnkParser.frame("NOTE", "Keep the sibling operation."),
         ].join("\n\n")),
-        makeMockResponse(PlurnkParser.frame("KILL", "No message was delivered to the receiver.")),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "No message was delivered to the receiver.")),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "empty-worker-message", projectRoot: null });
@@ -28,7 +28,7 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
             (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
         assert.equal(loops.find((row) => row.id === accepted.loopId)?.status, 200);
         const rows = await daemon.readLog({ workspaceId, workerId: sender.workerId, loopId: accepted.loopId });
-        const refused = rows.find((row) => row.origin === "model" && row.op === "SEND");
+        const refused = rows.find((row) => row.origin === "model" && row.op === "SEND" && row.status_rx === 422);
         assert.ok(refused);
         assert.equal(refused.status_rx, 422);
         const receipt = refused.rx as SchemeResult;
@@ -59,7 +59,7 @@ test("{§message-reply-delivery}: a client-authored answer wakes its assigned wo
         const address = "message://assigned/12345678";
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "What is the result?", messageAddress: address });
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address})`, "The result is 42."));
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address}) [200]`, "The result is 42."));
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0]!;
         assert.equal(item.kind, "statement");

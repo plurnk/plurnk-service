@@ -6,6 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { parsePath } from "@plurnk/plurnk-parser";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
@@ -112,6 +113,8 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
+        const message = await db.message_source_resources.get<{ path: string }>({ workspace_id: env.workspaceId, scheme: "message", target: null });
+        assert.ok(message);
         const readStmt = (pathname: string): PlurnkStatement => ({
             metadata: null,
             op: "READ", aside: null,
@@ -124,7 +127,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
             responses: [
                 response([editStmt("/state", "from turn 1"), noteStmt("continuing")]),
                 response([readStmt("/state"), noteStmt("reading")]),
-                response([sendStmt(null, "done")]),
+                response([sendStmt(parsePath(message.path), "done")]),
             ],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });

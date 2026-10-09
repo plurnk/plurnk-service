@@ -19,7 +19,7 @@ import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
-import { concludeStmt, } from "./_dsl.ts";
+import { completeStmt, } from "./_dsl.ts";
 
 const shippedEnv = async (): Promise<Map<string, string>> => {
     const raw = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
@@ -67,7 +67,7 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "hello");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt("done") as PlurnkStatement] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done") as PlurnkStatement] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const policy = (await readFile(Paths.policy, "utf8")).trim();
@@ -76,7 +76,7 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
         assert.deepEqual(carriers, policy === "" ? [] : ["system-policy"], "nonempty policy content appears only in its owned section");
         assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "SEND", pathname: null }, { op: "KILL", pathname: null }],
+        assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "SEND", pathname: null }, { op: "SEND", pathname: null }],
             "the turn holds the message arrival and the conclusion; the policy rides only its section");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;

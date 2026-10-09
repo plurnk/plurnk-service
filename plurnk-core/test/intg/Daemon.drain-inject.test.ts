@@ -22,7 +22,7 @@ const sendOnly = (dsl: string) => makeMockResponse(dsl);
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````KILL\ndone\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -43,8 +43,8 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````KILL\nfirst concurrent loop\n````"),
-            sendOnly("````KILL\nsecond concurrent loop\n````"),
+            sendOnly("````SEND [200]\nfirst concurrent loop\n````"),
+            sendOnly("````SEND [200]\nsecond concurrent loop\n````"),
         ],
     });
 
@@ -103,7 +103,7 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
 test("{§worker-ownership}: a fresh injection preserves the worker owner", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [sendOnly("````KILL\ndone\n````")],
+        responses: [sendOnly("````SEND [200]\ndone\n````")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-${crypto.randomUUID()}` });
@@ -136,8 +136,8 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````KILL\ndone\n````"),
-            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
         ],
     });
 
@@ -184,7 +184,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 });
 
 test("loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````KILL\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````SEND [200]\ndone\n````")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -206,9 +206,9 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async (approv
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````KILL\ndone\n````"),
-            sendOnly("````KILL\ndone\n````"),
-            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
         ],
     });
 
@@ -261,7 +261,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\ntrue\n````\n\n````NOTE\ncontinue after review\n````"), // proposal pauses before the required disposition
-            sendOnly("````KILL\ndone\n````"),      // turn 2 consumes the injected prompt, ends
+            sendOnly("````SEND [200]\nOriginal request done.\n````\n\n````SEND [200]\nFollow-up done.\n````"),
         ],
     });
 
@@ -483,7 +483,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
             // ({§completion-defers-to-messages}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
             sendOnly("````sh\ntrue\n````\n\n````SEND\nloop 1 reaches its turn ceiling\n````"),
-            sendOnly("````KILL\nreconciled loop ran\n````"),                              // the promoted loop
+            sendOnly("````SEND [200]\nFirst recovered request done.\n````\n\n````SEND [200]\nSecond recovered request done.\n````"),
         ],
     });
 
@@ -585,7 +585,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````SEND [200]\ndone\n````"),
         ],
     });
 
@@ -626,7 +626,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````KILL\nshould never run\n````"),
+            sendOnly("````SEND [200]\nshould never run\n````"),
         ],
     });
 
@@ -688,14 +688,15 @@ class GatedMock extends Mock {
 }
 
 for (const silent of [false, true]) {
-    test(`{§completion-defers-to-messages}: prompts arriving during ${silent ? "silent" : "answered"} completion defer it without a strike or a second loop`, async () => {
+    test(`{§completion-defers-to-messages}: prompts arriving during ${silent ? "empty-body" : "answered"} completion defer it without a strike or a second loop`, async () => {
         let release!: () => void;
         const gate = new Promise<void>((resolve) => { release = resolve; });
         const mock = new GatedMock(gate, {
             contextWindow: 16384,
             responses: [
-                sendOnly(silent ? "````KILL\n````" : "````KILL\nfirst answer, before the follow-ups\n````"),
-                sendOnly(silent ? "````KILL\n````" : "````KILL\nanswered both follow-ups\n````"),
+                sendOnly(silent ? "````SEND [200]\n````" : "````SEND [200]\nfirst answer, before the follow-ups\n````"),
+                sendOnly(silent ? "````SEND [200]\n````\n\n````SEND [200]\n````"
+                    : "````SEND [200]\nAnswered the first follow-up.\n````\n\n````SEND [200]\nAnswered the second follow-up.\n````"),
             ],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -722,9 +723,9 @@ for (const silent of [false, true]) {
                 );
                 assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
-                const replies = rows.filter((r) => r.op === "KILL" && r.origin === "model");
-                assert.deepEqual(replies.map(({ status_rx }) => status_rx), [102, 200], "the unreviewed completion is deferred, not published");
-                assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers?.length ?? 0), [0, silent ? 0 : 3], "silent completion does not invent delivery; a nonempty answer covers the observed messages");
+                const replies = rows.filter((r) => r.op === "SEND" && r.origin === "model");
+                assert.deepEqual(replies.map(({ status_rx }) => status_rx), [200, 200, 200], "replies deliver immediately while unseen arrivals defer loop settlement");
+                assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers.length), [1, 1, 1], "each reply resolves one published message, with or without speech");
                 const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
                 assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
                 const prompts = rows.filter((r) => isArrivalRow(r));

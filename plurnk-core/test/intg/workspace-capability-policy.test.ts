@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { concludeStmt, copyStmt, editStmt, killStmt, moveStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
+import { completeStmt, copyStmt, editStmt, killStmt, moveStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -89,7 +89,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt("No external capabilities used.")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("No external capabilities used.")] } }],
         });
         const { turnId } = await engine.runTurn({
             provider,
@@ -132,7 +132,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt("No external capabilities used.")] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("No external capabilities used.")] } }],
         });
 
         const result = await engine.runTurn({

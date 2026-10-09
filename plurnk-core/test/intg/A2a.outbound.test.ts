@@ -14,7 +14,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { registerA2aFace } from "./_a2a.ts";
-import { concludeStmt, sendStmt } from "./_dsl.ts";
+import { completeStmt, sendStmt } from "./_dsl.ts";
 import { waitFor } from "./_rpc.ts";
 
 const target = (pathname = ""): UrlPath => ({
@@ -110,7 +110,7 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
             assistant: {
                 content: "",
                 reasoning: null,
-                ops: [concludeStmt("Task observed")],
+                ops: [completeStmt("Task observed")],
             },
         }],
     });

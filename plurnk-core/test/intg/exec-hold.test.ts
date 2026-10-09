@@ -12,7 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { concludeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
+import { completeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // This file isolates the hold decision after ordinary optimistic settlement:
@@ -73,7 +73,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
         const responses = [
             { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), noteStmt("searching")] } },
             ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("WAIT", "waiting on the monitored stream")] } })),
-            { assistant: { content: "", reasoning: null, ops: [concludeStmt("done")] } },
+            { assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } },
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses as never });
         const t0 = Date.now();

@@ -106,10 +106,10 @@ const ticks = String.fromCharCode(96).repeat(3);
 const answerTail = "Complete answer.\\n" + ticks + "\\n"
     + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
-    const parsed = parse(ticks + "KILL\\n" + answerTail);
-    assertClean("terminal answer tail", parsed);
+    const parsed = parse(PlurnkParser.frame("SEND [200]", answerTail));
+    assertClean("completion reply", parsed);
     const statements = statementsOf(parsed);
-    if (statements.length !== 1 || statements[0]?.op !== "KILL" || statements[0]?.body !== answerTail) {
+    if (statements.length !== 1 || statements[0]?.op !== "SEND" || statements[0]?.body?.raw !== answerTail) {
         throw new Error("packed parser truncated the answer or executed its example");
     }
 }
@@ -126,11 +126,6 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
 // A quoted example rides a wider fence ({§balanced-fences}): the SEND's body holds the literal
 // heading without executing it, and the disposition still follows.
 const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
-const naked = PlurnkParser.parse("KILL <!-- example only -->\\n" + literalExample);
-const nakedStatements = statementsOf(naked);
-if (nakedStatements.length !== 1 || nakedStatements[0]?.op !== "KILL"
-    || nakedStatements[0]?.target !== null || nakedStatements[0]?.aside !== "example only"
-    || nakedStatements[0]?.body !== literalExample) throw new Error("naked KILL exposed its quoted deletion");
 const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;
 const quotedSend = PlurnkParser.parse(quoted);
 assertClean("wider SEND", quotedSend);

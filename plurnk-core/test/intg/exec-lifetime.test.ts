@@ -12,7 +12,7 @@ import { makeRawMockResponse } from "./_mock.ts";
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(`${fence}\nsleep 0\n\`\`\`\`\n\n\`\`\`\`WAIT\nObserve the refusal.\n\`\`\`\``, 10),
-        makeRawMockResponse("````KILL\nRefused; done.\n````", 10),
+        makeRawMockResponse("````SEND [200]\nRefused; done.\n````", 10),
     ] });
     let row: { status: number; problem: { type: string; detail: string; recovery?: string } } | undefined;
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -62,7 +62,7 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeRawMockResponse('````sh [{"lifetime": "turn"}]\nsleep 45\n````\n\n````NOTE\nBackgrounded for this turn only.\n````', 10),
         makeRawMockResponse("````NOTE\nThe next turn begins; the turn-scoped run is gone.\n````", 10),
-        makeRawMockResponse("````KILL\nDone.\n````", 10),
+        makeRawMockResponse("````SEND [200]\nDone.\n````", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const client = await connect(addr);

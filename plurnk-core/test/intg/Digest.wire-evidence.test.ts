@@ -32,7 +32,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
                 if (requests > 1) {
                     return new Response(`data: ${JSON.stringify({
                         id: "text", model: "wire-evidence",
-                        choices: [{ index: 0, delta: { content: "````KILL\nInspected.\n````" }, finish_reason: "stop" }],
+                        choices: [{ index: 0, delta: { content: "````SEND [200]\nInspected.\n````" }, finish_reason: "stop" }],
                         usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
                     })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
                 }
@@ -72,7 +72,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
             { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
-        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````KILL\nInspected.\n````");
+        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````SEND [200]\nInspected.\n````");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
         assert.match(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls, but no tools were declared/);

@@ -107,7 +107,7 @@ ${body}
 \`\`\`\`WAIT
 Waiting for your answer.
 \`\`\`\``),
-                makeMockResponse("````KILL\nThe answer arrived.\n````"),
+                makeMockResponse("````SEND [200]\nThe answer arrived.\n````"),
             ] });
             try {
                 await withDaemon(provider, async (db, daemon) => {
@@ -186,7 +186,7 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("````question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````NOTE\nContinue while the question is pending.\n````"),
         makeMockResponse("````KILL ($STREAM)````\n````NOTE\nCancel the question.\n````"),
-        makeMockResponse("````KILL\nDone.\n````"),
+        makeMockResponse("````SEND [200]\nDone.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });

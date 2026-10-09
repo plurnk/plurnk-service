@@ -30,11 +30,11 @@ const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
 const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problemType === UNREADABLE_PATTERN;
 
 // {§strike-progress-immunity} — only an operation that acts on the task and succeeds is progress;
-// NOTE, WAIT, a parameterless KILL and a targetless SEND steer the loop instead.
+// NOTE, WAIT and a targetless SEND do not act on task resources.
 export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
     && statement.op !== "NOTE"
     && statement.op !== "WAIT"
-    && !((statement.op === "KILL" || statement.op === "SEND") && statement.target === null);
+    && !(statement.op === "SEND" && statement.target === null);
 
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 

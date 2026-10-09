@@ -42,7 +42,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````brokenfixture\ninspect\n````\n\n````healthyfixture\ninspect\n````"),
-        makeMockResponse("````KILL\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
+        makeMockResponse("````SEND [200]\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -80,7 +80,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````sh\nprintf inline-still-works\n````"),
-        makeMockResponse("````KILL\nThe inline program worked.\n````"),
+        makeMockResponse("````SEND [200]\nThe inline program worked.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -112,7 +112,7 @@ for (const [key, invocation] of [
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (worker:///repair.txt)\nrepair remains available\n\`\`\`\``),
             makeMockResponse("````READ (worker:///repair.txt)\n````"),
-            makeMockResponse("````KILL\nOrdinary editing and inspection still work.\n````"),
+            makeMockResponse("````SEND [200]\nOrdinary editing and inspection still work.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -153,7 +153,7 @@ for (const key of [
         const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse("````env (list)\n````"),
-            makeMockResponse("````KILL\nConfiguration is inspectable.\n````"),
+            makeMockResponse("````SEND [200]\nConfiguration is inspectable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -180,7 +180,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````env (list)\n````"),
-        makeMockResponse("````KILL\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
+        makeMockResponse("````SEND [200]\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, configuration });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -229,7 +229,7 @@ for (const [family, key, value] of [
         const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`\`\`\`\`${family} (list)\n\`\`\`\`\n\n\`\`\`\`env (list)\n\`\`\`\``),
-            makeMockResponse("````KILL\nThe configuration error is visible; this agent is still usable.\n````"),
+            makeMockResponse("````SEND [200]\nThe configuration error is visible; this agent is still usable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });

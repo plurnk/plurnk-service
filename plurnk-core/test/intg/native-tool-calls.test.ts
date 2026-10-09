@@ -30,7 +30,7 @@ for (const transport of ["text", "wire"] as const) {
                         requests += 1;
                         const first = requests === 1;
                         const delta = first ? { content, ...(transport === "wire" ? { tool_calls: [tool] } : {}) }
-                            : { content: PlurnkParser.frame("KILL", "Finished.") };
+                            : { content: PlurnkParser.frame("SEND [200]", "Finished.") };
                         return new Response(`data: ${JSON.stringify({
                             model: "fixture", choices: [{ index: 0, delta, finish_reason: first && transport === "wire" ? "tool_calls" : "stop" }],
                         })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -62,4 +62,34 @@ for (const transport of ["text", "wire"] as const) {
             } finally { await db.close(); }
         });
     }
+}
+
+for (const finish of ["stop", "tool_calls"]) {
+    test(`{§loop-completion} {§provider-native-tool-calls}: native calls with finish=${finish} cannot conclude resolved work`, async (t) => {
+        const db = await openMigrated(); t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "native-call-settlement");
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1, "Report the fact.");
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "The fact." });
+        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "READ", arguments: '{"path":"worker:///fact.txt"}' } };
+        let requests = 0;
+        const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+            fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
+            temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
+            fetch: async () => {
+                requests += 1;
+                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (worker:///fact.txt)", null)}\n${PlurnkParser.frame("SEND [200]", "The fact.")}` }
+                    : requests === 2 ? { tool_calls: [tool] } : { content: "" };
+                return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: requests === 2 ? finish : "stop" }] })}\n\ndata: [DONE]\n\n`,
+                    { headers: { "content-type": "text/event-stream" } });
+            },
+        });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const statuses: number[] = [];
+        for (let index = 0; index < 3; index += 1) {
+            statuses.push((await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] })).status);
+        }
+        assert.deepEqual(statuses, [102, 102, 200]);
+        assert.equal(requests, 3);
+    });
 }
