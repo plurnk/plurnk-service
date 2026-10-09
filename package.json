@@ -96,6 +96,7 @@
     },
     "devDependencies": {
         "@changesets/cli": "3.0.3",
+        "@possumtech/sqlrite": "^6.5.3",
         "@swc/core": "1.16.2",
         "@types/node": "^26.1.1",
         "dependency-cruiser": "18.4.0",
@@ -106,8 +107,7 @@
         "oxlint-tsgolint": "^7.0.2001",
         "publint": "^0.3.23",
         "semver": "7.8.1",
-        "typescript": "^7.0.2",
-        "web-tree-sitter": "^0.27.0"
+        "typescript": "^7.0.2"
     },
     "allowScripts": {
         "esbuild@0.28.2": true,
