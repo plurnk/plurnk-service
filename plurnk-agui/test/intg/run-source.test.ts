@@ -85,7 +85,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
     const provider = new PausedModel({ contextWindow: 32768, responses: [
         { assistant: { content: PlurnkParser.frame("NOTE", "Waiting for the injected requirement."), reasoning: null } },
         inspection,
-        { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
+        { assistant: { content: "", reasoning: null } },
     ] });
     const db = await openTestDatabase();
     const http = await bindListener();
@@ -121,19 +121,20 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         inspection.assistant.content = [
             PlurnkParser.frame("KILL (log:///**/SEND)", ""),
             PlurnkParser.frame(`READ (${message.source}) <1,-1>`, ""),
-            PlurnkParser.frame("SEND (agui://anonymous/threads/conversation/messages/opening)", "Initial request answered."),
-            PlurnkParser.frame(`SEND (${message.source})`, "Injected requirement answered."),
+            PlurnkParser.frame("SEND (agui://anonymous/threads/conversation/messages/opening) [200]", "Initial request answered."),
+            PlurnkParser.frame(`SEND (${message.source}) [200]`, "Injected requirement answered."),
         ].join("\n\n");
         release.resolve();
         const events = await result;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED", JSON.stringify(events.at(-1)));
         assert.equal(provider.received.length, 3);
+        assert.deepEqual(await db.message_unanswered_count.get({ loop_id: message.loopId }), { count: 0 }, "both requests received completion replies");
         const rows = await db.test_log_entries_by_loop.all({ loop_id: message.loopId }) as Array<{ op: string; origin: string; source: string; status_rx: number; rx: string }>;
         const arrival = rows.find(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === message.source);
         assert.ok(arrival, "the live arrival carries the conversation identity clients use to suppress their own echo");
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
-            ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200], ["SEND", 200],
+            ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200],
         ]);
         assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, message.body);
         assert.ok(model.some(({ op, rx }) => op === "SEND" && JSON.parse(rx).answers.includes(message.source)));
