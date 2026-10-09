@@ -87,6 +87,7 @@ SELECT * FROM provider_requests WHERE id = $request_id;
 
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
+       inherited_history, ambient_event_id,
        op, signal,
        scheme, hostname, port, pathname, query, fragment,
        rx, status_rx, mimetype_rx,

@@ -112,6 +112,7 @@ export interface LogRow {
     target: string | null;
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; source: string | null; model_call_id: number | null; attrs: string;
+    inherited_history?: 0 | 1; ambient_event_id?: number | null;
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;

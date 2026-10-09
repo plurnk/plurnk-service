@@ -1035,6 +1035,8 @@ export default class DigestRender {
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
                 source: le.source, model_call_id: le.model_call_id,
+                ...(le.inherited_history === undefined ? {} : { inherited_history: le.inherited_history === 1 }),
+                ...(le.ambient_event_id === undefined ? {} : { ambient_event_id: le.ambient_event_id }),
                 attrs: DigestRender.parseJson(le.attrs, {}),
                 op: le.op, target: DigestRender.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,

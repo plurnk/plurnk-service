@@ -5,7 +5,68 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import { Mock } from "@plurnk/plurnk-providers";
+import Engine from "../../src/core/Engine.ts";
+import Fork from "../../src/core/fork.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import { editStmt, noteStmt, urlPath } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+
+test("{§digest-forensic-fidelity}: original failures, ambient observations and forked history retain their provenance", async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-provenance-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const dbPath = join(dir, "plurnk.db");
+    const digestDir = join(dir, "digest");
+    const db = await openMigrated(dbPath);
+    let parent = 0;
+    let child = 0;
+    let branch = 0;
+    try {
+        const workspaceId = await insertWorkspace(db, "digest-provenance");
+        parent = await insertWorker(db, workspaceId, null, "parent");
+        child = await insertWorker(db, workspaceId, parent, "child");
+        const parentLoop = await insertLoop(db, parent, 1, "inspect");
+        const childLoop = await insertLoop(db, child, 1, "inspect");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const response = (ops: ReturnType<typeof noteStmt | typeof editStmt>[]) => ({ assistant: { content: "", reasoning: null, ops } });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            response([editStmt(urlPath("missing", "/parent"), "parent action")]),
+            response([editStmt(urlPath("missing", "/child"), "child action")]),
+            response([noteStmt("observed")]),
+        ] });
+        const messages = [{ role: "user" as const, content: "inspect" }];
+        await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, workerId: child, loopId: childLoop, messages, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 2 });
+        branch = await Fork.fork(db, parent, "branch");
+    } finally { await db.close(); }
+
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
+    const { log_entries: entries } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+        log_entries: Array<{ worker_id: number; origin: string; target: string; status_rx: number; inherited_history: boolean; ambient_event_id: number | null }>;
+    };
+    const failures = entries.filter(({ status_rx }) => status_rx >= 400);
+    const original = failures.find(({ worker_id, target }) => worker_id === parent && target === "missing:///parent");
+    const inherited = failures.find(({ worker_id, target }) => worker_id === branch && target === "missing:///parent");
+    const childOriginal = failures.find(({ worker_id, target }) => worker_id === child && target === "missing:///child");
+    const observation = failures.find(({ worker_id, target }) => worker_id === parent && target === "missing:///child");
+    const inheritedObservation = failures.find(({ worker_id, target }) => worker_id === branch && target === "missing:///child");
+    assert.ok(original && inherited && childOriginal && observation && inheritedObservation, "each original failure and its observed/copied forms survive export");
+    assert.equal(original.origin, "model");
+    assert.equal(original.inherited_history, false);
+    assert.equal(original.ambient_event_id, null);
+    assert.equal(inherited.origin, "model", "origin alone does not identify new model work");
+    assert.equal(inherited.inherited_history, true);
+    assert.equal(inherited.ambient_event_id, null);
+    assert.equal(childOriginal.inherited_history, false);
+    assert.equal(typeof childOriginal.ambient_event_id, "number", "a published action retains its occurrence identity too");
+    assert.equal(observation.origin, "_plurnk");
+    assert.equal(observation.inherited_history, false);
+    assert.equal(typeof observation.ambient_event_id, "number");
+    assert.equal(observation.ambient_event_id, childOriginal.ambient_event_id, "the observation names the actual originating event");
+    assert.equal(inheritedObservation.inherited_history, true);
+    assert.equal(inheritedObservation.ambient_event_id, observation.ambient_event_id, "copying an observation preserves the original occurrence identity");
+});
 
 test("digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-cardinality-"));
@@ -120,6 +181,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             {
                 id: 1, worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
                 origin: "model", source: null, model_call_id: null,
+                inherited_history: false, ambient_event_id: null,
                 attrs: {}, op: "READ", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
                 initial_folded: [], projection: { active: true, folded: [[1, -1]] },

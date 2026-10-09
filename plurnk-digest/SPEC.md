@@ -104,6 +104,11 @@ does not make the measured counters inconsistent.
 Unrecognized actionless log rows are retained and labelled as such, not
 interpreted as executable turnOps or allowed to prevent the remaining digest.
 
+Log JSON preserves `inherited_history` and `ambient_event_id` when the evidence
+reader supplies them. A copied model-origin row is history, not a new authored
+operation; multiple observers may retain the same ambient occurrence. An absent
+field in an older export or reader means unknown, not `false` or `null`.
+
 §digest-executor-evidence **A red command is work, not a defect.** Engine-materialized
 completion rows for a failed command carry the executor's problem identity
 (`https://problems.plurnk.xyz/executor/*`), and the digest classifies them as
