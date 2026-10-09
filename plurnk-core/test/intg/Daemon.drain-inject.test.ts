@@ -2,13 +2,14 @@ import WorkerOwners from "../../src/core/WorkerOwners.ts";
 import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
 // Daemon-level drain + inject + cancel contract ({§actor-boundary-passive-wake}).
 // Engine-level inject mechanics are covered in Engine.inject.test.ts;
-// this file exercises the RPC surface and lifecycle through real WS calls.
+// this file exercises the application seam and durable lifecycle.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow } from "./_packet.ts";
@@ -38,7 +39,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
-test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distinct ordered loops", async () => {
+test("{§worker-lifecycle-single-drain}: concurrent admissions before the first claim create distinct ordered loops", async (t) => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -51,6 +52,17 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
         const workspace = await daemon.createWorkspace({ name: "concurrent-loop-allocation" });
         const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
         const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
+        const admitted = Promise.withResolvers<void>();
+        const ensureDrain = DrainSupervisor.prototype.ensureDrain;
+        let starts = 0;
+        // {§worker-message-admission}: both admissions must precede the first drain claim.
+        t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>) {
+            if (args[0].workerId === workerId) {
+                if (++starts === 2) admitted.resolve();
+                await admitted.promise;
+            }
+            return ensureDrain.apply(this, args);
+        });
         const accepted = await Promise.all([
             daemon.inject({
                 workspaceId: workspace.workspaceId,
