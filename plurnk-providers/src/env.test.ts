@@ -118,6 +118,32 @@ test("{§provider-cache-affinity} declarations follow alias precedence and refus
 
 // — per-alias knob scoping ({§provider-configuration}) —
 
+test("scopeEnvToAlias: each projection reads one fresh environment snapshot", () => {
+    const values: NodeJS.ProcessEnv = {
+        PLURNK_PROVIDERS_EFFORT: "low",
+        PLURNK_PROVIDERS_EFFORT_sample: "high",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_sample: "",
+        UNRELATED: "preserved",
+    };
+    const reads = new Map<string, number>();
+    const environment = new Proxy(values, {
+        get(target, key: string) {
+            reads.set(key, (reads.get(key) ?? 0) + 1);
+            return target[key];
+        },
+    });
+    const first = scopeEnvToAlias(environment, "sample");
+    assert.deepEqual(first, { ...values, PLURNK_PROVIDERS_EFFORT: "high" });
+    assert.deepEqual(reads, new Map(Object.keys(values).map((key) => [key, 1])),
+        "scoping cannot reread the host environment once per knob");
+    assert.equal(values.PLURNK_PROVIDERS_EFFORT, "low", "the source is not mutated");
+    values.PLURNK_PROVIDERS_EFFORT_sample = "medium";
+    assert.equal(scopeEnvToAlias(environment, "sample").PLURNK_PROVIDERS_EFFORT, "medium");
+    assert.equal(first.PLURNK_PROVIDERS_EFFORT, "high", "a later change cannot rewrite the earlier view");
+    assert.deepEqual(reads, new Map(Object.keys(values).map((key) => [key, 2])),
+        "each invocation takes its own snapshot; there is no persistent cache");
+});
+
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
     const env = {

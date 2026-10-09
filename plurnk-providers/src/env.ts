@@ -424,8 +424,9 @@ export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): Cost
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
     const out: NodeJS.ProcessEnv = { ...env };
+    const entries = Object.entries(out);
     for (const knob of knobs) {
-        for (const [key, value] of Object.entries(env)) {
+        for (const [key, value] of entries) {
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
             // A bare knob can prefix another bare knob (_EFFORT prefixes

@@ -468,6 +468,8 @@ openai-compatible (DeepInfra, Together) write `reasoning_effort` from their own
 documented in `.env.defaults`.
 There are no hidden tuning constants. Every `PLURNK_PROVIDERS_*` knob may be
 scoped to an alias by appending `_<alias>`; the scoped value wins.
+Each projection reads one fresh environment snapshot without modifying its
+source; later projections observe later configuration, never a cached view.
 
 The public Node provider registry applies this package's committed
 `.env.defaults` as a set-if-unset operational floor. Consumers pass their
