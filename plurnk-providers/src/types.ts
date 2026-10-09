@@ -191,6 +191,14 @@ export interface GrammarEvidence {
     readonly transported: boolean;
 }
 
+// {§provider-dispatched-request}: body bytes after SDK serialization and owned
+// transforms. Origin deliberately excludes userinfo, path, query and fragment.
+export interface ProviderRequestCapture {
+    readonly method: string;
+    readonly origin: string;
+    readonly body: string;
+}
+
 export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = FinishReason> {
     readonly assistant: ProviderAssistant<TFinish>;
     readonly assistantRaw: unknown;

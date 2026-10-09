@@ -288,7 +288,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
         assert.match(markdown, /T2: producer=_plurnk kind=operation status=200/);
-        assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ request: system → user \([^\n]+\.request\.md\)\n  ↳ emission: \(none admitted\)/);
+        assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ request: input sections not retained \([^\n]+\.request\.md\)\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -321,6 +321,11 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.deepEqual(json.turns.map((turn: { attachments: unknown }) => turn.attachments), [[attachment], [], null]);
+        const page = await readFile(join(digestDir, `${json.turns[0].artifact}.request.md`), "utf8");
+        assert.match(page, /## Native attachments/u);
+        assert.match(page, /selection alone does not prove transport or provider acceptance/u);
+        assert.ok(page.includes(JSON.stringify(attachment, null, 2).split("\n")[1]!.trim()));
+        assert.match(page, /board\.png/u);
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -359,6 +364,10 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
         assert.equal(diagnostic.turnId, malformedTurnId);
         assert.match(diagnostic.error.message, new RegExp(`digest turn ${malformedTurnId} has an invalid packet shape`));
         assert.match(diagnostic.error.cause.message, /attributions\[0\] must be a non-empty string/);
+        const page = await readFile(join(digestDir, `${stems[0]}.request.md`), "utf8");
+        assert.match(page, /Stored packet is invalid; no input messages were reconstructed/u);
+        assert.match(page, /attributions\[0\] must be a non-empty string/u);
+        assert.ok(page.includes(`[Next](${stems[1]}.request.md)`));
 
         await access(join(digestDir, `${stems[1]}.system.md`));
         assert.equal(await readFile(join(digestDir, `${stems[1]}.user.md`), "utf8"), "later");

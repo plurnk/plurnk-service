@@ -54,7 +54,7 @@ const seedWorkerEvidence = async (
     const turnId = turn.id;
     await Turn.recordInference(db, turnId, {
         packet: JSON.stringify({ weight: 0, attributions: [] }),
-        sections: "[]",
+        sections: JSON.stringify([{ name: "prompt", slot: "user", header: null, weight: 1, items: [`input-${marker}`] }]),
         usageCurationBudget: null,
         finishReason: "stop",
         model: `model-${marker}`,
@@ -355,6 +355,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
         assert.ok(worker.files.includes("worker-a1-1-1.user.md"));
+        assert.equal(await readFile(join(dir, "worker", "worker-a1-1-1.user.md"), "utf8"), "input-a1");
         assert.ok(!worker.files.some((file) => file.startsWith("worker-a2")));
 
         const workspace = await run("workspace", { workspaceId: workspaceA });

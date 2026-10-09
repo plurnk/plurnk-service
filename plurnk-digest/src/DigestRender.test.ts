@@ -13,7 +13,7 @@ test("{§share-packet-names}: readable requests retain roles, order and complete
     assert.match(rendered, /system → user → assistant → user/u);
     const blocks = [...rendered.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
     assert.deepEqual(blocks.map((match) => match[2]), messages.map(({ content }) => content));
-    assert.deepEqual([...rendered.matchAll(/^## \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), messages.map(({ role }) => role));
+    assert.deepEqual([...rendered.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), messages.map(({ role }) => role));
     assert.match(rendered, /not a transport capture/u);
 });
 

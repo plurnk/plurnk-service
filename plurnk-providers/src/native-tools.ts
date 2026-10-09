@@ -15,8 +15,11 @@ export const withoutNativeTools = (
     return { ...body, tools: [], tool_choice: protocol === "messages" ? { type: "none" } : "none" };
 };
 
-export const withoutNativeToolsFetch = (protocol: ToolProtocol): typeof globalThis.fetch => (input, init) => {
+export const withoutNativeToolsFetch = (
+    protocol: ToolProtocol,
+    fetch: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init),
+): typeof globalThis.fetch => (input, init) => {
     if (typeof init?.body !== "string") throw new TypeError("Provider generation requires a serialized JSON request");
     const body = JSON.parse(init.body) as Record<string, unknown>;
-    return globalThis.fetch(input, { ...init, body: JSON.stringify(withoutNativeTools(body, protocol)) });
+    return fetch(input, { ...init, body: JSON.stringify(withoutNativeTools(body, protocol)) });
 };

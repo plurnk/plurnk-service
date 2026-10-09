@@ -220,6 +220,24 @@ capture. These are the SDK's received values, not a claim of byte-for-byte
 HTTP capture. Settlement is durable before returning the failure; a process
 crash before settlement leaves a pending request, not an invented response.
 
+§provider-dispatched-request With `PLURNK_PROVIDERS_RAWBODY` enabled, installed
+SDK transports also retain the exact serialized generation request body at
+their injected fetch boundary, after all owned body transformations. Capture
+is scoped to the physical request and settles with its existing forensic
+evidence on success or failure; it does not reconstruct a body from settings.
+Only the HTTP method, origin and body are recorded: no request headers,
+userinfo, path, query or fragment. The body itself contains the supplied model
+input and must be treated as sensitive evidence. An external SDK model whose
+transport is not instrumented, disabled capture, or an unsettled request makes
+no capture claim. Existing accounting, failure evidence, cancellation and
+retention are unchanged.
+
+Native SDK construction binds each physical request's injected fetch after
+owned body transforms; compatible routes use the same request-scoped closure.
+Capture adds no global interception, runtime-specific context storage or
+cross-request mutable recorder. An externally supplied model instance remains
+opaque; a model factory can accept the injected fetch to participate.
+
 §provider-reasoning-observer When a consumer supplies `observeReasoning`, the
 provider synchronously delivers each exact, ordered, nonempty readable-reasoning
 delta as it becomes available. A transport without incremental reasoning emits
@@ -935,11 +953,11 @@ Provider top-level
 metadata is forwarded as an open bag without reinterpreting currencies or
 vendor fields.
 
-Logprobs and verbatim response capture are opt-in, alias-scoped dataset features.
-When disabled, the request asks for neither and the response carries neither.
-When enabled, raw per-token model logprob is canonical; alternatives are
-preserved when returned. Raw body/chunks preserve wire evidence the normalized
-record omits.
+Logprobs and raw capture are opt-in, alias-scoped diagnostic features.
+The former requests per-token logprobs and preserves returned alternatives.
+The latter retains SDK response bodies/chunks and the dispatched request body
+under {§provider-dispatched-request}, without requesting extra model output.
+Neither changes unconditional accounting or failed-response evidence.
 
 §provider-wire-emission **The emission is retained as the wire carried it, on every
 response.** Beside the normalized `content` and `reasoning`, the transport record keeps

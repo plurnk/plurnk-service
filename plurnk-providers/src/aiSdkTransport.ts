@@ -229,8 +229,11 @@ export type AiSdkTransportResponse = {
     warnings: readonly CallWarning[];
 };
 
-type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
-    languageModel: LanguageModel;
+// Native factories bind the physical request's fetch without shared mutable state.
+export type LanguageModelSource = LanguageModel | ((fetch: typeof globalThis.fetch) => LanguageModel);
+
+type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body"> & {
+    languageModel: LanguageModelSource;
     providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     systemProviderOptions?: Record<string, Record<string, JSONValue | undefined>>;
     temperature?: number;
@@ -344,7 +347,7 @@ const executeModelOnce = async (
     request: AiSdkModelRequest,
 ): Promise<AiSdkTransportResponse> => {
     const {
-        languageModel: model,
+        languageModel,
         providerOptions,
         systemProviderOptions,
         temperature,
@@ -357,6 +360,9 @@ const executeModelOnce = async (
         maxOutputTokens,
         reasoning,
     } = request;
+    const model = typeof languageModel === "function"
+        ? languageModel(request.fetch ?? ((input, init) => globalThis.fetch(input, init)))
+        : languageModel;
     const settings = {
         ...(temperature === undefined ? {} : { temperature }),
         ...(topP === undefined ? {} : { topP }),

@@ -14,7 +14,7 @@ import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import type { InputModality } from "./types.ts";
 import { executeAiSdkModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./aiSdkTransport.ts";
-import type { LanguageModel } from "ai";
+import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import { prepareRetries } from "ai/internal";
 import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
@@ -30,6 +30,7 @@ import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type RequestFields from "./RequestFields.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
+import RequestCapture from "./RequestCapture.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -75,7 +76,7 @@ export type AiSdkProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
-    languageModel?: LanguageModel;            // native AI SDK provider model
+    languageModel?: LanguageModelSource;      // native model, or factory binding the request's fetch
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
@@ -181,8 +182,8 @@ export type AiSdkProviderConfig = {
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
     // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
     // null = off); a native route carries it only as {§provider-request-controls}
-    // allows. `rawBody`: when true, attach the verbatim wire body to
-    // response.rawBody (PLURNK_PROVIDERS_RAWBODY) on any backend. Both gated per-alias.
+    // allows. `rawBody` retains SDK raw responses and dispatched request bodies
+    // ({§provider-dispatched-request}). Both knobs are gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
     // {§provider-generation-envelope} The generation budgets, env-read via the
@@ -273,7 +274,7 @@ export default class AiSdkProvider implements Provider {
     readonly #inferenceAdmission: InferenceAdmission | undefined;
     #model: string;
     #url: string | undefined;
-    #languageModel: LanguageModel | undefined;
+    #languageModel: LanguageModelSource | undefined;
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
     #droppedOutputTokens: number;
@@ -743,6 +744,8 @@ export default class AiSdkProvider implements Provider {
         let successfulReasoningStream = "";
         let recoveredAfterOutput = false;
         const executeAdmittedRequest = async () => {
+            const capture = this.#rawBody ? new RequestCapture() : undefined;
+            const fetch = capture?.fetch(this.#fetch ?? ((input, init) => globalThis.fetch(input, init))) ?? this.#fetch;
             let requestReasoningStream = "";
             let structuredReasoning = false;
             const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
@@ -827,13 +830,14 @@ export default class AiSdkProvider implements Provider {
                         body,
                         messages,
                         signal: operationSignal,
-                        fetch: this.#fetch,
+                        fetch,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
                     })
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
+                        fetch,
                         headers: requestHeaders,
                         providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget,
                             this.#requestFields?.namespace === undefined ? undefined : {
@@ -872,7 +876,7 @@ export default class AiSdkProvider implements Provider {
                     "error",
                     failure.usage,
                     failure.chargeEvidence,
-                    failure,
+                    { ...failure, ...(capture?.request === undefined ? {} : { request: capture.request }) },
                     failure.status,
                 );
                 throw error;
@@ -883,7 +887,7 @@ export default class AiSdkProvider implements Provider {
                 "response",
                 response.usage,
                 response.chargeEvidence,
-                response,
+                { ...response, ...(capture?.request === undefined ? {} : { request: capture.request }) },
             );
             return response;
         };

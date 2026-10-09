@@ -38,7 +38,7 @@ import RequestFields from "./RequestFields.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import type { LanguageModel } from "ai";
+import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
@@ -167,7 +167,7 @@ export const providerFromSdkModel = ({
     name: string;
     env: NodeJS.ProcessEnv;
     model: string;
-    languageModel?: LanguageModel;
+    languageModel?: LanguageModelSource;
     normalizeCost?: ProviderCostNormalizer;
     url?: string;
     headers?: Readonly<Record<string, string>>;

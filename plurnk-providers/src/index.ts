@@ -16,6 +16,7 @@ export type {
     ProviderCallKind,
     ProviderGenerateArgs,
     ProviderRequestAccounting,
+    ProviderRequestCapture,
     ProviderReasoningObserver,
     ProviderRequestCapacity,
     ProviderRequestCapacityDecision,

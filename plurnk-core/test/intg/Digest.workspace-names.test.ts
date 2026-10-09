@@ -45,4 +45,10 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
     assert.match(markdown, /~\/ptl\/plurnk-service/u, "the digest text keeps the workspace's name verbatim");
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { turns: Array<{ artifact: string }> };
     assert.ok(json.turns.some((turn) => turn.artifact === "ptl-plurnk-service/clerk9-1-1"), "digest.json records the slugged stem");
+    for (const { artifact } of json.turns) {
+        const page = await readFile(join(digestDir, `${artifact}.request.md`), "utf8");
+        assert.match(page, /\[Digest\]\(\.\.\/digest\.md\)/u);
+        assert.doesNotMatch(page, /\[(?:Previous|Next)\]/u, "navigation cannot cross workers or workspaces");
+        assert.ok(markdown.includes(`](${artifact}.request.md)`));
+    }
 });

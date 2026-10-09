@@ -42,9 +42,13 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
         assert.deepEqual(await wire(stem), provider.received[index]!.map((message) => ({ role: message.role, content: chatMessageText(message) })),
             `${stem}.wire.json is the request the provider received`);
         const request = await readFile(join(digestDir, `${stem}.request.md`), "utf8");
+        assert.match(request, /\[Digest\]\(digest\.md\)/u);
+        assert.ok(request.includes(`[Output](${stem}.assistant.md)`));
+        if (index > 0) assert.ok(request.includes(`[Previous](${stems[index - 1]}.request.md)`));
+        if (index + 1 < stems.length) assert.ok(request.includes(`[Next](${stems[index + 1]}.request.md)`));
         const blocks = [...request.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
         assert.deepEqual(blocks.map((match) => match[2]), provider.received[index]!.map(chatMessageText), "the readable request shows each exact input message in order");
-        assert.deepEqual([...request.matchAll(/^## \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index]!.map(({ role }) => role));
+        assert.deepEqual([...request.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index]!.map(({ role }) => role));
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
@@ -59,6 +63,8 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     assert.equal(last[2]!.content, "```KILL (log:///1/2/2/emission)\n```\n\n```NOTE\nRetired the first emission.\n```");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
+    const prose = report.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gmu, "");
+    for (const stem of stems) assert.ok(prose.includes(`[Input](${stem}.request.md)`), "navigation must be outside code fences");
     assert.match(report, /request: system → user \(analyst-1-2\.request\.md\)/u);
     assert.match(report, /request: system → user → assistant → user \(analyst-1-3\.request\.md\)/u);
     assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);

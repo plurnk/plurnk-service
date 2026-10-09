@@ -3,10 +3,19 @@
 Forensic Markdown, JSON, packet artifacts, SQLite snapshots and model interviews. Rendering is
 independent of the daemon; the service supplies its canonical evidence reader.
 
+Start at `digest.md`: its turn tables link input, output, reasoning and every physical request.
+Request pages link to adjacent turns and expose failures, admission and native attachment
+descriptors; `requests/<id>.md` shows the available provider evidence and accounting.
+
 Read `<worker>-<loop>-<turn>.request.md` for the model's ordered text input, with each message's
 role and complete body. The digest names its role sequence beside each turn. `.assistant.md`
 is that turn's **output**, not its input history; `.system.md` and `.user.md` are role-filtered
 extracts. `.wire.json` contains the same ordered text input, not an HTTP capture.
+
+For transport diagnosis, enable `PLURNK_PROVIDERS_RAWBODY` for the capture run or alias.
+Installed SDK routes then retain their final serialized request bodies beside response evidence.
+These bodies include model input and native payloads; request headers and URL details are not
+captured. Without capture, Markdown explicitly says that the dispatched body was not retained.
 
 ```ts
 import { Digest, Share } from "@plurnk/plurnk-digest";

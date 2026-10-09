@@ -45,21 +45,42 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
-| `<stem>.request.md` | The turn stored a provider request | Ordered text-message envelope from `EvidencePacket.messages()`, with numbered role headings and full, literal bodies; not a transport capture. The turn waterfall names this file and its role sequence. |
+| `<stem>.request.md` | The turn stored a provider request | Ordered text-message envelope from `EvidencePacket.messages()`, with numbered role headings and full, literal bodies; not a transport capture. Invalid input instead names its validation/projection failure without inventing messages. |
 | `<stem>.assistant.md` | The turn has an `ops` source | This turn's output: exact `turn_sources.content`, independent of log rows; not assistant history in the request |
 | `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
-| `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Role-filtered text projections for extraction; not the complete request or its message boundaries. Native parts are not Markdown. |
-| `<stem>.wire.json` | The turn stored a provider request | The same ordered text-message envelope as `.request.md` ({§packet-wire-envelope}), in JSON; not dispatched HTTP bytes. Both exclude native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected. |
+| `<stem>.system.md`, `<stem>.user.md` | The request's message sections are retained | Role-filtered text projections for extraction; not the complete request or its message boundaries. Native parts are not Markdown. |
+| `<stem>.wire.json` | The request's message sections are retained | The same ordered text-message envelope as `.request.md` ({§packet-wire-envelope}), in JSON; not dispatched HTTP bytes. Both exclude native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected. |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
 | `<stem>.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
 | `<stem>.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
+| `requests/<id>.md`, `.json` | Every physical provider request | Request identity, disposition, accounting and available response/failure evidence; Markdown links the originating turn and complete JSON. A captured dispatched body follows {§provider-dispatched-request}; absent capture is explicit. |
 
 A source-backed turn without provider participation produces only its source-channel
 artifacts; a request-only turn produces no fabricated assistant. A
 source-less programmatic turn with no provider request has no forensic payload
 to project and writes no files.
+
+§digest-navigation The main Markdown report links each turn's available input,
+output, reasoning and physical requests outside code fences. Request pages
+link back to the digest, to previous/next stored requests of the same worker,
+and to exact channel files. Their attempt table distinguishes physical outcomes
+from emission admission and BARE calls; native attachment descriptors are
+visible but are not presented as proof of dispatch or provider acceptance.
+Links are relative to their containing file, including nested workspaces.
+Rejected attempts link their retained exact output and show admission errors;
+pending admission is not rejection, and a retired response produces no empty
+output artifact.
+When no message sections remain, the reader returns no messages and the request
+page names that absence. It produces no synthetic empty input, role files, wire
+envelope or prompt-overlap estimate; retained outputs and accounting still render.
+
+Forensic Markdown quotes message, response and reasoning bodies with a longer
+fence so embedded headings/fences cannot conceal later records. Raw channel
+files remain byte-identical. Failed partial output, rejected emissions,
+pending requests and missing/retired evidence remain distinct; none implies an
+accepted response, an empty response, or free inference.
 
 §share-snapshot **A database is copied by SQLite, never by the filesystem.** `Share.snapshot(dbPath, copy)`, exported as `@plurnk/plurnk-digest` with `Share.write({ openEvidence, dbPath, folder, workspaceId?, requiem? })` (`requiem` is an explicitly supplied provider), is the one consistent copy: a byte copy of a WAL-mode database drops every committed page still in its `-wal` file. A harness that keeps the database beside its digest takes it through `snapshot`; an existing `copy` is refused.
 

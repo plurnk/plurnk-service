@@ -112,7 +112,9 @@ export default class EvidenceReader implements DigestEvidence {
                         weight: packet.weight,
                         budget: BudgetReadout.budgetOf(PacketWire.sectionContent(packet, "budget")),
                         slot: (name) => PacketWire.renderSlot(packet.sections, name),
-                        messages: () => PacketWire.packetToWireMessages(packet),
+                        // {§digest-navigation}: retention can leave a bag without its input sections.
+                        // PacketWire's empty-request defaults are not historical evidence.
+                        messages: () => packet.sections.length === 0 ? [] : PacketWire.packetToWireMessages(packet),
                     },
                     packetFailure: null,
                 };

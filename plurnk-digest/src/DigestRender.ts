@@ -1,12 +1,13 @@
 // Digest renderers ({§digest-programmatic-surface}): the markdown, JSON, reasoning, and packet
 // artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import {
     aggregateProviderAccounting,
     type ProviderAccounting,
     type ProviderRequestAccounting,
     type ChatMessage,
+    type ProviderRequestCapture,
 } from "@plurnk/plurnk-providers";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import type {
@@ -30,6 +31,27 @@ function* projectRows<T, R>(rows: Iterable<T>, project: (row: T) => R): Generato
 }
 
 export default class DigestRender {
+    static #literal(body: string, language = "text"): string {
+        let length = 3;
+        for (const match of body.matchAll(/`+/gu)) length = Math.max(length, match[0].length + 1);
+        const fence = "`".repeat(length);
+        return `${fence}${language}\n${body}\n${fence}`;
+    }
+
+    static #link(from: string, target: string, label: string): string {
+        return `[${label}](${posix.relative(posix.dirname(from), target)})`;
+    }
+
+    static #turnLinks(m: DigestModel, turn: TurnRow, from: string): string[] {
+        const stem = DigestRender.packetStems(m).get(turn.id);
+        if (stem === undefined) return [];
+        return [
+            ...(turn.has_packet === 1 ? [DigestRender.#link(from, `${stem}.request.md`, "Input")] : []),
+            ...(turn.program !== null ? [DigestRender.#link(from, `${stem}.assistant.md`, "Output")] : []),
+            ...(turn.has_reasoning === 1 ? [DigestRender.#link(from, `${stem}.reasoning.md`, "Reasoning")] : []),
+        ];
+    }
+
     static #summarize(text: unknown, n = 80): string {
         if (text === null || text === undefined) return "";
         const flat = String(text).replace(/\s+/g, " ").trim();
@@ -233,7 +255,9 @@ export default class DigestRender {
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
         if (packet === null) return null;
-        return packet.messages()
+        const messages = packet.messages();
+        if (messages.length === 0) return null;
+        return messages
             .map(({ role, content }) => `${role}\n${content}`)
             .join("\n");
     }
@@ -469,8 +493,9 @@ export default class DigestRender {
             : null;
         // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
         const wireLine = content.length === 0 && packet?.assistant != null ? DigestRender.wireLine(packet.assistantRaw) : null;
+        const roles = packet?.messages().map(({ role }) => role).join(" → ");
         const requestLine = packet === null ? null
-            : `  ↳ request: ${packet.messages().map(({ role }) => role).join(" → ")} (${stem}.request.md)`;
+            : `  ↳ request: ${roles || "input sections not retained"} (${stem}.request.md)`;
         const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
         return [head, ...(requestLine ? [requestLine] : []), ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
     }
@@ -667,16 +692,15 @@ export default class DigestRender {
                         lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${terminal.problem.detail.trim()}`);
                     }
                     lines.push("");
+                    lines.push("| Turn | Packet artifacts | Physical requests |", "| --- | --- | --- |");
+                    for (const turn of m.turnsByLoop.get(loop.id) ?? []) {
+                        const requests = (m.requestsByTurn.get(turn.id) ?? []).map((request) =>
+                            DigestRender.#link("digest.md", `requests/${request.id}.md`, `${request.id}: ${request.kind} ${request.outcome ?? request.state}`));
+                        lines.push(`| ${turn.sequence} (${turn.kind}) | ${DigestRender.#turnLinks(m, turn, "digest.md").join(" · ") || "—"} | ${requests.join(" · ") || "—"} |`);
+                    }
+                    lines.push("");
                     const turnLines = (m.turnsByLoop.get(loop.id) ?? []).map((t) => DigestRender.#renderTurnLine(t, m));
-                    const findMaxTicks = (s: string): number => {
-                        const matches = s.match(/`+/g);
-                        return matches ? Math.max(...matches.map((match) => match.length)) : 0;
-                    };
-                    const maxBackticks = turnLines.reduce((max, line) => Math.max(max, findMaxTicks(line)), 0);
-                    const fence = "`".repeat(Math.max(3, maxBackticks + 1));
-                    lines.push(fence);
-                    for (const line of turnLines) lines.push(line);
-                    lines.push(fence);
+                    lines.push(DigestRender.#literal(turnLines.join("\n"), ""));
                 }
             }
         }
@@ -697,7 +721,7 @@ export default class DigestRender {
                 lines.push("");
                 lines.push("(operation turn; no provider inference)");
                 const reasoning = m.evidence.reasoning(t);
-                if (reasoning !== null) lines.push("", reasoning);
+                if (reasoning !== null) lines.push("", DigestRender.#literal(reasoning));
                 continue;
             }
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
@@ -708,12 +732,13 @@ export default class DigestRender {
                     : null;
                 lines.push("");
                 if (packetFailure !== null) lines.push("(stored provider packet is invalid; see its packet artifacts)");
-                else if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
+                else if (typeof reasoning === "string" && reasoning.length > 0) lines.push(DigestRender.#literal(reasoning));
                 else lines.push("(no admitted provider reasoning)");
                 continue;
             }
             for (const attempt of attempts) {
-                const response = DigestRender.parseJson(m.evidence.response(attempt.model_call_id), {}) as {
+                const retainedResponse = m.evidence.response(attempt.model_call_id);
+                const response = DigestRender.parseJson(retainedResponse, {}) as {
                     assistant?: { reasoning?: unknown };
                 };
                 const parseErrors = DigestRender.parseJson(attempt.parse_errors, []) as Array<{ message?: unknown }>;
@@ -732,7 +757,7 @@ export default class DigestRender {
                     lines.push(`Failure: ${JSON.stringify(DigestRender.parseJson(attempt.failure, attempt.failure))}`);
                 }
                 for (const request of m.requestsByAttempt.get(attempt.id) ?? []) {
-                    lines.push(`Physical request ${request.sequence}: [${request.state === "settled" ? request.outcome : request.state} evidence](requests/${request.id}.json)`);
+                    lines.push(`Physical request ${request.sequence}: [${request.state === "settled" ? request.outcome : request.state} evidence](requests/${request.id}.md)`);
                 }
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
@@ -741,7 +766,8 @@ export default class DigestRender {
                     lines.push("");
                 }
                 const reasoning = response.assistant?.reasoning ?? null;
-                if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
+                if (typeof reasoning === "string" && reasoning.length > 0) lines.push(DigestRender.#literal(reasoning));
+                else if (retainedResponse === null && attempt.state === "response") lines.push("(response evidence is not retained; readable reasoning availability is unknown)");
                 else {
                     const reasoningTokens = DigestRender.#accounting(
                         m.requestsByAttempt.get(attempt.id) ?? [],
@@ -757,15 +783,106 @@ export default class DigestRender {
     }
 
     // {§share-packet-names}: render the owned envelope, never infer roles from filenames or body text.
-    static request(messages: ReadonlyArray<ChatMessage & { content: string }>): string {
+    static request(messages: ReadonlyArray<ChatMessage & { content: string }>, preamble: readonly string[] = []): string {
         const blocks = messages.map(({ role, content }, index) => {
-            const length = [...content.matchAll(/`+/gu)].reduce((max, match) => Math.max(max, match[0].length + 1), 3);
-            const fence = "`".repeat(length);
-            return `## ${index + 1}. ${role}\n\n${fence}text\n${content}\n${fence}`;
+            return `### ${index + 1}. ${role}\n\n${DigestRender.#literal(content)}`;
         });
-        return ["# Request", messages.map(({ role }) => role).join(" → "),
-            "Stored text-message envelope, not a transport capture. Native payloads and provider transformations are not shown.",
+        return ["# Request", ...preamble, "## Input messages", messages.map(({ role }) => role).join(" → "),
+            messages.length === 0 ? "No input message sections are retained; the original input cannot be reconstructed."
+                : "Stored text-message envelope, not a transport capture. Native payloads and provider transformations are not shown.",
             ...blocks, ""].join("\n\n");
+    }
+
+    // {§digest-navigation}: navigation surrounds evidence; channel files stay verbatim.
+    static #requestPreamble(m: DigestModel, turn: TurnRow): string[] {
+        const stems = DigestRender.packetStems(m);
+        const stem = stems.get(turn.id)!;
+        const from = `${stem}.request.md`;
+        const loop = m.loopsById.get(turn.loop_id)!;
+        const siblings = m.turns.filter((row) => row.has_packet === 1
+            && m.loopsById.get(row.loop_id)?.worker_id === loop.worker_id).toSorted((a, b) => a.id - b.id);
+        const index = siblings.findIndex(({ id }) => id === turn.id);
+        const previous = siblings[index - 1];
+        const next = siblings[index + 1];
+        const navigation = [
+            DigestRender.#link(from, "digest.md", "Digest"),
+            ...(previous === undefined ? [] : [DigestRender.#link(from, `${stems.get(previous.id)!}.request.md`, "Previous")]),
+            ...(next === undefined ? [] : [DigestRender.#link(from, `${stems.get(next.id)!}.request.md`, "Next")]),
+            ...DigestRender.#turnLinks(m, turn, from).filter((link) => !link.startsWith("[Input]")),
+        ];
+        const lines = [posix.basename(stem), navigation.join(" · ")];
+        const requests = m.requestsByTurn.get(turn.id) ?? [];
+        if (requests.length > 0) {
+            const table = ["| Request | Call | Admission | Outcome |", "| --- | --- | --- | --- |"];
+            for (const request of requests) {
+                table.push(`| ${DigestRender.#link(from, `requests/${request.id}.md`, String(request.id))} | ${request.kind} ${request.inference_call_id} | ${DigestRender.#admission(m, request)} | ${request.outcome ?? request.state} |`);
+            }
+            lines.push("## Attempts", table.join("\n"));
+        }
+        for (const attempt of m.attemptsByTurn.get(turn.id) ?? []) {
+            if (attempt.accepted === 1) continue;
+            const ordinal = String(attempt.sequence).padStart(3, "0");
+            const prefix = `${stem}.attempt${ordinal}`;
+            if (attempt.state !== "response") {
+                lines.push(`### Emission attempt ${attempt.sequence}: ${attempt.state}`,
+                    DigestRender.#link(from, `${prefix}.${attempt.state}.json`, "Call evidence"));
+                if (attempt.failure !== null) lines.push(DigestRender.#literal(attempt.failure, "json"));
+                continue;
+            }
+            const admission = attempt.accepted === 0 ? "rejected" : "unadmitted";
+            lines.push(`### Emission attempt ${attempt.sequence}: ${admission}`,
+                m.evidence.response(attempt.model_call_id) === null ? "Response evidence is not retained."
+                    : DigestRender.#link(from, `${prefix}.${admission}.assistant.md`, "Exact output"),
+                DigestRender.#literal(JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2), "json"));
+        }
+        return lines;
+    }
+
+    static #admission(m: DigestModel, request: ProviderRequestRow): string {
+        if (request.kind === "bare") return "not an emission";
+        if (request.outcome !== "response") return "not admitted";
+        const call = m.modelCalls.find(({ id }) => id === request.inference_call_id);
+        return call?.accepted === 1 ? "admitted" : call?.accepted === 0 ? "rejected" : "not admitted";
+    }
+
+    static #physicalRequest(m: DigestModel, request: ProviderRequestRow, evidence: unknown): string {
+        const from = `requests/${request.id}.md`;
+        const turn = m.turns.find(({ id }) => id === request.turn_id);
+        const fields = typeof evidence === "object" && evidence !== null ? evidence as Record<string, unknown> : {};
+        const capture = fields.request as Partial<ProviderRequestCapture> | undefined;
+        const lines = [
+            `# Physical request ${request.id}`,
+            [DigestRender.#link(from, "digest.md", "Digest"),
+                DigestRender.#link(from, `requests/${request.id}.json`, "Complete evidence")].join(" · "),
+            ...(turn === undefined ? [] : [`Originating turn: ${DigestRender.#turnLinks(m, turn, from).join(" · ") || "no packet artifacts retained"}`]),
+            DigestRender.#literal(JSON.stringify({
+                provider: request.provider, model: request.model, kind: request.kind,
+                inferenceCallId: request.inference_call_id, sequence: request.sequence,
+                state: request.state, outcome: request.outcome, admission: DigestRender.#admission(m, request),
+                startedAt: request.started_at, completedAt: request.completed_at,
+            }, null, 2), "json"),
+            "## Accounting",
+            request.state === "pending" ? "Request is unsettled; accounting is not yet available."
+                : DigestRender.#literal(JSON.stringify(DigestRender.#requestAccounting(request), null, 2), "json"),
+            "## Dispatched request",
+            typeof capture?.body !== "string" ? "Dispatched request body was not retained."
+                : `${capture.method} ${capture.origin}\n\nExact serialized body; URL details and request headers are not captured.\n\n${DigestRender.#literal(capture.body, "json")}`,
+        ];
+        const call = m.modelCalls.find(({ id }) => id === request.inference_call_id);
+        if (request.outcome === "response" && call?.accepted === 0) {
+            lines.push("## Admission", "The provider returned a response, but Plurnk rejected its emission.",
+                DigestRender.#literal(JSON.stringify(DigestRender.parseJson(call.parse_errors, []), null, 2), "json"));
+        }
+        if (fields.error !== undefined) lines.push("## Failure", DigestRender.#literal(JSON.stringify(fields.error, null, 2), "json"));
+        if (evidence === null) lines.push("## Response", "No settled response evidence is retained.");
+        else {
+            if (request.outcome === "error") lines.push("Partial output; this physical request failed. It is not an admitted response.");
+            for (const [field, heading] of [["reasoning", "Reasoning"], ["content", "Content"]] as const) {
+                lines.push(`## ${heading}`, typeof fields[field] === "string"
+                    ? DigestRender.#literal(fields[field]) : `No readable ${field} is retained in this request record.`);
+            }
+        }
+        return `${lines.join("\n\n")}\n`;
     }
 
     // Per-turn forensic files. turnOps is the source authority; PacketWire
@@ -831,8 +948,12 @@ export default class DigestRender {
             const padded = stems.get(turn.id)!;
             const files: Array<[string, string]> = [];
             const { packet, packetFailure } = m.evidence.packet(turn);
+            const preamble = turn.has_packet === 1 ? DigestRender.#requestPreamble(m, turn) : [];
             if (packetFailure !== null) {
                 files.push(
+                    [`${padded}.request.md`, ["# Request", ...preamble, "Stored packet is invalid; no input messages were reconstructed.",
+                        DigestRender.#literal(JSON.stringify(packetFailure.error, null, 2), "json"),
+                        DigestRender.#link(`${padded}.request.md`, `${padded}.packet.raw.txt`, "Stored packet")].join("\n\n")],
                     [`${padded}.packet.raw.txt`, packetFailure.raw],
                     [`${padded}.packet.invalid.json`, JSON.stringify({
                         turnId: turn.id,
@@ -841,20 +962,26 @@ export default class DigestRender {
                 );
             }
             if (packet !== null) {
-                files.push(
-                    [`${padded}.system.md`, packet.slot("system")],
-                    [`${padded}.user.md`, packet.slot("user")],
-                );
                 // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
                 // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
                 try {
                     const messages = packet.messages();
-                    files.push(
+                    if (messages.length > 0) files.push(
+                        [`${padded}.system.md`, packet.slot("system")],
+                        [`${padded}.user.md`, packet.slot("user")],
                         [`${padded}.wire.json`, JSON.stringify(messages, null, 2)],
-                        [`${padded}.request.md`, DigestRender.request(messages)],
+                    );
+                    files.push(
+                        [`${padded}.request.md`, DigestRender.request(messages, [
+                            ...preamble,
+                            ...(packet.attachments.length === 0 ? [] : ["## Native attachments", "Stored descriptors; selection alone does not prove transport or provider acceptance.", DigestRender.#literal(JSON.stringify(packet.attachments, null, 2), "json")]),
+                        ])],
                     );
                 } catch (cause) {
                     files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
+                    files.push([`${padded}.request.md`, ["# Request", ...preamble,
+                        "Stored input could not be projected; no message order was reconstructed.",
+                        DigestRender.#link(`${padded}.request.md`, `${padded}.wire.invalid.json`, "Projection failure")].join("\n\n")]);
                 }
             }
             if (source !== null) {
@@ -887,23 +1014,31 @@ export default class DigestRender {
                     }, null, 2));
                     continue;
                 }
-                const response = DigestRender.parseJson(m.evidence.response(attempt.model_call_id), {}) as {
+                const retainedResponse = m.evidence.response(attempt.model_call_id);
+                const admission = attempt.accepted === 0 ? "rejected" : "unadmitted";
+                const prefix = `${padded}.attempt${attemptPadded}.${admission}`;
+                write(`${prefix}.parse-errors.json`, JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2));
+                write(`${prefix}.attributions.json`, JSON.stringify(DigestRender.parseJson(attempt.attributions, []), null, 2));
+                if (retainedResponse === null) {
+                    write(`${prefix}.response.md`, `# Emission attempt ${attempt.sequence}: ${admission}\n\nResponse evidence is not retained.\n`);
+                    continue;
+                }
+                const response = DigestRender.parseJson(retainedResponse, {}) as {
                     assistant?: { content?: unknown };
                 };
-                const prefix = `${padded}.attempt${attemptPadded}.rejected`;
                 const attemptFiles: Array<[string, string]> = [
                     [
                         `${prefix}.assistant.md`,
                         typeof response.assistant?.content === "string" ? response.assistant.content : "",
                     ],
                     [`${prefix}.response.json`, JSON.stringify(response, null, 2)],
-                    [`${prefix}.parse-errors.json`, JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2)],
-                    [`${prefix}.attributions.json`, JSON.stringify(DigestRender.parseJson(attempt.attributions, []), null, 2)],
                 ];
                 for (const [file, body] of attemptFiles) write(file, body);
             }
         });
         for (const request of m.providerRequests) {
+            const evidence = DigestRender.parseJson(m.evidence.request(request.id));
+            write(`requests/${request.id}.md`, DigestRender.#physicalRequest(m, request, evidence));
             write(`requests/${request.id}.json`, JSON.stringify({
                 id: request.id,
                 inferenceCallId: request.inference_call_id,
@@ -914,7 +1049,7 @@ export default class DigestRender {
                 startedAt: request.started_at,
                 completedAt: request.completed_at,
                 accounting: request.state === "settled" ? DigestRender.#requestAccounting(request) : null,
-                evidence: DigestRender.parseJson(m.evidence.request(request.id)),
+                evidence,
             }, null, 2));
         }
         return written;

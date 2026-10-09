@@ -116,9 +116,11 @@ test("createSdkModel constructs Cerebras from Models.dev facts", () => {
 });
 
 test("{§provider-wire-declaration} SDK construction does not freeze request-local reasoning controls", () => {
-    const model = createSdkModel("openrouter", "z-ai/glm-5.3-flash", {
+    const source = createSdkModel("openrouter", "z-ai/glm-5.3-flash", {
         OPENROUTER_API_KEY: "test-key",
-    })?.languageModel as { settings?: { reasoning?: unknown } } | undefined;
+    })?.languageModel;
+    assert.equal(typeof source, "function");
+    const model = (typeof source === "function" ? source(globalThis.fetch) : source) as { settings?: { reasoning?: unknown } };
     assert.ok(model);
     assert.equal(model.settings?.reasoning, undefined);
 });
