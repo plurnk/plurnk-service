@@ -123,6 +123,15 @@ artifacts. Compare like workloads; coverage describes only the selected tests,
 and profile files must not be mistaken for a whole-process-tree memory total.
 These are on-demand diagnostics, not additional gates or live-run defaults.
 
+For SQL, `npm run -s report:sql -- /path/to/workload.db [specimens.json]` snapshots
+the explicitly selected database and emits JSON plans for the current source PREPs
+({§db-query-report}). It never boots a daemon or upgrades the database. Optional
+specimens are an array of `{ "statement": "prep_name", "parameters": { ... } }`:
+choose actual bindings for the workload under investigation. Only those queries are
+timed, under SQLite's query-only guard, without retaining result bodies. A failed
+plan or measurement exits nonzero; scan hints alone do not. Keep the source revision
+with the report, and do not mistake snapshot timings for whole-daemon latency.
+
 ## Source-built candidate
 
 ```sh

@@ -92,7 +92,8 @@
         "config:list": "node --conditions=plurnk-dev plurnk-core/src/service.ts config defaults",
         "candidate": "node scripts/candidate.mjs",
         "readiness:metaproject": "node scripts/orientation.mjs",
-        "report:floor": "npm --workspace plurnk-core run report:floor"
+        "report:floor": "npm --workspace plurnk-core run report:floor",
+        "report:sql": "node --conditions=plurnk-dev plurnk-core/scripts/sql-report.mjs"
     },
     "devDependencies": {
         "@changesets/cli": "3.0.3",

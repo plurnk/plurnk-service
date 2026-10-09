@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
@@ -39,11 +40,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
             resolve(PROJECT_ROOT, "src"),
             resolve(PROJECT_ROOT, "test/intg"),
         ],
-        functions: [
-            resolve(PROJECT_ROOT, "src/core/content_weight.ts"),
-            resolve(PROJECT_ROOT, "src/core/glob_match.ts"),
-            resolve(PROJECT_ROOT, "src/core/sha256.ts"),
-        ],
+        functions: sqlFunctionPaths,
     })) as unknown as Db;
     return db;
 };

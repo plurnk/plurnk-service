@@ -3599,6 +3599,26 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - DDL = storage truth; JSON Schemas = wire truth. They are allowed to differ where ergonomics demand.
 - §entry-identity-no-null **Identity components are never NULL.** `(workspace_id, scheme, authority, pathname)` is a unique key. `workspace_id` references the workspace directly with cascading deletion. Namespace schemes use empty authority; resource schemes retain their canonical authority. File members use nonempty `scheme="file"` and render as bare paths. Registration refuses `storedScheme: null`.
 
+### §db-query-report Workload query report
+
+`report:sql <database.db> [specimens.json]` is an on-demand diagnostic, not a gate.
+It snapshots only the named database under {§share-snapshot}, registers the production
+SQL functions, and plans the source PREPs through SqlRite's own parser. It neither
+migrates nor runs application INIT blocks on that snapshot. Schema mismatch and query
+errors remain report failures, not empty successful results.
+
+| Evidence | Meaning |
+|---|---|
+| `plans` | Unbound `EXPLAIN QUERY PLAN` rows for every effective PREP, including mutations; no mutation is executed. |
+| `scans` | Conservative hints: named table/view, indexed, virtual, or unresolved alias/intermediate. Raw details remain authoritative; a scan is not itself a defect. |
+| `measurements` | Only supplied `{statement, parameters}` specimens execute, with SQLite's query-only guard. Each retains its bound plan, row count, and one elapsed measurement; row bodies are not retained. |
+
+Timings cover SQLite stepping and row conversion in the report process against the
+compacted private snapshot, not daemon IPC, application work, cold-cache latency, or a
+statistical distribution. No implicit workload discovery, synthetic corpus, automatic
+sampling, or performance threshold is applied. The report changes neither source data
+nor the existing query-plan gate.
+
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
 **Lives in SQL:**

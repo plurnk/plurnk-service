@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
+import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import Daemon from "./server/Daemon.ts";
 import HttpListener from "./server/HttpListener.ts";
 import DaemonLock from "./server/DaemonLock.ts";
@@ -40,7 +41,6 @@ export default class Service {
     // published install); its parent is the package root (migrations/, .env.defaults).
     static #codeDir = dirname(fileURLToPath(import.meta.url));
     static #projectRoot = resolve(Service.#codeDir, "..");
-    static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
     static #hostPaths = new HostPaths();
     static #configuration = new ConfigurationDiagnostics();
 
@@ -176,11 +176,7 @@ export default class Service {
             const db = await SqlRite.open({
                 path: dbPath,
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
-                functions: [
-                    resolve(Service.#codeDir, `core/content_weight${Service.#ext}`),
-                    resolve(Service.#codeDir, `core/glob_match${Service.#ext}`),
-                    resolve(Service.#codeDir, `core/sha256${Service.#ext}`),
-                ],
+                functions: sqlFunctionPaths,
                 ...tuning,
             });
             if (lock !== null) {

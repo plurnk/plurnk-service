@@ -79,7 +79,8 @@
         "release:check": "npm run deps:audit && npm run test:installation",
         "prepublishOnly": "npm run deps:audit && npm run test:installation",
         "prepack": "npm run build",
-        "report:floor": "node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults scripts/floor-report.mjs"
+        "report:floor": "node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults scripts/floor-report.mjs",
+        "report:sql": "node --conditions=plurnk-dev scripts/sql-report.mjs"
     },
     "dependencies": {
         "@opentelemetry/api": "^1.9.1",
