@@ -2887,9 +2887,8 @@ same durable liveness.
 | All messages resolved, results observed, no live work | Conclude with the aggregate message outcome ({§message-completion}). |
 
 An empty emission is handled by {§empty-turn}. Ordinary strikes, cycles and
-execution limits remain independent. NOTE and successful targeted KILL do not themselves
-require another observation turn, but neither requests completion. Failed KILL
-and every other operational result require observation.
+execution limits remain independent. Observation exemptions follow
+{§send-premature-terminate}; they never resolve a message implicitly.
 
 §loop-response-messages **A response is a recorded delivery.** A successful SEND reply records
 the exact message addresses it answers. All replies remain independently recoverable in
@@ -2918,8 +2917,8 @@ accounting and model-visible failure evidence remain separately owned by
   or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the
   log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
   rule. The detail states only that the addressed scheme is not a recipient;
-  neutral recovery distinguishes targetless replies from directed SEND without
-  guessing which one was intended. A scheme that does not implement SEND
+  recovery names valid recipients without guessing which was intended.
+  A scheme that does not implement SEND
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-response-receipt **A reply records exactly which messages it answers.** A successful
   reply carries `answers`, the immutable message addresses it answered, not recipient actors.
@@ -5207,7 +5206,7 @@ ordinary operation evidence still reaches that child's direct parent.
 
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), successful targetless SEND without delivery ({§send-response-receipt}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
+| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
 | §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§worker-scheme-collect}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
