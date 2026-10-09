@@ -205,12 +205,37 @@ test("{§mcp-host-composition}: a standard Task completes the same operation thr
     completed(await start(), provider, /plain stdio Task completed/u);
 });
 
+test("{§mcp-host-composition}: fixture teardown settles an unanswered Task before closing its MCP server", { timeout: 20_000 }, async (t) => {
+    const fixture = taskHandler();
+    let provider: Mock | undefined;
+    await t.test("leave the Task awaiting client input", async (t) => {
+        let owner: Daemon | undefined;
+        t.after(() => owner?.stop());
+        const served = await serveMcpHttp(t, fixture.handler, fixture.route);
+        const host = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+            fixture: httpEntry(served.url),
+        });
+        owner = host.daemon;
+        provider = host.provider;
+        const first = interaction(await host.start(), ["preflight"]);
+        interaction(await host.post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
+            preflight: { action: "accept", content: { proceed: true } },
+        } }] }), ["profile", "authorize"]);
+    });
+    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.deepEqual(fixture.updates, [], "teardown never fabricates a human answer");
+    assert.equal(provider?.received.length, 1, "teardown never starts another inference");
+});
+
 test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI before the terminal notification wakes inference", { timeout: 20_000 }, async (t) => {
+    let owner: Daemon | undefined;
+    t.after(() => owner?.stop());
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const { provider, post, start, reconnect } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+    const { provider, post, start, reconnect, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
         fixture: httpEntry(served.url),
     });
+    owner = daemon;
     const first = interaction(await start(), ["preflight"]);
     const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
         preflight: { action: "accept", content: { proceed: true } },
@@ -240,6 +265,8 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
 
 for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
     test(`{§mcp-host-composition}: remote Task ${state} reaches its worker once without an interaction or replay`, { timeout: 20_000 }, async (t) => {
+        let owner: Daemon | undefined;
+        t.after(() => owner?.stop());
         const fixture = taskHandler(state === "unsupported-input" ? "unsupported" : "protocol-failure");
         const served = await serveMcpHttp(t, fixture.handler, async (request) => {
             const response = await fixture.route(request);
@@ -253,6 +280,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         const { provider, start, daemon } = await setup(t, `\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\``, {
             fixture: httpEntry(served.url),
         });
+        owner = daemon;
         const events = await start();
         const terminal = events.at(-1);
         assert.ok(terminal);
