@@ -16,6 +16,8 @@ import type { InputModality } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { testProviderCapacity } from "./_provider.ts";
+import { mountMemoryTracing } from "./_observe-memory.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 
 const requestAccounting = {
     provider: "provider:controlled-settlement",
@@ -365,6 +367,22 @@ test("the settlement deadline is bounded and does not slide on later conclusions
             "````KILL\nall three landed\n````",
         ],
     });
+    const windowOpened = Promise.withResolvers<void>();
+    const secondArrival = Promise.withResolvers<void>();
+    const settle = DrainSupervisor.prototype.settleCompletionWake;
+    let arrivals = 0;
+    approvalContext.mock.method(DrainSupervisor.prototype, "settleCompletionWake", function (
+        this: DrainSupervisor, ...args: Parameters<typeof settle>
+    ) {
+        const pending = settle.apply(this, args);
+        if (++arrivals === 2) secondArrival.resolve();
+        return pending;
+    });
+    const tracing = await mountMemoryTracing((span) => {
+        if (span.name !== "worker.wake.settlement") return;
+        approvalContext.mock.timers.enable({ apis: ["setTimeout"] });
+        windowOpened.resolve();
+    });
     try {
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -383,17 +401,27 @@ test("the settlement deadline is bounded and does not slide on later conclusions
                 );
 
                 provider.releaseChild(0);
-                await delay(350);
+                await windowOpened.promise;
+                approvalContext.mock.timers.tick(350);
                 provider.releaseChild(1);
-                const resumedOnOriginalDeadline = await Promise.race([
-                    provider.waitForParentCall(2).then(() => true),
-                    delay(300, false),
-                ]);
-                assert.equal(
-                    resumedOnOriginalDeadline,
-                    true,
-                    "the second conclusion does not restart the first conclusion's 500ms deadline",
-                );
+                await secondArrival.promise;
+                approvalContext.mock.timers.tick(149);
+                assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: parentLoopId }))?.status, 202,
+                    "the parent remains parked before the original deadline while one child is still live");
+                assert.equal(provider.parentCalls, 1);
+                assert.equal(tracing.spans().some(({ name }) => name === "worker.wake.settlement"), false,
+                    "the opportunity has not expired at 499ms");
+                approvalContext.mock.timers.tick(1);
+                approvalContext.mock.timers.reset();
+                await provider.waitForParentCall(2);
+                const window = tracing.spans().find(({ name }) => name === "worker.wake.settlement");
+                assert.equal(window?.attributes.release, "deadline");
+                assert.equal(window?.attributes.conclusions, 2,
+                    "the second arrival shares the first deadline, rather than starting a new opportunity");
+                const resumedPacket = provider.parentMessages(2).map(({ content }) => content).join("\n");
+                assert.match(resumedPacket, /child 1 done/);
+                assert.match(resumedPacket, /child 2 done/);
+                assert.doesNotMatch(resumedPacket, /child 3 done/);
                 await waitForDb(
                     async () => (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoopId }))?.status,
                     (status) => status === 202,
@@ -407,12 +435,15 @@ test("the settlement deadline is bounded and does not slide on later conclusions
                 );
                 assert.equal(provider.parentCalls, 3, "deadline wake plus final lone-child wake are the only resumptions");
             } finally {
+                approvalContext.mock.timers.reset();
                 provider.releaseAll();
                 ws.close();
             }
         });
     } finally {
+        approvalContext.mock.timers.reset();
         provider.releaseAll();
+        await tracing.shutdown();
         if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
         else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
     }

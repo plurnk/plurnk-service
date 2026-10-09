@@ -4,21 +4,23 @@
 
 import { context, trace } from "@opentelemetry/api";
 import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
-import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 export interface MemoryTracing {
     spans(): ReadableSpan[];
     shutdown(): Promise<void>;
 }
 
-export const mountMemoryTracing = async (): Promise<MemoryTracing> => {
+export const mountMemoryTracing = async (onStart?: SpanProcessor["onStart"]): Promise<MemoryTracing> => {
     // The SDK initializes the async-hooks context manager at start();
     // the deterministic mount must mirror it or context never crosses `await`.
     const contextManager = new AsyncHooksContextManager();
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
     const exporter = new InMemorySpanExporter();
-    const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
+    const processor = new SimpleSpanProcessor(exporter);
+    if (onStart !== undefined) processor.onStart = onStart;
+    const provider = new BasicTracerProvider({ spanProcessors: [processor] });
     trace.setGlobalTracerProvider(provider);
     return {
         spans: (): ReadableSpan[] => exporter.getFinishedSpans(),
