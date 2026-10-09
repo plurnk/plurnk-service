@@ -231,15 +231,15 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
         const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const sourceLoopId = await enqueueLoop(db, workerId, "concluded source");
+        for (const [index, content] of ["first orphan", "second orphan"].entries()) {
+            const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
+            assert.ok(message !== undefined, "the unfinished source admitted the message before forced termination");
+        }
         await db.test_set_loop_status.run({
             id: sourceLoopId,
             status: 200,
             terminal_result: JSON.stringify({ status: 200 }),
         });
-
-        for (const [index, content] of ["first orphan", "second orphan"].entries()) {
-            await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
-        }
 
         const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
             id: number; sequence: number; status: number;
