@@ -94,7 +94,7 @@ test("entry_channels.weight honors an injected ruler override (test seam)", asyn
     } finally { await db.close(); }
 });
 
-test("{§context-gauge} the gauge carries populated tokens, budget and largest fields", async () => {
+test("{§context-gauge} below pressure the gauge carries populated tokens and budget fields", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
@@ -106,14 +106,13 @@ test("{§context-gauge} the gauge carries populated tokens, budget and largest f
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const state = JSON.parse(budget) as { tokens: number; budget: number; largest: Array<{ path: string; tokens: number }> };
-        assert.deepEqual(Object.keys(state), ["tokens", "budget", "largest"], `the gauge is its three fields; got: ${budget}`);
+        const state = JSON.parse(budget) as { tokens: number; budget: number };
+        assert.deepEqual(Object.keys(state), ["tokens", "budget"], `below pressure the gauge omits the inventory; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing gauge is one JSON line");
-        assert.ok(state.largest.every(({ path, tokens }) => path.startsWith("log:///") && Number.isSafeInteger(tokens) && tokens > 0), "largest names log rows with their tokens");
         const usage = state.tokens; const ceiling = state.budget;
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
-        assert.ok(usage < ceiling, "the admitted packet stays below the displayed maximum");
+        assert.ok(usage < ceiling * 0.8, "the admitted packet stays below pressure");
     } finally { await db.close(); }
 });
 

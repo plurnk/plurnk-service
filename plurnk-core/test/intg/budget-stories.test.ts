@@ -138,7 +138,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
     } finally { await db.close(); }
 });
 
-test("{§context-gauge} the model-facing gauge is one measured JSON object: tokens, budget, largest (#478)", async () => {
+test("{§context-gauge} below pressure the model-facing gauge omits its largest inventory (#478)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -147,8 +147,10 @@ test("{§context-gauge} the model-facing gauge is one measured JSON object: toke
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["tokens", "budget", "largest"], "the gauge is its three fields, and only those");
-        assert.equal(budget.split("\n").length, 1, "one JSON line — no threshold, warning or mandate follows the object");
+        const gauge = JSON.parse(budget) as { tokens: number; budget: number };
+        assert.ok(gauge.tokens < gauge.budget * 0.8, "this composed packet remains below pressure");
+        assert.deepEqual(Object.keys(gauge), ["tokens", "budget"], "no curation inventory is needed below pressure");
+        assert.equal(budget.split("\n").length, 1, "one JSON line — no warning or mandate follows the object");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });

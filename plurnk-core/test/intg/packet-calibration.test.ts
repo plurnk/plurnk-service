@@ -271,8 +271,8 @@ test("{§tokenomics-calibrated-readout} unknown and unseen-model capacities do n
     assert.equal(budgetOf(fresh).budget, 25_000);
     assert.equal(budgetOf(fresh).tokens, fresh.weight);
     const unknown = await f.build(providerAt(null));
-    const gauge = JSON.parse(packetSection(unknown, "budget")) as { tokens: number; budget?: number; largest: unknown[] };
-    assert.deepEqual(Object.keys(gauge), ["tokens", "largest"], "without a capacity the gauge has no budget to name, and no mandate replaces it");
+    const gauge = JSON.parse(packetSection(unknown, "budget")) as { tokens: number; budget?: number; largest?: unknown[] };
+    assert.deepEqual(Object.keys(gauge), ["tokens"], "without a capacity the gauge has no budget or pressure inventory to name");
     assert.equal(gauge.tokens, unknown.weight);
     assert.equal(f.packets.curationBudgetFor(unknown), null);
     assert.equal(f.packets.curationOverflow(unknown), null);

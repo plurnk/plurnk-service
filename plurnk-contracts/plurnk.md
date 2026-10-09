@@ -29,10 +29,7 @@ body?
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MUST NOTE every fact, finding, conclusion, decision, and plan you will need later.
-
-> [!TIP]
-> Reasoning is not carried forward automatically. NOTE OPs work during reasoning.
+> YOU MUST use **at least** one NOTE per continuing turn. Reasoning is not carried forward automatically.
 
 ```WAIT [60] <!-- example: yield to children and streams for up to 60 seconds -->
 This is an example of a waiting turn progress update response.

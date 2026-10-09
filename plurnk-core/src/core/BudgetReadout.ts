@@ -9,8 +9,8 @@ export interface LargestLogItem {
     readonly tokens: number;
 }
 
-// {§context-gauge} — one JSON object the model reads every packet: `tokens`, `budget`, `largest`.
-// State only: no mandate, no threshold, and never a response allowance ({§output-allowance-notice}).
+// {§context-gauge} — one measured JSON object; the curation inventory appears only under pressure.
+// Never a response allowance ({§output-allowance-notice}).
 export default class BudgetReadout {
     static draft(budget: number | null): string {
         if (budget === null) return `{"tokens":${TOKENS_PLACEHOLDER}}`;
@@ -32,8 +32,6 @@ export default class BudgetReadout {
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final
     // numeric substitution cannot change the measured packet length or oscillate.
-    // {§context-gauge} — the inventory is complete whatever the packet weighs: over budget it is the
-    // curation handles the row asks the model to use ({§context-over-budget-row}).
     static resolve(
         template: string,
         measurePacket: MeasurePacket,
@@ -46,6 +44,11 @@ export default class BudgetReadout {
                 ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
                 : a.tokens > b.tokens ? -1 : 1)
             .slice(0, Knob.integer("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", 0));
+        const neutral = BudgetReadout.#resolveTemplate(template, measurePacket);
+        const budget = BudgetReadout.budgetOf(neutral.content);
+        const pressure = Knob.percent("PLURNK_SERVICE_BUDGET_PRESSURE");
+        // The inventory cannot trigger its own appearance; its weight is included only after admission.
+        if (budget === null || neutral.usage <= budget * pressure) return neutral.content;
         return BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked), measurePacket).content;
     }
 
