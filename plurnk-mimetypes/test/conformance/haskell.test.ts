@@ -96,7 +96,7 @@ describe("conformance: text/x-haskell defs + refs ({§mimetype-references})", ()
         assert.ok(!references.some((r) => r.kind === "import" && r.line === 5));
         assert.ok(!references.some((r) => r.name === "Data" || r.name === "Data.List" || r.name === "Data.Map"));
         // Constructor application is NOT instantiate (pattern/expression
-        // ambiguity — see queries/haskell.ts).
+        // ambiguity — see queries/haskell.scm).
         assert.ok(!references.some((r) => r.kind === "instantiate"));
         // Pattern deconstruction heads never surface as calls.
         assert.ok(!references.some((r) => r.name === "Circle" && r.kind === "call"));

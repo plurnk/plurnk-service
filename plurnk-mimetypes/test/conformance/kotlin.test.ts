@@ -34,7 +34,7 @@ describe("conformance: text/x-kotlin defs + refs ({§mimetype-references})", () 
             expectJoins: [
                 // Helper() inside Parser.parse joins to the local class
                 // Helper — constructor invocation is a call in Kotlin
-                // (queries/kotlin.ts header), and the join still lands.
+                // (queries/kotlin.scm header), and the join still lands.
                 { refName: "Helper", container: "Parser.parse" },
                 { refName: "tokenize", container: "Parser.parse" },
             ],

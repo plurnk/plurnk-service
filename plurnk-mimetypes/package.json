@@ -45,6 +45,7 @@
     },
     "files": [
         "dist/**/*",
+        "queries/*.scm",
         "bin/*.js",
         ".env.defaults",
         "README.md",

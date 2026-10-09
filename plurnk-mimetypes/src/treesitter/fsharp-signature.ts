@@ -1,2 +1,3 @@
+import { loadRefsQuery } from "./reference-query.ts";
 export { extract } from "./fsharp.ts";
-export { refsQuery } from "./queries/fsharp-signature.ts";
+export const refsQuery = await loadRefsQuery("fsharp-signature");

@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
@@ -184,4 +185,4 @@ function parameterName(node: TreeSitterNode): string | null {
     }
 }
 
-export { refsQuery } from "./queries/python.ts";
+export const refsQuery = await loadRefsQuery("python");

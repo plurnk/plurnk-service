@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
@@ -138,4 +139,4 @@ function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string,
 
 // Re-export walkJs for symmetry (not used directly).
 export { walkJs };
-export { refsQuery } from "./queries/typescript.ts";
+export const refsQuery = await loadRefsQuery("typescript");

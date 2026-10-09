@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
@@ -136,4 +137,4 @@ function push(
     out.push(sym);
 }
 
-export { refsQuery } from "./queries/ruby.ts";
+export const refsQuery = await loadRefsQuery("ruby");

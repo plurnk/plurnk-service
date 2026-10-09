@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
@@ -167,4 +168,4 @@ function push(out: TreeSitterSymbolProjection[], kind: SymbolKind, name: string,
     });
 }
 
-export { refsQuery } from "./queries/kotlin.ts";
+export const refsQuery = await loadRefsQuery("kotlin");

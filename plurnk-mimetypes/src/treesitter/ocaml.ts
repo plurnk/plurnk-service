@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { SymbolKind } from "../types.ts";
@@ -174,4 +175,4 @@ function push(
     });
 }
 
-export { refsQuery } from "./queries/ocaml.ts";
+export const refsQuery = await loadRefsQuery("ocaml");

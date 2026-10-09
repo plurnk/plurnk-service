@@ -1057,11 +1057,18 @@ the field. The value must equal a path produced from that entry's symbols.
 
 | Extractor family              | References implementation                                                                        |
 |-------------------------------|--------------------------------------------------------------------------------------------------|
-| Framework tree-sitter mapping | Embedded query source plus the shared query engine and symbol-containment resolver.              |
+| Framework tree-sitter mapping | Packaged `.scm` query source plus the shared query engine and symbol-containment resolver.        |
 | Dedicated tree-sitter handler | `setQueryContext(...)` once during parser load, then `collectRefs(...)` through the same engine. |
 | ANTLR handler                 | Visitor-side `withExtractor.addRef(...)` and `gateContainer(...)`.                               |
 | Hand-written handler          | Direct deterministic `MimeRef[]` projection.                                                     |
 | References-free handler       | Inherited empty array.                                                                           |
+
+§mimetype-query-assets Framework reference queries live in `queries/<language>.scm`
+inside the MIME package. The existing lazy mapping import reads its declared
+assets in order; TSX composes TypeScript and JSX patterns without duplicating the
+TypeScript query. Source and built modules resolve the same packaged assets.
+Missing assets and invalid queries are package failures, never an empty-reference
+fallback ({§mimetype-error-policy}).
 
 All references satisfy these invariants:
 

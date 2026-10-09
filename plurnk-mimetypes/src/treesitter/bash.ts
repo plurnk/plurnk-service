@@ -1,3 +1,4 @@
+import { loadRefsQuery } from "./reference-query.ts";
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
@@ -67,4 +68,4 @@ function push(
     });
 }
 
-export { refsQuery } from "./queries/bash.ts";
+export const refsQuery = await loadRefsQuery("bash");

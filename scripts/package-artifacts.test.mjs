@@ -2,6 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
 
+test("{§mimetype-query-assets} packed MIME queries are complete", async () => {
+    const { readdir } = await import("node:fs/promises");
+    const assets = (await readdir(new URL("../plurnk-mimetypes/queries/", import.meta.url)))
+        .filter((name) => name.endsWith(".scm")).map((name) => `queries/${name}`);
+    assert.ok(assets.length > 0);
+    assert.deepEqual(packageArtifactViolations("plurnk-mimetypes", assets), []);
+    for (const asset of assets) assert.deepEqual(
+        packageArtifactViolations("plurnk-mimetypes", assets.filter((path) => path !== asset)),
+        [`plurnk-mimetypes: required runtime artifact is absent: ${asset}`],
+    );
+});
+
 test("package artifact projection leaves packages without special roots unchanged", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-aliases", ["dist/index.js"]), []);
 });

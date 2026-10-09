@@ -45,10 +45,9 @@ export interface TreeSitterLanguageMapping {
     deepJson?(content: string): unknown | Promise<unknown>;
     // Optional references-channel query ({§mimetype-references}): tree-sitter query
     // source (S-expression patterns) whose `@ref.<kind>` captures yield the
-    // classified symbol uses. Lives in src/treesitter/queries/{slug}.ts as
-    // an embedded string (reviewable .scm content without a build-time copy
-    // step) and is re-exported by the mapping module. Languages without a
-    // query serve an empty references channel.
+    // classified symbol uses. Loaded from packaged .scm assets by the mapping
+    // module ({§mimetype-query-assets}). Languages without a query serve an empty
+    // references channel.
     refsQuery?: string;
 }
 
