@@ -82,10 +82,28 @@ review an independently active child while its own worker is idle. Concurrent co
 to one owner can see the same gate; Core settles it at most once. A matching worker's Run
 receives its own gate; only when none is connected does delivery use the owner's conversation
 Runs. Unrelated operation Runs do not receive it.
-Resurfacing a gate preserves its originating Run's continuation. Successful resume emits
+Each presentation of a gate retains its own Run continuation. Successful resume emits
 the standard `TOOL_CALL_RESULT` for each settled interrupt before continuing; this acknowledges
 the decision, not completion of the approved operation.
 Server approval policy belongs to Core.
+
+## §agui-run-disconnect Run lifetime
+
+Approval ownership does not confer responsibility for cancelling running work.
+
+| Connection | Unexpected disconnect |
+|---|---|
+| Message Run or executing `op.exec` / `op.parse` Run | Cancel its bound worker with `client_disconnected`. |
+| Resume of that Run's interrupt | Retain the same cancellation responsibility and worker binding. |
+| Observation, including approval of independently started work | Detach; do not cancel work. |
+| Other management Run | Detach. |
+
+An authored terminal or interrupt ends the connection normally without cancellation.
+The disconnect handler is installed before asynchronous Run preparation; a disconnected
+request must not subsequently start work. Interrupt continuations are adapter-owned,
+not worker ownership or a second core lifecycle. Rediscovery, including after module
+restart, presents a fresh observer continuation rather than inferring a prior connection's
+cancellation responsibility.
 
 ## §agui-owner-connection Persistent observation
 
@@ -312,19 +330,25 @@ Every client-owned daemon proposal—file edits and `[300]` operator questions�
 every contracts-owned client interaction emits an AG-UI tool call and terminates AG-UI Run A with
 `RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
 by default; absence is not an answer. AG-UI Run B on the same thread supplies standard
-`RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId`, using
-`prop:<logEntryId>` for proposals and `int:<interactionId>` for client interactions. The module
+`RunAgentInput.resume` entries. Each entry echoes the supplied opaque `Interrupt.id`;
+`Interrupt.toolCallId` separately identifies the underlying tool call (`prop:<logEntryId>`
+for proposals, `int:<interactionId>` for client interactions). Separate presentations of
+one gate have separate interrupt IDs, so an observer cannot inherit another Run's
+cancellation responsibility ({§agui-run-disconnect}). Unknown presentations require
+rediscovery; pending proposals and interactions remain durable in Core. The module
 resolves the complete pending interrupt set for one worker, restores the thread's live projection
 state, and only then releases it. The pending Worker's persisted Worker and Loop remain the exact
-resolution identity. When that Worker is a descendant without its own live Run, its nearest live
-ancestor conversation is the controlling Run: Run A presents the descendant gate and Run B remains
-bound to the ancestor conversation while releasing the exact descendant. Reconnect discovers the
-same descendant set from Core's authoritative Worker topology. A terminal published after a
+resolution identity. Owner-addressed gates route under {§agui-worker-owner}: when an owning
+conversation presents another worker's gate, its resume stays bound to that conversation while
+releasing the exact requesting worker. Reconnect discovers pending gates from Core by recorded
+owner, not inferred ancestry. A terminal published after a
 descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot
 settle Run A before the interrupt is emitted. Concurrent descendant gates are
 presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
 Sibling and unrelated conversations never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
-interrupt sets fails before any stopped operation is released.
+interrupt sets fails before any stopped operation is released. Mixing presentations or
+conversations produces `interrupt-binding-invalid`; a connection closed before validated
+resolution produces `connection-closed` without releasing the stopped work.
 Loop terminals received while a resume is being validated or resolved are held:
 successful resolution delivers the bound Loop's terminal once; rejected resolution
 emits its exact `RUN_ERROR`, never success from the previously interrupted Loop.
@@ -564,9 +588,8 @@ nor hide updates from the producer ({§notifications-stream-event-on-channel-cha
 `loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup
 abort. An action that opens a stream remains one live AG-UI Run; its result is
 held until every observed stream emits `stream/concluded`, then the result and
-`RUN_FINISHED` close that Run. A client disconnect before settlement cancels
-the action worker with reason `client_disconnected`; it never silently converts
-the action into detached background work.
+`RUN_FINISHED` close that Run. Executing actions retain their cancellation
+responsibility through interrupts under {§agui-run-disconnect}.
 
 ## §agui-topology-scope Topology scope
 
@@ -714,7 +737,9 @@ reconstruct one from `RUN_ERROR`.
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
 | `interrupt-duplicate` | 400 | The resume contains the same interrupt more than once. Recovery: Include each pending interrupt exactly once. |
 | `interrupt-invalid` | 400 | The resume contains an invalid client interrupt. Recovery: Resume with the interrupt IDs and response shapes supplied by the pending tool calls. |
-| `interrupt-not-pending` | 409 | The resume addresses an interrupt that is not pending. Recovery: Refresh pending interrupts before resuming. |
+| `interrupt-not-pending` | 409 | The resume addresses an interrupt that is not pending, or an unknown interrupt presentation. Recovery: Refresh pending interrupts before resuming. |
+| `interrupt-binding-invalid` | 400 | The resume combines interrupts from different Runs, or does not match its interrupt's conversation. |
+| `connection-closed` | 499 | The connection closed before the interrupt was resolved. |
 | `worker-scope-invalid` | 400 | One resume must address interrupts for exactly one worker. Recovery: Resume each worker separately. |
 | `interrupt-set-incomplete` | 409 | The resume does not address every pending interrupt for worker *id*. Recovery: Resolve every pending interrupt for this worker in one resume. |
 | `invalid-json` | 400 | The request body is not valid JSON. |

@@ -21,6 +21,25 @@ import { streamEvent, termination } from "../test/notification-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
 
+const capture = (portal: Portal, events: AguiEvent[]) => {
+    const interrupts = new Map<string, Interrupt>();
+    return {
+        emit(batch: AguiEvent[]): void {
+            events.push(...batch);
+            for (const event of batch) {
+                if (event.type !== "TOOL_CALL_END") continue;
+                const interrupt = portal.interruptForToolCall(event.toolCallId);
+                if (interrupt !== null) interrupts.set(event.toolCallId, interrupt);
+            }
+        },
+        interrupt(toolCallId: string): Interrupt {
+            const interrupt = interrupts.get(toolCallId);
+            assert.ok(interrupt, `missing presented interrupt for ${toolCallId}`);
+            return interrupt;
+        },
+    };
+};
+
 const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
     workerId: 10,
@@ -455,7 +474,7 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
 test("a durable client interaction re-surfaces with its exact standard Interrupt and resumes through core", async () => {
     const m = mockSeam([], [interaction({ interactionId: 30, loopId: 7 })]);
     const seen: AguiEvent[] = [];
-    let interrupt: unknown;
+    let interrupt: Interrupt | null = null;
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({
@@ -472,15 +491,17 @@ test("a durable client interaction re-surfaces with its exact standard Interrupt
 
     assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
     assert.equal(m.workers.length, 1, "{§agui-message-before-gate}: the message reaches Core before the gate is re-presented");
-    assert.deepEqual(interrupt, {
-        id: "int:30",
+    const presented = interrupt as Interrupt | null;
+    assert.ok(presented);
+    assert.deepEqual(presented, {
+        id: presented.id,
         reason: "tool_call",
         toolCallId: "int:30",
         message: "Choose one color.",
         responseSchema: interaction().request.responseSchema,
     });
     await portal.resolve(3, thread, [{
-        interruptId: "int:30",
+        interruptId: presented.id,
         status: "resolved",
         payload: { color: "orange" },
     }]);
@@ -496,15 +517,16 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
     const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, seen);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "conversation", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "conversation", emit: view.emit });
 
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
     assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
     assert.equal(start?.toolCallName, "request_approval");
 
-    await portal.resolve(3, thread, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept" } }]);
+    await portal.resolve(3, thread, [{ interruptId: view.interrupt("prop:42").id, status: "resolved", payload: { decision: "accept" } }]);
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept" } });
 
     assert.equal(portal.cancel(10), true);
@@ -524,13 +546,14 @@ test("a descendant proposal interrupts its controlling conversation and resumes 
     const firstSeen: AguiEvent[] = [];
     const resumedSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
         notificationScope: "conversation",
-        emit: (events) => firstSeen.push(...events),
+        emit: view.emit,
     });
     await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
@@ -543,7 +566,7 @@ test("a descendant proposal interrupts its controlling conversation and resumes 
     portal.closeRun(3, first);
 
     const resume = [{
-        interruptId: "prop:42",
+        interruptId: view.interrupt("prop:42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
@@ -658,13 +681,14 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
     });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, seen);
     portal.start();
     const thread = portal.openThread({
         workspaceId: 3,
         workerId: 10,
         threadId: "client", owner: OWNER,
         notificationScope: "conversation",
-        emit: (events) => seen.push(...events),
+        emit: view.emit,
     });
 
     assert.equal(
@@ -677,7 +701,7 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
 
     portal.closeRun(3, thread);
     const resume = [{
-        interruptId: "int:30",
+        interruptId: view.interrupt("int:30").id,
         status: "resolved" as const,
         payload: { color: "orange" },
     }];
@@ -715,13 +739,14 @@ test("multiple descendant gates serialize through one controlling conversation",
     const firstSeen: AguiEvent[] = [];
     const secondSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
         notificationScope: "conversation",
-        emit: (events) => firstSeen.push(...events),
+        emit: view.emit,
     });
 
     assert.equal(await portal.run(first, {
@@ -739,7 +764,7 @@ test("multiple descendant gates serialize through one controlling conversation",
     portal.closeRun(3, first);
 
     const firstResume = [{
-        interruptId: "prop:42",
+        interruptId: view.interrupt("prop:42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
@@ -792,14 +817,16 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     const m = mockSeam([pending]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, seen);
     portal.start();
     const thread = portal.openThread({
         workspaceId: 3,
         workerId: 10,
         threadId: "client", owner: OWNER,
         notificationScope: "conversation",
-        emit: (events) => seen.push(...events),
+        emit: view.emit,
     });
+    await portal.synchronize(3, thread);
     m.seam.resolveProposal = async () => {
         m.fire(3, "loop/terminated", termination({
             workerId: 10,
@@ -812,7 +839,7 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     };
 
     await portal.resolve(3, thread, [{
-        interruptId: "prop:42",
+        interruptId: view.interrupt("prop:42").id,
         status: "resolved",
         payload: { decision: "accept" },
     }]);
@@ -831,6 +858,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     const firstSeen: AguiEvent[] = [];
     const resumedSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
@@ -839,7 +867,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         threadId: "client", owner: OWNER,
         notificationScope: "conversation",
         inputRunId: "run-a",
-        emit: (events) => firstSeen.push(...events),
+        emit: view.emit,
     });
     await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "go" });
     m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
@@ -849,7 +877,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     portal.closeRun(3, first);
 
     const resume = [{
-        interruptId: "prop:42",
+        interruptId: view.interrupt("prop:42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
@@ -903,6 +931,7 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
     const resumedSeen: AguiEvent[] = [];
     const managementSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
+    const view = capture(portal, interruptedSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
@@ -911,14 +940,14 @@ test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope 
         threadId: "client", owner: OWNER,
         inputRunId: "operation-a",
         notificationScope: "operation",
-        emit: (events) => interruptedSeen.push(...events),
+        emit: view.emit,
     });
     m.fire(3, "loop/proposal", pending);
     assert.ok(interruptedSeen.some((event) => event.type === "TOOL_CALL_END"));
     portal.closeRun(3, first);
 
     const resume = [{
-        interruptId: "prop:42",
+        interruptId: view.interrupt("prop:42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];

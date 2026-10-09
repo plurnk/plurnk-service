@@ -40,6 +40,7 @@ export interface HitlDelivery {
     readonly recipient: string;
     readonly workerId: number;
     readonly loopId: number;
+    readonly turnId: number;
     readonly batch: HitlBatch;
 }
 
@@ -189,6 +190,7 @@ export default class ProposalHitl {
                     recipient: recipient(item),
                     workerId: item.workerId,
                     loopId: item.loopId,
+                    turnId: item.turnId,
                     batch: render(item),
                 });
                 return;
@@ -199,6 +201,7 @@ export default class ProposalHitl {
                     recipient: recipient(item),
                     workerId: item.workerId,
                     loopId: item.loopId,
+                    turnId: item.turnId,
                     batch: render(item),
                 });
             }
@@ -238,6 +241,7 @@ export default class ProposalHitl {
                 recipient: address,
                 workerId,
                 loopId: first.loopId,
+                turnId: first.turnId,
                 batch: combine(workerPending),
             };
         });

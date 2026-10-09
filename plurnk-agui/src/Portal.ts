@@ -7,7 +7,8 @@
 
 import EventRouter from "./EventRouter.ts";
 import { aliveChildren, descendantsState, stateDelta, type AguiDescendantsState } from "./AguiPlus.ts";
-import { selectWorkerLoop } from "@plurnk/plurnk-contracts";
+import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
+import { HttpProblemError } from "./action-results.ts";
 import type { TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
@@ -30,6 +31,8 @@ interface Thread {
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
     resolvingInterrupts: boolean;
+    cancelOnDisconnect: boolean;
+    disconnected: boolean;
     // {§agui-gate-deferral} — the stopped-world held while the bound Worker's reasoning lifecycle is open.
     deferredDelivery: HitlDelivery | null;
     // {§agui-delegation-observation} — descendants' rows and streams, when the Run asked for them.
@@ -60,14 +63,19 @@ export interface Descendant {
 }
 
 interface InterruptContinuation {
+    readonly cancelOnDisconnect: boolean;
     readonly workspaceId: number;
     readonly gate: WorkerBinding;
-    readonly control: { readonly workerId: number; readonly loopId: number | null };
+    readonly binding: { readonly workerId: number; readonly loopId: number | null };
     readonly owner: string;
     readonly threadId: string;
-    readonly inputRunId: string;
     readonly notificationScope: NotificationScope;
     readonly state: TranslatorContinuation;
+}
+
+interface PresentedInterrupt {
+    readonly toolCallId: string;
+    readonly continuation: InterruptContinuation;
 }
 
 // The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
@@ -93,7 +101,7 @@ export default class Portal {
     #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
     #activeInterrupts = new Map<string, Interrupt>();
-    #continuations = new Map<string, InterruptContinuation>();
+    #continuations = new Map<string, PresentedInterrupt>();
     #deliveryTails = new Map<number, Promise<void>>();
     #off: (() => void) | null = null;
 
@@ -318,21 +326,31 @@ export default class Portal {
                 continue;
             }
             const paused = thread.router.interrupt();
-            for (const interrupt of delivery.batch.interrupts) {
-                const key = interrupt.toolCallId ?? interrupt.id;
-                const existing = this.#continuations.get(key);
-                if (existing === undefined || existing.inputRunId === thread.inputRunId) this.#continuations.set(key, {
-                    workspaceId,
-                    owner: delivery.recipient,
-                    gate: { workerId: delivery.workerId, loopId: delivery.loopId },
-                    control: { workerId: thread.workerId, loopId: controlLoopId },
-                    threadId: thread.threadId,
-                    inputRunId: thread.inputRunId,
-                    notificationScope: thread.notificationScope,
-                    state: paused.continuation,
+            const continuation: InterruptContinuation = {
+                cancelOnDisconnect: thread.cancelOnDisconnect,
+                workspaceId,
+                owner: delivery.recipient,
+                gate: { workerId: delivery.workerId, loopId: delivery.loopId },
+                binding: { workerId: thread.workerId, loopId: controlLoopId },
+                threadId: thread.threadId,
+                notificationScope: thread.notificationScope,
+                state: {
+                    ...paused.continuation,
+                    currentTurn: paused.continuation.currentTurn
+                        ?? (thread.workerId === delivery.workerId ? delivery.turnId : null),
+                },
+            };
+            const interrupts = delivery.batch.interrupts.map((original) => {
+                const interrupt = { ...original, id: crypto.randomUUID() };
+                this.#continuations.set(interrupt.id, {
+                    toolCallId: original.toolCallId ?? original.id,
+                    continuation,
                 });
-            }
-            thread.emit([...delivery.batch.events, ...paused.events]);
+                return interrupt;
+            });
+            this.#withHitl({ events: delivery.batch.events, interrupts }, () => {
+                thread.emit([...delivery.batch.events, ...paused.events]);
+            });
         }
     }
 
@@ -340,7 +358,7 @@ export default class Portal {
         const delivery = thread.deferredDelivery;
         if (delivery === null || thread.router.reasoningOpen) return;
         thread.deferredDelivery = null;
-        this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, [thread]));
+        this.#emitDelivery(workspaceId, delivery, [thread]);
     }
 
     #withHitl(batch: HitlBatch, emit: (events: AguiEvent[]) => void): void {
@@ -361,7 +379,7 @@ export default class Portal {
             .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope !== "result");
         const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
         const recipients = exact.length > 0 ? exact : threads.filter((thread) => thread.notificationScope === "conversation");
-        this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, recipients));
+        this.#emitDelivery(workspaceId, delivery, recipients);
     }
 
     #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {
@@ -432,13 +450,13 @@ export default class Portal {
     // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
-    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         const candidates = args.resume
-            ?.map(({ interruptId }) => this.#continuations.get(interruptId)) ?? [];
-        const restored = candidates.find((candidate) => candidate !== undefined
-            && candidate.workspaceId === args.workspaceId
-            && candidate.owner === args.owner
-            && candidate.threadId === args.threadId);
+            ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
+        const first = candidates[0];
+        const restored = first !== undefined && candidates.every((candidate) => candidate === first)
+            && first.workspaceId === args.workspaceId && first.owner === args.owner && first.threadId === args.threadId
+            ? first : undefined;
         const continuation = restored?.state;
         const router = new EventRouter({
             threadId: args.threadId,
@@ -449,8 +467,8 @@ export default class Portal {
         });
         const t: Thread = {
             owner: args.owner ?? null,
-            workerId: restored?.control.workerId ?? args.workerId,
-            loopId: restored?.control.loopId ?? null,
+            workerId: restored?.binding.workerId ?? args.workerId,
+            loopId: restored?.binding.loopId ?? null,
             notificationScope: restored?.notificationScope ?? args.notificationScope,
             router,
             emit: args.emit,
@@ -460,6 +478,8 @@ export default class Portal {
             deferredFinish: null,
             pendingTerminations: [],
             resolvingInterrupts: args.resume !== undefined,
+            cancelOnDisconnect: restored?.cancelOnDisconnect ?? args.cancelOnDisconnect === true,
+            disconnected: false,
             deferredDelivery: null,
             descendants: args.descendants === true,
             tree: null,
@@ -475,6 +495,13 @@ export default class Portal {
     }
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
+
+    disconnect(thread: unknown): void {
+        const bound = thread as Thread;
+        if (bound.disconnected) return;
+        bound.disconnected = true;
+        if (bound.cancelOnDisconnect) this.#seam.cancelDrain(bound.workerId, "client_disconnected");
+    }
 
     runStarted(thread: unknown, state?: AguiEvent): AguiEvent[] {
         return (thread as Thread).router.runStarted(state);
@@ -517,6 +544,11 @@ export default class Portal {
     async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
         if (thread.owner === null) return false;
         const deliveries = await this.#hitl.resurface(workspaceId, thread.owner);
+        const pendingIds = new Set(deliveries.flatMap(({ batch }) => batch.interrupts.map(({ toolCallId, id }) => toolCallId ?? id)));
+        for (const [id, candidate] of this.#continuations) {
+            if (candidate.continuation.workspaceId === workspaceId && candidate.continuation.owner === thread.owner
+                && !pendingIds.has(candidate.toolCallId)) this.#continuations.delete(id);
+        }
         if (deliveries.length === 0) return false;
         const delivery = deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
         if (delivery === undefined) return false;
@@ -525,10 +557,7 @@ export default class Portal {
                 ? delivery.loopId
                 : await this.#activeLoopId(workspaceId, thread.workerId);
         }
-        this.#withHitl(
-            delivery.batch,
-            () => this.#emitDelivery(workspaceId, delivery, [thread]),
-        );
+        this.#emitDelivery(workspaceId, delivery, [thread]);
         return true;
     }
 
@@ -567,6 +596,11 @@ export default class Portal {
     async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
         const bound = thread as Thread;
         const ack = await this.#seam.runLoop(args);
+        if (bound.disconnected) {
+            if (bound.cancelOnDisconnect) this.#seam.cancelDrain(bound.workerId, "client_disconnected");
+            return null;
+        }
+        if (!this.#threads.get(args.workspaceId)?.has(bound)) return null;
         if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         this.#bindLoop(bound, ack.loopId);
         return { loopId: ack.loopId };
@@ -574,53 +608,46 @@ export default class Portal {
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }
 
-    // A standard resume AG-UI Run binds to the persisted continuation before
+    // A standard resume AG-UI Run binds to its presentation's continuation before
     // releasing every addressed interrupt.
     async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
         const bound = thread as Thread;
         if (bound.owner === null) throw new Error("an observer cannot resolve interrupts");
         bound.resolvingInterrupts = true;
         const continuations = entries.map(({ interruptId }) => this.#continuations.get(interruptId));
-        const persisted = continuations.filter(
-            (continuation): continuation is InterruptContinuation => continuation !== undefined,
+        const recorded = continuations.filter(
+            (continuation): continuation is PresentedInterrupt => continuation !== undefined,
         );
-        if (persisted.length > 0 && persisted.length !== entries.length) {
-            throw new Error("resume mixes persisted and unbound interrupts");
+        if (recorded.length !== entries.length || recorded.length === 0) {
+            throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-not-pending", 409,
+                "The resume addresses an unknown interrupt presentation.", {
+                    stage: "interrupt-resolution", retryable: false,
+                    recovery: "Refresh pending interrupts before resuming.",
+                }));
         }
-        const continuation = persisted[0];
-        if (continuation !== undefined) {
-            for (const candidate of persisted) {
-                if (candidate.workspaceId !== continuation.workspaceId
-                    || candidate.owner !== continuation.owner
-                    || candidate.threadId !== continuation.threadId
-                    || candidate.gate.workerId !== continuation.gate.workerId
-                    || candidate.gate.loopId !== continuation.gate.loopId
-                    || candidate.control.workerId !== continuation.control.workerId
-                    || candidate.control.loopId !== continuation.control.loopId) {
-                    throw new Error("resume interrupts do not share one persisted control binding");
-                }
-            }
+        const continuation = recorded[0]!.continuation;
+        if (recorded.some((candidate) => candidate.continuation !== continuation)) {
+            throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
+                "The resume combines interrupts from different Runs."));
         }
-        await this.#hitl.resolve(workspaceId, bound.owner, entries, async (resolution) => {
-            if (continuation !== undefined) {
-                if (continuation.workspaceId !== workspaceId
-                    || continuation.owner !== bound.owner
-                    || continuation.threadId !== bound.threadId
-                    || continuation.gate.workerId !== resolution.workerId
-                    || continuation.gate.loopId !== resolution.loopId) {
-                    throw new Error("resume does not match its persisted interrupt binding");
-                }
-                bound.workerId = continuation.control.workerId;
-                bound.loopId = continuation.control.loopId;
-                bound.notificationScope = continuation.notificationScope;
-            } else {
-                const exact = resolution.workerId === bound.workerId;
-                bound.loopId = exact
-                    ? resolution.loopId
-                    : await this.#activeLoopId(workspaceId, bound.workerId);
+        const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index]!.toolCallId }));
+        await this.#hitl.resolve(workspaceId, bound.owner, resolutions, (resolution) => {
+            if (continuation.workspaceId !== workspaceId
+                || continuation.owner !== bound.owner
+                || continuation.threadId !== bound.threadId
+                || continuation.gate.workerId !== resolution.workerId
+                || continuation.gate.loopId !== resolution.loopId) {
+                throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
+                    "The resume does not match its interrupt's conversation."));
             }
+            bound.workerId = continuation.binding.workerId;
+            bound.loopId = continuation.binding.loopId;
+            bound.notificationScope = continuation.notificationScope;
+            bound.cancelOnDisconnect = continuation.cancelOnDisconnect;
+            if (bound.disconnected) throw new HttpProblemError(Problems.create("agui:interrupt", "connection-closed", 499,
+                "The connection closed before the interrupt was resolved."));
         });
-        bound.emit(entries.map((entry) => ({
+        bound.emit(resolutions.map((entry) => ({
             type: EventType.TOOL_CALL_RESULT,
             toolCallId: entry.interruptId,
             messageId: `${entry.interruptId}/result`,
@@ -630,7 +657,10 @@ export default class Portal {
         // even when the previously interrupted loop has already terminated.
         bound.resolvingInterrupts = false;
         if (bound.loopId !== null) this.#bindLoop(bound, bound.loopId);
-        for (const { interruptId } of entries) this.#continuations.delete(interruptId);
+        const resolvedIds = new Set(resolutions.map(({ interruptId }) => interruptId));
+        for (const [id, candidate] of this.#continuations) {
+            if (candidate.continuation.workspaceId === workspaceId && resolvedIds.has(candidate.toolCallId)) this.#continuations.delete(id);
+        }
         if (this.#threads.get(workspaceId)?.has(bound)) {
             const surfaced = await this.#resurfaceControlled(workspaceId, bound);
             if (!surfaced && bound.loopId === null) this.finishThread(bound, []);

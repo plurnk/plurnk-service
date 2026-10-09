@@ -10,7 +10,7 @@ interface Frame {
     delta?: string;
     toolCallId?: string;
     content?: string;
-    outcome?: { type: string; interrupts?: Array<{ id: string }> };
+    outcome?: { type: string; interrupts?: Array<{ id: string; toolCallId?: string }> };
 }
 const frames = (body: string): Frame[] => body.split("\n\n")
     .filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as Frame);
@@ -58,7 +58,8 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
         assert.equal((await daemon.readWorker({ workspaceId: workspace.id, identity: { id: child.workerId } })).owner, parent.owner);
         const resolved = frames(await (await post("/agui", "operator", answer)).text());
         assert.equal(resolved.at(-1)?.outcome?.type, "success", JSON.stringify(resolved));
-        const acknowledgement = resolved.find(({ type, toolCallId }) => type === "TOOL_CALL_RESULT" && toolCallId === interruptId);
+        const acknowledgement = resolved.find(({ type, toolCallId }) => type === "TOOL_CALL_RESULT"
+            && toolCallId === terminal?.outcome?.interrupts?.[0]?.toolCallId);
         assert.deepEqual(JSON.parse(acknowledgement?.content ?? "null"), { status: "resolved", payload: { decision: "accept" } });
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId: workspace.id, workerId: child.workerId }),
             (loops: Array<{ terminalResult: { status: number } | null }>) => loops.some(({ terminalResult }) => terminalResult?.status === 200));

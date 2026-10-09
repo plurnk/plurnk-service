@@ -40,16 +40,16 @@ const interruptedBy = (events: readonly AguiEvent[], op: string): string => {
         type?: string;
         outcome?: {
             type?: string;
-            interrupts?: Array<{ interruptId?: string; id?: string }>;
+            interrupts?: Array<{ id: string; toolCallId?: string }>;
         };
     } | undefined;
     assert.equal(terminal?.type, "RUN_FINISHED");
     assert.equal(terminal?.outcome?.type, "interrupt");
     const interrupt = terminal.outcome.interrupts?.[0];
-    const id = interrupt?.interruptId ?? interrupt?.id;
+    const id = interrupt?.id;
     if (typeof id !== "string") assert.fail("the interrupt has no string identity");
     const args = events.find((event) => event.type === "TOOL_CALL_ARGS"
-        && (event as { toolCallId?: unknown }).toolCallId === id) as {
+        && (event as { toolCallId?: unknown }).toolCallId === interrupt?.toolCallId) as {
         delta?: string;
     } | undefined;
     assert.ok(args?.delta !== undefined, JSON.stringify(events));

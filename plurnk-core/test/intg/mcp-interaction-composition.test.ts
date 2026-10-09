@@ -93,13 +93,20 @@ const interaction = (events: readonly Event[], keys: readonly string[]): Interru
     assert.equal(outcome.type, "interrupt");
     assert.equal(outcome.interrupts?.length, 1, "one MCP input set is one atomic client interaction");
     const interrupt = outcome.interrupts![0]!;
-    assert.match(interrupt.id, /^int:\d+$/u);
-    assert.equal(interrupt.toolCallId, interrupt.id);
+    assert.ok(interrupt.id.length > 0);
+    assert.match(interrupt.toolCallId, /^int:\d+$/u);
     assert.deepEqual(Object.keys(interrupt.responseSchema.properties as object).toSorted(), [...keys].toSorted());
     assert.ok(events.some((event) => event.type === "TOOL_CALL_START"
-        && event.toolCallId === interrupt.id && event.toolCallName === "mcp_input_required"));
+        && event.toolCallId === interrupt.toolCallId && event.toolCallName === "mcp_input_required"));
     assert.doesNotMatch(JSON.stringify(events), /round-one|round-two|opaque/u, "upstream continuation state stays private");
     return interrupt;
+};
+
+const rediscovered = (events: readonly Event[], keys: readonly string[], previous: Interrupt): Interrupt => {
+    const current = interaction(events, keys);
+    assert.notEqual(current.id, previous.id, "rediscovery has its own interrupt continuation");
+    assert.deepEqual({ ...current, id: previous.id }, previous, "a new AG-UI Run re-presents the same pending operation");
+    return current;
 };
 
 const completed = (events: readonly Event[], provider: Mock, expected: RegExp): void => {
@@ -118,11 +125,10 @@ for (const cancel of [false, true]) {
         const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
         const first = interaction(await start(), ["profile", "approval"]);
         assert.equal(provider.received.length, 1);
-        const resurfaced = interaction(await reconnect(), ["profile", "approval"]);
-        assert.deepEqual(resurfaced, first, "a new AG-UI Run re-presents the same pending operation");
+        const resurfaced = rediscovered(await reconnect(), ["profile", "approval"], first);
         assert.equal(provider.received.length, 1, "reconnect performs no inference");
         const events = await post({ resume: [{
-            interruptId: first.id,
+            interruptId: resurfaced.id,
             ...(cancel ? { status: "cancelled" } : { status: "resolved", payload: {
                 profile: { action: "accept", content: { name: "Ada" } },
                 approval: { action: "decline" },
@@ -137,7 +143,7 @@ test("{§mcp-host-composition}: AG-UI URL elicitation preserves its browser acti
     const { provider, post, start } = await setup(t, '````fixture (url)\n{}\n````');
     const events = await start();
     const pending = interaction(events, ["authorize"]);
-    const args = events.filter((event) => event.type === "TOOL_CALL_ARGS" && event.toolCallId === pending.id)
+    const args = events.filter((event) => event.type === "TOOL_CALL_ARGS" && event.toolCallId === pending.toolCallId)
         .map((event) => event.delta).join("");
     assert.equal(JSON.parse(args).requests.authorize.params.url, "https://example.test/authorize");
     completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
@@ -156,8 +162,8 @@ test("{§mcp-host-composition}: two MRTR rounds stay on the originating operatio
     const stale = await post({ resume: [{ interruptId: first.id, status: "cancelled" }] });
     assert.ok(stale.some((event) => event.type === "RUN_ERROR"));
     assert.match(JSON.stringify(stale), /interrupt-not-pending/u);
-    assert.deepEqual(interaction(await reconnect(), ["confirm"]), second);
-    completed(await post({ resume: [{ interruptId: second.id, status: "resolved", payload: {
+    const resurfaced = rediscovered(await reconnect(), ["confirm"], second);
+    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
         confirm: { action: "accept", content: { confirm: true } },
     } }] }), provider, /Ada confirmed/u);
 });
@@ -172,8 +178,8 @@ test("{§mcp-host-composition}: a schema-invalid AG-UI answer preserves the pend
     assert.ok(invalid.some((event) => event.type === "RUN_ERROR"));
     assert.match(JSON.stringify(invalid), /interaction-response-invalid/u);
     assert.equal(provider.received.length, 1, "invalid client input did not finish the operation");
-    assert.deepEqual(interaction(await reconnect(), ["profile", "approval"]), pending);
-    completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
+    const resurfaced = rediscovered(await reconnect(), ["profile", "approval"], pending);
+    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
         profile: { action: "accept", content: { name: "Ada" } },
         approval: { action: "decline" },
     } }] }), provider, /"name": "Ada"/u);
@@ -210,9 +216,9 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
         preflight: { action: "accept", content: { proceed: true } },
     } }] }), ["profile", "authorize"]);
     assert.notEqual(first.id, second.id);
-    assert.deepEqual(interaction(await reconnect(), ["profile", "authorize"]), second);
+    const resurfaced = rediscovered(await reconnect(), ["profile", "authorize"], second);
     assert.equal(provider.received.length, 1, "Task input and reconnect never release the model early");
-    completed(await post({ resume: [{ interruptId: second.id, status: "resolved", payload: {
+    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
         profile: { action: "accept", content: { name: "Ada" } },
         authorize: { action: "accept" },
     } }] }), provider, /Ada reviewed MCP/u);
@@ -292,7 +298,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             const workspaceId = snapshot.plurnk.workspace.id;
             const [waiting] = await daemon.pendingClientInteractions(workspaceId);
             assert.ok(waiting);
-            assert.equal(`int:${waiting.interactionId}`, pending.id);
+            assert.equal(`int:${waiting.interactionId}`, pending.toolCallId);
             const workerId = waiting.workerId;
             if (boundary === "owner cancellation") {
                 await daemon.cancelWorker({ workspaceId, workerId, reason: "MCP operation cancelled" });
@@ -340,8 +346,8 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     assert.equal(outcome.ok, false, JSON.stringify(rejected));
     assert.equal(outcome.problem?.status, 409);
     assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
-    assert.deepEqual(interaction(await reconnect(), ["profile", "authorize"]), pending);
-    completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
+    const resurfaced = rediscovered(await reconnect(), ["profile", "authorize"], pending);
+    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
         profile: { action: "accept", content: { name: "Ada" } },
         authorize: { action: "accept" },
     } }] }), provider, /Ada reviewed MCP/u);

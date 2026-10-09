@@ -376,12 +376,13 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.equal(terminal?.type, "RUN_FINISHED");
         const outcome = terminal?.outcome as {
             readonly type?: string;
-            readonly interrupts?: ReadonlyArray<{ readonly toolCallId?: string }>;
+            readonly interrupts?: ReadonlyArray<{ readonly id: string; readonly toolCallId?: string }>;
         } | undefined;
         assert.equal(outcome?.type, "interrupt");
         assert.equal(outcome?.interrupts?.length, 1);
-        const interruptId = outcome?.interrupts?.[0]?.toolCallId;
-        assert.match(interruptId ?? "", /^prop:\d+$/);
+        const interruptId = outcome?.interrupts?.[0]?.id;
+        assert.ok(interruptId);
+        assert.match(outcome?.interrupts?.[0]?.toolCallId ?? "", /^prop:\d+$/);
 
         const resumed = await post(port, runInput(workspace, "host-tool-b", {
             resume: [{

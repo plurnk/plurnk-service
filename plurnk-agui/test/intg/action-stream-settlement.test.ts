@@ -44,11 +44,11 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
             tools: [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }],
             forwardedProps: { plurnk: { ...workspace, action: { kind: "op.exec", command: "sleep 1; printf late" } } },
         }, t.signal);
-        const gate = proposed.at(-1) as { type?: string; outcome?: { type?: string; interrupts?: Array<{ interruptId?: string; id?: string }> } };
+        const gate = proposed.at(-1) as { type?: string; outcome?: { type?: string; interrupts?: Array<{ id: string }> } };
         assert.equal(gate.type, "RUN_FINISHED");
         assert.equal(gate.outcome?.type, "interrupt", JSON.stringify(proposed));
         const interrupt = gate.outcome?.interrupts?.[0];
-        const interruptId = interrupt?.interruptId ?? interrupt?.id;
+        const interruptId = interrupt?.id;
         assert.equal(typeof interruptId, "string");
 
         const resumed = await post(port, {

@@ -15,6 +15,7 @@ import type {
     WorkerOwner,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
+import type { Interrupt } from "@ag-ui/core";
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
 // carry only what the module under test reads.
@@ -211,6 +212,13 @@ const post = async (port: number, body: Record<string, unknown>): Promise<AguiEv
     const events = text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
     replayState(events);
     return events;
+};
+
+const presentedInterrupt = (events: AguiEvent[]): Interrupt => {
+    const last = events.at(-1);
+    assert.ok(last?.type === "RUN_FINISHED" && last.outcome?.type === "interrupt");
+    assert.equal(last.outcome.interrupts.length, 1);
+    return last.outcome.interrupts[0]!;
 };
 
 for (const status of [200, 502]) {
@@ -1609,6 +1617,216 @@ test("client hangup cancels an unfinished streaming action instead of detaching 
     } finally { await mod.close(); }
 });
 
+for (const origin of ["message", "action", "observer", "observer-after-message", "rediscovered"] as const) {
+    for (const ending of ["disconnect", "terminal"] as const) {
+        test(`{§agui-run-disconnect}: ${origin} retains its lifetime role through resume and ${ending}`, async () => {
+            const { seam, emit } = mockSeam();
+            const action = origin === "action";
+            const workerId = action ? 10 : 77;
+            const gateWorkerId = action ? 10 : 88;
+            let pending: ProposalProjection[] = [{
+                logEntryId: 42, workerId: gateWorkerId, loopId: 1, turnId: 1,
+                op: "EDIT", target: { scheme: "file", authority: null, pathname: "a" },
+                body: "replacement", attrs: {}, owner: "agui://anonymous/threads/lifetime",
+                disposition: { decision: "review" },
+            }];
+            const cancellations: Array<{ workerId: number; reason?: string }> = [];
+            const resolved = Promise.withResolvers<void>();
+            const releaseAction = Promise.withResolvers<void>();
+            seam.listWorkers = async () => [workerRow(77, "lifetime"), workerRow(88, "child", "model", 77)];
+            seam.listWorkerLoops = async ({ workerId: selected }) => [{
+                id: selected === gateWorkerId ? 1 : 9, workerId: selected, sequence: 1, status: 202,
+                prompt: "", promptSource: null, terminatedAt: null, terminalResult: null, packetCount: 1, waitUntil: null,
+            }];
+            seam.pendingProposals = async () => pending;
+            seam.resolveProposal = async () => { pending = []; resolved.resolve(); };
+            seam.cancelDrain = (id, reason) => { cancellations.push({ workerId: id, reason }); return true; };
+            seam.dispatchClientAction = async () => {
+                emit(3, "loop/proposal", pending[0]);
+                await releaseAction.promise;
+                return [{ status: 200 }];
+            };
+            let responseClosed = Promise.withResolvers<void>();
+            const observeResponse = (response: import("node:http").ServerResponse): void => {
+                response.once("close", responseClosed.resolve);
+            };
+            let mod = await host(seam, {}, observeResponse);
+            const binding = { threadId: "lifetime", forwardedProps: { plurnk: { workspace: "w" } } };
+            const observe = () => post(mod.address().port, {
+                ...binding, runId: crypto.randomUUID(),
+                forwardedProps: { plurnk: { workspace: "w", mode: "sync", control: true } },
+            });
+            const controller = new AbortController();
+            try {
+                let events = origin === "observer" ? await observe() : await post(mod.address().port, {
+                    ...binding, runId: "origin",
+                    ...(action ? { forwardedProps: { plurnk: { workspace: "w", action: { kind: "op.exec", command: "true" } } } }
+                        : { messages: [{ role: "user", content: "Work." }] }),
+                });
+                const original = events.at(-1);
+                assert.ok(original?.type === "RUN_FINISHED" && original.outcome?.type === "interrupt");
+                assert.deepEqual(cancellations, [], "normal interrupt closure leaves the paused work alive");
+                if (origin === "rediscovered") {
+                    await mod.close();
+                    mod = await host(seam, {}, observeResponse);
+                }
+                if (origin === "observer-after-message" || origin === "rediscovered") events = await observe();
+                const terminal = events.at(-1);
+                assert.ok(terminal?.type === "RUN_FINISHED" && terminal.outcome?.type === "interrupt");
+                const interrupt = terminal.outcome.interrupts[0]!;
+                if (origin === "observer-after-message") {
+                    assert.notEqual(interrupt.id, original.outcome.interrupts[0]!.id,
+                        "the observer answers its own presentation, not the originating connection's continuation");
+                }
+                responseClosed = Promise.withResolvers<void>();
+                const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
+                    method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+                    body: JSON.stringify(standardInput({
+                        ...binding, runId: "resume",
+                        resume: [{ interruptId: interrupt.id, status: "resolved", payload: { decision: "accept" } }],
+                    })),
+                });
+                const body = response.text();
+                await waitForFixture(resolved.promise, () => "the resumed approval did not reach Core");
+                if (ending === "disconnect") {
+                    controller.abort();
+                    await assert.rejects(body, { name: "AbortError" });
+                    await responseClosed.promise;
+                } else {
+                    if (action) releaseAction.resolve();
+                    else emit(3, "loop/terminated", termination({ workerId, loopId: 9 }));
+                    assert.match(await body, /RUN_FINISHED/);
+                }
+            } finally {
+                controller.abort();
+                releaseAction.resolve();
+                await mod.close();
+            }
+            assert.deepEqual(cancellations,
+                ending === "disconnect" && (origin === "message" || action)
+                    ? [{ workerId, reason: "client_disconnected" }] : [],
+                "approval does not change which connection owns the work's lifetime");
+        });
+    }
+}
+
+test("{§agui-run-disconnect}: a socket closed during preparation cannot start inference later", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const preparing = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const responseClosed = Promise.withResolvers<void>();
+    seam.listWorkerLoops = async () => { preparing.resolve(); await release.promise; return []; };
+    const mod = await host(seam, {}, (response) => { response.once("close", responseClosed.resolve); });
+    const controller = new AbortController();
+    try {
+        const response = fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
+            method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+            body: JSON.stringify(standardInput({ threadId: "early", messages: [{ role: "user", content: "Work." }],
+                forwardedProps: { plurnk: { workspace: "w" } } })),
+        });
+        await preparing.promise;
+        controller.abort();
+        await assert.rejects(response, { name: "AbortError" });
+        await responseClosed.promise;
+    } finally {
+        release.resolve();
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    try {
+        assert.deepEqual(loopRuns, [], "a disconnected request cannot admit its prompt after preparation completes");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-proposal-resolve}: invalid presentation sets release nothing and leave the original complete set resumable", async () => {
+    const { seam, resolves } = mockSeam();
+    let pending: ProposalProjection[] = [41, 42].map((logEntryId) => ({
+        logEntryId, workerId: 77, loopId: 1, turnId: 1, op: "EDIT",
+        target: { scheme: "file", authority: null, pathname: `file-${logEntryId}` }, body: "replacement", attrs: {},
+        owner: "agui://anonymous/threads/presentations", disposition: { decision: "review" },
+    }));
+    seam.pendingProposals = async () => pending;
+    const resolve = seam.resolveProposal;
+    seam.resolveProposal = async (id, resolution, owner) => {
+        pending = pending.filter(({ logEntryId }) => logEntryId !== id);
+        await resolve(id, resolution, owner);
+    };
+    const mod = await host(seam);
+    const binding = { threadId: "presentations", forwardedProps: { plurnk: { workspace: "w" } } };
+    const observe = async (): Promise<Interrupt[]> => {
+        const events = await post(mod.address().port, {
+            ...binding, forwardedProps: { plurnk: { workspace: "w", mode: "sync", control: true } },
+        });
+        const terminal = events.at(-1);
+        assert.ok(terminal?.type === "RUN_FINISHED" && terminal.outcome?.type === "interrupt");
+        return terminal.outcome.interrupts;
+    };
+    try {
+        const first = await observe();
+        const second = await observe();
+        assert.equal(first.length, 2);
+        assert.equal(second.length, 2);
+        const resumed = (interruptId: string) => ({ interruptId, status: "resolved", payload: { decision: "accept" } });
+        const cases = [
+            { ids: [first[0]!.id], code: "interrupt-set-incomplete" },
+            { ids: [first[0]!.id, first[0]!.id], code: "interrupt-duplicate" },
+            { ids: [first[0]!.id, second[1]!.id], code: "interrupt-binding-invalid" },
+            { ids: ["unknown-presentation"], code: "interrupt-not-pending" },
+        ];
+        for (const { ids, code } of cases) {
+            const events = await post(mod.address().port, { ...binding, resume: ids.map(resumed) });
+            const error = events.at(-1);
+            assert.ok(error?.type === "RUN_ERROR");
+            assert.equal(error.code, `https://problems.plurnk.xyz/agui/interrupt/${code}`);
+            assert.deepEqual(resolves, [], "invalid input cannot partly release stopped work");
+        }
+        const events = await post(mod.address().port, { ...binding, resume: first.map(({ id }) => resumed(id)) });
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+        assert.deepEqual(resolves.map(({ logEntryId }) => logEntryId), [41, 42]);
+        const stale = await post(mod.address().port, { ...binding, resume: second.map(({ id }) => resumed(id)) });
+        const error = stale.at(-1);
+        assert.ok(error?.type === "RUN_ERROR");
+        assert.equal(error.code, "https://problems.plurnk.xyz/agui/interrupt/interrupt-not-pending");
+        assert.equal(resolves.length, 2, "another presentation cannot release an already resolved gate");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-run-disconnect}: disconnect during resume validation cancels controlled work without releasing its approval", async () => {
+    const { seam, resolves } = mockSeam();
+    const pending: ProposalProjection[] = [{ logEntryId: 42, workerId: 77, loopId: 9, turnId: 1, op: "EDIT",
+        target: { scheme: "file", authority: null, pathname: "file" }, body: "replacement", attrs: {},
+        owner: "agui://anonymous/threads/validating", disposition: { decision: "review" } }];
+    seam.pendingProposals = async () => pending;
+    const cancellations: number[] = [];
+    seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
+    const validating = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let responseClosed = Promise.withResolvers<void>();
+    const mod = await host(seam, {}, (response) => { response.once("close", responseClosed.resolve); });
+    const controller = new AbortController();
+    const binding = { threadId: "validating", forwardedProps: { plurnk: { workspace: "w" } } };
+    try {
+        const interrupted = await post(mod.address().port, { ...binding, messages: [{ role: "user", content: "Work." }] });
+        seam.pendingProposals = async () => { validating.resolve(); await release.promise; return pending; };
+        responseClosed = Promise.withResolvers<void>();
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
+            method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+            body: JSON.stringify(standardInput({ ...binding, resume: [{ interruptId: presentedInterrupt(interrupted).id,
+                status: "resolved", payload: { decision: "accept" } }] })),
+        });
+        const body = assert.rejects(response.text(), { name: "AbortError" });
+        await validating.promise;
+        controller.abort();
+        await body;
+        await responseClosed.promise;
+        release.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.deepEqual(cancellations, [77]);
+        assert.deepEqual(resolves, []);
+    } finally { release.resolve(); controller.abort(); await mod.close(); }
+});
+
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
     let pending: ProposalProjection[] = [{
@@ -1631,9 +1849,12 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     };
     const mod = await host(seam);
     try {
+        const interrupted = await post(mod.address().port, {
+            threadId: "t2", forwardedProps: { plurnk: { workspace: "t2", mode: "sync", control: true } },
+        });
         const events = await post(mod.address().port, {
             threadId: "t2", runId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
-            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited", outcome: "client_yolo" } }],
+            resume: [{ interruptId: presentedInterrupt(interrupted).id, status: "resolved", payload: { decision: "accept", body: "edited", outcome: "client_yolo" } }],
         });
         assert.equal(events[0].type, "RUN_STARTED");
         assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited", outcome: "client_yolo" } }, `the resume reached resolveProposal: ${JSON.stringify(events)}`);
@@ -1682,7 +1903,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
             const late = await post(mod.address().port, {
                 threadId: "resume-race", runId: "after-expiry",
                 forwardedProps: { plurnk: { workspace: "resume-race" } },
-                resume: [{ interruptId: "int:88", status: "cancelled" }],
+                resume: [{ interruptId: presentedInterrupt(interrupted).id, status: "cancelled" }],
             });
             assert.equal(late[0]?.type, "RUN_STARTED", JSON.stringify(late));
             const outcome = late.at(-1);
@@ -1772,7 +1993,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
         assert.deepEqual(terminal.outcome, {
             type: "interrupt",
             interrupts: [{
-                id: "int:88",
+                id: presentedInterrupt(interrupted).id,
                 reason: "tool_call",
                 toolCallId: "int:88",
                 message: "Choose one color.",
@@ -1786,7 +2007,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
             runId: "interaction-b",
             forwardedProps: { plurnk: { workspace: "interaction-thread" } },
             resume: [{
-                interruptId: "int:88",
+                interruptId: presentedInterrupt(interrupted).id,
                 status: "resolved",
                 payload: { color: "orange" },
             }],
@@ -1881,7 +2102,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
 
         await agent.runAgent({ forwardedProps: { plurnk: { workspace: "verified-interrupt" } } });
 
-        assert.deepEqual(agent.pendingInterrupts.map(({ id }) => id), ["prop:42"]);
+        assert.deepEqual(agent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["prop:42"]);
         const reattachedAgent = new HttpAgent({
             url: `http://127.0.0.1:${mod.address().port}/agui`,
             threadId: "verified-interrupt",
@@ -1892,12 +2113,13 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
             forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
         });
 
-        assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ id }) => id), ["prop:42"]);
+        assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["prop:42"]);
+        assert.notEqual(reattachedAgent.pendingInterrupts[0]!.id, agent.pendingInterrupts[0]!.id);
         assert.equal(loopRuns.length, 0, "reattaching to a durable interrupt does not start new model work");
         const resumedEvents: string[] = [];
         await reattachedAgent.runAgent({
             forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
-            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept" } }],
+            resume: [{ interruptId: reattachedAgent.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }],
         }, {
             onEvent: ({ event }) => { resumedEvents.push(event.type); },
         });
@@ -2060,7 +2282,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         }).outcome;
         assert.equal(outcome?.type, "interrupt");
         assert.deepEqual(outcome?.interrupts?.map(({ id, reason, toolCallId }) => ({ id, reason, toolCallId })), [
-            { id: "prop:42", reason: "tool_call", toolCallId: "prop:42" },
+            { id: presentedInterrupt(events).id, reason: "tool_call", toolCallId: "prop:42" },
         ]);
         assert.equal(loopRuns.length, 0, "interrupt synchronization creates no model work");
     } finally {

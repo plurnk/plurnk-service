@@ -16,7 +16,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "cancelDrain" | "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner">;
+export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -212,9 +212,20 @@ export default class RunHandler {
             emit,
             modelWorkerId: workerId,
             inputRunId: input.runId,
+            cancelOnDisconnect: prompt !== null || notificationScope === "operation",
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
+        // {§agui-run-disconnect} Install once, before any asynchronous preparation.
+        const disconnected = (): void => {
+            if (finished) return;
+            this.#portal().disconnect(boundRun);
+            finish();
+        };
+        res.once("close", disconnected);
+        if (res.destroyed) { disconnected(); return; }
+        try {
         const status = await this.#workerStatus(workspaceId, workerId);
+        if (finished) return;
         let providers;
         let catalogProblem;
         try { providers = this.#seam().listProviders().aliases; }
@@ -229,7 +240,6 @@ export default class RunHandler {
         if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
 
-        try {
         // {§agui-conversation-sync} — the existing Run endpoint can project the
         // daemon's durable conversation without admitting a prompt or starting inference.
         // A live Loop remains observed; an idle one settles after its snapshot.
@@ -238,14 +248,10 @@ export default class RunHandler {
                 emit([{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }]);
             }
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+            if (finished) return;
             emit(this.#portal().replay(boundRun, history));
             if (finished) return;
-            const observing = await this.#portal().synchronize(workspaceId, boundRun, connect);
-            if (observing) {
-                // This Run observes work it did not start. Disconnect detaches the
-                // observer; it must not cancel the independently-owned Loop.
-                res.on("close", finish);
-            }
+            await this.#portal().synchronize(workspaceId, boundRun, connect);
             return;
         }
 
@@ -279,19 +285,13 @@ export default class RunHandler {
                         ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
                         : { ok: false, problem });
                 });
-            res.on("close", () => {
-                if (finished) return;
-                this.#seam().cancelDrain(lifecycleWorkerId, "client_disconnected");
-                finish();
-            });
             return;
         }
 
         // AG-UI interrupt resume: this is a new AG-UI Run on the same thread. Bind it
-        // to the durable continuation before releasing the proposal.
+        // to its presentation's continuation before releasing the proposal.
         if (input.resume !== undefined) {
             await this.#portal().resolve(workspaceId, boundRun, input.resume);
-            res.on("close", finish); // client hangup on a resume just detaches; the loop is already active
             return;
         }
 
@@ -299,6 +299,7 @@ export default class RunHandler {
 
         if (reattached) {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER }).catch(() => null);
+            if (finished) return;
             if (history !== null && !RunHandler.#isOriented(input, history)) {
                 const replayUser = currentUser ?? undefined;
                 emit(this.#portal().replay(boundRun, history, replayUser));
@@ -334,14 +335,6 @@ export default class RunHandler {
                 }])]);
             }
         }
-        // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
-        // finished ourselves — terminal event or proposal-terminate — leaves the engine
-        // alone (the paused loop is exactly what the resume AG-UI Run needs).
-        res.on("close", () => {
-            if (finished) return;
-            this.#seam().cancelDrain(workerId, "client_disconnected");
-            finish();
-        });
         } catch (err) {
             // {§agui-http-failure} After headers, the frame alone is
             // not enough — the heartbeat interval and the Portal binding are live, and a
