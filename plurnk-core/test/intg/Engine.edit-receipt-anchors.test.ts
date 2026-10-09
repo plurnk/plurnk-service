@@ -12,6 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { packetSection } from "./_packet.ts";
 
 const execFileP = promisify(execFile);
 const SOURCE = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
@@ -61,7 +62,7 @@ second
                 for (const line of lines) assert.match(line, /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, `every context line is anchored: ${JSON.stringify(line)}`);
                 // The packet the model saw carries the same anchored body.
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnIds![2]! }))!.packet);
-                const log = (packet.sections as Array<{ name: string; content: string }>).find((s) => s.name === "log")?.content ?? JSON.stringify(packet);
+                const log = packetSection(packet, "log");
                 assert.match(log, /3<@[0-9A-Za-z]{5}>func requireFn\(a int\) int \{/, "the model sees line 3 with its anchor on the EDIT row");
                 const line3 = lines.find((line) => /^ *3<@[0-9A-Za-z]{5}>func requireFn/.test(line))!;
                 pending.anchor = /<(@[0-9A-Za-z]{5})>/.exec(line3)![1]!;

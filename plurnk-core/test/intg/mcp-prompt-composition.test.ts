@@ -81,14 +81,15 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             const promptRead = PlurnkParser.frame("READ (fixture:///prompts/inspect) <1,-1>", null);
             const resourceRead = PlurnkParser.frame(`READ (${provider.resource}#bytes) <1,3>`, null);
             const previousPrograms = [
-                null,
-                promptRead,
-                `${promptRead}\n\n${resourceRead}`,
-                `${promptRead}\n\n${resourceRead}`,
+                [],
+                [promptRead],
+                [promptRead, resourceRead],
+                [promptRead, resourceRead],
             ];
             for (const [index, messages] of provider.received.entries()) {
-                assert.deepEqual(messages.map(({ role }) => role), index === 0 ? ["system", "user"] : ["system", "user", "assistant", "user"]);
-                assert.deepEqual(messages.filter(({ role }) => role === "assistant"), index === 0 ? [] : [{ role: "assistant", content: previousPrograms[index] }],
+                const expected = previousPrograms[index]!;
+                assert.deepEqual(messages.map(({ role }) => role), ["system", "user", ...expected.flatMap(() => ["assistant", "user"])]);
+                assert.deepEqual(messages.filter(({ role }) => role === "assistant"), expected.map((content) => ({ role: "assistant", content })),
                     "only the model's retained operations have assistant authorship; MCP prompt roles remain user data");
             }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>

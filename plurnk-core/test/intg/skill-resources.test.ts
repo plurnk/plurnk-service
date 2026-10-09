@@ -196,18 +196,14 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
         const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the image." });
         assert.equal(result.finalStatus, 200);
     });
-    const user = provider.received[1]?.find(({ role }) => role === "user");
-    assert.ok(Array.isArray(user?.content), "the skill asset reaches the native request");
-    const image = user.content.find((part) => part.type === "file");
-    assert.ok(image?.type === "file");
-    assert.equal(image.mediaType, "image/png");
-    assert.deepEqual(Buffer.from(image.data), PNG);
+    for (const index of [1, 2]) {
+        const images = provider.received[index]!.flatMap(({ role, content }) =>
+            role === "user" && Array.isArray(content) ? content.filter((part) => part.type === "file") : []);
+        assert.equal(images.length, 1, "the skill READ contributes exactly one retained native delivery per request");
+        assert.equal(images[0]!.mediaType, "image/png");
+        assert.deepEqual(Buffer.from(images[0]!.data), PNG);
+    }
     assert.match(userText(provider.received[1]!), /1:89\n2:50\n3:4e/);
-    const later = provider.received[2]?.find(({ role }) => role === "user");
-    assert.ok(Array.isArray(later?.content), "the native observation stays in context");
-    const retained = later.content.find((part) => part.type === "file");
-    assert.ok(retained?.type === "file");
-    assert.deepEqual(Buffer.from(retained.data), PNG);
 });
 
 test("{§skills-functionality} a model discovers a skill and reads its original tree through the skill authority", async (t) => {

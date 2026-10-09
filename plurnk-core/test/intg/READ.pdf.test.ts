@@ -56,18 +56,20 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
     assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    const user = second[1];
+    const user = second[3];
     assert.ok(user !== undefined && Array.isArray(user.content), `the log message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
     assert.match(userText(second), /"tokensAttachment":1500/, "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const caption = user.content[user.content.indexOf(file) - 1];
-    assert.ok(caption?.type === "text" && /^log:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
-    assert.deepEqual(user.content.map(({ type }) => type), ["text", "text", "file"], "log text, caption and native document remain together");
+    assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
+    assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
+    assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
+    assert.match(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /1:looking[\s\S]*## Worker/u, "the subsequent NOTE and footer follow the PDF");
     assert.deepEqual(second[2], {
         role: "assistant",
         content: PlurnkParser.frame("READ (contract.pdf)", null),
-    }, "the complete READ follows the native input as assistant history; NOTE stays in the log");
+    }, "the complete READ precedes its native result; NOTE stays in the log");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

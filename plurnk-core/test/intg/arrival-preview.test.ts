@@ -9,7 +9,7 @@ import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_scheme.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
@@ -47,9 +47,9 @@ test("{§context-fit}: a jumbo message lands folded with its size; Open Messages
             assert.ok(prompt, "the arrival row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { weight: number; sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
-            const logSection = (packet.sections ?? []).find((sec) => sec.name === "log");
+            const log = packetSection(packet, "log");
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "messages");
-            assert.doesNotMatch(logSection?.content ?? "", /prompt line 1:/, "a body that does not fit is not shown in part");
+            assert.doesNotMatch(log, /prompt line 1:/, "a body that does not fit is not shown in part");
             const projectedPrompt = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
             assert.ok(projectedPrompt, "the arrival row is in the packet");
             assert.equal(projectedPrompt.body, undefined, "folded: the row is its size and its address");
@@ -157,7 +157,7 @@ test("{§context-fit}: a single-line jumbo prompt lands folded with its size, an
             const { turnIds } = resp as { loopId: number; turnIds: number[] };
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds.at(-1)! });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
-            const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
+            const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /hay hay/u, "the jumbo line is not stuffed into the packet, nor cut into it");
             const arrival = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
             assert.ok(arrival);

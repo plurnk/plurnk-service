@@ -68,7 +68,8 @@ test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log
             assert.match(before!, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before!, /converter raises before the view is named/u, "reasoning remains in its log row");
             assert.equal(previous, frame("READ (worker:///fact.txt)", null), "the assistant message retains the complete READ without copying reasoning or NOTE");
-            assert.match(before, /Bearing one\./u, "the content NOTE remains in the log");
+            assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE cannot precede its program");
+            assert.match(chatMessageText(envelope[3]!), /Bearing one\./u, "the content NOTE remains in the following log segment");
             assert.equal(JSON.parse(emissionRow.rx!).content, program, "the frozen emission still contains every admitted operation");
         } finally { await db.close(); }
     });

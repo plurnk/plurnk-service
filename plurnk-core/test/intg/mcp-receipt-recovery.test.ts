@@ -10,7 +10,6 @@ import StreamMock from "./_stream-mock.ts";
 import { logEntries } from "./_packet.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 // {§exec-stream-page} {§stream-observation-result} — the complete MCP transport →
@@ -39,7 +38,7 @@ for (const body of [null, '{"query":"fixture"}']) {
             frame("READ ($INVOCATION) <17,40>", null),
             frame("READ ($STREAM) <17,40>", null),
             frame("SEND [200]", "The output's tail is result 40."),
-        ].map(makeMockResponse) });
+        ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,

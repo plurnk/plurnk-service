@@ -5,10 +5,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
+import { packetSection } from "./_packet.ts";
 
 const logSection = (packet: string): string => {
-    const parsed = JSON.parse(packet) as { sections?: Array<{ name: string; content: string }> };
-    return parsed.sections?.find((s) => s.name === "log")?.content ?? packet;
+    return packetSection(JSON.parse(packet), "log");
 };
 const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));

@@ -22,7 +22,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { killStmt, noteStmt } from "./_dsl.ts";
 
@@ -612,7 +612,7 @@ test("an out-of-band disk change is runtime evidence, not a workspace broadcast"
         assert.equal(delta!.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
         assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: turn2.turnId });
-        const log = (JSON.parse(packet!.packet) as { sections: Array<{ name: string; content: string }> }).sections.find(({ name }) => name === "log")!.content;
+        const log = packetSection(JSON.parse(packet!.packet), "log");
         assert.doesNotMatch(log, /"git":" M"/, "runtime reconciliation evidence is not projected into the unrelated model packet");
     } finally {
         await db.close();

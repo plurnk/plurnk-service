@@ -12,6 +12,7 @@ import LineAnchors from "../../src/content/line-anchors.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { packetSection } from "./_packet.ts";
 
 const execFileP = promisify(execFile);
 const V1 = "one\ntwo\nthree\nfour\nfive\nsix\n";
@@ -149,8 +150,8 @@ replacement
                     assert.equal(problem.retryable, false);
                 }
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
-                const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")?.content;
-                assert.ok(typeof log === "string", "the next model packet contains the refused EDIT receipts");
+                const log = packetSection(packet, "log");
+                assert.ok(log.length > 0, "the next model packet contains the refused EDIT receipts");
                 for (const anchor of unresolved) assert.ok(log.includes(JSON.stringify(anchor)), "the current-state diagnosis reaches the model");
                 assert.ok(log.includes("0 of 1 edits applied."), "the packet reports only this operation's lack of effect");
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), ["ONE", "TWO", "THREE", ...fixture.current.split("\n").slice(3)].join("\n"), "only the valid EDITs landed");

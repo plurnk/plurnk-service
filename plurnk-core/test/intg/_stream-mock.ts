@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
 import { parseLogRecords } from "../LogRecords.ts";
+import { userText } from "./_mock.ts";
 
 // Follow the emitted resource address, not the causal log coordinate.
 export default class StreamMock extends Mock {
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         const response = await super.generate(...args);
         if (!/\$(?:STREAM|INVOCATION)/u.test(response.assistant.content)) return response;
-        const text = args[0].messages.map(chatMessageText).join("\n\n");
+        const text = userText(args[0].messages);
         const stream = /"stream"\s*:\s*"([a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8})(?:#|")/.exec(text)?.[1];
         assert.ok(stream, "the next program follows an execution address actually delivered to the model");
         let content = response.assistant.content.replaceAll("$STREAM", stream);

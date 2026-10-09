@@ -9,6 +9,7 @@ import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
 import { parseLogRecords } from "../LogRecords.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { packetSection } from "./_packet.ts";
 
 const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 
@@ -62,7 +63,7 @@ Continue the task.
                     assert.equal(rx.status, 200, JSON.stringify(rx));
                     assert.equal(rx.receipt.effect.removedText, "line 10\nline 11");
                     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
-                    const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")!.content;
+                    const log = packetSection(packet, "log");
                     const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
                     assert.ok(receipt, "the packet retains the KILL identity");
                     assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
@@ -100,7 +101,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
             const run = await runLoopToTerminal(ws, 2, { prompt: "remove the entry" });
             assert.equal(run.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
-            const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")!.content;
+            const log = packetSection(packet, "log");
             const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
             assert.ok(receipt);
             assert.equal(receipt.status, 200);

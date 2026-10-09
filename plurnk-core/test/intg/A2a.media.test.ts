@@ -101,14 +101,13 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             }
         }
         assert.equal(parts[5]!.length, 0, "curating the READ removes the attachment from context");
-        const restoredMessage = provider.received[6]!.find(({ role }) => role === "user");
-        assert.ok(restoredMessage, "the retained log is a user message");
-        const restoredContent = restoredMessage.content;
-        const restoredText = typeof restoredContent === "string" ? restoredContent : restoredContent[0]?.type === "text" ? restoredContent[0].text : null;
-        assert.ok(restoredText, "the log precedes native captions and parts within its message");
-        const log = /(?:^|\n)## Log\n\n([\s\S]*?)(?=\n\n## |$)/u.exec(restoredText)?.[1];
-        assert.ok(log, "the provider packet contains the materialized Log section");
-        const restoredRead = parseLogRecords(log).find((row) => row.path === `${resource}#bytes`);
+        const userParts = provider.received[6]!.flatMap(({ role, content }) => role !== "user" ? []
+            : typeof content === "string" ? [content] : content.flatMap((part) => part.type === "text" ? [part.text] : []));
+        const restoredRows = userParts.flatMap((text) => {
+            const log = /(?:^|\n)(### log:\/\/\/[\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1];
+            return log === undefined ? [] : parseLogRecords(log.trim());
+        });
+        const restoredRead = restoredRows.find((row) => row.path === `${resource}#bytes`);
         assert.ok(restoredRead, "the reacquired source has an ordinary byte READ receipt");
         assert.equal(restoredRead.body, Array.from(media.bytes.subarray(0, 3), (byte, index) =>
             `${index + 1}:${byte.toString(16).padStart(2, "0")}\n`).join(""), "text-only and native routes expose the same exact selected octets");

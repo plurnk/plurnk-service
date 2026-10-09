@@ -10,6 +10,7 @@ import { provider } from "./reasoning-fixture.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
+import { packetSection } from "./_packet.ts";
 
 test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and output inactivity", async (t) => {
     const db = await openMigrated();
@@ -150,7 +151,7 @@ test("{§child-orientation}: packet durations advance independently, clamp clock
         const next = await build();
         assert.equal(JSON.parse(next.sections.find(({ name }) => name === "delegation")!.content).streams[0].detail,
             "elapsed 320s; output unchanged 220s; stderr 0 lines (+0 bytes); stdout 1 lines (+0 bytes)");
-        assert.equal(next.sections.find(({ name }) => name === "log")!.content, first.sections.find(({ name }) => name === "log")!.content,
+        assert.equal(packetSection(next, "log"), packetSection(first, "log"),
             "volatile timing stays in the status footer, not the cacheable log prefix");
         now = Date.parse(openedAt) - 1_000;
         const backwards = await build();
