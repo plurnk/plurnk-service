@@ -4627,9 +4627,12 @@ the requested configuration normally.
 
 §methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
 `openPaths` belongs to the message submitted by the client. The client
-sends paths, never duplicated file bytes; core dispatches one ordinary
+sends local paths or scheme URIs, never duplicated resource bytes; core dispatches one ordinary
 `plurnk`-origin READ per path from inside the owning workspace, and successes
 and failures surface through the normal operation-result contract.
+Path spelling follows {§path-syntax}, including channel fragments and literal
+delimiters. Malformed URI syntax is rejected before message admission; a valid
+address whose resource is absent produces the ordinary READ failure.
 
 | `runLoop` disposition | Message and path behavior                                                                            |
 |-----------------------|------------------------------------------------------------------------------------------------------|

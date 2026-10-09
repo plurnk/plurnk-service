@@ -13,6 +13,14 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
+test("{§methods-loop-run-open-paths} malformed resource URIs are refused before a loop is admitted", () => {
+    assert.deepEqual(ClientInput.assertOpenPaths("runLoop", ["literal (file).txt", "worker:///reference.txt#body"]), ["literal (file).txt", "worker:///reference.txt#body"]);
+    const failure = failureFrom(() => ClientInput.assertOpenPaths("runLoop", ["http://["]));
+    assert.equal(failure.result.status, 400);
+    assert.equal(failure.result.problem.type, "https://problems.plurnk.xyz/daemon/input/open-path-invalid");
+    assert.equal(failure.result.problem.field, "openPaths[0]");
+});
+
 test("{§send-resource-attachments} message resources are validated before publication", () => {
     const resource = { name: "", mediaType: "application/octet-stream", bytes: new Uint8Array() };
     assert.deepEqual(ClientInput.assertMessageResources("runLoop", [resource]), [resource]);

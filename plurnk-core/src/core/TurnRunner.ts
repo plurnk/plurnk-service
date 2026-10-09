@@ -1,6 +1,6 @@
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, PlurnkParseError, TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import WorkerOwners from "./WorkerOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -1049,20 +1049,20 @@ export default class TurnRunner {
         return { nextActionIndex, openPaths };
     }
 
-    // {§methods-loop-run-open-paths}: selected workspace paths belong to the message.
+    // {§methods-loop-run-open-paths}: selected resources belong to the message.
     // Publish it, then dispatch ordinary core READs in that same turn;
     // missing/non-member paths retain their normal 4xx. Returns the next action index.
     async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number, fit: ContextFit): Promise<number> {
         let nextActionIndex = fromSequence;
         for (const [index, raw] of openPaths.entries()) {
-            const fileRead: ReadStatement = {
+            const resourceRead: ReadStatement = {
                 op: "READ", aside: null, lineMarker: null, matcher: null,
-                target: { kind: "local", raw },
+                target: parsePath(PathSyntax.escapeTarget(raw)),
                 metadata: null,
                 body: null, position: UNKNOWN_POSITION,
             };
             await this.#dispatch({
-                statement: fileRead, workspaceId, workerId, loopId, turnId,
+                statement: resourceRead, workspaceId, workerId, loopId, turnId,
                 sequence: nextActionIndex, origin: "_plurnk", onDispatch, onSettled,
                 fit: reserved(fit, openPaths.length - index - 1),
             });

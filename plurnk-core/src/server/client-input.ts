@@ -2,12 +2,15 @@
 // exact public operation failure for every module riding the daemon surface.
 // Internal invariant violations still throw ordinary implementation errors.
 import { isAbsolute } from "node:path";
+import { parsePath } from "@plurnk/plurnk-parser";
 import Results, { OperationFailureError } from "../core/results.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
 import type { ProposalResolution } from "@plurnk/plurnk-contracts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 import {
     Validator,
+    PathSyntax,
+    PlurnkParseError,
     type CapabilityPolicy,
     type ClientInteractionResolution,
     type MessageResource,
@@ -20,6 +23,7 @@ export default class ClientInput {
         code: string,
         detail: string,
         extensions: Readonly<Record<string, unknown>> = {},
+        cause?: unknown,
     ): never {
         throw new OperationFailureError(Results.failure(
             "daemon:input",
@@ -33,7 +37,7 @@ export default class ClientInput {
                 retryable: false,
                 ...extensions,
             },
-        ));
+        ), { cause });
     }
 
     // A workspace pin must be an absolute path (or null = headless) - a relative root would
@@ -245,6 +249,13 @@ export default class ClientInput {
                     `openPaths[${i}] is not a non-empty string.`,
                     { field: `openPaths[${i}]`, recovery: "Provide a non-empty path." },
                 );
+            }
+            try {
+                parsePath(PathSyntax.escapeTarget(openPaths[i] as string));
+            } catch (cause) {
+                if (!(cause instanceof PlurnkParseError)) throw cause;
+                ClientInput.#invalid(context, "open-path-invalid", `openPaths[${i}] is not a valid resource address.`,
+                    { field: `openPaths[${i}]` }, cause);
             }
         }
         return openPaths as string[];

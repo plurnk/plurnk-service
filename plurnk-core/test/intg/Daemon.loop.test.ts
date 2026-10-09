@@ -1,12 +1,13 @@
 import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import { seedEntryWithChannel } from "./_db.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
@@ -388,6 +389,31 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),
             "every selected path is read in the same turn that publishes the initial message");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme addresses and channels", async () => {
+    const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("````KILL\ndone\n````", 10)] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "openpaths-resources" });
+            const { id: workspaceId } = created.result as { id: number };
+            await seedEntryWithChannel(db, { workspaceId, scheme: "file", pathname: "literal (file).txt", content: "local-file-evidence" });
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/reference.txt", content: "scheme-channel-evidence" });
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "Inspect the selected evidence.", openPaths: ["literal (file).txt", "worker:///reference.txt#body"],
+            });
+            assert.equal(result.result.status, 200);
+            const reads = (await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; scheme: string | null; pathname: string; status_rx: number;
+            }>({ loop_id: result.loopId })).filter(({ op, origin }) => op === "READ" && origin === "_plurnk");
+            assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === null && pathname === "literal (file).txt" && status_rx === 200));
+            assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === "worker" && pathname === "/reference.txt" && status_rx === 200), JSON.stringify(reads));
+            const packet = mock.received[0]!.map(chatMessageText).join("\n");
+            assert.match(packet, /local-file-evidence/u);
+            assert.match(packet, /scheme-channel-evidence/u);
         } finally { ws.close(); }
     });
 });
