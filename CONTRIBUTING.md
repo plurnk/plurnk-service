@@ -29,12 +29,16 @@ npm test
 | `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:list` | Validate and list configuration ownership and source classes without values. |
 | `npm run candidate -- …` | Run an explicit client checkout against the source-built daemon. |
-| `npm run audit:direction` | Audit package import direction and runtime cycles. |
+| `npm run audit:direction` | Clean-build the workspaces, then audit emitted runtime imports, unresolved dependencies and cycles. |
 | `npm run audit:unused` | Find unused files, exports, and dependencies. |
 | `npm run audit:clones` | Find duplicated code across packages. |
 
 The three `audit:*` commands run on demand, outside the ordinary gates. Their
-configuration lives in `scripts/audit/`.
+configuration lives in `scripts/audit/`. Import-direction checks use built
+JavaScript with normal package exports; the compiler owns type erasure. The
+root lint separately checks the declared package dependency graph. Unused-code
+and clone findings require review: runtime discovery and generated grammars can
+hide genuine uses from static analysis, and similar adapters need not share policy.
 
 The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
 `jq` and package-local `test:llama` coverage are capability-dependent.

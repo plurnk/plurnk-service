@@ -53,7 +53,7 @@
         "prepare": "git config core.hooksPath .githooks && npm run build",
         "start": "npm start -w @plurnk/plurnk-service",
         "share": "npm run -s share -w @plurnk/plurnk-service --",
-        "audit:direction": "node scripts/audit/direction.mjs",
+        "audit:direction": "npm run build && node scripts/audit/direction.mjs",
         "audit:unused": "knip --config scripts/audit/knip.json --no-progress --no-config-hints",
         "audit:clones": "node scripts/audit/clones.mjs",
         "source:check": "oxlint --type-aware --report-unused-disable-directives .",
@@ -98,7 +98,6 @@
     "devDependencies": {
         "@changesets/cli": "3.0.3",
         "@possumtech/sqlrite": "^6.5.3",
-        "@swc/core": "1.16.2",
         "@types/node": "^26.1.1",
         "dependency-cruiser": "18.4.0",
         "jscpd": "5.3.2",
@@ -111,8 +110,7 @@
         "typescript": "^7.0.2"
     },
     "allowScripts": {
-        "esbuild@0.28.2": true,
-        "@swc/core@1.16.2": false
+        "esbuild@0.28.2": true
     },
     "overrides": {
         "smol-toml": "^1.7.1"

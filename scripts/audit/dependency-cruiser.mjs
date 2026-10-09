@@ -1,4 +1,4 @@
-// Import-direction audit (#891). On demand only: `npm run audit:direction`; never a gate.
+// Runtime import-direction audit (#1053). On demand only: `npm run audit:direction`; never a gate.
 // Package classes by directory: core `plurnk-core`, frameworks `plurnk-<kind>`,
 // their extensions `plurnk-<kind>-<name>` ({§core-extension-composition}); the parser is imported only
 // where AGENTS.md declares (the service, plurnk-agui, plurnk-execs).
@@ -6,6 +6,13 @@ const FRAMEWORKS = "schemes|execs|mimetypes|providers";
 
 export default {
     forbidden: [
+        {
+            name: "no-unresolved",
+            comment: "an unresolved runtime import is not evidence of a clean graph",
+            severity: "error",
+            from: {},
+            to: { couldNotResolve: true },
+        },
         {
             name: "no-leaf-to-core",
             comment: "a leaf never reaches the service; it is discovered by it",
@@ -29,19 +36,18 @@ export default {
         },
         {
             name: "no-circular",
-            comment: "runtime cycles only; type-only edges are erased at runtime",
+            comment: "runtime cycles only; the build has erased type-only edges",
             severity: "error",
             from: {},
-            to: { circular: true, dependencyTypesNot: ["type-only"] },
+            to: { circular: true },
         },
     ],
     options: {
         doNotFollow: { path: "node_modules" },
-        exclude: { path: ["node_modules", "/dist/", "/test/", "\\.test\\.ts$", "/generated/"] },
-        tsPreCompilationDeps: "specify",
+        exclude: { path: ["node_modules", "/test/", "\\.test\\.js$", "/generated/"] },
         enhancedResolveOptions: {
-            conditionNames: ["plurnk-dev", "import", "node", "default"],
-            extensions: [".ts", ".mts", ".mjs", ".js", ".json"],
+            conditionNames: ["import", "node", "default"],
+            extensions: [".mjs", ".cjs", ".js", ".json"],
             mainFields: ["module", "main"],
             exportsFields: ["exports"],
             modules: ["node_modules"],
