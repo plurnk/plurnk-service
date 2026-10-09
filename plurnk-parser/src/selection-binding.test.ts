@@ -14,6 +14,7 @@ for (const op of ["READ", "KILL"] as const) {
         for (const heading of [
             `${op} (a)<1,3>[{"keep":1}](b)[{"keep":2}]<4,6>`,
             `${op} (a) [{"keep":1}] <1,3> (b) <4,6> [{"keep":2}]`,
+            `${op} [{"keep":1}] (a) <1,3> (b) <4,6> [{"keep":2}]`,
         ]) {
             const ops = statements(heading);
             assert.equal(ops.length, 2);
@@ -66,6 +67,7 @@ for (const op of ["COPY", "MOVE"] as const) {
         for (const heading of [
             `${op} (a)<1,3>[{"pattern":"/first/"}](b)[{"pattern":"/second/"}]<4,6>`,
             `${op} (a) [{"pattern":"/first/"}] <1,3> (b) <4,6> [{"pattern":"/second/"}]`,
+            `${op} [{"pattern":"/first/"}] (a) <1,3> (b) <4,6> [{"pattern":"/second/"}]`,
         ]) {
             const ops = statements(heading);
             assert.equal(ops.length, 1);
@@ -73,5 +75,22 @@ for (const op of ["COPY", "MOVE"] as const) {
             assert.deepEqual([ops[0].source, ops[0].destination].map(({ target, lineMarker, matcher }) =>
                 [target.raw, lineMarker?.marks, matcher?.raw]), [["a", [1, 3], "/first/"], ["b", [4, 6], "/second/"]]);
         }
+    });
+}
+
+for (const op of ["READ", "KILL", "COPY", "MOVE"] as const) {
+    test(`{§slot-order}: ${op} binds leading metadata to the first operand and inter-path metadata to the preceding operand`, () => {
+        const ops = statements(`${op} [{"first":1}] (a) [{"second":2}] (b) [{"third":3}]`);
+        const selections = ops.flatMap((statement) => {
+            if (statement.op === "COPY" || statement.op === "MOVE") {
+                return [statement.source, statement.destination].map(({ target, metadata }) => [target.raw, metadata]);
+            }
+            assert.ok(statement.op === "READ" || statement.op === "KILL");
+            return [[statement.target?.raw, statement.metadata]];
+        });
+        assert.deepEqual(selections, [
+            ["a", ['{"first":1}', '{"second":2}']],
+            ["b", ['{"third":3}']],
+        ]);
     });
 }

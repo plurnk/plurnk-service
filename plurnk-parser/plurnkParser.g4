@@ -72,7 +72,7 @@ dispositionStatement
     : OPEN_WAIT execModifiers? opAside? statementEnd
     ;
 noteStatement : OPEN_NOTE opAside? statementEnd ;
-sendStatement : OPEN_SEND (resourceSelection | metadata+)? opAside? statementEnd ;
+sendStatement : OPEN_SEND (firstResourceSelection | metadata+)? opAside? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAside? statementEnd ;
@@ -97,7 +97,13 @@ statementEnd
 // Scope and metadata belong to that operand. Neither operation admits a body: the builder
 // ignores one with an advisory ({§transfer-resource-selections}).
 transferModifiers
-    : resourceSelection resourceSelection
+    : firstResourceSelection resourceSelection
+    ;
+
+// {§slot-order} — only the first selection can have leading metadata. Between
+// targets, metadata belongs to the preceding selection, without ambiguous attachment.
+firstResourceSelection
+    : metadata* resourceSelection
     ;
 
 resourceSelection
@@ -110,14 +116,14 @@ selectionModifier
     ;
 
 slotModifiers
-    : resourceSelection
-    | lineMarker targetWithMetadata?
+    : firstResourceSelection
+    | metadata* lineMarker targetWithMetadata?
     ;
 
 // {§target-group} — each path owns its modifiers. A leading scope can only have one target.
 targetGroup
-    : resourceSelection+
-    | lineMarker targetWithMetadata?
+    : firstResourceSelection resourceSelection*
+    | metadata* lineMarker targetWithMetadata?
     ;
 
 // The fence selects the executor; its program/tool path and metadata retain
@@ -127,14 +133,14 @@ execModifiers
     ;
 // {§exec-executor-slot} — `[{"cwd": …}]` metadata may stand without a program path on an execution.
 execSlot
-    : targetWithMetadata
+    : target
     | metadata
     | lineMarker
     ;
 
 // {§log-heading-notation} — `→ path`, as the log's receipt heading shows an address, is the target.
 target      : LPAREN TARGET_TEXT* lineMarker? RPAREN | ARROW_TARGET ;
-targetWithMetadata : target metadata* ;
+targetWithMetadata : metadata* target metadata* ;
 metadata    : LBRACKET METADATA_TEXT* RBRACKET ;
 lineMarker  : L_MARKER ;
 body        : BODY_TEXT+ ;

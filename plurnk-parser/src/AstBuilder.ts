@@ -36,6 +36,7 @@ import type {
     ExecModifiersContext,
     ExecStatementContext,
     FindStatementContext,
+    FirstResourceSelectionContext,
     KillStatementContext,
     WorkStatementContext,
     ForkStatementContext,
@@ -475,10 +476,10 @@ export default class AstBuilder {
     }
 
     static #targetSelections(ctx: TargetGroupContext | null, position: Position): TextSlots[] {
-        const selections = ctx?.resourceSelection() ?? [];
-        return selections.length === 0
+        const first = ctx?.firstResourceSelection() ?? null;
+        return first === null
             ? [AstBuilder.#extractTextSlots(ctx, position)]
-            : selections.map((selection) => AstBuilder.#extractTextSlots(selection, position));
+            : [first, ...ctx!.resourceSelection()].map((selection) => AstBuilder.#extractTextSlots(selection, position));
     }
 
     static #selectionTargets(selection: TextSlots & { matcher: MatcherBody | null }): (TextSlots & { matcher: MatcherBody | null })[] {
@@ -539,14 +540,12 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const modifier = ctx.transferModifiers();
-        const selections = modifier.resourceSelection();
-        if (selections.length !== 2) throw new Error("COPY grammar did not produce two resource selections");
         AstBuilder.#ignoreUnread("COPY", AstBuilder.#splitInlineBody(ctx, position), position);
         return {
             op: "COPY",
             aside: AstBuilder.#asideOf(ctx),
-            source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
-            destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
+            source: AstBuilder.#resourceSelectionFromCtx(modifier.firstResourceSelection(), position),
+            destination: AstBuilder.#resourceSelectionFromCtx(modifier.resourceSelection(), position),
             position,
         };
     }
@@ -554,14 +553,12 @@ export default class AstBuilder {
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
         const modifier = ctx.transferModifiers();
-        const selections = modifier.resourceSelection();
-        if (selections.length !== 2) throw new Error("MOVE grammar did not produce two resource selections");
         AstBuilder.#ignoreUnread("MOVE", AstBuilder.#splitInlineBody(ctx, position), position);
         return {
             op: "MOVE",
             aside: AstBuilder.#asideOf(ctx),
-            source: AstBuilder.#resourceSelectionFromCtx(selections[0]!, position),
-            destination: AstBuilder.#resourceSelectionFromCtx(selections[1]!, position),
+            source: AstBuilder.#resourceSelectionFromCtx(modifier.firstResourceSelection(), position),
+            destination: AstBuilder.#resourceSelectionFromCtx(modifier.resourceSelection(), position),
             position,
         };
     }
@@ -604,7 +601,7 @@ export default class AstBuilder {
     // A mid-turn SEND is a message to its recipient path, or to the user when it names none.
     static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractSlots(ctx.resourceSelection(), position);
+        const slots = AstBuilder.#extractSlots(ctx.firstResourceSelection(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const options = AstBuilder.#liftBareOptionObject("SEND", AstBuilder.#metadataFromCtx(ctx), split, position);
         const raw = options.lifted ? split.below : AstBuilder.#headingBody("SEND", ctx, split.inline, position);
@@ -739,7 +736,7 @@ export default class AstBuilder {
     }
 
     static #extractSlots(
-        modCtx: SlotModifiersContext | ResourceSelectionContext | null,
+        modCtx: SlotModifiersContext | FirstResourceSelectionContext | ResourceSelectionContext | null,
         pos: Position,
         parseScope: (text: string, position: Position) => LineMarker = AstBuilder.#parseLineMarker,
     ): Slots {
@@ -751,7 +748,7 @@ export default class AstBuilder {
         };
     }
 
-    static #extractTextSlots(modCtx: SlotModifiersContext | ResourceSelectionContext | TargetGroupContext | null, pos: Position): TextSlots {
+    static #extractTextSlots(modCtx: SlotModifiersContext | FirstResourceSelectionContext | ResourceSelectionContext | TargetGroupContext | null, pos: Position): TextSlots {
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
@@ -835,7 +832,7 @@ export default class AstBuilder {
             : blocks.map((block) => block.METADATA_TEXT().map((token) => token.getText()).join(""));
     }
 
-    static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position, op = "COPY/MOVE"): ResourceSelection {
+    static #resourceSelectionFromCtx(ctx: FirstResourceSelectionContext | ResourceSelectionContext, pos: Position, op = "COPY/MOVE"): ResourceSelection {
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
         if (target === null) throw new Error("resource selection grammar did not produce a target");
         const lifted = AstBuilder.#liftMatcher(op, AstBuilder.#metadataFromCtx(ctx), pos, null, false, false, target);

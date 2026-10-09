@@ -1327,5 +1327,8 @@ test("the fence name selects the execution while its modifiers retain their cont
     const executorCwd = oneStatement('````node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n````');
     if (!isExecution(executorCwd)) assert.fail("expected an execution");
     assert.deepEqual(executorCwd.metadata, ['{"cwd": "sub"}']);
-    assert.equal(firstError("````READ [python3] (tool.py)````").message, "unrecognized character '[' in the READ header");
+    const read = oneStatement("````READ [python3] (tool.py)````");
+    assert.equal(read.op, "READ");
+    assert.equal(read.target?.raw, "tool.py");
+    assert.deepEqual(read.metadata, ["python3"], "the resource owner validates opaque metadata, not the grammar");
 });

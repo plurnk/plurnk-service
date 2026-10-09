@@ -78,6 +78,31 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
     });
 }
 
+test("{§slot-order} {§message-completion}: leading completion metadata resolves only its addressed Open Message", async () => {
+    const followup = "message://alice/followup";
+    const { db, engine, turn, answer, ids } = await setup([
+        said(PlurnkParser.frame(`SEND [200] (${followup})`, "Follow-up deliverable.")),
+        said(PlurnkParser.frame(`SEND [200] (${message})`, "Four.")),
+    ]);
+    try {
+        await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, followup);
+        const first = await turn();
+        assert.equal(first.status, 102, "the original message remains unresolved");
+        const second = await turn();
+        assert.equal(second.status, 200, "both explicitly addressed messages are now complete");
+        for (const [turnId, addressed] of [[first.turnId, followup], [second.turnId, message]] as const) {
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: turnId });
+            const replies = rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx));
+            assert.equal(replies.length, 1);
+            assert.equal(replies[0].status, 200);
+            assert.deepEqual(replies[0].answers, [addressed]);
+        }
+        const outcome = await answer();
+        assert.ok("content" in outcome);
+        assert.equal(outcome.content, "Four.", "the loop's deliverable answers its original assignment");
+    } finally { await db.close(); }
+});
+
 test("{§message-completion} {§loop-answer}: an empty completion succeeds without a fabricated answer", async () => {
     const { db, engine, turn, answer, ids, parentId } = await setup([said(conclude())]);
     try {

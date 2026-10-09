@@ -106,11 +106,15 @@ const ticks = String.fromCharCode(96).repeat(3);
 const answerTail = "Complete answer.\\n" + ticks + "\\n"
     + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
-    const parsed = parse(PlurnkParser.frame("SEND [200]", answerTail));
-    assertClean("completion reply", parsed);
-    const statements = statementsOf(parsed);
-    if (statements.length !== 1 || statements[0]?.op !== "SEND" || statements[0]?.body?.raw !== answerTail) {
-        throw new Error("packed parser truncated the answer or executed its example");
+    for (const target of ["", " (message://dogfood04/6094c6e9)"]) {
+        const parsed = parse(PlurnkParser.frame("SEND [200]" + target, answerTail));
+        assertClean("completion reply", parsed);
+        const statements = statementsOf(parsed);
+        if (statements.length !== 1 || statements[0]?.op !== "SEND" || statements[0]?.body?.raw !== answerTail
+            || statements[0]?.metadata?.[0] !== "200"
+            || statements[0]?.target?.raw !== (target ? "message://dogfood04/6094c6e9" : undefined)) {
+            throw new Error("packed parser changed the completion reply's target, metadata, or body");
+        }
     }
 }
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")

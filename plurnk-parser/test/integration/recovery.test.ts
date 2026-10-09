@@ -94,9 +94,11 @@ test("conflicting scopes on one resource selection are rejected without affectin
     }
 });
 
-test("{§heading-boundary-recovery} a malformed block never downgrades a conclusion", () => {
-    const r = PlurnkParser.parse([frame("READ (b.ts) <1,-1>", null), frame("READ [+diff] (a.ts) <1,-1>", null), task()].join("\n"));
+test("{§heading-boundary-recovery} unclosed metadata does not consume the following WAIT", () => {
+    const r = PlurnkParser.parse([frame("READ (b.ts) <1,-1>", null), frame("READ [unclosed (a.ts) <1,-1>", null), task()].join("\n"));
     assert.equal(errors(r).length, 1);
+    assert.equal(errors(r)[0].severity, "error");
+    assert.match(errors(r)[0].message, /^unexpected closing fence;/u);
     assert.deepEqual(statements(r).map(writtenOp), ["READ", "WAIT"]);
     const send = statements(r).find((s) => s.op === "WAIT");
     assert.equal(send?.op, "WAIT");
@@ -107,7 +109,9 @@ test("{§heading-boundary-recovery} a malformed block never downgrades a conclus
 test("bracket metadata belongs to a target, executor, or targetless SEND", () => {
     for (const [header, op, target, metadata] of [
         ["READ (a.ts) [+diff] <1,-1>", "READ", "a.ts", "+diff"],
+        ["READ [+diff] (a.ts) <1,-1>", "READ", "a.ts", "+diff"],
         ["KILL (log://**) [memory]", "KILL", "log://**", "memory"],
+        ["KILL [memory] (log://**)", "KILL", "log://**", "memory"],
         ['sh (greet.sh) [{"cwd": "sub"}]', "sh", "greet.sh", '{"cwd": "sub"}'],
         ['SEND [{"attachments":["report.pdf"]}]', "SEND", null, '{"attachments":["report.pdf"]}'],
     ] as const) {
@@ -119,14 +123,6 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
         if (!("metadata" in statement)) assert.fail(header);
         assert.equal(statement.target?.raw ?? null, target, header);
         assert.deepEqual(statement.metadata, [metadata], header);
-    }
-    for (const header of ["READ [+diff] (a.ts) <1,-1>", "KILL [memory] (log://**)"]) {
-        const r = PlurnkParser.parse(turn(frame(header, "body")));
-        assert.equal(errors(r).length, 1, header);
-        assert.equal(errors(r)[0].line, 1, header);
-        assert.equal(errors(r)[0].message, `unrecognized character '[' in the ${header.split(" ")[0]} header`, header);
-        assert.equal(r.unparsedTail, undefined, header);
-        assert.deepEqual(statements(r).map(writtenOp), ["WAIT"], header);
     }
     const r = PlurnkParser.parse(turn(frame("sh (greet.sh)", "body")));
     assert.deepEqual(errors(r), []);

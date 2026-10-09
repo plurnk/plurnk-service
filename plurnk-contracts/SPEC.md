@@ -667,8 +667,11 @@ beside owner metadata, not only a matcher carried inside its `pattern` option.
 by one ASCII space. Target and scope form one resource selection; COPY/MOVE
 repeat the complete selection/metadata group per operand. ANTLR accepts
 adjacent slots and scope/metadata permutations within a selection without
-changing ownership or making them distinct canonical forms. Each selection
-has at most one scope; its metadata blocks retain their authored order. A second scope
+changing ownership or making them distinct canonical forms. Metadata may also
+precede the first target, belonging to that first selection. Between targets it
+belongs to the preceding selection, never the following one. Single-target
+scope-first tolerance remains valid with metadata before or after that scope.
+Each selection has at most one scope; its metadata blocks retain their authored order. A second scope
 is refused; the recovery is the scope's working form ({§parse-recovery}).
 
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
@@ -745,7 +748,7 @@ routing, timing, or body input. Comments inside a body remain literal except
 for the narrowly owned {§misplaced-aside-advisory}.
 
 §scheme-metadata-modifier A target may carry one single-line `[metadata]`
-block after its scope; executor and SEND fences also admit it without a target.
+block, placed under {§slot-order}; executor and SEND fences also admit it without a target.
 The block belongs to the selected scheme or executor, which owns its shape,
 interpretation, validation and authority. The language assigns no meaning to
 the content and stores each block's exact inner text: balanced brackets inside
@@ -905,9 +908,8 @@ one-way semantics: there is no operation that restores a scoped-away log body.
 
 §bracket-metadata-slot Brackets are the owner's metadata modifier: the runtime
 or MCP service is the fence name, and tool input belongs in the body. A bracket
-block that leads an executor fence or follows a target is metadata for that
-owner; a bracket before the target of a non-executor OP is one bounded header
-diagnostic that selects nothing.
+block is metadata before or after the target, with ownership under {§slot-order};
+its position does not select an executor or change its interpretation.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. Executions and SEND scope owner-defined timing. READ, EDIT, COPY,

@@ -194,7 +194,6 @@ private slotReady: boolean = false;
 private headingTarget: boolean = false;
 private targetClosed(): void {
     this.slotReady = true;
-    this.metadataReady = true;
     this.headingTarget = true;
 }
 private scopeless(): boolean {
@@ -203,7 +202,6 @@ private scopeless(): boolean {
 }
 private targetDepth: number = 0;
 private metadataDepth: number = 0;
-private metadataReady: boolean = false;
 private inlineBody: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
 private missedTags: Array<{ line: number; column: number; tag: string }> = [];
@@ -357,7 +355,6 @@ private open(implicitName?: string): void {
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.started = true;
     this.slotReady = true;
-    this.metadataReady = this.execFence || this.openOp === "SEND" || this.openOp === "WAIT";
     this.headingTarget = false;
     this.inlineBody = false;
 }
@@ -631,8 +628,8 @@ SLOTS_NEXT_OPENER : { this.slotReady && this.openerFollows() }? [ \t]+ { this.in
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 // {§heading-slot-order} — zero-width characters on a heading line are invisible to the writer too (#758).
 SLOTS_INVISIBLE : [\u200B-\u200D\u2060\uFEFF]+ -> skip ;
-SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
-SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
+SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
+SLOTS_LBRACKET : { this.slotReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
 // {§send-wait-scope} — retain each duration for validation and its possible advisory.
 SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> type(L_MARKER) ;
 // {§scope-on-scopeless} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
@@ -696,7 +693,7 @@ METADATA_TICK : '`' -> type(METADATA_TEXT) ;
 METADATA_QUOTE : '"' -> type(METADATA_TEXT) ;
 METADATA_NEST_OPEN : '[' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
 METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
-METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACKET), mode(SLOTS) ;
+METADATA_END : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
