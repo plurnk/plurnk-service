@@ -94,6 +94,35 @@ Choose a limit for the focused workload, not the entire machine. For binary
 equality, assert `actual.equals(expected)` rather than deep-diffing large
 Buffers; the byte comparison remains exact and failure diagnostics stay bounded.
 
+### Native coverage and profiling
+
+Use Node's [coverage](https://nodejs.org/api/test.html#collecting-code-coverage)
+and [profilers](https://nodejs.org/api/cli.html#--cpu-prof) on a focused
+reproduction. Keep the owning package's test preloads and environment flags;
+place diagnostic options before the test filenames.
+
+| Question | Node options | Evidence |
+|---|---|---|
+| Which paths did this test exercise? | `--experimental-test-coverage --test-coverage-include=<source-glob>` | Text summary; `--test-reporter=lcov` produces LCOV. |
+| Where is CPU time spent? | `--cpu-prof --diagnostic-dir=<directory>` | `.cpuprofile` per participating process/thread. |
+| Where are sampled JavaScript allocations retained? | `--heap-prof --diagnostic-dir=<directory>` | `.heapprofile`; not total RSS, native memory, or proof of a leak. |
+
+For example, from the repository root:
+
+```sh
+mkdir -p "$HOME/benchmarks"
+diagnostics_dir=$(mktemp -d "$HOME/benchmarks/node-diagnostics-XXXXXX")
+node --conditions=plurnk-dev --env-file=plurnk-meta/.env.defaults \
+  --cpu-prof --heap-prof --diagnostic-dir="$diagnostics_dir" \
+  --test --test-concurrency=1 --test-timeout=30000 plurnk-meta/src/Knob.test.ts
+```
+
+Run coverage and timing investigations separately: instrumentation affects the
+workload. Keep Node version, command, source identity, and test outcome with the
+artifacts. Compare like workloads; coverage describes only the selected tests,
+and profile files must not be mistaken for a whole-process-tree memory total.
+These are on-demand diagnostics, not additional gates or live-run defaults.
+
 ## Source-built candidate
 
 ```sh
