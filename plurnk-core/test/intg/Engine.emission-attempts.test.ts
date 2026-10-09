@@ -659,8 +659,8 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string; line: number; source: string }>;
         assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
-                assert.equal(parseErrors[0]?.message, "unrecognized character '[' in the NOTE header");
-        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "lexer" });
+        assert.equal(parseErrors[0]?.message, "unexpected `[` (`[metadata]` modifier opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
+        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "parser" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
