@@ -389,7 +389,7 @@ test("the initial wire preserves canonical order and the Recap override without 
         // append-mostly history precedes per-turn status, open message pointers and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
@@ -562,10 +562,10 @@ test("the live things a worker holds — child workers — surface as terse poin
         // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
         assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
         assert.equal(packet.sections.find((section) => section.name === "delegation")?.header, "Delegation", "the section carries the teaching's word");
-        // Framework status in the user slot's clump ({§packet-cache-monotone}), above budget-the-law.
+        // Framework status in the user slot's clump ({§packet-cache-monotone}): ambient state, above what the turn owes.
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("delegation"), "delegation rides the status clump");
-        assert.ok(usr.indexOf("log") < usr.indexOf("delegation") && usr.indexOf("delegation") < usr.indexOf("budget"), "the clump sits after the log, delegation above budget-the-law");
+        assert.ok(usr.indexOf("log") < usr.indexOf("delegation") && usr.indexOf("delegation") < usr.indexOf("messages"), "the clump sits after the log, delegation above what the turn owes");
     } finally { await db.close(); }
 });
 

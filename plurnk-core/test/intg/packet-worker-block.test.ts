@@ -25,11 +25,11 @@ test("{§packet-current-turn}: the Worker block follows the log with path, paren
         assert.deepEqual([block.loop, block.turn], [1, 3], "the coordinate this packet's response becomes");
         assert.deepEqual(Object.keys(block), ["path", "parent", "loop", "turn"], "the block carries nothing else: no date, time or zone");
         const user = packet.sections.filter(({ slot }) => slot === "user").map(({ name }) => name);
-        assert.equal(user.indexOf("worker"), user.indexOf("log") + 1, "the Worker block is the first section after the log");
+        assert.ok(user.indexOf("worker") > user.indexOf("log"), "the Worker block sits in the status clump below the log");
         assert.equal(user[0], "log", "nothing volatile precedes the log");
         const rendered = PacketWire.renderSlot(packet.sections, "user");
         assert.ok(rendered.indexOf("## Log") < rendered.indexOf("## Worker"), "on the wire the Worker block is below the log");
-        assert.deepEqual(user, ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "the user slot's sections, in order");
+        assert.deepEqual(user, ["log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"], "the user slot's sections, in order");
         assert.doesNotMatch(rendered, /"date"|"timezone"|\d{4}-\d{2}-\d{2}T/, "no date, time or zone anywhere in the user slot");
         assert.doesNotMatch(PacketWire.renderSlot(packet.sections, "system"), /\d{4}-\d{2}-\d{2}/, "nor in the system slot");
     } finally { await db.close(); }

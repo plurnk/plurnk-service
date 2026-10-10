@@ -26,8 +26,8 @@ test("{§packet-current-turn}: the Worker block carries the loop and turn sequen
         assert.deepEqual([block.loop, block.turn], [3, 7]);
         assert.match(block.path, /^worker:\/\//);
         const names = packet.sections.map(({ name }) => name);
-        assert.equal(names[names.indexOf("log") + 1], "worker", "first in the status clump, after the initial log");
-        assert.deepEqual(names, ["definition", "system-policy", "log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "the packet's initial sections, in order");
+        assert.ok(names.indexOf("worker") > names.indexOf("log"), "in the status clump, below the initial log");
+        assert.deepEqual(names, ["definition", "system-policy", "log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"], "the packet's initial sections, in order");
     } finally { await db.close(); }
 });
 

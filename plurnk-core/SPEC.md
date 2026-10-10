@@ -621,7 +621,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   holds under the teaching's own word for handing work out: `## Delegation` is
   one JSON object, `{"workers": [...], "streams": [...]}`, its unconcluded child
   workers and its open streams as `{status, path}` pointers (the same shape as
-  the errors section), just above it. Body-suppressed child activity is durable
+  the errors section). Body-suppressed child activity is durable
   history; this section is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
   elapsed runtime, output inactivity, and its channels' sizes and growth since
@@ -649,7 +649,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   `## Worker` identity block carries `"parent": "worker://<name>"`, or
   `"parent": null` at a root, so a worker never infers its rank from silence.
 - §packet-current-turn **The packet says who and which turn, below the log.** The
-  `## Worker` block is the first section after the log, carrying
+  `## Worker` block, in the status clump below the log ({§packet-cache-monotone}), carries
   `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T}`: the actor,
   whose child it is, and the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
   and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
@@ -5054,18 +5054,22 @@ Conditional absence never reorders the surviving default sections.
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
 |   4–5 | user / assistant | `log` and `emission-history` segments | Append-mostly chronological history: each selected program follows its emission record and precedes its results ({§emission-history}). |
-|     6 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
-|     7 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
-|     8 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|     9 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    10 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    11 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|    12 | user   | `messages`            | `Open Messages`: immutable message addresses and causal sources ({§message-arrival}). |
+|     6 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|     7 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
+|     8 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
+|     9 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
+|    10 | user   | `messages`            | `Open Messages`: immutable message addresses and causal sources ({§message-arrival}). |
+|    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    12 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
 |    13 | user   | `recap`               | Optional authored operational recap. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly
-log and interpolated programs lead the volatile user-status clump. With `all`, appending new
+log and interpolated programs lead the volatile user-status clump. That clump is never cached
+across turns, since the next turn's log grows into its place, so its order serves attention alone:
+it runs from ambient state (Git Status, Context, Worker, Delegation) to what the turn owes (Open
+Messages) to feedback on the last turn (Notices, then Errors), and closes with the Recap. The nearer
+the end, the more a section asks of this turn. With `all`, appending new
 observations and programs preserves the existing history's roles and text prefix; no old program
 moves past newly appended observations. Changing selection or curating a row may invalidate the
 prefix at the affected position. It does **not** claim that every system byte is

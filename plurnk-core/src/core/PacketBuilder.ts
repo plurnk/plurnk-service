@@ -323,24 +323,26 @@ export default class PacketBuilder {
             // The append-mostly log leads the user slot; nothing volatile precedes it
             // ({§packet-cache-monotone}).
             ...logSections,
-            // {§packet-current-turn} — the Worker block opens the status clump below the log: who
-            // the actor is, whose child it is, and the coordinate this packet's response becomes —
-            // the one fact the sources cannot state about themselves (which `reasoning://<worker>/L/T` is
-            // the model's own). It changes every turn, so it never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
-            // The per-turn status clump follows the log ({§packet-cache-monotone}).
-            // child-orientation: what this worker holds live — its child workers and its open streams — under
-            // the teaching's own word, just above errors. Terse pointers (the path is the actionable address
-            // the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams) },
-            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
-            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
+            // The per-turn status clump follows the log ({§packet-cache-monotone}) and runs from ambient
+            // state to what this turn owes to feedback on the last one, then the Recap: the nearer the end,
+            // the more a section asks of this turn.
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // {§context-gauge} — the model's word for curation weight is tokens; this is never provider admission.
             { name: "budget", slot: "user", header: "Context", content: budgetReadout },
-            // The messages section closes the status clump as a pointer list of open
-            // arrivals; bodies arrive through their inbound SEND rows ({§message-arrival}).
+            // {§packet-current-turn} — the Worker block names who the actor is, whose child it is, and the
+            // coordinate this packet's response becomes — the one fact the sources cannot state about
+            // themselves (which `reasoning://<worker>/L/T` is the model's own). It changes every turn, so it
+            // never precedes the log.
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
+            // child-orientation: what this worker holds live — its child workers and its open streams — under
+            // the teaching's own word. Terse pointers (the path is the actionable address the model READs,
+            // SENDs to, or KILLs), never advice. {§child-orientation}
+            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams) },
+            // The open arrivals this turn owes, as pointers; bodies arrive through their inbound SEND rows
+            // ({§message-arrival}).
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },
+            { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
+            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the

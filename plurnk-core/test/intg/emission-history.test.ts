@@ -50,7 +50,8 @@ test("{§emission-history} {§packet-cache-monotone}: programs precede their res
     assert.match(afterRead.filter(({ role }) => role === "user").map(chatMessageText).join("\n"), /Memory before writing\./u, "reasoning NOTE remains an ordinary observation");
     assert.doesNotMatch(previousProgram(afterRead), /Memory before writing\./u, "reasoning operations never become content history");
     assert.deepEqual(afterRead.slice(0, 3), afterEdit.slice(0, 3), "the earlier roles and bytes stay identical");
-    const oldResults = chatMessageText(afterEdit[3]!).split("\n\n## Worker\n")[0]!;
+    // The retained results end where the status clump begins ({§packet-cache-monotone}).
+    const oldResults = chatMessageText(afterEdit[3]!).split(/\n\n## (?:Git Status|Context|Worker)\n/u)[0]!;
     assert.ok(chatMessageText(afterRead[3]!).startsWith(oldResults), "new observations append after retained results");
 });
 
