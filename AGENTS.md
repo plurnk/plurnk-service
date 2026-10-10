@@ -276,8 +276,10 @@ surprise mutation is a failure in this tier even when the final text is right.
   `SPEC.md`; the root lint enforces declarations, citations, uniqueness, and
   resolution mechanically.
 - Tests enforce externally meaningful invariants through their names,
-  assertions, fixtures, and failure messages. Test comments reference the
-  owning specification instead of becoming a second specification.
+  assertions, fixtures, and failure messages. Integration assertions that don't
+  enforce a tagged invariant should either create a tagged invariant or be removed.
+  Test comments reference the owning specification instead of becoming a second
+  specification.
 - Choose documentation form in this order: use a compact Mermaid diagram when
   the material is naturally a flow, state transition, ownership relationship,
   or composition; otherwise use a table when it is naturally an exact mapping

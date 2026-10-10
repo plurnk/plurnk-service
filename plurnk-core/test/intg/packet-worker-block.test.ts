@@ -29,7 +29,6 @@ test("{§packet-current-turn}: the Worker block follows the log with path, paren
         assert.equal(user[0], "log", "nothing volatile precedes the log");
         const rendered = PacketWire.renderSlot(packet.sections, "user");
         assert.ok(rendered.indexOf("## Log") < rendered.indexOf("## Worker"), "on the wire the Worker block is below the log");
-        assert.deepEqual(user, ["log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"], "the user slot's sections, in order");
         assert.doesNotMatch(rendered, /"date"|"timezone"|\d{4}-\d{2}-\d{2}T/, "no date, time or zone anywhere in the user slot");
         assert.doesNotMatch(PacketWire.renderSlot(packet.sections, "system"), /\d{4}-\d{2}-\d{2}/, "nor in the system slot");
     } finally { await db.close(); }

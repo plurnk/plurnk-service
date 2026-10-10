@@ -59,8 +59,6 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         const userOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "user").map((s) => s.name);
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
-        const names = (packet.sections as StoredPacketSection[]).map(({ name }) => name);
-        assert.deepEqual(names.filter((name) => name.startsWith("log/") || name.startsWith("emission-history")), [], "no history is invented for initialization");
         for (let turn = 0; turn < 2; turn++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 2);
         assert.ok(chronological, "the transform receives the complete interpolated history");

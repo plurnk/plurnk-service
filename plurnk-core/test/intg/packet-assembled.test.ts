@@ -366,7 +366,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
     } finally { await db.close(); }
 });
 
-test("the initial wire preserves canonical order and the Recap override without invented history", async () => {
+test("{§packet-cache-monotone} the initial wire preserves canonical order and the Recap override without invented history", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -562,10 +562,8 @@ test("the live things a worker holds — child workers — surface as terse poin
         // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
         assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
         assert.equal(packet.sections.find((section) => section.name === "delegation")?.header, "Delegation", "the section carries the teaching's word");
-        // Framework status in the user slot's clump ({§packet-cache-monotone}): ambient state, above what the turn owes.
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
-        assert.ok(usr.includes("delegation"), "delegation rides the status clump");
-        assert.ok(usr.indexOf("log") < usr.indexOf("delegation") && usr.indexOf("delegation") < usr.indexOf("messages"), "the clump sits after the log, delegation above what the turn owes");
+        assert.ok(usr.includes("delegation"), "{§child-orientation}: delegation rides the status clump");
     } finally { await db.close(); }
 });
 

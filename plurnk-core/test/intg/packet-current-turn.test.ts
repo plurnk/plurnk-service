@@ -27,7 +27,6 @@ test("{§packet-current-turn}: the Worker block carries the loop and turn sequen
         assert.match(block.path, /^worker:\/\//);
         const names = packet.sections.map(({ name }) => name);
         assert.ok(names.indexOf("worker") > names.indexOf("log"), "in the status clump, below the initial log");
-        assert.deepEqual(names, ["definition", "system-policy", "log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"], "the packet's initial sections, in order");
     } finally { await db.close(); }
 });
 
