@@ -336,8 +336,8 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Read the note.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const notices: Array<{ kind: string; directive?: string; message?: string }> = [];
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; directive?: string; message?: string }) });
         const source = ['````READ (worker:///notes.md) [{"lines": "1-2"}]', "````", memory].join("\n");
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
