@@ -56,7 +56,8 @@ for (const [header, warning] of [
 
         const next = await resume();
         assert.equal(next.result.status, 202);
-        assert.equal(packetSection(await packet(next.turnIds.at(-1)!), "notices"), "", "the warning drains on the first resumed packet only");
+        assert.doesNotMatch(packetSection(await packet(next.turnIds.at(-1)!), "notices"), /parse_advisory:/u,
+            "the warning drains on the first resumed packet only");
         await lifecycle.finish(childLoopId, { status: 200 });
         assert.equal((await resume()).result.status, 200);
     });

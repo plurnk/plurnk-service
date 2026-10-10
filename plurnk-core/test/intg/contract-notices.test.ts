@@ -97,7 +97,8 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3",
+            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3\n"
+                + "* continued_without_note: The turn continued without a NOTE.",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -214,7 +215,8 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
         const packet = await getPacket(db, second.turnId);
         const read = logEntries(packet).find(({ logPath, body }) => String(logPath).endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
-        assert.equal(packetSection(packet, "notices"), "* scope_normalized: Scope <0,120> was normalized to <1,120>.");
+        assert.equal(packetSection(packet, "notices"),
+            "* scope_normalized: Scope <0,120> was normalized to <1,120>.\n* continued_without_note: The turn continued without a NOTE.");
         const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
         assert.deepEqual(receipts.filter(({ op }) => op === "READ").map(({ status_rx }) => status_rx), [200]);
         assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
@@ -479,7 +481,8 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3",
+            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3\n"
+                + "* continued_without_note: The turn continued without a NOTE.",
         );
     } finally { await db.close(); }
 });

@@ -399,7 +399,8 @@ for (const op of ["NOTE", "WAIT"] as const) {
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
                 [[op, op === "WAIT" ? 202 : 200]], "the stray text is no row, and never delivered ({§outside-text})");
-            assert.deepEqual(notices.filter(({ level, kind }) => (level === "warn" || level === "error") && kind !== "outside_text"), []);
+            assert.deepEqual(notices.filter(({ level, kind }) => (level === "warn" || level === "error")
+                && kind !== "outside_text" && kind !== "continued_without_note"), []);
         } finally { await db.close(); }
     });
 }

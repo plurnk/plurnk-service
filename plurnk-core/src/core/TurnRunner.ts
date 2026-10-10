@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, NoteStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -224,6 +224,13 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
 // ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
+// {§worker-initialization-entry} — the one NOTE that leads the initialization surveys.
+const INITIALIZATION_NOTE: NoteStatement = {
+    op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
+    body: "Surveyed tooling, documentation, extended context, and project root.", position: UNKNOWN_POSITION,
+};
+// {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
+const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
@@ -833,9 +840,15 @@ export default class TurnRunner {
             await Turn.complete(this.#db, initializationTurn.id, 200);
             return;
         }
-        const program = TurnOps.renderInternal(admittedInitializationStatements);
+        // {§worker-initialization-entry} — the example turn keeps the NOTE contract the card teaches:
+        // when the surveys run, one NOTE leads them.
+        const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
+            admittedInitializationStatements.some((statement) => statement.op === "FIND")
+                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements]
+                : admittedInitializationStatements;
+        const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        if (admitted.length !== admittedInitializationStatements.length) {
+        if (admitted.length !== programStatements.length) {
             throw new Error("initialization program did not preserve every authored operation");
         }
         await Turn.recordSource(this.#db, initializationTurn.id, "ops", program);
@@ -1786,6 +1799,16 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
+        // {§continued-without-note} — a turn the loop continues past or parks on, having carried no NOTE
+        // forward in its program or from its reasoning, is told so in the next packet. An empty turn has
+        // its own no-operation row instead.
+        const ops = split.packetAssistant.ops;
+        if ((executed.status === 102 || executed.status === 202) && ops.length > 0
+            && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn", kind: "continued_without_note", level: "warn", message: CONTINUED_WITHOUT_NOTE,
+            });
+        }
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             progressed: executed.progressed,

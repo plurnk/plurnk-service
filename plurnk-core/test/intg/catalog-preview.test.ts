@@ -188,8 +188,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization executes the eight environment surveys, without a reasoning demonstration",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization executes one NOTE and the eight environment surveys, without a reasoning demonstration",
                 );
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
                     "`_plurnk` initialization has no content emission ({§emission-row})");
@@ -302,8 +302,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
-                    "initialization contains eight environment surveys and nothing else",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND"],
+                    "initialization contains one NOTE, then eight environment surveys, and nothing else",
                 );
                 assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops"), [],
                     "turn 0 has no content source to announce or read ({§emission-row})");
