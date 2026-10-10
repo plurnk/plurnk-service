@@ -67,6 +67,10 @@ test("{§test-artifact-retention} no lane keeps a clear-before-suite step or a s
         assert.equal(scripts["artifacts:clean"], undefined, `${lane} has no manual sweep to remember`);
         assert.equal(scripts["pretest:intg"], undefined, `${lane} needs no pretest step`);
         assert.match(scripts["test:intg"], /^export PLURNK_TEST_RUN=/u, `${lane} stamps its run once for every test process`);
+        // A lane that bootstraps through core's harness names itself, so its daemon's evidence lands in
+        // its own run directory and the one reclaim takes everything; core is the unnamed default.
+        const reclaimed = /reclaim-green-run\.mjs ([a-z]+)$/u.exec(scripts["test:intg"])?.[1];
+        if (lane !== "plurnk-core") assert.equal(/ PLURNK_TEST_LANE=([a-z]+); /u.exec(scripts["test:intg"])?.[1], reclaimed, `${lane} names the lane it reclaims`);
         // The one reclaim is shared and chained after the suite with `&&`, so only a passing run
         // reaches it; a failed run's evidence is never touched.
         assert.match(scripts["test:intg"], / && node \.\.\/scripts\/reclaim-green-run\.mjs [a-z]+$/u, `${lane} reclaims only a green run`);

@@ -6088,8 +6088,10 @@ database is a benchmark artifact like any other: the lane's run directory lives 
 checkout holds source only — never run output. `test:intg` stamps `PLURNK_TEST_RUN` once and every
 test process inherits it, so one suite's databases land in one directory without a pretest step, a
 marker file or a sweep; an unstamped invocation is not a special case with its own rules, it is
-simply an unstamped run with its own directory. A stamped run that passes is reclaimed when it
-exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
+simply an unstamped run with its own directory. A lane whose suite boots Core through Core's test
+harness also exports `PLURNK_TEST_LANE`, its own lane name, so the daemon it boots writes into that
+lane's run directory and the lane's reclaim takes all of it; an unnamed run is Core's. A stamped run
+that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
 caller's own run directory.
 
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.

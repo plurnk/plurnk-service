@@ -24,7 +24,7 @@ export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
 // `npm run share -- <the path the run reported>`.
 let artifacts: Promise<string> | null = null;
 
-const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDirectory("core"));
+const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDirectory(process.env.PLURNK_TEST_LANE ?? "core"));
 
 export const openMigrated = async (atPath?: string): Promise<Db> => {
     const dbPath = atPath ?? join(await artifactDirectory(), `db-${crypto.randomUUID()}.db`);
