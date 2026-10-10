@@ -62,20 +62,33 @@ for (const count of [0, 1, 2]) {
             const before = await f.replies();
             const result = await f.turn(frame(`SEND${metadata}`, "Implicit reply."));
             const delivery = result.outcomes.find(({ op }) => op === "SEND");
-            const allowed = count > 0;
-            assert.equal(delivery?.status, allowed ? 200 : 400);
-            assert.equal(await f.remaining(), allowed && metadata !== "" ? count - 1 : count);
-            assert.deepEqual(await f.replies(), [...before, ...(allowed ? ["Implicit reply."] : [])]);
+            assert.equal(delivery?.status, 200);
+            assert.equal(await f.remaining(), count > 0 && metadata !== "" ? count - 1 : count);
+            assert.deepEqual(await f.replies(), [...before, "Implicit reply."]);
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
             const reply = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
-            assert.deepEqual(JSON.parse(reply!.rx).answers, allowed ? [f.message("first")] : undefined);
-            if (!allowed) {
-                assert.equal(result.status, 102, "the failed routing is observed before settlement");
-                assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
+            assert.deepEqual(JSON.parse(reply!.rx).answers, [f.message("first")]);
+            if (count === 0) {
+                assert.equal(JSON.parse(reply!.rx).completion, undefined, "with none open, the reply is speech only");
+                assert.equal((await f.db.message_completion_outcome.get<{ status: number }>({ loop_id: f.ids.loopId }))!.status, 200,
+                    "the completed message keeps its outcome");
             }
         });
     }
 }
+
+test("{§message-completion}: a targetless SEND in a loop with no published message is refused", async (t) => {
+    const db = await openMigrated(); t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, `message-completion-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId, null, "bob");
+    const loopId = await insertLoop(db, workerId, 1);
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    const result = await engine.runTurn({ workspaceId, workerId, loopId, messages: [],
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND", "Hello?"), reasoning: null, finishReason: "stop" } }] }) });
+    const delivery = result.outcomes.find(({ op }) => op === "SEND");
+    assert.equal(delivery?.status, 400);
+    assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
+});
 
 test("{§message-completion}: progress and consecutive completions consume the queue in authored order", async (t) => {
     const f = await setup(); t.after(() => f.db.close());

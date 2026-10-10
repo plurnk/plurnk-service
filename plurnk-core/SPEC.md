@@ -2835,9 +2835,10 @@ composes with attachment metadata. Completion applies only to replies: an exact
 message address selects that message. Targetless SEND selects the oldest published
 Open Message in its loop at dispatch time. Progress leaves it open; `[200]` or
 `[499]` resolves it, so the next targetless SEND selects the next Open Message.
-With none open, SEND requires an explicit recipient and fails without delivery.
-It never broadcasts or falls back to a resolved message; corrections name the
-message explicitly. Empty completion replies
+With none open, a targetless SEND is speech to the loop's latest published message: it is
+delivered to that message's originating client and recorded in `answers`, and a completion
+code on it changes no outcome. Only a loop with no published message refuses it. It never
+broadcasts; a correction that changes an outcome names the message explicitly. Empty completion replies
 resolve their selected messages without inventing speech or erasing an earlier
 answer. An empty addressed progress reply adds no speech. Failed delivery resolves nothing.
 The latest explicit completion reply determines each message's outcome; ordinary
@@ -2925,8 +2926,8 @@ accounting and model-visible failure evidence remain separately owned by
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-response-receipt **A reply records exactly which messages it answers.** A successful
   reply carries `answers`, the immutable message addresses it answered, not recipient actors.
-  Targetless replies select only the oldest published Open Message under
-  {§message-completion}; they never broadcast or fall back to a resolved message.
+  Targetless replies select the oldest published Open Message or, with none open, the
+  loop's latest published message as speech only ({§message-completion}); they never broadcast.
   Empty completion replies still name their messages. SEND to an exact message
   address answers only that message; SEND to an actor endpoint remains ordinary communication
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
@@ -6094,7 +6095,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
 | `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Write the prompt on the lines beneath the *OP* fence line. A prompt resource that is empty with no body says so: *OP* has no prompt text: the resource is empty and there is no body. Recovery: Write the prompt on the lines beneath the *OP* fence line, or name a resource that holds it. |
 | `message-not-found` | 404 | No accepted message exists at *address*. |
-| `send-target-required` | 400 | SEND has no recipient and no Open Messages. Recovery: Name a recipient address. |
+| `send-target-required` | 400 | SEND has no recipient and its loop has no published message. Recovery: Name a recipient address. |
 | `edit-collision` | 409 | EDIT collided with the current resource state ({§edit-collision}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
 | `edit-target-required` | 400 | A line-anchored EDIT requires a target resource. Recovery: Provide the target that rendered the line anchor. |
 | `kill-target-required` | 400 | KILL requires a target path. |
