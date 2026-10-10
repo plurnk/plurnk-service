@@ -1,4 +1,5 @@
 -- MIGRATE: 18 worker owners
+-- Released in 3.0.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§worker-owner-creation} Ownership is durable; incoming messages confer no authority.
 
 CREATE TABLE worker_owners (

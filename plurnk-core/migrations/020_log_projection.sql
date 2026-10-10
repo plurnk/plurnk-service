@@ -1,4 +1,5 @@
 -- MIGRATE: 20 log projection
+-- Released in 3.0.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§worker-wait-timing} A WAIT receipt's `waiting` is the accepted maximum in non-negative seconds;
 -- a receipt without one carries no bound. The attrs guard is redeclared around this one rewrite.
 DROP TRIGGER IF EXISTS log_entries_immutable_attrs;

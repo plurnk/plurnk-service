@@ -202,10 +202,9 @@ token from `npm login` fails every upload with `EOTP`.
 `release:version` does not consult the registry. A version the registry has ever
 accepted cannot be reused: move a collision to the next patch by hand (the version,
 every range naming it, the changelog heading), then `npm install --package-lock-only`.
-A release that ships migrations moves `plurnk-core/test/intg/schema-baseline.test.ts`
-forward in the same landing (`RELEASED` to the shipped shape, the prior release to
-`PREVIOUS`) and heads each shipped migration
-`-- Released in <version> and frozen ({§db-migrations})`.
+A release that ships migrations adds its version, release and shape to
+`plurnk-core/test/intg/schema-baseline.test.ts` in the same landing and heads each
+shipped migration `-- Released in <version> and frozen ({§db-migrations})`.
 
 `release:check` builds and gates source, projects archives, and tests a fresh
 installed composition. It retains those exact archives, source identities, and

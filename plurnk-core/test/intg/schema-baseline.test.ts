@@ -18,14 +18,15 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 import { insertPacketTurn, MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
-// {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
-// release freezes what it shipped, the previous release is the path an existing database takes, and
-// an earlier release keeps its longer path through the versions after it.
+// {§db-migrations} — every released schema version and the fingerprint of its shape: each release
+// freezes what it shipped, and a database from any of them keeps its path through the versions after it.
+// A release that ships migrations adds its entry here; each witness names the release whose shape it seeds.
 type Release = { readonly version: number; readonly release: string; readonly shape: string };
-const RELEASED: Release = Object.freeze({ version: 17, release: "2.0.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
-const PREVIOUS: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
-const EARLIER: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
-const EARLIEST: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
+const V3_0_0: Release = Object.freeze({ version: 20, release: "3.0.0", shape: "39f52f9fe61e6e61c3f0766d3bcef6d0edec1692058124d1a33ff91e8e0d39b0" });
+const V2_0_0: Release = Object.freeze({ version: 17, release: "2.0.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
+const V1_27_0: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
+const V1_24_0: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
+const V1_21_1: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
 
 const released = async (release: Release): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
@@ -51,7 +52,7 @@ const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
 
 test("{§db-migrations} {§message-completion}: upgrades preserve resolved messages and literal replies independently of curation", async (t) => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
     const before = new DatabaseSync(path);
     let evidence: unknown[];
@@ -100,7 +101,7 @@ test("{§db-migrations} {§message-completion}: upgrades preserve resolved messa
 });
 
 test("{§db-migrations} {§packet-wire-envelope}: role evolution retains historical envelopes and every section item", async () => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     const previous = "```EDIT (a.md)\nOriginal complete body.\n```";
     const sections = [
         { name: "definition", slot: "system" as const, header: null, weight: 2, content: "system" },
@@ -162,7 +163,7 @@ test("{§db-migrations} {§packet-wire-envelope}: role evolution retains histori
 });
 
 test("{§a2a-worker-ownership}: migration reparents A2A contexts without adopting ordinary roots or losing task evidence", async () => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -191,7 +192,7 @@ test("{§a2a-worker-ownership}: migration reparents A2A contexts without adoptin
 });
 
 test("{§schedule-delivery}: upgrades remove message-carried authority without losing schedules or other family state", async () => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     const definition = { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." };
     const state = { version: 1, definitions: {
         beat: { origin: "workspace", enabled: true, definition: { ...definition, policy: { proposals: "accept" } } },
@@ -218,7 +219,7 @@ test("{§schedule-delivery}: upgrades remove message-carried authority without l
 });
 
 test("{§worker-owner-creation}: upgrades retain conversations, assign runtime ownership and enforce inherited references", async () => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -260,7 +261,7 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
 });
 
 test("{§db-migrations} {§skills-module}: the skills family state moves to its owner exactly", async (t) => {
-    const path = await released(PREVIOUS);
+    const path = await released(V1_27_0);
     const home = await mkdtemp(join(tmpdir(), "plurnk-skills-upgrade-"));
     const hostPaths = new HostPaths({ home, env: {} });
     const definition = { name: "review", source: "https://unreachable.invalid/skills.git", commit: "b".repeat(40) };
@@ -287,7 +288,7 @@ test("{§db-migrations} {§skills-module}: the skills family state moves to its 
 });
 
 test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
-    const path = await released(PREVIOUS);
+    const path = await released(V1_27_0);
     const operation = (heading: string): ReadStatement | KillStatement => {
         const item = PlurnkParser.parseStatements(PlurnkParser.frame(heading, null)).items.find((item) => item.kind === "statement");
         assert.ok(item?.kind === "statement" && (item.statement.op === "READ" || item.statement.op === "KILL"));
@@ -340,7 +341,7 @@ test("{§db-migrations} {§target-group}: stored groups normalize without rewrit
 });
 
 test("{§db-migrations} {§worker-wait-timing} {§log-history-projection}: a released log keeps its rows, its receipts' bounds and its projections", async () => {
-    const path = await released(RELEASED);
+    const path = await released(V2_0_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -404,7 +405,7 @@ test("{§db-migrations} {§worker-wait-timing} {§log-history-projection}: a rel
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.ok(versions.length >= RELEASED.version, "the released versions are all present");
+    assert.ok(versions.length >= V2_0_0.version, "the released versions are all present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -412,14 +413,14 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-for (const release of [RELEASED, PREVIOUS, EARLIER, EARLIEST]) {
+for (const release of [V3_0_0, V2_0_0, V1_27_0, V1_24_0, V1_21_1]) {
     test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async () => {
         assert.equal(shape(await released(release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
     });
 }
 
 test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier requests and does not fabricate captures", async () => {
-    const path = await released(EARLIER);
+    const path = await released(V1_24_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -447,7 +448,7 @@ test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier r
 });
 
 test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
-    const path = await released(EARLIER);
+    const path = await released(V1_24_0);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -478,7 +479,7 @@ test("{§graph-relations}: upgrading preserves source content and invalidates im
 });
 
 test("{§db-migrations} {§child-orientation}: upgrading retains streams without inventing their missing output timestamps", async () => {
-    const path = await released(EARLIER);
+    const path = await released(V1_24_0);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -518,8 +519,8 @@ test("{§db-migrations} {§child-orientation}: upgrading retains streams without
     } finally { await reopened.close(); }
 });
 
-test(`{§db-migrations} {§emission-row}: a ${EARLIER.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
-    const path = await released(EARLIER);
+test(`{§db-migrations} {§emission-row}: a ${V1_24_0.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
+    const path = await released(V1_24_0);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -551,8 +552,8 @@ test(`{§db-migrations} {§emission-row}: a ${EARLIER.release} database migrates
     } finally { after.close(); }
 });
 
-test(`{§db-migrations}: a ${EARLIEST.release} database migrates in place and keeps its rows`, async () => {
-    const path = await released(EARLIEST);
+test(`{§db-migrations}: a ${V1_21_1.release} database migrates in place and keeps its rows`, async () => {
+    const path = await released(V1_21_1);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
