@@ -115,6 +115,8 @@ interface LogEntryView {
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
     kind?: unknown;
+    level?: unknown;
+    directive?: unknown;
     message?: unknown;
     position?: { type?: unknown; line?: unknown; column?: unknown } | null;
 }
@@ -234,21 +236,24 @@ export default class PacketWire {
         return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 
-    // Non-terminal model-facing observations are deliberately separate from
-    // operation failures. Producer messages are normalized; typed positions remain legible.
+    // {§notice-callout} — non-terminal observations, deliberately separate from operation failures, in the
+    // card's own callout form: the level picks the callout, the directive leads, the fact follows, the kind closes.
     static renderNotices(notices: unknown): string {
         const observations = Array.isArray(notices) ? notices as NoticeView[] : [];
         return observations.map((notice) => {
             const kind = typeof notice.kind === "string" ? notice.kind : "notice";
-            const rawMessage = typeof notice.message === "string"
-                ? notice.message.replace(/\s+/g, " ").trim()
-                : "";
-            const message = rawMessage;
+            const callout = notice.level === "error" ? "CAUTION" : notice.level === "warn" ? "WARNING" : "NOTE";
+            const text = [notice.directive, notice.message]
+                .filter((part): part is string => typeof part === "string")
+                .map((part) => part.replace(/\s+/g, " ").trim())
+                .filter((part) => part.length > 0)
+                .join(" ");
             const position = notice.position?.type === "content-offset"
                 ? ` @ ${String(notice.position.line)}:${String(notice.position.column)}`
                 : "";
-            return `* ${kind}${message.length > 0 ? `: ${message}` : ""}${position}`;
-        }).join("\n");
+            const body = `${text}${position}`.trim();
+            return `> [!${callout}]\n> ${body.length > 0 ? `${body} ` : ""}[${kind}]`;
+        }).join("\n\n");
     }
 
     // The Delegation section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`

@@ -239,6 +239,7 @@ export default class AdmittedTurnExecutor {
                         source: "engine:dispatcher",
                         kind: "metadata_ignored",
                         level: "warn",
+                        directive: "YOU SHOULD NOT write [metadata] on an operation that takes none.",
                         message: `${statement.op} on '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
                     });
                     statement = { ...statement, metadata: null } as typeof statement;
@@ -326,6 +327,7 @@ export default class AdmittedTurnExecutor {
                     source: "engine:slicer",
                     kind: "scope_normalized",
                     level: "warn",
+                    directive: "YOU SHOULD write the normalized scope.",
                     message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
                 });
             }
@@ -336,7 +338,8 @@ export default class AdmittedTurnExecutor {
                     source: "engine:slicer",
                     kind: "edit_merged",
                     level: "warn",
-                    message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
+                    directive: "YOU SHOULD verify the merged EDIT before building on it.",
+                    message: `EDIT resolution applied: ${merge.rule}; the row's merged fact has the coordinates.`,
                 });
             }
             if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);

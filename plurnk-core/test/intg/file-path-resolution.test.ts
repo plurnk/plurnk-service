@@ -82,7 +82,7 @@ test("{§fs-namei} {§file-path-normalization} shell, native operations and clie
                 assert.ok(normalized.every(({ source, level }) => source === "scheme:file" && level === "warn"));
                 assert.ok(normalized.some(({ message }) => message === "Path resolved to 'source.txt'."));
                 assert.ok(normalized.some(({ message }) => message === "Path resolved to 'copied.txt'."));
-                assert.match(userText(provider.received[2]!), /path_normalized: Path resolved to 'source\.txt'\./u, "the normalization reaches the next model packet");
+                assert.match(userText(provider.received[2]!), /YOU SHOULD address the resolved path\. Path resolved to 'source\.txt'\. \[path_normalized\]/u, "the normalization reaches the next model packet");
 
                 for (const target of ["source.txt", source, pathToFileURL(source).href]) {
                     const result = await daemon.look({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${target})`, null))[0] });
@@ -119,7 +119,7 @@ test("{§file-path-normalization} only model-authored absolute spellings in a no
                 assert.equal(result.status, projectRoot === null && target === absolute ? 404 : 200, `${projectRoot}: ${origin} ${target}`);
             }
             assert.deepEqual(notices.filter(({ kind }) => kind === "path_normalized"), projectRoot === "/project" ? [{
-                source: "scheme:file", kind: "path_normalized", level: "warn", message: "Path resolved to 'probe.txt'.",
+                source: "scheme:file", kind: "path_normalized", level: "warn", directive: "YOU SHOULD address the resolved path.", message: "Path resolved to 'probe.txt'.",
             }] : []);
         }
     } finally { await db.close(); }

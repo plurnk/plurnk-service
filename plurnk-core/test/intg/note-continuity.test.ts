@@ -6,14 +6,15 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-const NOTICE = "* continued_without_note: The turn continued without a NOTE.";
+const NOTICE = "> [!WARNING]\n> YOU MUST use at least one NOTE per continuing turn. The turn continued without a NOTE. [continued_without_note]";
 const INITIALIZATION_NOTE = "Surveyed tooling, documentation, extended context, and project root.";
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
 type Row = { op: string | null; origin: string; tx: string };
 
+// {§notice-callout}: a notices section is a list of callouts separated by a blank line.
 const noticesOf = async (db: Db, turnId: number): Promise<string[]> =>
-    packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices").split("\n");
+    packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices").split("\n\n");
 const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId });
 
 const conversation = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {

@@ -1806,7 +1806,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
         const notices = packetSection(packet, "notices");
         assert.match(
             notices,
-            /output_truncated: emission truncated at the output allowance \(\d+ tokens\)$/m,
+            /^> YOU SHOULD emit fewer or shorter operations per turn\. Emission truncated at the output allowance \(\d+ tokens\)\. \[output_truncated\]$/m,
             "the ceiling cut names its cause and the number",
         );
     } finally { await db.close(); }
@@ -1831,7 +1831,7 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         assert.equal(provider.packets.length, 3);
         assert.match(
             provider.packets[1]!,
-            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no authored operations were performed/,
+            /> YOU SHOULD emit fewer or shorter operations per turn\. Emission truncated at the output allowance \(\d+ tokens\); no authored operations were performed\. \[output_truncated\]/,
             "the next packet names the engine's cut and the recovery fact",
         );
         assert.doesNotMatch(provider.packets[1]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");

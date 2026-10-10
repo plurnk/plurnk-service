@@ -20,7 +20,8 @@ const pressureNotice = (share: number): Notice => ({
     source: "engine:context",
     kind: "budget_pressure",
     level: "warn",
-    message: `Context is at ${share}% of budget. YOU MUST NOT exceed budget.`,
+    directive: "YOU MUST NOT exceed budget.",
+    message: `Context is at ${share}% of budget.`,
 });
 
 // {§context-gauge} — one measured JSON object; the curation inventory and the pressure notice

@@ -231,6 +231,15 @@ const INITIALIZATION_NOTE: NoteStatement = {
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
+// {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
+// or the output was refused, SHOULD where a near-miss was accepted.
+const DIRECTIVE = Object.freeze({
+    note: "YOU MUST use at least one NOTE per continuing turn.",
+    emission: "YOU MUST ONLY emit fenced Agent Operation Protocol Syntax Operations.",
+    outside: "YOU MUST NOT emit anything except whitespace between fenced operations.",
+    advisory: "YOU SHOULD write the canonical form.",
+    output: "YOU SHOULD emit fewer or shorter operations per turn.",
+});
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
@@ -244,7 +253,7 @@ const allowanceCutMessage = (
     grant: number | null,
 ): string | null => finishReason !== "length"
     ? null
-    : `emission truncated at the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
+    : `Emission truncated at the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
 
 const readEmissionAttempts = (): number => Knob.integer("PLURNK_SERVICE_EMISSION_ATTEMPTS", 1);
 
@@ -1643,13 +1652,15 @@ export default class TurnRunner {
                 source: "engine:capacity",
                 kind: "output_truncated",
                 level: "error",
-                message: `${cut}; no operations were performed`,
+                directive: DIRECTIVE.output,
+                message: `${cut}; no operations were performed.`,
             });
         } else {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:grammar",
                 kind: "invalid_emission",
                 level: "error",
+                directive: DIRECTIVE.emission,
                 message: diagnostic === undefined
                     ? INVALID_EMISSION_RECOVERY_MESSAGE
                     : `${INVALID_EMISSION_RECOVERY_MESSAGE} Parser: ${diagnostic.message}`,
@@ -1686,7 +1697,8 @@ export default class TurnRunner {
                 source: "engine:turn",
                 kind: "output_truncated",
                 level: "warn",
-                message: `${allowanceCut}; no authored operations were performed`,
+                directive: DIRECTIVE.output,
+                message: `${allowanceCut}; no authored operations were performed.`,
             });
         }
         // Non-fatal provider transport notices on an accepted turn. Forward each
@@ -1700,6 +1712,7 @@ export default class TurnRunner {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: notice.source,
                 kind: notice.kind,
+                ...(notice.directive === undefined ? {} : { directive: notice.directive }),
                 message: notice.message ?? "",
                 level: notice.level,
                 ...(located !== null
@@ -1711,7 +1724,8 @@ export default class TurnRunner {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
-                message: allowanceCut,
+                directive: DIRECTIVE.output,
+                message: `${allowanceCut}.`,
                 level: "warn",
             });
         }
@@ -1723,6 +1737,7 @@ export default class TurnRunner {
                 source: "engine:turn",
                 kind: "outside_text",
                 level: "warn",
+                directive: DIRECTIVE.outside,
                 message: `${split.outside.tokens} tokens emitted outside OPs. Discarded.`,
             });
             this.#notify.outsideEventNotify?.(workspaceId, {
@@ -1806,7 +1821,7 @@ export default class TurnRunner {
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
             && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
             this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn", kind: "continued_without_note", level: "warn", message: CONTINUED_WITHOUT_NOTE,
+                source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });
         }
         return turnResult(request, executed.status, {
@@ -1907,6 +1922,7 @@ export default class TurnRunner {
                                 source: "grammar",
                                 kind: "parse_advisory",
                                 level: "warn",
+                                directive: DIRECTIVE.advisory,
                                 message: err.message,
                                 position: {
                                     type: "content-offset",
@@ -1940,6 +1956,7 @@ export default class TurnRunner {
                 source: "grammar:reasoning",
                 kind: "parse_advisory",
                 level: "warn",
+                directive: DIRECTIVE.advisory,
                 message: warning.message,
                 parserSource: warning.source,
             });

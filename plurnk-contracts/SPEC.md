@@ -1615,6 +1615,12 @@ complete RFC 9457 object.
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with
 Problems does not merge their semantics.
 
+§notice-directive A Notice's `message` states what happened ({§diagnostic-observation}).
+When the observation concerns the model's own output, the producer may attach one
+`directive`: `YOU MUST`, `YOU MUST NOT`, `YOU MUST ONLY`, `YOU SHOULD` or
+`YOU SHOULD NOT`, then the rule. An observation of the environment carries none.
+Clients display the message; the model packet leads with the directive.
+
 ### §client-display-capabilities 13.7 Client display capabilities
 
 `ClientDisplayCapabilities` is the transport-neutral installed-capability

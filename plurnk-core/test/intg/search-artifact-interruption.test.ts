@@ -314,7 +314,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         assert.match(disposition?.reason ?? "", /RangeError: function signature mismatch$/u, "the exact cause is the member's reason");
         assert.match(
             packetSection(await getPacket(db, turn.turnId), "notices"),
-            /search_progress: Repository search index is ready; 1 of \d+ derivations failed: "\/interrupted\.md" — Mimetype derivation failed for "\/interrupted\.md" \("text\/markdown"\)\. RangeError: function signature mismatch$/mu,
+            /^> Repository search index is ready; 1 of \d+ derivations failed: "\/interrupted\.md" — Mimetype derivation failed for "\/interrupted\.md" \("text\/markdown"\)\. RangeError: function signature mismatch \[search_progress\]$/mu,
             "the packet's notice names the failed member",
         );
     } finally { await mimetypes.dispose(); await db.close(); }

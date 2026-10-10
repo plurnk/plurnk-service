@@ -18,6 +18,12 @@ import { completeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
+// {§notice-callout} {§pinned-wording-core}: the exact callouts these witnesses expect.
+const CONTINUED = "> [!WARNING]\n> YOU MUST use at least one NOTE per continuing turn. The turn continued without a NOTE. [continued_without_note]";
+const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
+const scope = (requested: string, canonical: string): string =>
+    `> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <${requested}> was normalized to <${canonical}>. [scope_normalized]`;
+
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.
 const contentResponse = (content: string): MockResponse => ({
@@ -97,8 +103,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3\n"
-                + "* continued_without_note: The turn continued without a NOTE.",
+            `${UNACCOUNTED}\n\n${CONTINUED}`,
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -108,7 +113,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "notices")!);
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
-        assert.match(wire, /^\* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3$/m);
+        assert.match(wire, /^> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 \[output_unaccounted\]$/m);
 
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const source = programs.find(({ turn_id, kind }) => turn_id === t1.turnId && kind === "ops");
@@ -195,7 +200,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         assert.match(String(read?.body), /^2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma\n$/);
         assert.equal(
             packetSection(packet, "notices"),
-            "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",
+            scope("2,1,3", "2,1,3,6"),
         );
     } finally { await db.close(); }
 });
@@ -216,7 +221,7 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
         const read = logEntries(packet).find(({ logPath, body }) => String(logPath).endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
         assert.equal(packetSection(packet, "notices"),
-            "* scope_normalized: Scope <0,120> was normalized to <1,120>.\n* continued_without_note: The turn continued without a NOTE.");
+            `${scope("0,120", "1,120")}\n\n${CONTINUED}`);
         const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
         assert.deepEqual(receipts.filter(({ op }) => op === "READ").map(({ status_rx }) => status_rx), [200]);
         assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
@@ -256,10 +261,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
 
         assert.equal(
             packetSection(await getPacket(db, second.turnId), "notices"),
-            [
-                "* scope_normalized: Scope <1,2,1> was normalized to <1,2,1,6>.",
-                "* scope_normalized: Scope <3,2,3> was normalized to <3,2,3,6>.",
-            ].join("\n"),
+            [scope("1,2,1", "1,2,1,6"), scope("3,2,3", "3,2,3,6")].join("\n\n"),
         );
     } finally { await db.close(); }
 });
@@ -481,8 +483,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* output_unaccounted: 5000 output tokens billed; 1 visible across content and reasoning @ 2:3\n"
-                + "* continued_without_note: The turn continued without a NOTE.",
+            `${UNACCOUNTED}\n\n${CONTINUED}`,
         );
     } finally { await db.close(); }
 });

@@ -160,14 +160,15 @@ test("{§tokenomics-calibrated-readout} a converted budget changes the room with
     }
 });
 
-const SHARE = /^Context is at (\d+)% of budget\. YOU MUST NOT exceed budget\.$/u;
+const SHARE = /^Context is at (\d+)% of budget\.$/u;
 
 test("{§context-pressure-notice} a pressured packet within its budget carries one notice whose share is the gauge's own", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
     for (const base of [801, 850, 900]) {
         const { usage, gauge, notice } = resolve(1_000, base, items);
         assert.ok(notice !== null, `a packet of ${base} under a 1000 budget is under pressure`);
-        assert.deepEqual({ source: notice.source, kind: notice.kind, level: notice.level }, { source: "engine:context", kind: "budget_pressure", level: "warn" });
+        assert.deepEqual({ source: notice.source, kind: notice.kind, level: notice.level, directive: notice.directive },
+            { source: "engine:context", kind: "budget_pressure", level: "warn", directive: "YOU MUST NOT exceed budget." });
         const share = SHARE.exec(notice.message ?? "")?.[1];
         assert.equal(Number(share), Math.floor(gauge.tokens * 100 / 1_000), "the share is the gauge's final tokens over its budget, the notice included");
         assert.equal(gauge.tokens, usage);

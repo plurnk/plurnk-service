@@ -2984,9 +2984,10 @@ test("{§provider-native-tool-calls}: a tool_calls finish retains its evidence a
     assert.equal(result.assistant.content, "");
     assert.equal(result.accounting.length, 1);
     assert.match(JSON.stringify(result.assistantRaw), /chatcmpl-tool-af6fe7b410a1d7c5/u);
-    assert.deepEqual(result.notices?.map(({ kind, message }) => ({ kind, message })), [{
-        kind: "provider_warning", message: "The response included native tool calls, but no tools were declared.",
-    }]);
+    assert.deepEqual(result.notices?.map(({ kind, directive, message }) => ({ kind, directive, message })), [{
+        kind: "provider_warning", directive: "YOU MUST NOT emit native tool calls.",
+        message: "The response included native tool calls, but no tools were declared.",
+    }], "{§notice-directive}: native tool calls are the model's own output");
 });
 
 for (const streaming of [true, false]) {

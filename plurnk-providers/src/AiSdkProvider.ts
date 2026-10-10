@@ -1012,6 +1012,7 @@ export default class AiSdkProvider implements Provider {
                 source: this.#source,
                 kind: "provider_warning",
                 level: "warn",
+                directive: "YOU MUST NOT emit native tool calls.",
                 message: "The response included native tool calls, but no tools were declared.",
                 position: null,
             });

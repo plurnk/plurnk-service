@@ -299,7 +299,7 @@ test("{§outside-text}: a mixed turn stores its text as the turn's outside sourc
             [["engine:turn", "warn", line]]);
         const next = await turn();
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        assert.ok(packetSection(packet, "notices").split("\n").includes(`* outside_text: ${line}`), "the next packet's Notices section carries the exact line");
+        assert.ok(packetSection(packet, "notices").split("\n").includes(`> YOU MUST NOT emit anything except whitespace between fenced operations. ${line} [outside_text]`), "the next packet's Notices section carries the exact line");
         assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "the text itself never enters a packet");
     } finally { await db.close(); }
 });

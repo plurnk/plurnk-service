@@ -184,7 +184,7 @@ test("{§context-gauge}: a composed packet's largest inventory points to its dom
         assert.equal(largest.tokens, advised?.tokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
         assert.equal(object.tokens, stored.weight, "conditional advice participates in exact packet accounting");
-        const share = /^\* budget_pressure: Context is at (\d+)% of budget\. YOU MUST NOT exceed budget\.$/mu
+        const share = /^> YOU MUST NOT exceed budget\. Context is at (\d+)% of budget\. \[budget_pressure\]$/mu
             .exec(packetSection(stored.packet, "notices"))?.[1];
         assert.equal(Number(share), Math.floor(object.tokens * 100 / object.budget),
             "{§context-pressure-notice} {§pinned-wording-core}: the pressured packet states the gauge's own share");

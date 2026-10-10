@@ -455,6 +455,7 @@ export default class Dispatcher {
             if (key === null) continue;
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "scheme:file", kind: "path_normalized", level: "warn",
+                directive: "YOU SHOULD address the resolved path.",
                 message: `Path resolved to '${key || "."}'.`,
             });
         }
@@ -561,7 +562,8 @@ export default class Dispatcher {
                 source: "engine:dispatcher",
                 kind: "read_fanout_bounded",
                 level: "warn",
-                message: `READ ${statement.target!.raw} matched ${matchingPathCount} paths; the first ${paths.length} were read. Narrow the glob, or FIND first.`,
+                directive: "YOU SHOULD narrow the glob, or FIND first.",
+                message: `READ ${statement.target!.raw} matched ${matchingPathCount} paths; the first ${paths.length} were read.`,
             });
         }
         return Results.assert({ ...(results.find(({ status }) => status >= 400) ?? results[results.length - 1]!), rowsWritten: results.length });

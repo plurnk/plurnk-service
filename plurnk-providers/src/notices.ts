@@ -7,6 +7,8 @@ export interface ProviderNotice {
     readonly source: string;
     readonly kind: ProviderNoticeKind;
     readonly level: "warn";
+    // {§notice-directive} — present only when the observation concerns the model's own output.
+    readonly directive?: string;
     readonly message: string;
     readonly position: number | null;
 }

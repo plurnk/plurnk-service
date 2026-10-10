@@ -269,7 +269,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         assert.equal((await rowsOf(proseTurn!)).some(({ op }) => op === "SEND"), false, "storage is not message delivery");
         const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: toxinTurn! }))!.packet);
         assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
-        assert.ok(packetSection(following, "notices").split("\n").includes(`* outside_text: ${contentWeight(prose)} tokens emitted outside OPs. Discarded.`), "it carries the weight of what was discarded");
+        assert.ok(packetSection(following, "notices").split("\n").includes(`> YOU MUST NOT emit anything except whitespace between fenced operations. ${contentWeight(prose)} tokens emitted outside OPs. Discarded. [outside_text]`), "it carries the weight of what was discarded");
         assert.notEqual(packetSection(following, "messages"), "[]", "the original message still needs a reply");
         assert.deepEqual(await notesOf(untranslatedTurn!), []);
         assert.equal(outsideOf(untranslatedTurn!), untranslated, "foreign tool-call markup is stored verbatim; nothing filters the source");
@@ -347,6 +347,7 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
         const notice = notices.find(({ kind }) => kind === "metadata_ignored");
         assert.ok(notice, "one metadata_ignored notice");
         assert.equal(notice.message, "READ on 'worker' takes no [metadata]; the READ ran without it.");
+        assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§notice-directive}");
     } finally { await db.close(); }
 });
 

@@ -1048,6 +1048,10 @@ kind: string
  */
 level: ("error" | "warn" | "info")
 /**
+ * Optional model-facing imperative for an observation of the model's own output: `YOU MUST`, `YOU MUST NOT`, `YOU MUST ONLY`, `YOU SHOULD` or `YOU SHOULD NOT`, then the rule. The model packet leads with it; clients display `message`.
+ */
+directive?: string
+/**
  * Optional terse, factual display message.
  */
 message?: (string | null)
