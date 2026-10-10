@@ -399,7 +399,7 @@ test("the initial wire preserves canonical order and the Recap override without 
     } finally { await db.close(); }
 });
 
-test("the empty default Recap source omits the rendered footer", async () => {
+test("{§recap} the shipped Recap source renders as the footer, last in the user slot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -417,8 +417,10 @@ test("the empty default Recap source omits the rendered footer", async () => {
         });
         const packet = await getPacket(db, result.turnId);
 
-        assert.equal(packetSection(packet, "recap"), await readFile(Paths.defaultRecap, "utf8"));
-        assert.doesNotMatch(PacketWire.renderSlot(packet.sections, "user"), /^## Recap$/m);
+        const shipped = await readFile(Paths.defaultRecap, "utf8");
+        assert.equal(packetSection(packet, "recap"), shipped);
+        assert.match(shipped, /^> \[!IMPORTANT\]\n> YOU MUST begin this turn with a NOTE\.$/mu, "the shipped footer is the one NOTE reminder");
+        assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${shipped.trim()}`), "the footer closes the user slot");
     } finally { await db.close(); }
 });
 

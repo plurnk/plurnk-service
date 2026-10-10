@@ -12,6 +12,7 @@
         "plurnk-contracts/plurnk.md",
         "plurnk-meta/POLICY.md",
         "plurnk-meta/reasoning.md",
+        "plurnk-meta/recap.md",
         "plurnk-meta/docs/**",
         "plurnk-meta/requirements.md",
         "scripts/fixtures/**"
