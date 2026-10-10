@@ -56,7 +56,7 @@ const recordSamples = async ({ db, engine }: Fixture, counts = [100, 100, 100], 
         assert.ok(row);
         recorded.push({ turnId: result.turnId, packet: row.packet });
     }
-    return recorded;
+    return { loopId, recorded };
 };
 
 const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture) => {
@@ -90,7 +90,7 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     await prepareLog(f);
     const uncalibrated = await f.build();
     await recordSamples(f);
-    const factor = await TokenCalibration.forModel(f.db, "mock");
+    const factor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
     assert.ok(factor > 0 && factor < 1);
     const provider = providerAt(Math.floor(uncalibrated.weight / 0.85 * factor));
     const packet = await f.build(provider);
@@ -140,18 +140,20 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
     assert.equal((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet, persisted, "calibration never rewrites request history");
 });
 
-test("{§tokenomics-calibrated-readout} only the latest five positive emission samples inform the shared model", async (t) => {
+test("{§tokenomics-calibrated-readout} a loop's first sample fixes its factor; later samples, zero counts and other models leave it", async (t) => {
     const f = await fixture(t);
-    const counts = [100, 200, 300, 400, 500, 600, 700];
-    const recorded = await recordSamples(f, counts);
-    const weights = recorded.map(({ packet }) => StoredPacket.parse(packet)!.weight);
-    const factor = counts.slice(-5).reduce((sum, count) => sum + count, 0)
-        / weights.slice(-5).reduce((sum, weight) => sum + weight, 0);
-    assert.equal(await TokenCalibration.forModel(f.db, "mock"), factor);
+    const { loopId, recorded } = await recordSamples(f, [100, 200, 300, 400, 500, 600, 700]);
+    const factor = 100 / StoredPacket.parse(recorded[0]!.packet)!.weight;
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "the loop's first response fixed it; six more did not move it");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "a loop without its own sample takes the model's most recently fixed factor");
     await recordSamples(f, [0, 0, 0]);
     await recordSamples(f, [10_000, 10_000, 10_000], "other-model");
-    assert.equal(await TokenCalibration.forModel(f.db, "mock"), factor, "zero counts and other models cannot displace eligible evidence");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "zero counts and other models fix nothing for this model");
     assert.equal(budgetOf(await f.build()).budget, Math.floor(100_000 / factor), "a different worker consumes the same model evidence");
+    const later = await recordSamples(f, [50, 900]);
+    const fixedLater = 50 / StoredPacket.parse(later.recorded[0]!.packet)!.weight;
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), fixedLater, "the most recently fixed factor seeds a loop that has none");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "a loop that fixed its own factor keeps it");
 });
 
 test("{§tokenomics-calibrated-readout} overflow and attribution copies use the allowance captured at packet build", async (t) => {
@@ -172,15 +174,15 @@ test("{§tokenomics-calibrated-readout} overflow and attribution copies use the 
 
 test("{§tokenomics-client-gauge} the response cannot retroactively change its own packet allowance or physical usage", async (t) => {
     const f = await fixture(t);
-    const recorded = await recordSamples(f);
-    const priorFactor = await TokenCalibration.forModel(f.db, "mock");
+    const { recorded } = await recordSamples(f);
+    const priorFactor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
     const provider = providerAt(50_000, [response(17_000)]);
     const result = await f.engine.runTurn({ ...f, provider, messages });
     const raw = (await f.db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet;
     const packet = StoredPacket.parse(raw)!;
     const state = budgetOf(packet);
     const usage = await f.engine.loopUsage(f.loopId);
-    assert.notEqual(await TokenCalibration.forModel(f.db, "mock"), priorFactor, "the response changes the conversion for subsequent packets");
+    assert.notEqual(await TokenCalibration.forLoop(f.db, "mock", f.loopId), priorFactor, "the loop's first response fixes the conversion for its subsequent packets");
     assert.equal(state.budget, Math.floor(provider.inputCapacity! / priorFactor));
     assert.equal(usage.curationBudget, state.budget);
     assert.equal(usage.curationWeight, state.tokens);
@@ -198,7 +200,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
         await t.test(scenario, async (t) => {
             const f = await fixture(t);
             await recordSamples(f);
-            const factor = await TokenCalibration.forModel(f.db, "mock");
+            const factor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
             const rejected: MockResponse = {
                 assistant: { content: "````READ (worker:///not-an-operation", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
@@ -291,18 +293,21 @@ test("{§tokenomics-calibrated-readout} a converted zero allowance takes ordinar
     assert.equal(provider.received.length, 0, "no representable curation allowance cannot produce an admitted request");
 });
 
-test("{§context-budget} within a loop the budget follows the current calibration both ways", async (t) => {
-    const f = await fixture(t);
-    const provider = providerAt(20_000);
-    assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "uncalibrated, the capacity is the room");
-    await recordSamples(f);
-    const enlarging = await TokenCalibration.forModel(f.db, "mock");
-    assert.ok(enlarging < 1);
-    assert.equal(budgetOf(await f.build(provider)).budget, Math.floor(20_000 / enlarging), "a refined conversion enlarges the room");
-    await recordSamples(f, [10_000, 10_000, 10_000, 10_000, 10_000]);
-    const shrinking = await TokenCalibration.forModel(f.db, "mock");
-    assert.ok(shrinking > 1);
-    const shrunk = await f.build(provider);
-    assert.equal(budgetOf(shrunk).budget, Math.floor(20_000 / shrinking), "a tighter conversion shrinks the room in the same loop");
-    assert.equal(f.packets.curationBudgetFor(shrunk), budgetOf(shrunk).budget, "admission measures the room the model is shown");
+test("{§context-budget} a loop's budget follows its first response either way, then holds", async (t) => {
+    for (const [direction, count] of [["enlarges", 100], ["shrinks", 10_000]] as const) {
+        await t.test(direction, async (t) => {
+            const f = await fixture(t);
+            const provider = providerAt(20_000, [response(count)]);
+            assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "with no fixed factor, the capacity is the room");
+            const turn = await f.engine.runTurn({ ...f, provider, messages });
+            const weight = StoredPacket.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet)!.weight;
+            const fixed = Math.floor(20_000 / (count / weight));
+            assert.equal(fixed > 20_000, direction === "enlarges", `the first response ${direction} the room`);
+            const after = await f.build(provider);
+            assert.equal(budgetOf(after).budget, fixed);
+            await recordSamples(f, direction === "enlarges" ? [10_000] : [100]);
+            assert.equal(budgetOf(await f.build(provider)).budget, fixed, "another loop's newer factor does not move this loop's room");
+            assert.equal(f.packets.curationBudgetFor(after), budgetOf(after).budget, "admission measures the room the model is shown");
+        });
+    }
 });

@@ -298,7 +298,8 @@ export class SqlRiteSync {
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
 	strike_rail_state: SqlRiteSyncPreparedStatements;
 	strike_rail_assess: SqlRiteSyncPreparedStatements;
-	engine_calibration_samples: SqlRiteSyncPreparedStatements;
+	engine_calibration_loop_sample: SqlRiteSyncPreparedStatements;
+	engine_calibration_model_sample: SqlRiteSyncPreparedStatements;
 	turn_open: SqlRiteSyncPreparedStatements;
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
@@ -593,7 +594,8 @@ export default class SqlRite {
 	proposal_get_pending: SqlRitePreparedStatements;
 	strike_rail_state: SqlRitePreparedStatements;
 	strike_rail_assess: SqlRitePreparedStatements;
-	engine_calibration_samples: SqlRitePreparedStatements;
+	engine_calibration_loop_sample: SqlRitePreparedStatements;
+	engine_calibration_model_sample: SqlRitePreparedStatements;
 	turn_open: SqlRitePreparedStatements;
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;

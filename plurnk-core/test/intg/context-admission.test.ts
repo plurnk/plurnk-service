@@ -94,7 +94,7 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
         const roomy = providerAt(ROOMY, [note(PROSE), note(PROSE), note(PROSE), note(CODE)]);
         let codeTurn = 0;
         for (let turn = 0; turn < 4; turn++) codeTurn = (await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: roomy })).turnId;
-        const factor = await TokenCalibration.forModel(db, "mock");
+        const factor = await TokenCalibration.forLoop(db, "mock", loopId);
         const codeRow = (await db.test_log_entries_by_turn.all<{ id: number; op: string }>({ turn_id: codeTurn })).find(({ op }) => op === "NOTE")!;
 
         // The next request by both measures, and as each shedding step would leave it.
@@ -130,11 +130,11 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
 test("{§context-wall-measure} {§context-wall}: a request the provider refuses even as receipts ends the loop on the window-overflow Problem, and nothing is sent", async () => {
     const { db, workspaceId, workerId, loopId, engine, probe } = await fixture();
     try {
-        // One sample does not calibrate, so the estimate is the weight itself, while this vocabulary counts every
-        // character, twice the weight: shedding cannot reach a wall just above the estimate.
-        const roomy = providerAt(ROOMY, [note("Reading the evidence.")], 1);
+        // The loop's first response fixes its factor at four characters a token; the tight provider counts every
+        // character, so the estimate sits far under the exact count: shedding cannot reach a wall just above the weight.
+        const roomy = providerAt(ROOMY, [note("Reading the evidence.")]);
         await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: roomy });
-        assert.equal(await TokenCalibration.forModel(db, "mock"), 1);
+        assert.ok(await TokenCalibration.forLoop(db, "mock", loopId) < 1);
         const wall = (await probe(roomy)).weight + 100;
         const tight = providerAt({ capacity: wall, wall }, [note("Continuing the review.")], 1);
         const result = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });

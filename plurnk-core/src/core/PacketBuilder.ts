@@ -234,7 +234,7 @@ export default class PacketBuilder {
         // {§context-budget} — one room: the provider's input capacity in curation weight, bounding the
         // whole packet. Nothing here sizes a part of it.
         const inputCapacity = provider.inputCapacity;
-        const factor = inputCapacity === null ? 1 : await TokenCalibration.forModel(this.#db, provider.model);
+        const factor = inputCapacity === null ? 1 : await TokenCalibration.forLoop(this.#db, provider.model, loopId);
         const curationBudget = TokenCalibration.capacity(inputCapacity, factor);
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are

@@ -186,7 +186,7 @@ test("content_hash is a stable per-content identity — identical content, ident
     assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });
 
-test("{§tokenomics-calibrated-readout} three reported prompt counts convert the ceiling without changing cost units", async () => {
+test("{§tokenomics-calibrated-readout} the loop's first reported prompt count fixes its ceiling without changing cost units", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-cal-${crypto.randomUUID()}`);
@@ -215,9 +215,10 @@ test("{§tokenomics-calibrated-readout} three reported prompt counts convert the
             weights.push(packet.weight);
         }
         assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");
-        assert.deepEqual(ceilings.slice(0, 3), Array(3).fill(provider.inputCapacity), "fewer than three samples retain the cold-start allowance");
-        const factor = (3 * reported) / (weights[0] + weights[1] + weights[2]);
-        assert.equal(ceilings[3], Math.floor(provider.inputCapacity! / factor), "the fourth allowance converts provider capacity into the stable curation ruler");
-        assert.notEqual(ceilings[3], provider.inputCapacity, "the fixture exercises a non-unit conversion");
+        assert.equal(ceilings[0], provider.inputCapacity, "before any response the model has no fixed factor: the capacity is the room");
+        const fixed = Math.floor(provider.inputCapacity! / (reported / weights[0]!));
+        assert.deepEqual(ceilings.slice(1), Array(3).fill(fixed), "the first response fixes the conversion for every later packet of the loop");
+        assert.notEqual(new Set(weights.slice(1)).size, 1, "later packets weigh differently, so a sliding conversion would have moved");
+        assert.notEqual(fixed, provider.inputCapacity, "the fixture exercises a non-unit conversion");
     } finally { await db.close(); }
 });

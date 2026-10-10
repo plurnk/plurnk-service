@@ -2,19 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import TokenCalibration from "./TokenCalibration.ts";
 
-test("{§tokenomics-calibrated-readout} fewer than three samples keep the factor at 1", () => {
-    assert.equal(TokenCalibration.factor([]), 1);
-    assert.equal(TokenCalibration.factor([{ weight: 100, reported: 60 }, { weight: 100, reported: 60 }]), 1);
+test("{§tokenomics-calibrated-readout} without a fixing sample the factor is 1", () => {
+    assert.equal(TokenCalibration.factor(undefined), 1);
 });
 
-test("{§tokenomics-calibrated-readout} the factor is reported over measured, summed across the samples", () => {
-    const factor = TokenCalibration.factor([{ weight: 100, reported: 60 }, { weight: 200, reported: 140 }, { weight: 100, reported: 60 }]);
-    assert.equal(factor, 260 / 400);
+test("{§tokenomics-calibrated-readout} one sample fixes the factor: reported over measured", () => {
+    assert.equal(TokenCalibration.factor({ weight: 400, reported: 260 }), 260 / 400);
+    assert.equal(TokenCalibration.factor({ weight: 100, reported: 300 }), 3, "a tighter vocabulary shrinks the room");
 });
 
 test("{§tokenomics-calibrated-readout} a sample that is not a positive integer is refused", () => {
-    assert.throws(() => TokenCalibration.factor([{ weight: 100, reported: 0 }, { weight: 100, reported: 60 }, { weight: 100, reported: 60 }]), /calibration sample reported must be a positive safe integer/u);
-    assert.throws(() => TokenCalibration.factor([{ weight: 1.5, reported: 1 }, { weight: 100, reported: 60 }, { weight: 100, reported: 60 }]), /calibration sample weight must be a positive safe integer/u);
+    assert.throws(() => TokenCalibration.factor({ weight: 100, reported: 0 }), /calibration sample reported must be a positive safe integer/u);
+    assert.throws(() => TokenCalibration.factor({ weight: 1.5, reported: 1 }), /calibration sample weight must be a positive safe integer/u);
 });
 
 test("{§tokenomics-calibrated-readout} only capacity crosses from provider tokens into curation units", () => {

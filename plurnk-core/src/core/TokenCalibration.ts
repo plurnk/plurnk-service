@@ -5,29 +5,24 @@ export interface CalibrationSample {
     readonly reported: number;
 }
 
-const MIN_SAMPLES = 3;
-
 // {§tokenomics-calibrated-readout} — provider capacity crosses into the stable
 // curation ruler here. Content costs never cross in the opposite direction.
 export default class TokenCalibration {
-    static factor(samples: readonly CalibrationSample[]): number {
-        if (samples.length < MIN_SAMPLES) return 1;
-        let weight = 0;
-        let reported = 0;
-        for (const sample of samples) {
-            for (const [name, value] of Object.entries(sample)) {
-                if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`calibration sample ${name} must be a positive safe integer`);
-            }
-            weight += sample.weight;
-            reported += sample.reported;
+    // One sample fixes the factor; without one the conversion is 1:1.
+    static factor(sample: CalibrationSample | undefined): number {
+        if (sample === undefined) return 1;
+        for (const [name, value] of Object.entries(sample)) {
+            if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`calibration sample ${name} must be a positive safe integer`);
         }
-        return reported / weight;
+        return sample.reported / sample.weight;
     }
 
-    static async forModel(db: Db, model: string): Promise<number> {
+    // The factor a packet of this loop converts with: the loop's own first sample from the model, else the
+    // model's most recently fixed one, else 1.
+    static async forLoop(db: Db, model: string, loopId: number): Promise<number> {
         if (model.length === 0) throw new TypeError("calibration requires the model name the provider reports");
-        const samples = await db.engine_calibration_samples.all<{ weight: number; reported: number }>({ model });
-        return TokenCalibration.factor(samples);
+        const own = await db.engine_calibration_loop_sample.get<CalibrationSample>({ model, loop_id: loopId });
+        return TokenCalibration.factor(own ?? await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));
     }
 
     static capacity(inputCapacity: number | null, factor = 1): number | null {
