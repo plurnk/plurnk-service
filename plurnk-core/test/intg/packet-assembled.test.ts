@@ -398,7 +398,7 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
     } finally { await db.close(); }
 });
 
-test("{§recap-lines} the shipped recap lines close the user slot, each in its directive's callout, ahead of the empty source", async () => {
+test("{§recap-lines} no recap line ships and the recap source is empty, so a packet has no Recap", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -417,9 +417,7 @@ test("{§recap-lines} the shipped recap lines close the user slot, each in its d
         const packet = await getPacket(db, result.turnId);
 
         assert.equal(await readFile(Paths.defaultRecap, "utf8"), "", "{§recap-lines}: the shipped recap source stays empty");
-        const footer = "> [!IMPORTANT]\n> YOU MUST emit NOTE operations as you reason. NOTE operations work during reasoning.";
-        assert.equal(packetSection(packet, "recap"), footer);
-        assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${footer}`), "the footer closes the user slot");
+        assert.equal(packetSection(packet, "recap"), "", "{§recap-lines}: no line ships, so the packet has no Recap");
     } finally { await db.close(); }
 });
 

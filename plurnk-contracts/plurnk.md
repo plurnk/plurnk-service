@@ -1,10 +1,10 @@
-# Plurnk Operation Protocol
+# Plurnk Annotated Operation Protocol
 
 > [!IMPORTANT]
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST NOT emit anything except whitespace between fenced operations.
+> YOU MUST emit NOTE operations during both reasoning and response to register **ALL** facts, findings, conclusions, decisions, and plans.
 
 ## Syntax
 
@@ -14,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Internal Working Memory Register: All facts, findings, conclusions, decisions, and plans.
+* NOTE: Persistent Internal Annotation Register.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -27,9 +27,6 @@ body?
 * SEND: Message endpoints, workers, or respond to Open Messages.
 
 ## Loop Protocol
-
-> [!IMPORTANT]
-> YOU MUST emit at least one NOTE before any other operation.
 
 ```NOTE
 exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Ruled out: the cache (cleared, same failure). Unverifiable: whether plugins rely on the early read; assuming not. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
