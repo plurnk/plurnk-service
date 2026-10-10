@@ -53,7 +53,14 @@ npm run build -w @plurnk/plurnk-service
 ```
 
 Integration tests use temporary databases and project roots. Clean up temporary
-resources in `finally` blocks or test hooks.
+resources in `finally` blocks or test hooks. `test:intg` runs with
+`PLURNK_SERVICE_FILES_ITEMS=0`; run one file under the same posture from this
+directory:
+
+```sh
+PLURNK_SERVICE_FILES_ITEMS=0 node --conditions=plurnk-dev --import=./test/setup.ts \
+  --env-file-if-exists=.env.defaults --test test/intg/<file>.test.ts
+```
 
 ## Boundaries
 

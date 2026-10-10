@@ -63,8 +63,8 @@ on main pushes.
 Change the owning package, cover externally meaningful behavior, and remove
 superseded paths and prose. A schema change is the next migration version;
 released migrations are never edited. Never commit secrets, private
-state, transcripts, or generated artifacts. Commit subjects are Conventional and
-at most 80 characters; reference the issue when useful.
+state, transcripts, or generated artifacts. A commit is one Conventional subject
+line of at most 100 characters citing its issue as `(#N)`, with no body or trailers.
 
 ## Diagnostics
 
@@ -195,7 +195,17 @@ npm run release:publish -- /path/to/new-release-artifacts
 The package directories above are an example selection, not a fixed train. Name
 every unpublished dependency candidate; all other dependencies resolve normally.
 Only selected repositories are prerequisites. Each must be clean, signed and
-accepted on canonical `main`, with npm and GitHub publication authority.
+accepted on canonical `main`, with npm and GitHub publication authority. npm
+authority is a granular access token that bypasses two-factor authentication; a
+token from `npm login` fails every upload with `EOTP`.
+
+`release:version` does not consult the registry. A version the registry has ever
+accepted cannot be reused: move a collision to the next patch by hand (the version,
+every range naming it, the changelog heading), then `npm install --package-lock-only`.
+A release that ships migrations moves `plurnk-core/test/intg/schema-baseline.test.ts`
+forward in the same landing (`RELEASED` to the shipped shape, the prior release to
+`PREVIOUS`) and heads each shipped migration
+`-- Released in <version> and frozen ({§db-migrations})`.
 
 `release:check` builds and gates source, projects archives, and tests a fresh
 installed composition. It retains those exact archives, source identities, and

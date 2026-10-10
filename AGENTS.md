@@ -39,31 +39,53 @@ Where things are, for an agent that has to act before it has read everything:
   (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`). Treat any
   daemon you did not start as a live session someone is using: never stop it to free
   a port, never select processes by the directory they happen to sit in, and never
-  read its database except through a copy.
+  read its database except through a copy. It reads `plurnk-contracts/plurnk.md` from
+  disk when it starts or wakes a worker, not once at boot, so a card edit reaches live
+  workers without a restart.
+- **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals
+  every process using that directory, the daemon included, and `pgrep -f`/`pkill -f`
+  match the calling shell's own command line. When a pattern is unavoidable, bracket its
+  first character (`[d]rill\.mjs`).
+- **A paid run needs the operator's explicit go** naming what runs and against which
+  comparator. Live, demo, candidate, benchlet and campaign runs spend real money; never
+  infer the comparator.
+- **Current work and open decisions** are on the forge board, #768.
 - **The bench lane** is the `plurnk-bench` checkout beside this one; read
   `deepswe/README.md` there before launching anything, and never reconstruct its
   invocation from memory.
-- **Landing**: topic branch, `npm run -s root:lint`, then `git push origin <branch>:main`.
+- **Landing**: commit on `main` in this checkout; topic branches and worktrees return only
+  when a second agent works the tree at the same time. Stage files by name, never
+  `git add .` or `-A`. Commit subjects are one line of at most 100 characters citing
+  `(#N)`, no body. While iterating, commit locally (`deepswe/relock.sh` in the bench lane
+  accepts a local commit) and gate at a checkpoint — a measured baseline, a chapter's end,
+  a release — one drill covering every commit since. Run `npm run -s root:lint`, then push
+  detached with the status in its log:
+  `setsid sh -c 'git push origin main; echo GATE_RC=$?' > <log> 2>&1 < /dev/null &`.
   The pre-push drill is the gate (lint, unit, intg, client conformance against
-  `../plurnk`). It runs the pushed commit in a throwaway
-  worktree beside this checkout (`plurnk-service.wt-gate-<pid>`, removed when the
-  drill ends), so the working tree may stay dirty and be edited while it runs; intg
-  scopes to the changed workspaces and runs in full for a root-level, `plurnk-core`,
-  or `plurnk-contracts` change. On green, fast-forward local `main`, delete
-  the branch with `git branch -d`, mirror with
-  `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
-  line of at most 100 characters citing `(#N)`, no body.
+  `../plurnk`). It copies this checkout's `node_modules`, so run
+  `npm install --no-audit --no-fund` after a change to the workspaces or the lockfile. It
+  runs the pushed commit in a throwaway worktree beside this checkout
+  (`plurnk-service.wt-gate-<pid>`, removed when the drill ends), so the working tree may
+  stay dirty and be edited while it runs. Intg scopes to the changed workspaces and runs
+  in full for a root-level, `plurnk-core`, `plurnk-contracts` or `plurnk-parser` change.
+  The drill prints a phase's output only when that phase goes red, so a hung phase shows
+  nothing until its runner exits. Only when the log reads `GATE_RC=0`, mirror with
+  `git push --no-verify github origin/main:refs/heads/main`.
 - **Releases are independent** ({§package-release-contract}). Every public change lands
   with its changeset, written by whoever lands the change (`npm run changeset`);
   `npm run release:version` applies the pending changesets and synchronizes the lockfile.
-  Review and land those changes through the normal gate. From clean canonical `main`
+  Review and land those changes through the normal gate. A release never lands mid-epic;
+  minor issues roll in first. Before qualification, `test:live` and
+  `test:demo` (from `plurnk-core`) and the bench lane's benchlet run green on lanes at the
+  release commits, and the release starts once the operator agrees on their digests'
+  error rows and receipts. From clean canonical `main`
   checkouts, `npm run release:check -- <new-artifact-directory> <package-directory>...`
   qualifies only explicitly selected packages, including outside packages when named.
   `npm run release:publish -- <artifact-directory>` publishes those retained archives in
   dependency order, verifies the installed composition, and creates signed tags and GitHub
-  release records. Retry with that same artifact directory; do not rebuild an interrupted
-  release. No automatic version stamping or neighboring-repository sweep occurs during
-  publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
+  release records; run it under your agent identity, whose key signs the tags. Retry with
+  that same artifact directory; do not rebuild an interrupted release. No automatic version
+  stamping or neighboring-repository sweep occurs during publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
   After the packages are served, update and verify the bench checkout's dependencies.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
@@ -179,7 +201,11 @@ boots the built service and compares the terminal client's
 `discover`, so an action rename, scope, or module-surface change fails this
 repository's push instead of silently breaking the client. The installed CLI
 and TUI journeys require that checkout and its dependencies; `PLURNK_CLIENT_CHECKOUT`
-selects another installed client location instead of the `../plurnk` default.
+selects another installed client location instead of the `../plurnk` default. The phase
+reads that checkout as it stands: land a client change before the service push that
+depends on it, and never leave it half-edited while a gate runs. Its scripted model
+(`scripts/fixtures/client-journey-model.mjs`) asserts text from the teaching pages, so a
+teaching edit updates it in the same landing.
 
 Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
 Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with
@@ -305,6 +331,17 @@ A surface-only rename, a new flag over old internals, is a defect, not a first s
 tree: no code, spec, doc, test, comment or diagnostic refers to it, and nothing recognizes it to refuse
 or translate it. Any record of it invites its resurrection. History lives in git, issues and published
 changelogs.
+
+**No agent owns an issue.** Whoever is working owns the whole queue, including issues another
+agent filed or started; close what you can close. Fix every defect you find, not a ranked subset;
+recovery wording (receipts, Problems, recovery lines) is first-class work.
+
+**One contract change per measured cycle**, with one hand on a contract at a time. A benchmark is
+evidence on one axis, never the scope: a page or contract serves every model and conversation.
+
+**Upstream as published.** Plurnk implements standards and dependencies as they are published. It
+files no feature requests or proposals upstream and keeps no issue open waiting on one; what the
+public surface cannot do stays out.
 
 **A diagnostic says what happened, never why** ({§diagnostic-observation}). A message names what
 was read, what was done with it and where, and may show the construct's working form; it never
