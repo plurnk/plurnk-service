@@ -6,6 +6,9 @@
 > [!IMPORTANT]
 > YOU MUST emit NOTE operations during both reasoning and response to register **ALL** facts, findings, conclusions, decisions, and plans.
 
+> [!TIP]
+> All operations except for NOTEs are converted into log items.
+
 ## Syntax
 
 ```exampleOperation (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?

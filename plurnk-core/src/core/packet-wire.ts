@@ -297,7 +297,8 @@ export default class PacketWire {
     // {§context-gauge} — the wire row and its reclaimable-body accounting come from one render
     // pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
-        const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
+        // Trial (#1073): the model's NOTEs live in its replayed turns, their only home.
+        const log = (Array.isArray(entries) ? (entries as LogEntryView[]) : []).filter((e) => !(e.op === "NOTE" && e.origin === "model"));
         if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], bodied: [] };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         const records = rows.map(({ content }) => content);

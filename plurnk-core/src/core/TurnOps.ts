@@ -21,7 +21,7 @@ export default class TurnOps {
     // {§emission-history} — select whole operations from the frozen program, never from its bodies.
     static renderHistory(source: string, executors: readonly string[]): string {
         return TurnOps.renderEmission(TurnOps.parseInternal(source, { executors }).filter((statement) =>
-            !(statement.op === "KILL" && schemeNameOf(statement.target) === "log")));
+            statement.op === "NOTE"));
     }
 
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
