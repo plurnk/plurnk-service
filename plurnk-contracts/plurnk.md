@@ -1,38 +1,36 @@
-# Plurnk State Machine
+# Plurnk Agent Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit valid Plurnk OP Syntax operations, with parameters, the pattern, and the terse aside on one fenced OP line.
+> YOU MUST ONLY emit fenced Agent Operation Protocol Syntax Operations; with parameters, the pattern, and the terse aside on the fenced Operation line.
 
-> [!IMPORTANT]
-> YOU MUST NOT emit anything except whitespace outside valid Plurnk OP Syntax fences.
+> YOU MUST NOT emit anything except whitespace between fenced Agent Operation Protocol Syntax Operations.
 
-## Plurnk OP Syntax
+## Syntax
 
-```exampleOp (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
+```exampleOperation (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
 body?
 ```
 
-## Plurnk Workflow OPs
+## Core Operations
 
-* NOTE: Carry your reasoning forward—facts, findings, conclusions, decisions, and plans.
+* NOTE: Persistent Internal Working Memory Register: All facts, findings, conclusions, decisions, and plans.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: Copy files, entries, streams, or text regions.
 * MOVE: Move files, entries, streams, or text regions.
 * KILL: Kill things. Delete an entry, stop a process, or retire log items.
-* WORK: Delegate to a child worker (fresh log).
-* FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams.
-* SEND: Message endpoints or workers.
+* WORK: Delegate to a child worker (fresh log). (Read more: worker:///_plurnk/plurnk/delegation.md)
+* WAIT: Yield to child workers and streams (You may include `[60]` to check in after 60 seconds).
+* SEND: Message endpoints, workers, or respond to Open Messages.
 
-## Workflow Management
+## Loop Protocol
 
 > [!IMPORTANT]
 > YOU MUST use **at least** one NOTE per continuing turn. Reasoning is not carried forward automatically.
 
-```WAIT [60] <!-- example: yield to children and streams for up to 60 seconds -->
-This is an example of a waiting turn progress update response.
+```NOTE
+Example note that future turns depend upon for orientation.
 ```
 
 ```SEND
@@ -44,12 +42,11 @@ This is an example of the final deliverable response.
 ```
 
 > [!TIP]
-> SEND with the path to respond to a specific Open Message.
+> SEND with the (path) to respond to a specific Open Message.
 
 > [!NOTE]
 > The loop continues until:
->
-> * Every Open Message has a `[200]` completion or `[499]` cancellation reply.
+> * Every Open Message has received a `[200]` completion or `[499]` cancellation reply.
 > * All required operation results have been observed.
 > * All work held by the loop has settled.
 
@@ -90,7 +87,7 @@ This is an example of the final deliverable response.
 | `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
-## File Editing
+## Editing
 
 ```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
 bar
@@ -117,12 +114,6 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 ```
 ````
 
-> [!TIP]
-> The EDIT body is literal text; it may hold more or fewer lines than the scope.
-
-> [!TIP]
-> YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
-
 ## Context Curation
 
 > [!WARNING]
@@ -143,26 +134,4 @@ exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); b
 
 ```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
 Optional summarizations of removed log items are preserved as NOTEs.
-```
-
-## Delegation (worker:///_plurnk/plurnk/delegation.md)
-
-```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
-Describe the child's complete task in the body.
-```
-
-```KILL (sh:///ab3d5678) <!-- stops a running command -->
-```
-
-> [!TIP]
-> `SEND (worker://name)` messages a live worker.
-
-## Environment (worker:///_plurnk/plurnk/env.md)
-
-```env (add) <!-- persists for this worker's commands -->
-{"alias":"PLANET","definition":{"value":"world"}}
-```
-
-```sh [{"env":{"GREETING":"Hello"}}] <!-- presuming sh tool is enabled -->
-echo "$GREETING, $PLANET."
 ```
