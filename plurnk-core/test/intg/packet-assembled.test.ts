@@ -417,7 +417,7 @@ test("{§recap-lines} the shipped recap lines close the user slot, each in its d
         const packet = await getPacket(db, result.turnId);
 
         assert.equal(await readFile(Paths.defaultRecap, "utf8"), "", "{§recap-lines}: the shipped recap source stays empty");
-        const footer = "> [!IMPORTANT]\n> YOU MUST emit NOTE operations as you reason. NOTE operations work during reasoning.\n\n> [!TIP]\n> YOU MAY use NOTE, FIND, and READ operations while reasoning.";
+        const footer = "> [!IMPORTANT]\n> YOU MUST emit NOTE operations as you reason. NOTE operations work during reasoning.";
         assert.equal(packetSection(packet, "recap"), footer);
         assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${footer}`), "the footer closes the user slot");
     } finally { await db.close(); }
