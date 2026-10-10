@@ -232,8 +232,8 @@ const INITIALIZATION_NOTE: NoteStatement = {
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
-// Trial (#1073): a continuing turn that carried NOTEs and no other operation is told so, as information;
-// the rail counts it as a no-operation turn.
+// Trial (#1073): a continuing turn that carried NOTEs and no other operation is told so with a SHOULD, the
+// level a model packet carries ({§notice-callout}); the rail counts it as a no-operation turn.
 const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
@@ -1840,7 +1840,7 @@ export default class TurnRunner {
         const annotationOnly = ops.length > 0 && ops.every((statement) => "op" in statement && statement.op === "NOTE");
         if ((executed.status === 102 || executed.status === 202) && annotationOnly) {
             this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn", kind: "noted_without_operation", level: "info", directive: DIRECTIVE.act, message: NOTED_WITHOUT_OPERATION,
+                source: "engine:turn", kind: "noted_without_operation", level: "warn", directive: DIRECTIVE.act, message: NOTED_WITHOUT_OPERATION,
             });
         }
         return turnResult(request, executed.status, {

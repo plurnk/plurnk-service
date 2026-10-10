@@ -777,6 +777,39 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 if (!Array.isArray(rawAnchors)) {
                     throw new TypeError("A READ log body carries malformed published line anchors.");
                 }
+                // Trial (#1073): an emission row's legend lines are its turn's NOTEs. An exact line scope
+                // aimed at the row retires the NOTEs on those lines; `<1,-1>` keeps its meaning and retires
+                // the row itself, the turn's voice, leaving its NOTEs as ordinary rows.
+                const marks = statement.lineMarker?.marks ?? null;
+                const wholeMarks = marks !== null && marks.length === 2 && marks[0] === 1 && marks[1] === -1;
+                if (exact && marks !== null && !wholeMarks && LogEntryProjection.isEmission(row)) {
+                    const legend = await ctx.db.log_turn_note_rows.all<{ id: number; folded: string }>({ id: row.id });
+                    if (legend.length > 0) {
+                        const count = legend.length;
+                        const legendScope = LogVisibility.resolveScope(
+                            statement.lineMarker, identity, legend.map((_, index) => String(index + 1)).join("\n"),
+                        );
+                        if (!legendScope.ok) {
+                            return {
+                                result: Results.failure("scheme:log", legendScope.code, legendScope.status, legendScope.detail, {}, {
+                                    target: identity, recovery: legendScope.recovery, retryable: false,
+                                }) as OpenFoldResult,
+                                plan: null,
+                            };
+                        }
+                        const visible = new Set(LogVisibility.visibleLineOrdinals(
+                            LogVisibility.apply(LogVisibility.OPEN, legendScope.range, count), count,
+                        ));
+                        for (const [index, note] of legend.entries()) {
+                            if (visible.has(index + 1)) continue;
+                            const noteFolded = LogVisibility.parse(note.folded);
+                            targets.push({ id: note.id, activeBefore: 1, activeAfter: 0, foldedBefore: noteFolded, foldedAfter: noteFolded });
+                        }
+                        const rowFolded = LogVisibility.parse(row.folded);
+                        targets.push({ id: row.id, activeBefore: 1, activeAfter: 1, foldedBefore: rowFolded, foldedAfter: rowFolded });
+                        continue;
+                    }
+                }
                 const scope = LogVisibility.resolveScope(
                     statement.lineMarker,
                     identity,
