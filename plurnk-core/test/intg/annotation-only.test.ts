@@ -1,5 +1,5 @@
-// Trial (#1073): a continuing turn of NOTEs alone is told so by an info notice and counts as a
-// no-operation turn on the rail.
+// Trial (#1073): a continuing turn of NOTEs alone is told so under the per-turn rule; it is a notice,
+// never a strike.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-const NOTICE = "> [!WARNING]\n> YOU SHOULD act in the turn you annotate. The turn carried NOTEs and no other operation. [noted_without_operation]";
+const NOTICE = "> [!WARNING]\n> YOU MUST use at least one NOTE and at least one other operation per continuing turn. The turn carried NOTEs and no other operation. [noted_without_operation]";
 
 const conversation = async (db: Awaited<ReturnType<typeof openMigrated>>, contents: string[]) => {
     const workspaceId = await insertWorkspace(db, `annotation-only-${crypto.randomUUID()}`);
@@ -36,13 +36,12 @@ test("a turn of NOTEs alone is told so in the next packet; a turn with an operat
     } finally { await db.close(); }
 });
 
-test("three consecutive turns of NOTEs alone end the loop as three empty turns do", async () => {
+test("three consecutive turns of NOTEs alone are told so each time and never strike", async () => {
     const db = await openMigrated();
     try {
         const result = await conversation(db, [
-            "```NOTE\nOne.\n```", "```NOTE\nTwo.\n```", "```NOTE\nThree.\n```", "```SEND [200]\nNever reached.\n```",
+            "```NOTE\nOne.\n```", "```NOTE\nTwo.\n```", "```NOTE\nThree.\n```", "```SEND [200]\nReached.\n```",
         ]);
-        assert.equal(result.result.status, 500, JSON.stringify(result.result));
-        assert.match(JSON.stringify(result.result), /performed no operation/u);
+        assert.equal(result.result.status, 200, JSON.stringify(result.result));
     } finally { await db.close(); }
 });

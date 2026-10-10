@@ -285,7 +285,6 @@ export default class LoopDriver {
                     outcomes: turn.outcomes,
                     progressed: turn.progressed,
                     emptyTurn: turn.emptyTurn,
-                    annotationOnly: turn.annotationOnly,
                     minCycles, maxCyclePeriod, maxStrikes });
                 // {§loop-terminals}: accounting cannot replace a settled loop's outcome.
                 if (await this.#lifecycle.result(loopId) !== null) continue;
