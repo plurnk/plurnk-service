@@ -32,13 +32,24 @@ export default class LiveSubscription {
             cancel: () => this.#terminal === null
                 ? options.handle.cancel()
                 : this.close(this.#terminal.result, this.#terminal.summary, this.#terminal.channelResults),
-        });
+        }, options.identity.workerId);
     }
 
     close(result: ChannelProducerResult, summary = "", channelResults?: Readonly<Record<string, ChannelProducerResult>>): Promise<void> {
         if (this.#closed) return Promise.resolve();
         if (this.#closing !== null) return this.#closing;
-        this.#terminal = { result, summary, channelResults };
+        // {§stream-asked-stop} — a stream its worker's KILL stopped concludes as asked, never as a cancellation.
+        const asked = this.#options.registry.wasAsked(this.#options.identity.subscriptionId);
+        const concluded = (produced: ChannelProducerResult): ChannelProducerResult => {
+            if (!asked || produced.status !== 499) return produced;
+            const exitCode = (produced as { exitCode?: unknown }).exitCode;
+            return typeof exitCode === "number" ? { status: 200, exitCode } as ChannelProducerResult : { status: 200 };
+        };
+        this.#terminal = {
+            result: concluded(result), summary,
+            channelResults: channelResults === undefined ? undefined
+                : Object.fromEntries(Object.entries(channelResults).map(([channel, produced]) => [channel, concluded(produced)])),
+        };
         const closing = this.#settle(this.#terminal);
         this.#closing = closing;
         void closing.then(() => { this.#closing = null; }, () => {

@@ -167,7 +167,37 @@ test("a generated JSON result publishes whole with the extent through the next-t
     });
 });
 
-test("a failed execution reaches the model as the executor's exact Problem on its terminal ambient READ", async (approvalContext) => {
+test("{§exec-stream-page} a failed execution with output on both channels is one failure and one Errors pointer", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'last words\\n' >&2; kill -KILL $$\n````\n\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse("````SEND [200]\nfailure observed\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-one-failure" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command" });
+            assert.equal(finalStatus, 200);
+            const turn2 = turnIds![2];
+            const rows = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; scheme: string; fragment: string | null; op: string; origin: string; rx: string }>({ turn_id: turn2 }))
+                .filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+            assert.equal(rows.length, 2, "one terminal READ per channel that holds content");
+            const failed = rows.filter((row) => row.status_rx >= 400);
+            assert.equal(failed.length, 1, "the execution's failure rides one row");
+            assert.equal(failed[0]!.fragment, "stdout", "the default channel's row carries it");
+            assert.equal(JSON.parse(failed[0]!.rx).problem?.type, "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal");
+            const sibling = rows.find((row) => row.status_rx < 400)!;
+            assert.equal(sibling.status_rx, 200);
+            assert.equal(JSON.parse(sibling.rx).problem, undefined, "the sibling row is a plain read of its channel");
+            assert.equal(JSON.parse(sibling.rx).content, "last words\n");
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))?.packet ?? "{}");
+            assert.equal(JSON.parse(packetSection(packet, "errors")).length, 1, "one Errors pointer for one failed execution");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§executor-exit-code} {§exec-stream} a nonzero exit reaches the model as the command's answer on its terminal READs", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n````\n\n````WAIT\nwaiting\n````", 10),
@@ -182,7 +212,7 @@ test("a failed execution reaches the model as the executor's exact Problem on it
                 prompt: "run a command",
 
             });
-            assert.equal(finalStatus, 200, "the model may conclude after observing the failed execution");
+            assert.equal(finalStatus, 200);
             assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
             const turn2 = turnIds![2];
@@ -197,48 +227,26 @@ test("a failed execution reaches the model as the executor's exact Problem on it
                 source: string | null;
                 rx: string;
             }>({ turn_id: turn2 });
-            const terminal = rows.find((row) =>
-                row.op === "READ"
-                && row.origin === "_plurnk"
-                && row.scheme === "sh"
-                && row.status_rx === 500);
-            assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
-            assert.equal(terminal.source, null, "failed observations do not mislabel the invocation as an actor");
-
-            const result = JSON.parse(terminal.rx) as {
-                status: number;
-                exitCode?: number;
-                problem?: { type?: string; status?: number; detail?: string; instance?: string };
-            };
-            assert.equal(result.status, 500);
-            assert.equal(result.exitCode, 3);
-            assert.equal(result.problem?.status, 500);
-            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
-            assert.equal(result.problem?.detail, "'sh' exited with code 3."); // {§pinned-wording-core}
-            assert.match(
-                result.problem?.instance ?? "",
-                new RegExp(`^log:///\\d+/\\d+/${terminal.sequence}/READ$`),
-                "the Problem instance names the committed ambient READ row",
-            );
-            assert.equal(
-                (result as { content?: string }).content,
-                terminal.fragment === "stderr" ? "compile diagnostic\n" : "partial output\n",
-                "the failed terminal result preserves its channel's diagnostic output",
-            );
+            const terminals = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+            assert.equal(terminals.length, 2, "one terminal READ per channel that holds content");
+            for (const terminal of terminals) {
+                assert.equal(terminal.status_rx, 200);
+                assert.equal(terminal.source, null);
+                const result = JSON.parse(terminal.rx) as { status: number; exitCode?: number; problem?: unknown; content?: string };
+                assert.equal(result.exitCode, 3);
+                assert.equal(result.problem, undefined, "an exit code carries no Problem");
+                assert.equal(result.content, terminal.fragment === "stderr" ? "compile diagnostic\n" : "partial output\n");
+            }
 
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
-            const renderedTerminal = logEntries(packet).find((entry) => entry.logPath === result.problem?.instance);
-            assert.ok(renderedTerminal, "the exact failed terminal row remains addressable");
-            assert.equal(renderedTerminal.source, undefined);
-            assert.match(String(renderedTerminal.path), /^sh:\/\/\/[a-f0-9]{8}#(?:stdout|stderr)$/);
-            assert.equal(renderedTerminal.terminal, true);
-            assert.equal(renderedTerminal.exitCode, 3);
-            assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
-            assert.match(rendered, /"status":500/, "the model-facing row remains a failure");
-            assert.match(rendered, /compile diagnostic/, "stderr remains visible on the failed terminal READ");
-            assert.match(rendered, /partial output/, "stdout remains visible on the failed terminal READ");
+            const renderedTerminals = logEntries(packet).filter((entry) => /^sh:\/\/\/[a-f0-9]{8}#(?:stdout|stderr)$/.test(String(entry.path)));
+            assert.equal(renderedTerminals.length, 2);
+            assert.ok(renderedTerminals.every((entry) => entry.terminal === true && entry.exitCode === 3), "each row states the conclusion and its exit code");
+            assert.equal(packetSection(packet, "errors"), "", "the command's answer brings nothing into Errors");
+            assert.match(rendered, /compile diagnostic/);
+            assert.match(rendered, /partial output/);
         } finally { ws.close(); }
     });
 });

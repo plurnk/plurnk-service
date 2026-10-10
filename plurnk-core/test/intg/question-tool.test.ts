@@ -200,7 +200,6 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
         assert.ok(entry);
         const channel = await db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" });
         const result = JSON.parse(channel?.producer_result ?? "null");
-        assert.equal(result?.status, 499);
-        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/exec/execution-cancelled");
+        assert.deepEqual(result, { status: 200 }, "{§stream-asked-stop}: the question its holder killed concludes as asked");
     });
 });

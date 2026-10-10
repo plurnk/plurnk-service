@@ -14,7 +14,7 @@ puts [dict get $count alpha]
 ```
 
 `puts` streams to `#stdout`, `puts stderr ...` to `#stderr`; an uncaught error
-or `exit 1` closes with status 500 with the Tcl error info on stderr. tclsh
+or `exit 1` is a nonzero `exitCode` with the Tcl error info on stderr. tclsh
 evaluates the script line by line, so an incomplete command at the end is an
 error, not a silent no-op. Live input (`[{"stdin": "open"}]`, SEND,
 `[{"eof": true}]`) is as `node.md` shows.

@@ -201,6 +201,12 @@ export default class TurnMaterialization {
         // {§context-fit} — the rows this pass lands, known before the first one is measured.
         const landing = channels.filter((ch) => (ch.state === "closed" || ch.state === "errored")
             && ch.producer_result !== null && !skipped.has(ch.publication_id));
+        // {§exec-stream-page} — a failed execution is one failure: its status and Problem ride its
+        // default channel's row when that landed, else its first; its other rows are plain reads.
+        const failureRow = new Map<number, number>();
+        for (const ch of landing) {
+            if (!failureRow.has(ch.subscription_id) || ch.channel === ch.default_channel) failureRow.set(ch.subscription_id, ch.publication_id);
+        }
         for (const [index, ch] of landing.entries()) {
             // Default channels are an implementation detail. Preserve the
             // channel internally on the entry/subscription, but present the
@@ -220,7 +226,10 @@ export default class TurnMaterialization {
             // {§stream-observation-result} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
             // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
-            const terminal = JSON.parse(ch.producer_result!) as SchemeResult;
+            const produced = JSON.parse(ch.producer_result!) as SchemeResult;
+            const { problem: _problem, ...facts } = produced;
+            const terminal: SchemeResult = produced.status < 400 || failureRow.get(ch.subscription_id) === ch.publication_id
+                ? produced : { ...facts, status: 200 };
             const sequence = fromSequence + entryIds.length;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};

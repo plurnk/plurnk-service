@@ -241,7 +241,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 ), "errored");
             });
 
-            child.on("close", (code) => {
+            child.on("close", (code, terminatedBy) => {
                 if (signal.aborted) {
                     finish(Results.failure(
                         "executor:subprocess",
@@ -257,22 +257,21 @@ export default class SubprocessExecutor extends BaseExecutor {
                     ), "errored");
                     return;
                 }
-                const ok = code === 0;
-                finish(ok
-                    ? { status: 200, exitCode: 0 }
-                    : Results.failure(
-                        "executor:subprocess",
-                        "nonzero-exit",
-                        500,
-                        `'${runtime}' exited with code ${code ?? -1}.`,
-                        { exitCode: code ?? -1 },
-                        {
-                            runtime,
-                            stage: "execution",
-                            recovery: "Whatever the command wrote is on the stream's stdout and stderr channels.",
-                            retryable: false,
-                        },
-                    ), ok ? "closed" : "errored");
+                // {§executor-results} — an exit code is the command's answer, whatever its value.
+                if (code !== null) { finish({ status: 200, exitCode: code }, "closed"); return; }
+                finish(Results.failure(
+                    "executor:subprocess",
+                    "terminated-by-signal",
+                    500,
+                    `'${runtime}' was terminated by ${terminatedBy ?? "a signal"}.`,
+                    { exitCode: -1 },
+                    {
+                        runtime,
+                        stage: "execution",
+                        ...(terminatedBy === null ? {} : { signal: terminatedBy }),
+                        retryable: false,
+                    },
+                ), "errored");
             });
         });
     }

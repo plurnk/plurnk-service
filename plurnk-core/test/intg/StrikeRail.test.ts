@@ -45,7 +45,7 @@ test("executor evidence never strikes, wherever it surfaces (#425 F1)", async ()
     // The engine materializes a failed command as a READ[500] carrying the
     // executor's problem identity; the model reads a failed stream and gets the same 500.
     const rail = new StrikeRail(db);
-    const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit" });
+    const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/spawn-failed" });
     let crossed = false;
     for (const fp of ["execution(a)", "execution(b)", "execution(c)", "execution(d)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [evidence("READ"), evidence("READ")] })).thresholdCrossed;
     assert.equal(crossed, false, "four turns of red test runs are evidence, not strikes");

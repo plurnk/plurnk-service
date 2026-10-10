@@ -210,21 +210,27 @@ test("sh: stdout streamed, channels closed, exit 0", async () => {
     assert.equal(events.length, 0);
 });
 
-test("sh: nonzero exit → durable Problem result, errored channels, no notices", async () => {
+test("{§executor-exit-code} an exit code is the command's answer: 200, its exitCode, closed channels, no Problem", async () => {
     const { result, states, events } = await exec("sh", "echo oops 1>&2; exit 3");
+    assert.deepEqual(result, { status: 200, exitCode: 3 });
+    assert.deepEqual(states, [
+        { channel: "stdout", state: "closed" },
+        { channel: "stderr", state: "closed" },
+    ]);
+    assert.equal(events.length, 0);
+});
+
+test("{§executor-exit-code} a signal the consumer did not send is a terminated-by-signal failure", async () => {
+    const { result, states } = await exec("sh", "kill -KILL $$");
     assert.equal(result.status, 500);
-    assert.equal(result.exitCode, 3);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
-    assert.equal(result.problem?.detail, "'sh' exited with code 3.");
-    assert.equal(
-        result.problem?.recovery,
-        "Whatever the command wrote is on the stream's stdout and stderr channels.",
-    );
+    assert.equal(result.exitCode, -1);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal");
+    assert.equal(result.problem?.detail, "'sh' was terminated by SIGKILL.");
+    assert.equal(result.problem?.signal, "SIGKILL");
     assert.deepEqual(states, [
         { channel: "stdout", state: "errored" },
         { channel: "stderr", state: "errored" },
     ]);
-    assert.equal(events.length, 0);
 });
 
 test("sh: stderr captured into the stderr channel", async () => {

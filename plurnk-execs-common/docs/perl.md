@@ -4,7 +4,7 @@ The body is Perl code, run with `perl -e`; `-n`/`-p` have no equivalent here,
 so a line loop is written in the body. A script target runs that file and
 receives the body as stdin; `[{"args": [...]}]` passes literal arguments.
 Environment, channels and exit status are every subprocess executor's (`sh.md`):
-`die` or a nonzero `exit` closes with status 500.
+`die` or a nonzero `exit` is a nonzero `exitCode`.
 
 ```perl <!-- the body is the program -->
 use strict; use warnings;

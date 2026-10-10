@@ -48,3 +48,14 @@ test("{§subscription-finalization} failed cancellation may be retried without r
     assert.equal(await registry.cancel(7), true);
     assert.equal(calls, 2, "successful cancellation is still coalesced");
 });
+
+test("{§stream-asked-stop} only the holding worker's KILL marks a stream as asked to stop", () => {
+    const registry = new LiveSubscriptions();
+    registry.register(7, { cancel() {} }, 3);
+    registry.asked(7, 4);
+    assert.equal(registry.wasAsked(7), false, "a peer's KILL is not the holder's ask");
+    registry.asked(7, 3);
+    assert.equal(registry.wasAsked(7), true);
+    registry.unregister(7);
+    assert.equal(registry.wasAsked(7), false, "the mark ends with the registration");
+});

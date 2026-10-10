@@ -212,9 +212,16 @@ length equals the page size the call asked for, or the tool schema's default for
 array, a non-array, or a call with no page size carries nothing. The receipt states only what
 the executor knows and adds no prose.
 
-A nonzero subprocess exit directs the caller only to inspect both stdout and
-stderr because either may contain the useful diagnostic; it does not presume
-that the command should be corrected or rerun. Third-party diagnostic text
+§executor-exit-code **An exit code is the command's answer.** A subprocess that
+exits resolves `200` with its integer `exitCode`, zero or not, closes its
+channels, and carries no Problem: the executor ran what it was given, and what
+the command reported is on its channels. A subprocess that did not run to an
+exit is a failure: `spawn-failed` when it could not start, `cancelled` under
+the consumer's abort ({§executor-cancellation}), and `terminated-by-signal`
+when a signal the consumer did not send ended it, with the signal's name as
+`signal` and `exitCode: -1`.
+
+Third-party diagnostic text
 entering a Problem is bounded with `ErrorDetail` and the required
 `PLURNK_EXECS_ERROR_DETAIL_LIMIT`. Missing or invalid configuration is itself
 an `invalid-configuration` failure. Structured diagnostic facts remain

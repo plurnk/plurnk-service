@@ -234,7 +234,7 @@ test("{§exec-concurrency}: KILL cancels queued work without invoking its execut
         });
         // #757 — a KILL of an ended stream succeeds and reports how it ended.
         assert.equal(terminal.status, 200);
-        assert.equal((terminal as { terminalStatus?: number }).terminalStatus, 499, "the ordinary stream lifecycle records queued cancellation as 499");
+        assert.equal((terminal as { terminalStatus?: number }).terminalStatus, 200, "{§stream-asked-stop}: queued work its holder killed concludes as asked");
     } finally {
         executor.releaseAll();
         await exec.idle();

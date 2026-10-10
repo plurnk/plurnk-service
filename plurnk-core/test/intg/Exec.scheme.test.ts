@@ -555,7 +555,7 @@ test("sh: clean exit → channels at state=closed, stdout captured, subscription
     });
 });
 
-test("sh: non-zero exit → channels=errored, stderr captured, subscription closed at 500", async () => {
+test("{§executor-exit-code} sh: an exit code is the answer: channels closed, stderr captured, subscription closed at 200", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -580,23 +580,13 @@ test("sh: non-zero exit → channels=errored, stderr captured, subscription clos
             entry_id: entryRow.id, name: "stderr",
         });
         assert.equal(stderr?.content, "oops\n");
-        assert.equal(stderr?.state, "errored");
+        assert.equal(stderr?.state, "closed");
 
         const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null; close_result: string | null }>({
             worker_id: ctx.workerId, entry_id: entryRow.id,
         });
-        assert.equal(sub?.close_status, 500, "non-zero exit → subscription closed at 500");
-        const terminal = JSON.parse(sub?.close_result ?? "null") as {
-            status?: number;
-            exitCode?: number;
-            problem?: { type?: string; status?: number; detail?: string };
-        };
-        assert.equal(terminal.status, 500);
-        assert.equal(terminal.exitCode, 7);
-        assert.equal(terminal.problem?.status, 500);
-        assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
-        assert.equal(terminal.problem?.detail, "'sh' exited with code 7."); // {§pinned-wording-core}
-        // {§read-content-wins} — reading the failed command's stderr delivers the content; the exit stays the execution row's verdict.
+        assert.equal(sub?.close_status, 200);
+        assert.deepEqual(JSON.parse(sub?.close_result ?? "null"), { status: 200, exitCode: 7 });
         const stderrRead = await ctx.engine.dispatch({
             statement: readStmt(urlPath("sh", pathname, "stderr")),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",

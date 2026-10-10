@@ -1,6 +1,6 @@
 import { serverProposals } from "./_approval.ts";
-// {§engine-rails} #425 F1 — a red test suite is evidence, never a strike. Every turn runs a command that exits 1; the engine materializes each failure as a
-// completion READ[500] carrying executor identity. Under the shipped MAX_STRIKES the
+// {§engine-rails} {§executor-exit-code} #425 F1 — a red test suite is an answer, never a strike. Every turn runs a
+// command that exits 1; each conclusion is a 200 READ carrying its exit code. Under the shipped MAX_STRIKES the
 // loop must run through all of them and conclude on the model's own completed inventory.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const maxStrikes = Number(process.env.PLURNK_SERVICE_MAX_STRIKES);
 
-test("{§engine-rails} consecutive failed commands never strike the loop out", async (approvalContext) => {
+test("{§engine-rails} {§executor-exit-code} consecutive nonzero exits never strike the loop out", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     assert.ok(Number.isInteger(maxStrikes) && maxStrikes > 0, "PLURNK_SERVICE_MAX_STRIKES must be set for the witness");
     const failing = maxStrikes + 2;
@@ -32,9 +32,9 @@ fixing the tests
             assert.equal(finalStatus, 200, `the loop concludes on the model's completed inventory after ${failing} red runs, never the engine's 500`);
             assert.equal(turnIds?.length, failing + 2, "initialization + every failing turn + the concluding turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ loop_id: 1 });
-            const evidence = rows.filter((r) => r.op === "READ" && r.origin === "_plurnk" && r.status_rx === 500);
-            assert.ok(evidence.length >= failing, `every failed command surfaced as a completion READ[500]; got ${evidence.length}`);
-            assert.ok(evidence.every((r) => JSON.parse(r.rx).problem?.type === "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit"), "the completion rows carry executor identity");
+            const answers = rows.filter((r) => r.op === "READ" && r.origin === "_plurnk" && JSON.parse(r.rx).exitCode === 1);
+            assert.ok(answers.length >= failing, `every command surfaced as a completion READ carrying its exit code; got ${answers.length}`);
+            assert.ok(answers.every((r) => r.status_rx === 200 && JSON.parse(r.rx).problem === undefined), "each completion is a 200 answer with no Problem");
         } finally { ws.close(); }
     });
 });

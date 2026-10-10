@@ -13,7 +13,7 @@ puts JSON.generate(words.tally)
 ```
 
 `puts` and `print` stream to `#stdout`, `warn` to `#stderr`; an unrescued
-exception or `exit 1` closes with status 500 with the backtrace on stderr. Gems
+exception or `exit 1` is a nonzero `exitCode` with the backtrace on stderr. Gems
 resolve from the project's ordinary Ruby environment; `[{"cwd": "<directory>"}]`
 selects the working directory when the project's `Gemfile` lives elsewhere.
 Environment metadata is every subprocess executor's (`sh.md`). Live input

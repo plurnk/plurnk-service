@@ -979,15 +979,15 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
         rx: {
             status: 500,
             problem: {
-                type: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit",
-                title: "Nonzero exit",
+                type: "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal",
+                title: "Terminated by signal",
                 status: 500,
-                detail: "'sh' exited with code 1.",
+                detail: "'sh' was terminated by SIGKILL.",
                 instance: "ops://worker/2",
                 stage: "execution",
                 recovery: "Inspect the stdout and stderr channels.",
                 retryable: false,
-                exitCode: 1,
+                exitCode: -1,
                 target: "sh:///1/1/2/sh#stderr",
             },
             content: "main.go:17: undefined: os",
@@ -1000,12 +1000,12 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     const [meta] = parseLogRecords(out);
     assert.notEqual(meta, undefined);
     assert.deepEqual(meta.problem, {
-        type: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit",
-        detail: "'sh' exited with code 1.",
+        type: "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal",
+        detail: "'sh' was terminated by SIGKILL.",
         stage: "execution",
         recovery: "Inspect the stdout and stderr channels.",
         retryable: false,
-        exitCode: 1,
+        exitCode: -1,
     });
     assert.equal(meta.status, 500, "the enclosing row owns status");
     assert.equal(meta.logPath, "log:///1/2/1/READ", "the enclosing row owns occurrence identity");

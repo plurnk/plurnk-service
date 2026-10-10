@@ -47,7 +47,8 @@ terminal exit status. READ a range of the observation's `path` for any part:
 ```READ (sh:///ab3d5678#stdout) <17,40>
 ```
 
-A nonzero exit closes with status 500; stdout and stderr are separate channels,
+The observation carries the `exitCode`; a nonzero one is the command's answer,
+not a failure. Stdout and stderr are separate channels,
 and a diagnostic may be on either. The `log:///…/sh` receipt's own body is the
 program exactly as sent, never output. A receipt with a non-200 status and no
 `stream` address ran nothing; its body is still the program, and its Problem

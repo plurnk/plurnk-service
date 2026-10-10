@@ -38,9 +38,10 @@ test("{§exec-tool-fall-through} {§diagnostic-observation} a bare execution of 
             const receipts = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.equal(receipts.length, 1, "one terminal READ, on the channel that holds the shell's complaint");
             assert.deepEqual((JSON.parse(receipts[0]!.rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
-            assert.ok(receipts.every((row) => row.status_rx === 500), "the shell's exit 127 is still a 500 receipt");
-            const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
+            assert.equal(receipts[0]!.status_rx, 404, "the named program did not run");
+            const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { type?: string; detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);
+            assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/exec/program-is-a-tool");
             assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}
             assert.equal(
                 receipt.problem?.recovery,
@@ -55,7 +56,7 @@ test("{§exec-tool-fall-through} {§diagnostic-observation} a bare execution of 
     }
 });
 
-test("an ordinary missing shell command keeps the plain exit-127 receipt", { timeout: 60_000 }, async (approvalContext) => {
+test("{§exec-tool-fall-through} a program the registry does not know keeps the shell's own answer", { timeout: 60_000 }, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
@@ -72,13 +73,13 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `plain-127-${crypto.randomUUID()}` });
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "run nothing" }, { timeoutMs: 30_000 });
-            const terminal = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; rx: string }>({ loop_id: loopId }))
+            const terminal = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId }))
                 .find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.ok(terminal);
-            const receipt = JSON.parse(terminal.rx) as { exitCode?: number; problem?: { detail?: string; toolRuntimes?: unknown } };
+            const receipt = JSON.parse(terminal.rx) as { exitCode?: number; problem?: unknown };
+            assert.equal(terminal.status_rx, 200);
             assert.equal(receipt.exitCode, 127);
-            assert.equal(receipt.problem?.detail, "'sh' exited with code 127."); // {§pinned-wording-core}
-            assert.equal(receipt.problem?.toolRuntimes, undefined, "no tool is invented for a program the registry does not know");
+            assert.equal(receipt.problem, undefined, "no tool is invented for a program the registry does not know");
         } finally { ws.close(); }
     } finally {
         await daemon.stop();

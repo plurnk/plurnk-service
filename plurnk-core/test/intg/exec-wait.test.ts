@@ -209,7 +209,7 @@ test("a fast failed stream settles naturally and its observed failure does not i
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
-        return Results.failure("executor:settle", "nonzero-exit", 500, "The fast stream failed.");
+        return Results.failure("executor:settle", "spawn-failed", 500, "The fast stream failed.");
     });
     try {
         const result = await fixture.engine.runLoop({

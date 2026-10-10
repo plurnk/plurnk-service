@@ -3099,8 +3099,9 @@ site.** A bare shell command whose program is the name of a tool published by
 another enabled runtime (`brave_web_search {…}` under the default shell) exits
 127; the stream's terminal receipt then says the program is a tool of that
 runtime, names the tool's own document, and carries `toolRuntimes` and `tool`;
-it builds no invocation ({§diagnostic-observation}). The status stays the shell's 500, nothing is rerouted, and a program the
-registry does not know keeps the plain exit-127 receipt.
+it builds no invocation ({§diagnostic-observation}). That receipt is core's `404 program-is-a-tool` with
+`exitCode: 127`: the named program did not run. Nothing is rerouted, and a program the
+registry does not know keeps the shell's own answer, a 200 receipt with `exitCode: 127`.
 
 | Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
 | -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
@@ -3314,8 +3315,8 @@ it: an immediate slot is `200 { outcome: "started" }`; delayed work is
 `202 { outcome: "queued", executionsAhead, concurrency }`, and the channel stays
 `active` in the existing live sense — output growth and terminal settlement are the
 current truth. Admission is FIFO within the workspace; queue residence does not consume
-the execution timeout; a KILL while queued never invokes the executor and closes the
-stream through the normal 499 path. The scheduler is the exec scheme's; the knob is the
+the execution timeout; a KILL while queued never invokes the executor and concludes the
+stream as any KILL does ({§stream-control}). The scheduler is the exec scheme's; the knob is the
 service's ({§operator-config}), fail-hard on any other value.
 
 §exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
@@ -3339,7 +3340,10 @@ channel that holds content, and an empty sibling channel is a fact on that row
 (`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed
 nothing on any channel lands one bodyless conclusion row, on its default
 channel, whose terminal fact, causal execution link, and available exit code make
-completion explicit without invented narration. A skipped channel's publication is still marked
+completion explicit without invented narration. A failed execution is one failure: its
+terminal status and Problem ride its default channel's row when that row landed, else its
+first, and its other rows are 200 reads of their channels, so it puts one pointer in Errors
+({§operation-results}). A skipped channel's publication is still marked
 terminal, so the stream's termination is delivered and never left pending. KILL may curate
 that log row without rewinding the cursor or publishing the terminal result
 again; the exact terminal result and channel content remain READable at the
@@ -3596,6 +3600,7 @@ Model sees lifecycle events in the `log` section per turn.
 
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
 - **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. A stream that already ended, killed or not, answers 200 with its recorded `terminalStatus`: the process is not running, which is what KILL asks for (#757); a stream that never existed answers 404 ({§runtime-resource-binding}). A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- §stream-asked-stop **A stop that was asked for is no failure.** A stream stopped by a model KILL of either form from the worker that holds it concludes 200, with its `exitCode` when its producer reported one: the producer's 499 cancellation is replaced before the subscription settles, so the KILL's 200 receipt is the record and the conclusion row brings nothing into Errors ({§operation-results}). A cancellation its holder did not ask for — a peer's or a client's KILL, loop end, worker teardown, daemon stop — keeps its 499, and a lifetime keeps its 504.
 - **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-execution-order}.
 - **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
 
@@ -6256,7 +6261,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | The stream was cancelled by KILL. | a stream terminal after KILL |
-| '*program*' exited with code *n*. | an execution's non-zero exit |
+| '*runtime*' exited with code 127; `*program*` is a registered tool of `*owner*`. | a tool run as a shell command ({§exec-tool-fall-through}) |
 | '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |
 | The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |

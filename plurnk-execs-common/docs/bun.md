@@ -14,5 +14,5 @@ console.log((await file.json()).name);
 ```
 
 `console.log` streams to `#stdout`, `console.error` to `#stderr`; an uncaught
-error or `process.exit(1)` closes with status 500. Live input
+error or `process.exit(1)` is a nonzero `exitCode`. Live input
 (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md` shows.

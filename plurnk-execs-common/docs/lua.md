@@ -14,7 +14,7 @@ print(table.concat(t, ","))
 ```
 
 `print` streams to `#stdout`, `io.stderr:write` to `#stderr`; `error(...)` or
-`os.exit(1)` closes with status 500. The standalone interpreter is the host's
+`os.exit(1)` is a nonzero `exitCode`. The standalone interpreter is the host's
 `lua` on PATH; project modules resolve through its ordinary `package.path` from
 the working directory. Live input (`[{"stdin": "open"}]`, SEND,
 `[{"eof": true}]`) is as `node.md` shows.

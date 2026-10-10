@@ -35,9 +35,9 @@ test("{§digest-executor-evidence}: executor completion rows never count toward 
             });
             if (row === undefined) throw new Error("fixture insert returned no row");
         };
-        // The engine-materialized completion pair for a red `go test ./...` run.
-        await insert(1, "_plurnk", { status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/nonzero-exit", title: "Command failed", status: 500, detail: "exit 1" } }, 500);
-        await insert(2, "_plurnk", { status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/nonzero-exit", title: "Command failed", status: 500, detail: "exit 1" } }, 500);
+        // The engine-materialized completion pair for an execution that failed to start.
+        await insert(1, "_plurnk", { status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/spawn-failed", title: "Command failed", status: 500, detail: "Could not start sh." } }, 500);
+        await insert(2, "_plurnk", { status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/spawn-failed", title: "Command failed", status: 500, detail: "Could not start sh." } }, 500);
         // A genuine model-fault row for contrast.
         await insert(3, "model", { status: 416, problem: { type: "https://problems.plurnk.xyz/scheme/file/range", title: "Range past end", status: 416, detail: "past the end" } }, 416);
     } finally { await db.close(); }
@@ -67,7 +67,7 @@ test("{§digest-executor-evidence}: a green conclusion over only red commands is
             scheme: "sh", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/2", query: null, fragment: "stderr", lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
-            rx: JSON.stringify({ status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/nonzero-exit", title: "Command failed", status: 500, detail: "exit 1" } }),
+            rx: JSON.stringify({ status: 500, problem: { type: "https://problems.plurnk.xyz/executor/sh/spawn-failed", title: "Command failed", status: 500, detail: "Could not start sh." } }),
             mimetype_rx: "application/json",
             status_rx: 500, weight: 1, state: "resolved", outcome: null,
             attrs: "{}",

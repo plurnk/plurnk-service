@@ -68,7 +68,7 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
     assert.equal(remote.status?.state, TaskState.TASK_STATE_CANCELED, "KILL reaches the standard A2A cancellation endpoint");
     const settled = await waitFor(() => wakes, (events) => events.length === 1, { timeoutMs: 4_000 });
     assert.equal(settled[0]!.target, resource);
-    assert.equal(settled[0]!.result.status, 499, "the same local obligation settles as cancelled");
+    assert.equal(settled[0]!.result.status, 200, "{§stream-asked-stop}: the stop its holder asked for settles the local obligation, not a cancellation");
 });
 
 test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path", async (t) => {

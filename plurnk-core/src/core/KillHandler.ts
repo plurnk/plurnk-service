@@ -217,6 +217,7 @@ export default class KillHandler {
         if (entry === undefined) return null;
         const subscription = await ChannelWrite.findActiveSubscription(this.#db, { entryId: entry.id });
         if (subscription === null || subscription.scheme !== schemeName) return null;
+        if (ctx.writer === "model") this.#liveSubscriptions.asked(subscription.id, ctx.workerId);
         const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
         if (!cancelled) {
             throw new InvalidOperationResultError(`Subscription ${subscription.id} is durable but has no live cancellation handle.`);

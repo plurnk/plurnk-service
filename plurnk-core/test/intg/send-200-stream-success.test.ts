@@ -93,7 +93,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
     }));
 });
 
-test("{§completion-defers-to-results}: a failed same-turn stream defers completion without echoing its command", async (approvalContext) => {
+test("{§completion-defers-to-results}: a same-turn stream's nonzero exit defers completion without echoing its command", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
@@ -111,12 +111,12 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
-            assert.ok(rows.some(({ op, status_rx }) => op === "READ" && status_rx === 500), "the terminal stream observation retains its failure");
-            assert.match(JSON.stringify(provider.received[1]), /exit 3/, "the failed execution reaches the observation packet");
+            assert.ok(rows.some(({ op, origin, status_rx }) => op === "READ" && origin === "_plurnk" && status_rx === 200), "the terminal stream observation lands as the command's answer");
+            assert.match(JSON.stringify(provider.received[1]), /\\"exitCode\\":3/, "the exit code reaches the observation packet");
             assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, result.loopId), "concluding after reading the failure");
             assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["SEND", "KILL"].includes(op)).every(({ status_rx }) => status_rx === 200),
-                "both replies succeeded independently of the failed execution");
+                "both replies succeeded independently of the execution");
         } finally {
             ws.close();
         }
