@@ -13,6 +13,16 @@ export default class Knob {
         return raw;
     }
 
+    // A family of keys sharing one prefix, `<prefix><alias>`: every non-empty member in alias order. An empty
+    // value is a member the operator turned off; a family with no members is the empty list.
+    static family(prefix: string, environment: Environment = process.env): Array<{ readonly alias: string; readonly value: string }> {
+        return Object.keys(environment)
+            .filter((key) => key.startsWith(prefix) && key.length > prefix.length)
+            .toSorted()
+            .map((key) => ({ alias: key.slice(prefix.length), value: (environment[key] ?? "").trim() }))
+            .filter(({ value }) => value.length > 0);
+    }
+
     // A comma list; empty is the empty list.
     static list(name: string, environment: Environment = process.env): string[] {
         return Knob.text(name, environment).split(",").map((item) => item.trim()).filter((item) => item.length > 0);

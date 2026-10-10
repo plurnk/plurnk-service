@@ -5767,6 +5767,13 @@ one dormant authored source. A failed read fails packet assembly with its cause.
 The footer is one projection path and one authored source, not a second language
 contract.
 
+§recap-lines The operator's recap lines lead the footer: every non-empty
+`PLURNK_SERVICE_RECAP_LINE_<alias>`, in alias order, renders as one callout ahead of the recap
+source, `> [!IMPORTANT]` for a `YOU MUST` line and `> [!TIP]` for `YOU SHOULD` and `YOU MAY`. A line
+that does not open with `YOU MUST`, `YOU MUST NOT`, `YOU MUST ONLY`, `YOU SHOULD`, `YOU SHOULD NOT` or
+`YOU MAY` is a configuration error naming its key, and an empty value turns a shipped line off. The
+shipped `recap.md` stays empty: it is the extension contract's source, not a home for core's lines.
+
 ## Matcher selection and text regions
 
 Matchers select resources and report evidence; text scopes independently

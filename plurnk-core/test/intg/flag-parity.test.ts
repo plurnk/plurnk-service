@@ -13,7 +13,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 
 // The live-tier deadline is read by the test harness, not by src, so the src scan cannot see it.
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
-const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_"];
+const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_RECAP_LINE_"];
 
 test("every shipped service flag has an adjacent description for CLI help", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");

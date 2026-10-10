@@ -13,6 +13,7 @@ import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
+import { recapLines } from "./recap-lines.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { acceptedKinds } from "./attachments.ts";
 // Shared module imported by both Engine and the digest, so wire
@@ -218,12 +219,14 @@ export default class PacketBuilder {
                 ...(m.source === null ? { origin: "user" } : { source: m.source }),
             })).join(",\n")}]`
             : "[]";
-        // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
-        const recapContent = recap.length > 0
+        // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet. The operator's
+        // recap lines lead it ({§recap-lines}).
+        const recapSource = recap.length > 0
             ? recap
             : Paths.defaultRecapTeachingSource === null
                 ? await readFile(Paths.defaultRecap, "utf8")
                 : await readTeachingSource(Paths.defaultRecapTeachingSource);
+        const recapContent = PacketWire.renderRecap(recapLines(), recapSource);
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(workerId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);

@@ -91,3 +91,9 @@ test("{§env-knob} an optional knob is null when unset or empty and a validated 
     withEnv("PLURNK_TEST_OPTIONAL", "0", () => assert.throws(() => Knob.optionalInteger("PLURNK_TEST_OPTIONAL", 1), ConfigurationError));
 });
 
+
+test("{§env-knob} a family reads every non-empty member of a prefix, in alias order", () => {
+    const env = { FAM_b: "two", FAM_a: " one ", FAM_c: "", FAMILY: "not a member", OTHER_x: "no" };
+    assert.deepEqual(Knob.family("FAM_", env), [{ alias: "a", value: "one" }, { alias: "b", value: "two" }]);
+    assert.deepEqual(Knob.family("NONE_", env), [], "a family with no members is the empty list");
+});

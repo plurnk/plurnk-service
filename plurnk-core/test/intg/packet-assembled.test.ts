@@ -393,13 +393,12 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
-        assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL");
+        assert.ok(packetSection(packet, "recap").endsWith("\n\nCUSTOM_RECAP_SENTINEL"), "{§recap}: the override replaces the source, behind the recap lines");
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
-        assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith("## Recap\n\nCUSTOM_RECAP_SENTINEL"));
     } finally { await db.close(); }
 });
 
-test("{§recap} the shipped Recap source renders as the footer, last in the user slot", async () => {
+test("{§recap-lines} the shipped recap lines close the user slot, each in its directive's callout, ahead of the empty source", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -417,10 +416,10 @@ test("{§recap} the shipped Recap source renders as the footer, last in the user
         });
         const packet = await getPacket(db, result.turnId);
 
-        const shipped = await readFile(Paths.defaultRecap, "utf8");
-        assert.equal(packetSection(packet, "recap"), shipped);
-        assert.match(shipped, /^> \[!IMPORTANT\]\n> YOU MUST begin this turn with a NOTE\.$/mu, "the shipped footer is the one NOTE reminder");
-        assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${shipped.trim()}`), "the footer closes the user slot");
+        assert.equal(await readFile(Paths.defaultRecap, "utf8"), "", "{§recap-lines}: the shipped recap source stays empty");
+        const footer = "> [!IMPORTANT]\n> YOU MUST begin this turn with a NOTE.\n\n> [!TIP]\n> YOU MAY use NOTE, FIND, and READ operations while reasoning.";
+        assert.equal(packetSection(packet, "recap"), footer);
+        assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${footer}`), "the footer closes the user slot");
     } finally { await db.close(); }
 });
 
