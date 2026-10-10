@@ -306,10 +306,18 @@ export default class PacketBuilder {
             items = [];
         };
         for (const [index, row] of log.entries()) {
+            // Trial (#1073): the model's NOTEs live in its replayed turn, their only home; the
+            // emission row lists their paths so each keeps a handle.
+            const ownNote = (entry: typeof row): boolean => entry.op === "NOTE" && entry.origin === "model";
+            if (ownNote(row)) continue;
             if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
-            items.push(renderedLog.records[index]!);
-            const native = nativeRows.get(String(row.coordinate));
             const emission = row.id == null ? undefined : emissions.get(row.id);
+            const turn = String(row.coordinate).split("/").slice(0, 2).join("/");
+            const notePaths = emission === undefined ? [] : log
+                .filter((entry) => ownNote(entry) && String(entry.coordinate).startsWith(`${turn}/`))
+                .map((entry) => `log:///${entry.coordinate}/NOTE`);
+            items.push([renderedLog.records[index]!, ...notePaths].join("\n"));
+            const native = nativeRows.get(String(row.coordinate));
             if (native !== undefined || emission) {
                 flush();
                 if (native !== undefined) nativeParts.push({ ...native, section: name });
