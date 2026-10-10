@@ -29,7 +29,7 @@ body?
 ## Loop Protocol
 
 > [!IMPORTANT]
-> YOU MUST use **at least** one NOTE per continuing turn. Your reasoning is discarded after every turn; only NOTEs remain.
+> YOU MUST emit at least one NOTE before any other operation.
 
 ```NOTE
 exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Ruled out: the cache (cleared, same failure). Unverifiable: whether plugins rely on the early read; assuming not. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
