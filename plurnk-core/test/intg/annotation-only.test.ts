@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-const NOTICE = "> [!WARNING]\n> YOU MUST use at least one NOTE and at least one other operation per continuing turn. The turn carried NOTEs and no other operation. [noted_without_operation]";
+const NOTICE = "> [!WARNING]\n> YOU MUST emit at least one NOTE operation and at least one other operation per turn. The turn carried NOTEs and no other operation. [noted_without_operation]";
 
 const conversation = async (db: Awaited<ReturnType<typeof openMigrated>>, contents: string[]) => {
     const workspaceId = await insertWorkspace(db, `annotation-only-${crypto.randomUUID()}`);
