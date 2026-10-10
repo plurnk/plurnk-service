@@ -148,8 +148,6 @@ type SplitProviderResponse = {
     emptyTurn: boolean;
     // {§loop-completion}: an incomplete or malformed emission cannot conclude.
     completionAllowed: boolean;
-    // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
-    outside: { text: string; tokens: number } | null;
     // {§emission-row}: the admitted content program; null when none was admitted. The emission
     // site renders them against their own source; reasoning operations stay in their own source.
     emissionStatements: readonly PlurnkStatement[] | null;
@@ -239,7 +237,6 @@ const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation."
 const DIRECTIVE = Object.freeze({
     note: "YOU MUST use at least one NOTE and at least one other operation per continuing turn.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
-    outside: "YOU MUST NOT emit anything except whitespace between fenced operations.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
@@ -1739,26 +1736,6 @@ export default class TurnRunner {
                 level: "warn",
             });
         }
-        // {§outside-text} — text outside the operations is the turn's own source, never a log row
-        // or a packet field; the model reads only its weight, the client reads its text once.
-        if (split.outside !== null) {
-            await Turn.recordSource(this.#db, request.turnId, "outside", split.outside.text, { modelCallId: emission.modelCallId });
-            this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn",
-                kind: "outside_text",
-                level: "warn",
-                directive: DIRECTIVE.outside,
-                message: `${split.outside.tokens} tokens emitted outside OPs. Discarded.`,
-            });
-            this.#notify.outsideEventNotify?.(workspaceId, {
-                workerId,
-                loopId,
-                turnId: request.turnId,
-                coordinate: `${request.workerName}-${request.loopSeq}-${request.seq}`,
-                text: split.outside.text,
-                tokens: split.outside.tokens,
-            });
-        }
         // {§operator-grammar} — transport evidence only: the turn records whether the operator's
         // grammar reached the wire. Nothing grades the response against it; the parser's
         // admission is the one verdict (#588).
@@ -1897,9 +1874,6 @@ export default class TurnRunner {
         let operationOmitted = false;
         const parseNotices: Notice[] = [];
         const fabrications: ParseErrorInfo[] = [];
-        // {§outside-text}: every span outside an operation, verbatim and in source order; never an
-        // operation of its own, so a repetitive or length-cut response stays one source.
-        const outside: string[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
             contentStatementCount = preParsedOps.length;
@@ -1918,8 +1892,8 @@ export default class TurnRunner {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
-                // Operation boundaries stay the parser's responsibility; what falls outside them is
-                // stored as the turn's outside source and counted as nothing.
+                // Trial (#1073): text outside the fences is annotation the model wrote without its fence. It
+                // joins the program as a NOTE at its position, lands as one, and is frozen as one.
                 else if (item.kind === "text") {
                     // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
                     const fabricated = FabricatedLog.find(item.content);
@@ -1927,7 +1901,11 @@ export default class TurnRunner {
                         fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
                         continue;
                     }
-                    outside.push(item.content.trim());
+                    const body = item.content.trim();
+                    if (body.length > 0) {
+                        ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: item.position });
+                        contentStatementCount += 1;
+                    }
                 }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
@@ -1999,7 +1977,6 @@ export default class TurnRunner {
         const recoverableParseErrors = parseErrors
             .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
             .toSorted(comparePosition);
-        const outsideText = outside.join("\n\n");
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
@@ -2010,7 +1987,6 @@ export default class TurnRunner {
             completionAllowed,
             parseNotices,
             emissionValid,
-            outside: outside.length === 0 ? null : { text: outsideText, tokens: contentWeight(outsideText) },
             emissionStatements,
         };
     }
