@@ -43,7 +43,7 @@ const runtime = async (t: TestContext) => {
 };
 
 const startLines = (found: { content: string }): number[] =>
-    (JSON.parse(found.content) as Array<{ region: { startLine: number } }>).map(({ region }) => region.startLine);
+    (JSON.parse(found.content) as Array<{ region: string }>).map(({ region }) => Number(region.slice(1).split(",")[0]));
 
 test("{§find-line-anchors}: the recorded `FIND (x.py) /^from|^import/` locates the lines READ selects", async (t) => {
     const { dispatch } = await runtime(t);

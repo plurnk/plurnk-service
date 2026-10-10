@@ -69,8 +69,8 @@ test("{§scope-range-recovery} FIND selects positions and anchor inversions rema
     for (const scope of ["<3,2>", "<3,+1>"]) {
         const found = await dispatch(`FIND (worker:///range.txt) ${scope} /.+/`);
         assert.equal(found.status, 200, JSON.stringify(found));
-        const matches = JSON.parse(String(found.content)) as { region: { startLine: number } }[];
-        assert.deepEqual(matches.map(({ region }) => region.startLine), [3, 4], JSON.stringify(found));
+        const matches = JSON.parse(String(found.content)) as { region: string }[];
+        assert.deepEqual(matches.map(({ region }) => region), ["<3,1,3,6>", "<4,1,4,5>"], JSON.stringify(found));
     }
     const read = await dispatch("READ (worker:///range.txt) <1,-1>");
     assert.equal(read.status, 200);

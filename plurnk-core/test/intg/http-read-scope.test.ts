@@ -93,17 +93,13 @@ for (const pretty of [false, true]) {
             const found = await run(`FIND (${url}) [${JSON.stringify({ pattern: "$[?(@.lts != false)].version" })}]`);
             assert.equal(found.status, 200);
             assert.ok(found.content);
-            const locations = JSON.parse(found.content) as Array<{
-                channel: string;
-                region: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-            }>;
+            const locations = JSON.parse(found.content) as Array<{ channel?: string; region: string }>;
             assert.equal(locations.length, 2, "the filter excludes the current non-LTS release");
             const values: string[] = [];
             for (const { channel, region } of locations) {
-                assert.equal(channel, "body");
-                assert.ok(region, "the selected value has readable text coordinates");
-                const { startLine, startColumn, endLine, endColumn } = region;
-                const value = await run(`READ (${url}#${channel}) <${startLine},${startColumn},${endLine},${endColumn}>`);
+                assert.equal(channel, undefined, "{§channel-selection-visibility}: the default channel goes unnamed");
+                assert.match(region, /^<\d+,\d+,\d+,\d+>$/u, "{§find-result-projection}: the location is itself the READ scope");
+                const value = await run(`READ (${url}) ${region}`);
                 assert.equal(value.status, 200);
                 assert.ok(value.content);
                 values.push(value.content);
@@ -215,7 +211,7 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
     }
 });
 
-test("#287: matcher FIND locations name the channel they address", async () => {
+test("{§channel-selection-visibility}: a matcher FIND location names its channel only off the default", async () => {
     const { db, engine, ids } = await setup();
     const originalFetch = globalThis.fetch;
     try {
@@ -256,7 +252,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
         const bodyLocations = JSON.parse(String(bodyFind.content ?? "[]")) as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
         for (const location of bodyLocations) {
-            assert.equal(location.channel, "body", "a default-channel match names the body channel");
+            assert.equal(location.channel, undefined, "{§channel-selection-visibility}: a default-channel match names no channel");
         }
 
         await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]````");

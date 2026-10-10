@@ -54,7 +54,7 @@ test("{§log-readable-projection}: READ and COPY omit deliberate trims in origin
     assert.equal((await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/secret/"}]\`\`\`\``)).status, 204);
     const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/four/"}]\`\`\`\``);
     assert.equal(found.status, 200);
-    assert.equal(JSON.parse(found.content)[0].region.startLine, 4);
+    assert.match(JSON.parse(found.content)[0].region, /^<4,/u);
     assert.equal((await dispatch(`\`\`\`\`READ (${target}) <3>\`\`\`\``)).status, 204);
     assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (log:///1/1/2/READ)\`\`\`\``)).status, 400, "the log is never a write target");
     // {§move-decomposition}: MOVE from a log region is the COPY above plus the same scoped KILL —
@@ -115,8 +115,8 @@ test("{§log-readable-projection}: a multiline pattern never copies a curated ga
     const found = await dispatch(`\`\`\`\`FIND (${target}) ${pattern}\`\`\`\``);
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(JSON.parse(found.content).map(({ region }: { region: unknown }) => region), [
-        { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 },
-        { startLine: 3, startColumn: 1, endLine: 3, endColumn: 6 },
+        "<1,1,2,1>",
+        "<3,1,3,6>",
     ]);
     const read = await dispatch(`\`\`\`\`READ (${target}) <1,-1> ${pattern}\`\`\`\``);
     assert.equal(read.status, 200, JSON.stringify(read));
@@ -172,7 +172,7 @@ test("{§log-readable-projection}: a byte-view receipt is readable text, not a s
     assert.equal((await dispatch(`\`\`\`\`KILL (${target}) <2>\`\`\`\``)).status, 200);
     const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/02/"}]\`\`\`\``);
     assert.equal(found.status, 200);
-    assert.equal(JSON.parse(found.content)[0].region.startLine, 3);
+    assert.match(JSON.parse(found.content)[0].region, /^<3,/u);
     await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes: DEFAULT_MIMETYPES }));
     assert.equal((await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"~02"}]\`\`\`\``)).status, 200, "hex receipt text participates in FTS");
     assert.equal((await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"~01"}]\`\`\`\``)).status, 204, "FTS omits the trimmed byte-view line");
@@ -250,7 +250,7 @@ test("{§log-readable-projection}: trimming invalidates search and a racing deri
     assert.equal((await dispatch("````FIND (log:///1/1/2/READ) [{\"pattern\":\"~secret\"}]````")).status, 204);
     const retained = await dispatch("````FIND (log:///1/1/2/READ) [{\"pattern\":\"~pear\"}]````");
     assert.equal(retained.status, 200);
-    assert.equal(JSON.parse(retained.content)[0].region.startLine, 3);
+    assert.match(JSON.parse(retained.content)[0].region, /^<3,/u);
     assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <3>````")).status, 200);
     await SearchIndex.maintain(ctx);
     assert.equal((await dispatch("````FIND (log:///1/1/2/READ) [{\"pattern\":\"~pear\"}]````")).status, 204, "later curation also invalidates an already attached artifact");

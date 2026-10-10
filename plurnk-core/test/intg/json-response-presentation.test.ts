@@ -46,7 +46,7 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
         assert.equal(found.status, 200);
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);
-        assert.equal(locations[0].region.startLine, 21);
+        assert.match(locations[0].region, /^<21,/u);
         assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <20,22> (worker:///selection.json)\`\`\`\``)).status, 201);
         const copied = await dispatch("````READ (worker:///selection.json) <1,-1>````");
         assert.equal(copied.content, scoped.content);

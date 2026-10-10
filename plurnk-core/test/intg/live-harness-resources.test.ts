@@ -91,7 +91,7 @@ test("live fixtures obey resource publication and query contracts", async (t) =>
             });
             assert.equal(result.status, 200);
             assert.deepEqual(JSON.parse(String(result.content)), [{
-                region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 11 }, matched: "Checkpoint",
+                region: "<1,1,1,11>", matched: "Checkpoint",
             }]);
         });
         assert.equal(inference.mock.callCount(), 0, "publishing and inspecting fixtures requires no inference");

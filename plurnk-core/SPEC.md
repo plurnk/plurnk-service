@@ -1961,7 +1961,7 @@ Client-interface target parameters carry fragments inline (`{ target: "sh:///a3b
   MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read. Binary sources
   keep {§membership-source-projection}, where the source is not text and the projection is the
   body; a fetched web page keeps its scheme's own two channels ({§html-materialization}).
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and a matcher location names the channel its line coordinates address whenever that is not the resource's default channel. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
 
 ### §channel-state Channel state — metadata, not gating
 
@@ -2767,8 +2767,8 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   with no addressable location is status 200 with `matchingPathCount: 1`,
   `matchLocationCount: 0`, and no fabricated row; a matcher selecting no
   resource is 204. A matcher-less broad empty catalog survey is status 200; an
-  absent exact resource is 404. Every entry-channel location names its `channel`
-  ({§channel-selection-visibility}); log rows carry none.
+  absent exact resource is 404. Every entry-channel location in `results` names
+  its `channel`; log rows carry none.
 
   Inside `FindResult`, `matchingPathCount` and `matchLocationCount` describe the
   complete selection before pagination; the packet curates those facts under
@@ -2809,11 +2809,15 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   rank for `~`full-text and candidate order otherwise; location order is dialect
   order and exact duplicates deduplicate. The intended drill-down is broad FIND
   to choose paths, exact-target FIND to choose locations, then exact READ.
-  `content` uses the shared generated-JSON projection and translates only this
-  final model-facing representation from `weight` to `tokens`
-  ({§json-result-rendering}), so universal packet numbering makes result
-  ordinal N addressable as line N, matching `<N>` pagination without a second
-  coordinate system. A returned page begins at `range.returned[0]`, and every
+  `content` uses the shared generated-JSON projection ({§json-result-rendering}),
+  so universal packet numbering makes result ordinal N addressable as line N,
+  matching `<N>` pagination without a second coordinate system. It translates
+  only this final model-facing representation: `weight` reads `tokens`, a
+  `region` or `enclosingRegion` reads in the one scope notation `<SL,SC,EL,EC>`
+  ({§packet-extent-metadata}), and a location names its `channel` only when that
+  is not the resource's default channel ({§channel-selection-visibility}). A
+  location therefore reads `{"region":"<48,1,48,25>","matched":"class BaseCrossValidator"}`.
+  A returned page begins at `range.returned[0]`, and every
   page left-pads its ordinals to the decimal width of `range.total`; content
   therefore keeps one stable column across the complete result set. Pagination is the only FIND materialization bound; no
   hidden complete row or location collection is retained behind the public

@@ -15,6 +15,7 @@
 import { PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import BodyPreview from "../content/body-preview.ts";
+import ScopeFormat from "../content/scope-format.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -110,20 +111,26 @@ const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocatio
     return unique;
 };
 
-// Scheme results retain model-independent curation `weight`. The generated
-// JSON body is the final model-facing boundary, where the familiar `tokens`
-// label intentionally describes the same visible-body cost shown in the packet.
-const renderFindContent = (items: readonly MatchItem[]): string => renderJsonResult(
+// Scheme results retain model-independent curation `weight` and typed regions. The generated
+// JSON body is the final model-facing boundary ({§find-result-projection}): the familiar `tokens`
+// label describes the same visible-body cost shown in the packet, a region reads in the one scope
+// notation ({§packet-extent-metadata}), and a location names its channel only off the default.
+const scoped = (key: string, value: unknown): unknown => key === "region" || key === "enclosingRegion"
+    ? ScopeFormat.region(value as TextRegion)
+    : value;
+const renderFindContent = (items: readonly MatchItem[], defaultChannel: string | undefined): string => renderJsonResult(
     items.map((item) => Array.isArray(item)
         ? item.map((row) => {
             if (!Object.hasOwn(row, "weight") || Object.hasOwn(row, "tokens")) {
                 throw new TypeError("a FIND catalog row requires exactly one internal weight field");
             }
             return Object.fromEntries(
-                Object.entries(row).map(([key, value]) => [key === "weight" ? "tokens" : key, value]),
+                Object.entries(row).map(([key, value]) => [key === "weight" ? "tokens" : key, scoped(key, value)]),
             );
         })
-        : item),
+        : Object.fromEntries(Object.entries(item)
+            .filter(([key, value]) => key !== "channel" || value !== defaultChannel)
+            .map(([key, value]) => [key, scoped(key, value)]))),
 );
 
 // {§find-result-projection} — selection remains grouped internally because
@@ -134,6 +141,7 @@ export const projectFindResult = (
     scope: PathScope,
     resources: readonly FindProjectionResource[],
     scopes: readonly CatalogScope[] = [],
+    defaultChannel?: string,
 ): FindResult => {
     const resourcePaths = new Set<string>();
     for (const { item } of resources) {
@@ -211,7 +219,7 @@ export const projectFindResult = (
         : results.reduce((sum, item) => sum + findItemWeight(item as CatalogResource), 0);
     return {
         status: 200,
-        content: renderFindContent(results), // {§find-result-projection} {§json-result-rendering}
+        content: renderFindContent(results, defaultChannel), // {§find-result-projection} {§json-result-rendering}
         mimetype: "application/json",
         results,
         itemsWeightTotal,
@@ -679,7 +687,7 @@ export default class EntryFind {
             }
         }
         if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
-        const projected = projectFindResult(statement, match.scope, resources, scopes);
+        const projected = projectFindResult(statement, match.scope, resources, scopes, manifest.defaultChannel);
         if (address.pathname === undefined) return projected;
 
         // Exact FIND consumes the same selected canonical producer as exact
