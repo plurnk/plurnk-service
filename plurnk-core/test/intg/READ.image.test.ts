@@ -153,7 +153,9 @@ test("{§context-fit}: a READ that does not fit is a bodiless receipt; native ou
         const text = userText(provider.received[1]!);
         assert.match(text, /"status":413/u, "the receipt for the READ that did not fit is visible to the model");
         assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
-        assert.doesNotMatch(text, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§context-gauge})");
+        const gauge = /^## Context\n(.*)$/mu.exec(text)?.[1] ?? "";
+        assert.match(gauge, /^\{"tokens":/u, "the gauge rides the request");
+        assert.doesNotMatch(gauge, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§context-gauge})");
         const renewed = nativeParts(provider.received[3]!);
         const image = renewed.find((part) => part.type === "file");
         assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "another READ attaches the picture again");
