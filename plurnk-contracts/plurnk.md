@@ -1,9 +1,10 @@
-# Plurnk Agent Operation Protocol
+# Plurnk Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit fenced Agent Operation Protocol Syntax Operations; with parameters, the pattern, and the terse aside on the fenced Operation line.
+> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
-> YOU MUST NOT emit anything except whitespace between fenced Agent Operation Protocol Syntax Operations.
+> [!IMPORTANT]
+> YOU MUST NOT emit anything except whitespace between fenced operations.
 
 ## Syntax
 
@@ -19,18 +20,19 @@ body?
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: Copy files, entries, streams, or text regions.
 * MOVE: Move files, entries, streams, or text regions.
-* KILL: Kill things. Delete an entry, stop a process, or retire log items.
-* WORK: Delegate to a child worker (fresh log). (Read more: worker:///_plurnk/plurnk/delegation.md)
+* KILL: Delete an entry, stop a process, or retire log items.
+* WORK: Delegate to a child worker (fresh log).
+* FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams (You may include `[60]` to check in after 60 seconds).
 * SEND: Message endpoints, workers, or respond to Open Messages.
 
 ## Loop Protocol
 
 > [!IMPORTANT]
-> YOU MUST use **at least** one NOTE per continuing turn. Reasoning is not carried forward automatically.
+> YOU MUST use **at least** one NOTE per continuing turn. Your reasoning is discarded after every turn; only NOTEs remain.
 
 ```NOTE
-Example note that future turns depend upon for orientation.
+exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
 ```
 
 ```SEND
@@ -50,6 +52,12 @@ This is an example of the final deliverable response.
 > * All required operation results have been observed.
 > * All work held by the loop has settled.
 
+## Delegation (worker:///_plurnk/plurnk/delegation.md)
+
+```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
+Describe the child's complete task in the body.
+```
+
 ## `pattern` (worker:///_plurnk/plurnk/pattern.md)
 
 | prefix | dialect                     | example                         |
@@ -67,6 +75,9 @@ This is an example of the final deliverable response.
 ```
 
 ```READ (README.md) /^#{1,3} / <!-- only level 1–3 headings -->
+```
+
+```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
 ```
 
 * `(path)` may be a glob/extglob, permitting bulk operations.
@@ -110,9 +121,12 @@ bar
 
 ````EDIT (edit-example.md)
 ```EDIT (create-example.md)
-Nesting can be resolved with increased outer fences. Examples can use tabbed offset.
+Nesting can be resolved with increased outer fences.
 ```
 ````
+
+> [!TIP]
+> YOU SHOULD address lines by `<@hash>` or `<@start,@end>` to protect against stale targets.
 
 ## Context Curation
 
@@ -122,16 +136,16 @@ Nesting can be resolved with increased outer fences. Examples can use tabbed off
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```
 
-```MOVE (log:///1/4/2/READ) <12,40> (notes/wcs-excerpt.py) <-1> <!-- moves lines 12–40 of the result, counted as the result's own rows show them, to the file's end; the row keeps the rest -->
-```
-
-```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
-```
-
-```KILL (log:///1/[1-7]/*/{READ,emission,reasoning}) <!-- old results and your own old programs, in bulk; successful log KILL receipts are not shown -->
+```KILL (log:///1/[1-7]/*/{READ,emission,reasoning}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->
 exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
 ```
 
-```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
-Optional summarizations of removed log items are preserved as NOTEs.
+## Environment (worker:///_plurnk/plurnk/env.md)
+
+```env (add) <!-- persists for this worker's commands -->
+{"alias":"PLANET","definition":{"value":"world"}}
+```
+
+```sh [{"env":{"GREETING":"Hello"}}]
+echo "$GREETING, $PLANET."
 ```

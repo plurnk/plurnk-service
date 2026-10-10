@@ -235,7 +235,7 @@ const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
     note: "YOU MUST use at least one NOTE per continuing turn.",
-    emission: "YOU MUST ONLY emit fenced Agent Operation Protocol Syntax Operations.",
+    emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     outside: "YOU MUST NOT emit anything except whitespace between fenced operations.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
