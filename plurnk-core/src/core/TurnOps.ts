@@ -1,7 +1,6 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser, type ParseOptions } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { schemeNameOf } from "./plurnk-uri.ts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
@@ -37,6 +36,12 @@ export default class TurnOps {
 
     // Trial (#1073): the text a NOTE occupies in its replayed turn, for the legend's weight.
     static noteFence(body: string): string { return PlurnkParser.frame("NOTE", body); }
+
+    // Trial (#1073): the NOTE bodies a frozen program replays, in order; a NOTE admitted from reasoning
+    // is not among them and keeps its ordinary row.
+    static noteBodies(source: string, executors: readonly string[]): string[] {
+        return TurnOps.parseInternal(source, { executors }).filter((statement) => statement.op === "NOTE").map((statement) => statement.body ?? "");
+    }
 
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
         if (statements.length === 0 || statements.some((statement, index) => TurnDisposition.is(statement) && index !== statements.length - 1)) {

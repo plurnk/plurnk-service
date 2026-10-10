@@ -1208,7 +1208,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 }
             }
 
-            const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;            // A timeout aborts the spawn → the executor reports 499; replace the
+            const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
+            // A timeout aborts the spawn → the executor reports 499; replace the
             // complete result so status and Problem remain one valid truth.
             if (timedOut) {
                 const lifetime = formatLifetime(timeoutSec ?? 0);

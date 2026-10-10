@@ -292,8 +292,22 @@ export default class PacketBuilder {
             const tx = entry.tx;
             return tx !== null && typeof tx === "object" && typeof (tx as { body?: unknown }).body === "string" ? (tx as { body: string }).body : "";
         };
-        const replayedTurns = new Set(log.filter((entry) => typeof entry.id === "number" && programsById.has(entry.id)).map(turnKey));
-        const legendNotes = new Set(log.filter((entry) => ownNote(entry) && replayedTurns.has(turnKey(entry))));
+        // A NOTE row joins the legend only when the replayed program carries its body; a NOTE admitted from
+        // reasoning is not in the program and stays an ordinary row.
+        const programNotes = new Map<string, string[]>();
+        for (const entry of log) {
+            const program = typeof entry.id === "number" ? programsById.get(entry.id) : undefined;
+            if (program !== undefined) programNotes.set(turnKey(entry), TurnOps.noteBodies(program.content, JSON.parse(program.executors) as string[]));
+        }
+        const legendNotes = new Set<(typeof log)[number]>();
+        for (const entry of log) {
+            if (!ownNote(entry)) continue;
+            const pool = programNotes.get(turnKey(entry));
+            const at = pool?.indexOf(noteBody(entry)) ?? -1;
+            if (pool === undefined || at === -1) continue;
+            pool.splice(at, 1);
+            legendNotes.add(entry);
+        }
         const legend = new Map<string, Array<{ path: string; tokens: number }>>();
         for (const entry of legendNotes) {
             const key = turnKey(entry);
