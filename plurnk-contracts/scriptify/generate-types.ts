@@ -54,5 +54,8 @@ for (const file of files) {
     }
 }
 
-await writeFile(OUTPUT_FILE, `${combined.trimEnd()}\n`);
+// The output is tracked: rewrite it only when it changed, so a build never leaves a checkout
+// transiently dirty for a concurrent `git status` (#1068).
+const generated = `${combined.trimEnd()}\n`;
+if (await readFile(OUTPUT_FILE, "utf8").catch(() => null) !== generated) await writeFile(OUTPUT_FILE, generated);
 process.stderr.write(`Generated ${OUTPUT_FILE}: ${emitted.size} types from ${files.length} schemas.\n`);
