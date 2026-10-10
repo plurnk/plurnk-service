@@ -132,6 +132,8 @@ interface RenderLogOptions {
     // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id: each renders
     // bodiless, its size and address in place of its body.
     readonly bodiless?: ReadonlySet<number>;
+    // Trial (#1073): the model's NOTEs of a replayed turn, indexed on its emission row by path and weight.
+    readonly legend?: ReadonlyMap<string, ReadonlyArray<{ path: string; tokens: number }>>;
 }
 
 interface ReclaimableLogItem {
@@ -636,7 +638,10 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
             const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]!);
-            const projected = PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts);
+            const legend = LogEntryProjection.isEmission(e) ? options.legend?.get(String(e.coordinate).split("/").slice(0, 2).join("/")) : undefined;
+            const projected = legend !== undefined && legend.length > 0
+                ? { body: PacketWire.#frameBody(legend.map(({ path, tokens }, index) => `${index + 1}:${path} · ${tokens}`).join("\n")), projectedLineCount: legend.length, display: "open" as const }
+                : PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts);
             return PacketWire.#rowAccounting(identity, e, visibility[index]!, projected, weighContent, options);
         });
     }

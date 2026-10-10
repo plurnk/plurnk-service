@@ -178,6 +178,7 @@ type EngineTurnResult = {
     providerParked: boolean;
     providerFailure?: SchemeResult;
     emptyTurn: boolean;
+    annotationOnly: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
@@ -231,10 +232,14 @@ const INITIALIZATION_NOTE: NoteStatement = {
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
+// Trial (#1073): a continuing turn that carried NOTEs and no other operation is told so, as information;
+// the rail counts it as a no-operation turn.
+const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST use at least one NOTE per continuing turn.",
+    note: "YOU MUST emit NOTE operations to register ALL facts, findings, conclusions, decisions, and plans.",
+    act: "YOU SHOULD act in the turn you annotate.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     outside: "YOU MUST NOT emit anything except whitespace between fenced operations.",
     advisory: "YOU SHOULD write the canonical form.",
@@ -397,6 +402,7 @@ const turnResult = (
     capacityHardStop: false,
     providerParked: false,
     emptyTurn: false,
+    annotationOnly: false,
     emissionAttempts: 0,
     emissionExhausted: false,
     ...facts,
@@ -885,11 +891,18 @@ export default class TurnRunner {
     // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
     // its scheme is registered for the workspace. A positive filesItems caps the
     // project rows.
-    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<Array<FindStatement | ReadStatement>> {
+    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies, loopSequence }: TurnContainer, filesItems: number): Promise<Array<FindStatement | ReadStatement>> {
         const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
         const surveys: Array<FindStatement | ReadStatement> = [
+            {
+                // Trial (#1073): the survey reads its own program, so the log carries one program verbatim
+                // and shows that every ops:// turn is readable.
+                op: "READ", aside: "this program",
+                target: { kind: "url", raw: `ops://${workerName}/${loopSequence}/1`, scheme: "ops", username: null, password: null, hostname: workerName, port: null, pathname: `/${loopSequence}/1`, query: null, fragment: null },
+                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            },
             {
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
@@ -1824,11 +1837,18 @@ export default class TurnRunner {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });
         }
+        const annotationOnly = ops.length > 0 && ops.every((statement) => "op" in statement && statement.op === "NOTE");
+        if ((executed.status === 102 || executed.status === 202) && annotationOnly) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn", kind: "noted_without_operation", level: "info", directive: DIRECTIVE.act, message: NOTED_WITHOUT_OPERATION,
+            });
+        }
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             progressed: executed.progressed,
             fingerprint: executed.fingerprint,
             emptyTurn: executed.emptyTurn,
+            annotationOnly,
             emissionAttempts: emission.emissionAttempts,
         });
     }

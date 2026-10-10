@@ -276,23 +276,41 @@ export default class PacketBuilder {
         const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
         // {§fs-namespace} Receipt directories are relative to the workspace project root.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-        const renderedLog = PacketWire.renderLogWithAccounting(
-            log,
-            weighContent,
-            {
-                projectRoot: workspaceRow?.project_root ?? null,
-                acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
-                ...(bodiless === undefined ? {} : { bodiless }),
-            },
-        );
         // {§emission-history}: the durable emission row, not its turn's first observation,
         // anchors content replay without moving incoming observations or reasoning receipts.
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
         const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ id: number; content: string; executors: string }>({
             loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
         });
-        const emissions = new Map(programs.map(({ id, content, executors }) =>
-            [id, TurnOps.renderHistory(content, JSON.parse(executors) as string[])]));
+        const programsById = new Map(programs.map((program) => [program.id, program]));
+        // Trial (#1073): a replayed turn is the home of its NOTEs. Their rows render as the emission row's
+        // legend, path and weight each, so the model keeps a handle to retire one; a NOTE of a turn that is
+        // not replayed (an earlier loop, a shed history, a reasoning NOTE) renders as an ordinary row.
+        const turnKey = (entry: { coordinate?: unknown }): string => String(entry.coordinate).split("/").slice(0, 2).join("/");
+        const ownNote = (entry: { op?: unknown; origin?: unknown }): boolean => entry.op === "NOTE" && entry.origin === "model";
+        const noteBody = (entry: { tx?: unknown }): string => {
+            const tx = entry.tx;
+            return tx !== null && typeof tx === "object" && typeof (tx as { body?: unknown }).body === "string" ? (tx as { body: string }).body : "";
+        };
+        const replayedTurns = new Set(log.filter((entry) => typeof entry.id === "number" && programsById.has(entry.id)).map(turnKey));
+        const legendNotes = new Set(log.filter((entry) => ownNote(entry) && replayedTurns.has(turnKey(entry))));
+        const legend = new Map<string, Array<{ path: string; tokens: number }>>();
+        for (const entry of legendNotes) {
+            const key = turnKey(entry);
+            if (!legend.has(key)) legend.set(key, []);
+            legend.get(key)!.push({ path: `log:///${entry.coordinate}/NOTE`, tokens: weighContent(TurnOps.noteFence(noteBody(entry))) });
+        }
+        const shown = log.filter((entry) => !legendNotes.has(entry));
+        const renderedLog = PacketWire.renderLogWithAccounting(
+            shown,
+            weighContent,
+            {
+                projectRoot: workspaceRow?.project_root ?? null,
+                acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
+                ...(bodiless === undefined ? {} : { bodiless }),
+                legend,
+            },
+        );
         const nativeRows = new Map(renderedLog.attachments.map((attachment) => [attachment.coordinate, attachment]));
         const nativeParts: PacketAttachment[] = [];
         const logSections: PacketSectionDraft[] = [];
@@ -305,19 +323,15 @@ export default class PacketBuilder {
             sectionItems.set(name, items);
             items = [];
         };
-        for (const [index, row] of log.entries()) {
-            // Trial (#1073): the model's NOTEs live in its replayed turn, their only home; the
-            // emission row lists their paths so each keeps a handle.
-            const ownNote = (entry: typeof row): boolean => entry.op === "NOTE" && entry.origin === "model";
-            if (ownNote(row)) continue;
+        for (const [index, row] of shown.entries()) {
             if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
-            const emission = row.id == null ? undefined : emissions.get(row.id);
-            const turn = String(row.coordinate).split("/").slice(0, 2).join("/");
-            const notePaths = emission === undefined ? [] : log
-                .filter((entry) => ownNote(entry) && String(entry.coordinate).startsWith(`${turn}/`))
-                .map((entry) => `log:///${entry.coordinate}/NOTE`);
-            items.push([renderedLog.records[index]!, ...notePaths].join("\n"));
+            items.push(renderedLog.records[index]!);
             const native = nativeRows.get(String(row.coordinate));
+            const program = typeof row.id === "number" ? programsById.get(row.id) : undefined;
+            const emission = program === undefined ? undefined : TurnOps.renderHistory(
+                program.content, JSON.parse(program.executors) as string[],
+                [...legendNotes].filter((entry) => turnKey(entry) === turnKey(row)).map(noteBody),
+            );
             if (native !== undefined || emission) {
                 flush();
                 if (native !== undefined) nativeParts.push({ ...native, section: name });

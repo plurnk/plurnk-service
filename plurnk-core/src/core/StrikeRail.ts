@@ -130,6 +130,7 @@ export default class StrikeRail {
         // {§strike-progress-immunity} — at least one operation acted on the task and succeeded.
         progressed: boolean;
         emptyTurn?: boolean;
+        annotationOnly?: boolean;
         minCycles: number;
         maxCyclePeriod: number;
         maxStrikes: number;
@@ -154,14 +155,14 @@ export default class StrikeRail {
                 && !isUnreadablePattern(outcome),
         );
         // {§empty-turn} — a turn with no operation is one progress-contract strike.
-        const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;
+        const struck = recordedFailed || cycle.detected || turn.emptyTurn === true || turn.annotationOnly === true;
         const streak = struck ? state.strike_streak + 1 : 0;
         // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
         // actually happened instead of calling an unfenced reply a failed operation. A turn may
         // match more than one; the most specific wins, and repetition is the most specific fact.
         const crossedBy: StrikeSource | null = !struck ? null
             : cycle.detected ? "repetition"
-            : turn.emptyTurn === true ? "no_operation"
+            : turn.emptyTurn === true || turn.annotationOnly === true ? "no_operation"
             : "operation";
         const saved = await this.#db.strike_rail_assess.run({
             loop_id: loopId,

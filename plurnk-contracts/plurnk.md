@@ -4,7 +4,7 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST emit NOTE operations during both reasoning and response to register **ALL** facts, findings, conclusions, decisions, and plans.
+> YOU MUST emit NOTE operations to register **ALL** facts, findings, conclusions, decisions, and plans.
 
 > [!TIP]
 > All operations except for NOTEs are converted into log items.
@@ -140,7 +140,7 @@ Nesting can be resolved with increased outer fences.
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```
 
-```KILL (log:///1/[1-7]/*/{READ,emission,reasoning}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->
+```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->
 exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
 ```
 
