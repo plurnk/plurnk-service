@@ -94,7 +94,7 @@ Describe the child's complete task in the body.
 |-----------------|--------------------------------|
 | `<L>`, `<@hash>` | one line |
 | `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
-| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
+| `<SL,SC,EL,EC>` | start included, end excluded — `<@abcde,5,@abcde,8>` is `bar` in line 42 `foo bar baz` |
 | `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
@@ -106,6 +106,10 @@ bar
 
 ```EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 44 -->
 bar
+```
+
+```EDIT (example.md) <@abcde,5,@abcde,8> <!-- READ showed 42<@abcde>foo bar baz; "bar" becomes the body -->
+qux
 ```
 
 ```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
