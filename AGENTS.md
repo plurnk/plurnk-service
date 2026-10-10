@@ -336,8 +336,27 @@ changelogs.
 agent filed or started; close what you can close. Fix every defect you find, not a ranked subset;
 recovery wording (receipts, Problems, recovery lines) is first-class work.
 
-**One contract change per measured cycle**, with one hand on a contract at a time. A benchmark is
-evidence on one axis, never the scope: a page or contract serves every model and conversation.
+**A benchmark is evidence on one axis, never the scope.** A page or contract serves every model and
+conversation.
+
+**The model curates its context.** The verbs are the curation ({§context-verbs}): the daemon adds no
+compaction, folding, summary or other mechanism the model did not emit, however a benchmark goes.
+
+**Teach stricter than tolerated.** The card and reference pages teach one canonical form; the parser may
+accept near-misses of it. Teaching that matters only when the model errs belongs in the refusal's
+receipt, which shows the working form, so the card stays minimal.
+
+**A contract works without a whiteboard.** Prefer the simplest rule that can be stated and reasoned
+about directly over layered permissions, fallback chains, or daemon state that covers for an absent party.
+
+**Every contract mechanism has a matrix witness.** Coverage enumerates the mechanism's dimensions, as the
+fence-pairing and message-completion matrices do, rather than sampling one path.
+
+**The card and public framing are the operator's.** `plurnk-contracts/plurnk.md` changes only with the
+operator's confirmation, and the operator's own edits to it land with the next gate. Its examples use
+generic placeholders and teach grammar before using it. Release notes, README claims, announcements and
+public issue text are drafted and shown to the operator before they are published; build, run and
+contribution mechanics are not.
 
 **Upstream as published.** Plurnk implements standards and dependencies as they are published. It
 files no feature requests or proposals upstream and keeps no issue open waiting on one; what the
