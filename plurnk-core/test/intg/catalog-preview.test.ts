@@ -277,13 +277,13 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.aside,
-                    "```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```",
+                    "```sh <!-- Run POSIX shell commands and scripts. -->\ngit status --short\n```",
                     "Turn 0 teaches a compact executable witness with its authored aside, as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.aside,
-                    "```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```",
+                    "```python3 <!-- Run Python 3 code or scripts. -->\nprint(42)\n```",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 for (const [index, name] of ["https", "worker", "wss"].entries()) {

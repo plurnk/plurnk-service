@@ -32,8 +32,8 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
         const node = groups.flat().find(({ path }) => path.endsWith("/node.md"));
         const aside = node?.aside;
-        assert.ok(typeof aside === "string" && aside.includes("\\n"), "Node's aside includes its inline body, not just an empty invocation");
-        const parsed = PlurnkParser.parseStatements(aside.replaceAll("\\n", "\n"), { executors: fixtureExecutors(aside.replaceAll("\\n", "\n")) });
+        assert.ok(typeof aside === "string" && aside.includes("\n"), "Node's aside includes its inline body, not just an empty invocation");
+        const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.ok(item?.kind === "statement" && isExecution(item.statement));

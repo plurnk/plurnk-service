@@ -285,7 +285,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerWorkerId")), "the wire carries one causal actor identity");
         assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes("```mcp (list|add|enable|disable|remove) <!-- Manage MCP servers -->\\\\n```"),
+        assert.ok(firstPacket.includes("```mcp (list|add|enable|disable|remove) <!-- Manage MCP servers -->\\n```"),
             "the initial survey teaches the manager's lifecycle; with no registry it has no discover");
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");

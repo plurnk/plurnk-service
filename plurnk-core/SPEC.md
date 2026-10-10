@@ -2367,7 +2367,9 @@ cropping ({§packet-attachment-parts}).
 
 Retrieval results omit redundant requested coordinates; durable results and
 submitted programs retain them. Failed selections keep requested coordinates
-and available extent in their owning Problem. Projection never parses its
+and available extent in their owning Problem; a channel READ that carries its
+execution's failure retrieved successfully and formats its extent like any
+other. Projection never parses its
 display strings to recover typed facts. A hidden body has no `preview`; a
 complete non-retrieval body retains `lines` where no other field supplies its
 navigable extent. None of these spellings changes acquisition, delivery,
@@ -2585,7 +2587,7 @@ per-operation projection on `rx`; the aggregate remains inside dispatch.
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
 | `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
 | `effect.source`, `result`             | `effect` as `<source> -> <result>`                                | Resolved scopes mapping the source snapshot into the landed body; the admitted marker stays in durable `requested` and `tx`. |
-| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit. |
+| `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts led by the receipt unit, as `extent` is: `lines -7 +7`. |
 | `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, its first `PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES` lines; absent when the edit inserted anything.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`. A pattern batch's `last` context follows the first's when it differs, with no blank line between: every line of a row body carries its coordinate. |
 | `disposition`, `requested`             | `disposition`, `requested`                                       | A reviewer-replaced batch preserves the authored marker while stating that its attributed effect was superseded.          |
@@ -2785,9 +2787,11 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   code points including a visible terminal ellipsis, so a row stays one line
   of orientation; an invocation-form witness — a summary that is one fenced
   operation, the shape a runtime's tool summary takes
-  ({§tools-resource-materialization}) — is shown whole, every tool named,
-  because the discovery row exists so the model can invoke without a READ and
-  a menu that is cut is no menu. Absent metadata is omitted.
+  ({§tools-resource-materialization}), kept on one summary line by writing each
+  newline as `\n` — is shown whole, every tool named and its newlines restored
+  so the row's JSON escapes each once, because the discovery row exists so the
+  model can invoke without a READ and a menu that is cut is no menu. Absent
+  metadata is omitted.
 
   Resource-level `stream` and broad-match
   `matchLocationCount` live only on `[0]`. A single-channel resource is therefore

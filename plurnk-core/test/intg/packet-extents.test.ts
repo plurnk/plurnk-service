@@ -36,6 +36,14 @@ test("{§packet-extent-metadata}: successful retrievals format typed extents wit
     }
 });
 
+test("{§packet-extent-metadata}: a channel READ carrying its execution's failure formats its extent like any retrieval", () => {
+    const problem = { type: "https://problems.plurnk.xyz/executor/subprocess/timeout", title: "Timeout", status: 504, detail: "'sh' timed out." };
+    const range = { unit: "line", total: 3, requested: [1, 100], returned: [1, 3] };
+    const row = { coordinate: "1/10/1", op: "READ", status: 504, origin: "_plurnk", target: { scheme: "sh", pathname: "/8d5808a1" }, rx: { range, content: "a\nb\nc", problem, terminal: true } };
+    const rendered = parseLogRecords(PacketWire.renderLog([row], weigh))[0]!;
+    assert.equal(rendered.range, "3 lines", "the retrieval succeeded; only the execution failed");
+});
+
 test("{§packet-extent-metadata}: READ acquisition, receipt trimming, and READ of the log keep distinct coordinates", async () => {
     const rx = await ReadResolve.resolve({ content, mimetype: "text/plain", lineMarker: { marks: [17, 18] } });
     const entry = { coordinate: "1/2/3", op: "READ", status: rx.status, target: { scheme: null, pathname: "sample" }, rx };
@@ -85,7 +93,7 @@ test("{§packet-extent-metadata}: mutation scopes are resolved by the producer, 
     }], weigh))[0]!;
     assert.equal(row.effect, "<2> -> <2,3>");
     assert.equal(row.range, undefined);
-    assert.equal(row.change, "-1 +2");
+    assert.equal(row.change, "lines -1 +2");
     assert.equal(row.extent, "lines 3->4");
     assert.match(String(row.body), /2:replacement\n3:extra/);
     assert.deepEqual(receipt, retained);

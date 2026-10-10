@@ -465,7 +465,7 @@ export default class PacketWire {
         if ("effect" in receipt) {
             return {
                 ...head,
-                change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
+                change: `${receipt.unit} -${receipt.effect.removed} +${receipt.effect.inserted}`,
                 effect: `${receipt.effect.source} -> ${receipt.effect.result}`,
                 // {§edit-receipt-removed-text} — what a deletion took, so it can be put back from the receipt.
                 ...(receipt.effect.removedText === undefined ? {} : { removed: receipt.effect.removedText }),
@@ -478,7 +478,7 @@ export default class PacketWire {
             ...(receipt.replacement === undefined
                 ? {}
                 : {
-                    change: `-${receipt.replacement.removed} +${receipt.replacement.inserted}`,
+                    change: `${receipt.unit} -${receipt.replacement.removed} +${receipt.replacement.inserted}`,
                     replacement: `${receipt.replacement.source} -> ${receipt.replacement.result}`,
                 }),
         };
@@ -890,9 +890,9 @@ export default class PacketWire {
                 const sparse = fullBody.lineOrdinals !== undefined
                     && range.returned !== undefined
                     && fullBody.lineOrdinals.length !== range.returned[1] - range.returned[0] + 1;
-                meta.range = typeof e.status === "number" && e.status >= 400
-                    ? range
-                    : ScopeFormat.range(range, sparse);
+                // A row whose Problem does not own the range retrieved successfully, even when it
+                // carries its execution's failure: its extent takes the one scope notation.
+                meta.range = ScopeFormat.range(range, sparse);
             } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
                 delete meta.scope;
                 meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region as TextRegion));

@@ -47,11 +47,11 @@ type CatalogEntryState = {
 };
 
 // {§scheme-catalog-aside} — prose is clipped so a row stays one line of orientation; an
-// invocation-form witness (a fenced one-liner, the shape a runtime's tool summary takes) is shown
-// whole, because a menu that is cut is no menu: the row exists so the model can invoke without a READ.
+// invocation-form witness (the shape a runtime's tool summary takes, its newlines written `\n` to stay
+// one summary line) is shown whole with its newlines restored, so the row's JSON escapes each once.
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
-    if (value.startsWith("```")) return value;
+    if (value.startsWith("```")) return value.replaceAll("\\n", "\n");
     const points = [...value];
     const shown = EntryManifest.summaryCodePoints();
     return points.length <= shown

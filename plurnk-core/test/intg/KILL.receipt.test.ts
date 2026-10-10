@@ -68,7 +68,7 @@ Continue the task.
                     assert.ok(receipt, "the packet retains the KILL identity");
                     assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
                     assert.equal(receipt.extent, "lines 20->18");
-                    assert.equal(receipt.change, "-2 +0");
+                    assert.equal(receipt.change, "lines -2 +0");
                     assert.equal(receipt.removed, "line 10\nline 11");
                     assert.equal(receipt.effect, `${rx.receipt.effect.source} -> ${rx.receipt.effect.result}`);
                     assert.equal(receipt.body, `${rx.receipt.effect.context}\n`);

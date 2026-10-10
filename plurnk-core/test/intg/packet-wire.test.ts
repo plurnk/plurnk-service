@@ -676,7 +676,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.doesNotMatch(out, /"path":"worker:\/\/\/source"/);
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0→3","change":"-1 \+2","effect":"<2> -> <2,3>"\}\]/,
+        /"effects":\[\{"path":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0→3","change":"lines -1 \+2","effect":"<2> -> <2,3>"\}\]/,
     );
     assert.match(
         out,
@@ -857,7 +857,7 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
     assert.deepEqual(parseLogRecords(out)[0]!.scope, { from: "<1,2,1,4>", to: "<1,7,1,7>" });
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1> -> <1,2>"\}\]/,
+        /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"lines -1 \+2","replacement":"<1> -> <1,2>"\}\]/,
     );
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
@@ -1296,7 +1296,7 @@ test("log render: model EDIT receipt renders its extent, change, effect and boun
     }], tok);
     assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "modifiers", "path", "tokens"]]);
     assert.match(out, /"extent":"lines 4->5"/);
-    assert.match(out, /"change":"-1 \+2"/);
+    assert.match(out, /"change":"lines -1 \+2"/);
     assert.match(out, /"effect":"<2> -> <2,3>"/);
     assert.match(out, /3:2\.5/);
     assert.doesNotMatch(out, new RegExp(revision));
@@ -1346,7 +1346,7 @@ test("reviewer-replaced EDIT rows render authored dispositions and one landed re
     assert.match(out, /"requested":"<2>"/);
     assert.match(out, /"requested":"<4>"/);
     assert.match(out, /"replacement":"<1,4> -> <1,2>"/);
-    assert.match(out, /"change":"-4 \+2"/);
+    assert.match(out, /"change":"lines -4 \+2"/);
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
     assert.doesNotMatch(out, new RegExp(revision));

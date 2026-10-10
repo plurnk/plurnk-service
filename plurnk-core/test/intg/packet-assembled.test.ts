@@ -352,7 +352,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(effect?.action, "create");
         assert.equal(Object.hasOwn(effect ?? {}, "rev"), false, "no revision token in the packet");
         assert.equal(effect?.extent, "lines 0->2");
-        assert.equal(effect?.change, "-0 +2");
+        assert.equal(effect?.change, "lines -0 +2");
         assert.equal(effect?.effect, "<1,1,1,1> -> <1,2>");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
         assert.equal(copies[1]?.from, "worker:///src.md");
@@ -417,7 +417,7 @@ test("{§recap-lines} the shipped recap lines close the user slot, each in its d
         const packet = await getPacket(db, result.turnId);
 
         assert.equal(await readFile(Paths.defaultRecap, "utf8"), "", "{§recap-lines}: the shipped recap source stays empty");
-        const footer = "> [!IMPORTANT]\n> YOU MUST begin this turn with a NOTE.\n\n> [!TIP]\n> YOU MAY use NOTE, FIND, and READ operations while reasoning.";
+        const footer = "> [!IMPORTANT]\n> YOU MUST use at least one NOTE per continuing turn.\n\n> [!TIP]\n> YOU MAY use NOTE, FIND, and READ operations while reasoning.";
         assert.equal(packetSection(packet, "recap"), footer);
         assert.ok(PacketWire.renderSlot(packet.sections, "user").endsWith(`## Recap\n\n${footer}`), "the footer closes the user slot");
     } finally { await db.close(); }
