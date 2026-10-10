@@ -14,8 +14,8 @@ Where things are, for an agent that has to act before it has read everything:
 
 - **Models are declared in `$XDG_CONFIG_HOME/plurnk/.env`** (`~/.config/plurnk/.env`),
   one alias per line: `PLURNK_MODEL_<alias>=<provider>/<model>`. Alias names may carry
-  lowercase (`PLURNK_MODEL_ibm`). `PLURNK_MODEL=<alias>` selects one per run. The
-  operator's daily default is whatever `PLURNK_MODEL` that file sets.
+  lowercase (`PLURNK_MODEL_ibm`). `PLURNK_MODEL=<alias>` selects one per run; a
+  `PLURNK_MODEL` in that file is the standing selection.
 - **Provider credentials live in the login shell environment**, never in any `.env`
   and never in the repository. `scripts/operator-environment.sh` re-executes its
   command under `~/.bashrc` when one exists (and runs it unchanged otherwise), so
@@ -34,59 +34,39 @@ Where things are, for an agent that has to act before it has read everything:
   the database is evidence, never the diagnostic interface. For any other database,
   `npm run share -- <plurnk.db> [folder]` writes the same folder
   from a consistent copy it takes itself ({§share}); a live database is safe to name.
-- **A daemon may already be attached to this checkout**, run from its source and
-  listening on `PLURNK_PORT` (1066 by default) — commonly as a user service
-  (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`). Treat any
-  daemon you did not start as a live session someone is using: never stop it to free
-  a port, never select processes by the directory they happen to sit in, and never
-  read its database except through a copy. It reads `plurnk-contracts/plurnk.md` from
-  disk when it starts or wakes a worker, not once at boot, so a card edit reaches live
-  workers without a restart.
+- **A daemon you did not start is a live session** someone is using: never stop it to
+  free a port, and read its database only through `npm run share`. A daemon reads
+  `plurnk-contracts/plurnk.md` from disk when it starts or wakes a worker, not once at
+  boot, so a card edit reaches its workers without a restart.
 - **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals
   every process using that directory, the daemon included, and `pgrep -f`/`pkill -f`
   match the calling shell's own command line. When a pattern is unavoidable, bracket its
   first character (`[d]rill\.mjs`).
-- **A paid run needs the operator's explicit go** naming what runs and against which
-  comparator. Live, demo, candidate, benchlet and campaign runs spend real money; never
-  infer the comparator.
-- **Current work and open decisions** are on the forge board, #768.
 - **The bench lane** is the `plurnk-bench` checkout beside this one; read
   `deepswe/README.md` there before launching anything, and never reconstruct its
   invocation from memory.
-- **Landing**: commit on `main` in this checkout; topic branches and worktrees return only
-  when a second agent works the tree at the same time. Stage files by name, never
-  `git add .` or `-A`. Commit subjects are one line of at most 100 characters citing
-  `(#N)`, no body. While iterating, commit locally (`deepswe/relock.sh` in the bench lane
-  accepts a local commit) and gate at a checkpoint — a measured baseline, a chapter's end,
-  a release — one drill covering every commit since. Run `npm run -s root:lint`, then push
-  detached with the status in its log:
-  `setsid sh -c 'git push origin main; echo GATE_RC=$?' > <log> 2>&1 < /dev/null &`.
-  The pre-push drill is the gate (lint, unit, intg, client conformance against
-  `../plurnk`). It copies this checkout's `node_modules`, so run
+- **The gate** is the pre-push drill (lint, unit, intg, client conformance against
+  `../plurnk`); run `npm run -s root:lint` before pushing. Commit subjects are one line of
+  at most 100 characters citing `(#N)`, no body. The drill copies this checkout's
+  `node_modules`, so run
   `npm install --no-audit --no-fund` after a change to the workspaces or the lockfile. It
   runs the pushed commit in a throwaway worktree beside this checkout
   (`plurnk-service.wt-gate-<pid>`, removed when the drill ends), so the working tree may
   stay dirty and be edited while it runs. Intg scopes to the changed workspaces and runs
   in full for a root-level, `plurnk-core`, `plurnk-contracts` or `plurnk-parser` change.
   The drill prints a phase's output only when that phase goes red, so a hung phase shows
-  nothing until its runner exits. Only when the log reads `GATE_RC=0`, mirror with
-  `git push --no-verify github origin/main:refs/heads/main`.
+  nothing until its runner exits.
 - **Releases are independent** ({§package-release-contract}). Every public change lands
   with its changeset, written by whoever lands the change (`npm run changeset`);
   `npm run release:version` applies the pending changesets and synchronizes the lockfile.
-  Review and land those changes through the normal gate. A release never lands mid-epic;
-  minor issues roll in first. Before qualification, `test:live` and
-  `test:demo` (from `plurnk-core`) and the bench lane's benchlet run green on lanes at the
-  release commits, and the release starts once the operator agrees on their digests'
-  error rows and receipts. From clean canonical `main`
+  Review and land those changes through the normal gate. From clean canonical `main`
   checkouts, `npm run release:check -- <new-artifact-directory> <package-directory>...`
   qualifies only explicitly selected packages, including outside packages when named.
   `npm run release:publish -- <artifact-directory>` publishes those retained archives in
   dependency order, verifies the installed composition, and creates signed tags and GitHub
-  release records; run it under your agent identity, whose key signs the tags. Retry with
-  that same artifact directory; do not rebuild an interrupted release. No automatic version
-  stamping or neighboring-repository sweep occurs during publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
-  After the packages are served, update and verify the bench checkout's dependencies.
+  release records. Retry with that same artifact directory; do not rebuild an interrupted
+  release. No automatic version stamping or neighboring-repository sweep occurs during
+  publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
   probes only feed the limit.
@@ -287,8 +267,6 @@ surprise mutation is a failure in this tier even when the final text is right.
   A repository shorthand such as `plurnk-mimetypes#N` is ambiguous and
   forbidden. Once a ruling is stable, prefer its owning `{§tag}` and leave
   chronology in the issue or Git history.
-- Give every new forge issue one appropriate Conventional type label when the
-  issue is created; labels are part of issue creation, not later cleanup.
 - README material teaches concise usage derived from the specification. Do not
   turn specifications or READMEs into chronological design journals.
 - Code and coverage may cite the owning specification tag and issue numbers, but must not
@@ -332,10 +310,6 @@ tree: no code, spec, doc, test, comment or diagnostic refers to it, and nothing 
 or translate it. Any record of it invites its resurrection. History lives in git, issues and published
 changelogs.
 
-**No agent owns an issue.** Whoever is working owns the whole queue, including issues another
-agent filed or started; close what you can close. Fix every defect you find, not a ranked subset;
-recovery wording (receipts, Problems, recovery lines) is first-class work.
-
 **A benchmark is evidence on one axis, never the scope.** A page or contract serves every model and
 conversation.
 
@@ -344,23 +318,14 @@ compaction, folding, summary or other mechanism the model did not emit, however 
 
 **Teach stricter than tolerated.** The card and reference pages teach one canonical form; the parser may
 accept near-misses of it. Teaching that matters only when the model errs belongs in the refusal's
-receipt, which shows the working form, so the card stays minimal.
+receipt, which shows the working form, so the card stays minimal. Card examples use generic
+placeholders and teach grammar before using it.
 
 **A contract works without a whiteboard.** Prefer the simplest rule that can be stated and reasoned
 about directly over layered permissions, fallback chains, or daemon state that covers for an absent party.
 
 **Every contract mechanism has a matrix witness.** Coverage enumerates the mechanism's dimensions, as the
 fence-pairing and message-completion matrices do, rather than sampling one path.
-
-**The card and public framing are the operator's.** `plurnk-contracts/plurnk.md` changes only with the
-operator's confirmation, and the operator's own edits to it land with the next gate. Its examples use
-generic placeholders and teach grammar before using it. Release notes, README claims, announcements and
-public issue text are drafted and shown to the operator before they are published; build, run and
-contribution mechanics are not.
-
-**Upstream as published.** Plurnk implements standards and dependencies as they are published. It
-files no feature requests or proposals upstream and keeps no issue open waiting on one; what the
-public surface cannot do stays out.
 
 **A diagnostic says what happened, never why** ({§diagnostic-observation}). A message names what
 was read, what was done with it and where, and may show the construct's working form; it never

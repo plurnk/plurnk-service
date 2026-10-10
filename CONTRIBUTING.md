@@ -195,9 +195,7 @@ npm run release:publish -- /path/to/new-release-artifacts
 The package directories above are an example selection, not a fixed train. Name
 every unpublished dependency candidate; all other dependencies resolve normally.
 Only selected repositories are prerequisites. Each must be clean, signed and
-accepted on canonical `main`, with npm and GitHub publication authority. npm
-authority is a granular access token that bypasses two-factor authentication; a
-token from `npm login` fails every upload with `EOTP`.
+accepted on canonical `main`, with npm and GitHub publication authority.
 
 `release:version` does not consult the registry. A version the registry has ever
 accepted cannot be reused: move a collision to the next patch by hand (the version,
