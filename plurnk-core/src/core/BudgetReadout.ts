@@ -1,15 +1,30 @@
+import type { Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 const TOKENS_PLACEHOLDER = "{{tokens}}";
 const MAX_WIDTH_PASSES = 64;
 
-type MeasurePacket = (content: string) => number;
+type MeasurePacket = (gauge: string, notice: Notice | null) => number;
 
 export interface LargestLogItem {
     readonly path: string;
     readonly tokens: number;
 }
 
-// {§context-gauge} — one measured JSON object; the curation inventory appears only under pressure.
+export interface Readout {
+    readonly gauge: string;
+    readonly notice: Notice | null;
+}
+
+// {§context-pressure-notice} — the share and the constraint it nears; the gauge keeps the counts.
+const pressureNotice = (share: number): Notice => ({
+    source: "engine:context",
+    kind: "budget_pressure",
+    level: "warn",
+    message: `Context is at ${share}% of budget. YOU MUST NOT exceed budget.`,
+});
+
+// {§context-gauge} — one measured JSON object; the curation inventory and the pressure notice
+// ({§context-pressure-notice}) appear only under pressure.
 // Never a response allowance ({§output-allowance-notice}).
 export default class BudgetReadout {
     static draft(budget: number | null): string {
@@ -36,7 +51,7 @@ export default class BudgetReadout {
         template: string,
         measurePacket: MeasurePacket,
         largestLogItems: readonly LargestLogItem[] = [],
-    ): string {
+    ): Readout {
         BudgetReadout.#assertTemplate(template);
         const ranked = largestLogItems
             .map((item) => BudgetReadout.#assertLargestLogItem(item))
@@ -44,17 +59,34 @@ export default class BudgetReadout {
                 ? a.path < b.path ? -1 : a.path > b.path ? 1 : 0
                 : a.tokens > b.tokens ? -1 : 1)
             .slice(0, Knob.integer("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", 0));
-        const neutral = BudgetReadout.#resolveTemplate(template, measurePacket);
+        const neutral = BudgetReadout.#resolveTemplate(template, (gauge) => measurePacket(gauge, null));
         const budget = BudgetReadout.budgetOf(neutral.content);
         const pressure = Knob.percent("PLURNK_SERVICE_BUDGET_PRESSURE");
-        // The inventory cannot trigger its own appearance; its weight is included only after admission.
-        if (budget === null || neutral.usage <= budget * pressure) return neutral.content;
-        return BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked), measurePacket).content;
+        // Neither the inventory nor the notice can trigger its own appearance; their weight is included only after admission.
+        if (budget === null || neutral.usage <= budget * pressure) return { gauge: neutral.content, notice: null };
+        const pressured = BudgetReadout.#withInventory(template, ranked);
+        const noticed = neutral.usage > budget ? null : BudgetReadout.#withNotice(pressured, budget, neutral.usage, measurePacket);
+        return noticed ?? { gauge: BudgetReadout.#resolveTemplate(pressured, (gauge) => measurePacket(gauge, null)).content, notice: null };
+    }
+
+    // {§context-pressure-notice} — the share is the gauge's own final tokens over its budget, the notice
+    // included; a packet the notice would carry over its budget carries none.
+    static #withNotice(template: string, budget: number, usage: number, measurePacket: MeasurePacket): Readout | null {
+        let share = Math.floor(usage * 100 / budget);
+        for (let pass = 0; pass < MAX_WIDTH_PASSES; pass += 1) {
+            const notice = pressureNotice(share);
+            const resolved = BudgetReadout.#resolveTemplate(template, (gauge) => measurePacket(gauge, notice));
+            if (resolved.usage > budget) return null;
+            const measured = Math.floor(resolved.usage * 100 / budget);
+            if (measured === share) return { gauge: resolved.content, notice };
+            share = measured;
+        }
+        throw new Error(`Budget pressure share did not converge after ${MAX_WIDTH_PASSES} passes`);
     }
 
     static #resolveTemplate(
         template: string,
-        measurePacket: MeasurePacket,
+        measurePacket: (gauge: string) => number,
     ): { content: string; usage: number } {
         let width = 1;
 

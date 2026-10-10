@@ -238,6 +238,7 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         const problem = (rows[0]!.problem ?? {}) as { detail?: string; excess?: number };
         assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§pinned-wording-core}
         assert.equal(problem.excess, undefined, "{§context-gauge}: the gauge is the one home for the numbers");
+        assert.doesNotMatch(packetSection(packet, "notices"), /budget_pressure/u, "{§context-pressure-notice}: over budget the row is the mandate");
         assert.equal(rows[0]!.origin, "_plurnk");
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);

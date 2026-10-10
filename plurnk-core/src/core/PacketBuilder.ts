@@ -353,13 +353,17 @@ export default class PacketBuilder {
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
-            const content = BudgetReadout.resolve(budgetSection.content, (candidate) => {
-                const candidateDrafts = drafts.map((section) =>
-                    section === budgetSection ? { ...section, content: candidate } : section);
-                return PacketWire.packetToWireMessages({ sections: candidateDrafts })
-                    .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight);
-            }, curationTargets);
-            drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
+            // {§context-pressure-notice} — the pressure notice follows whatever the notices section holds.
+            const noticesSection = drafts.find((section) => section.name === "notices");
+            const withReadout = (gauge: string, notice: Notice | null): typeof drafts => drafts.map((section) => {
+                if (section === budgetSection) return { ...section, content: gauge };
+                if (section !== noticesSection || notice === null) return section;
+                return { ...section, content: [section.content, PacketWire.renderNotices([notice])].filter((part) => part.length > 0).join("\n") };
+            });
+            const readout = BudgetReadout.resolve(budgetSection.content, (gauge, notice) =>
+                PacketWire.packetToWireMessages({ sections: withReadout(gauge, notice) })
+                    .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight), curationTargets);
+            drafts = withReadout(readout.gauge, readout.notice);
         }
         // {§packet-items}: unchanged log segments retain their content-addressed records.
         const sections = drafts.map((section): StoredPacketSection => ({
