@@ -32,7 +32,7 @@ body?
 > YOU MUST use **at least** one NOTE per continuing turn. Your reasoning is discarded after every turn; only NOTEs remain.
 
 ```NOTE
-exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
+exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Ruled out: the cache (cleared, same failure). Unverifiable: whether plugins rely on the early read; assuming not. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
 ```
 
 ```SEND
@@ -74,7 +74,7 @@ Describe the child's complete task in the body.
 ```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
 ```
 
-```READ (README.md) /^#{1,3} / <!-- only level 1–3 headings -->
+```READ (src/**/*.ts) /TODO/ <!-- the matching lines in every file -->
 ```
 
 ```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
