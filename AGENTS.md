@@ -53,8 +53,9 @@ Where things are, for an agent that has to act before it has read everything:
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
   line of at most 100 characters citing `(#N)`, no body.
-- **Releases are independent** ({§package-release-contract}). Record package intent with
-  `npm run changeset`; `npm run release:version` applies it and synchronizes the lockfile.
+- **Releases are independent** ({§package-release-contract}). Every public change lands
+  with its changeset, written by whoever lands the change (`npm run changeset`);
+  `npm run release:version` applies the pending changesets and synchronizes the lockfile.
   Review and land those changes through the normal gate. From clean canonical `main`
   checkouts, `npm run release:check -- <new-artifact-directory> <package-directory>...`
   qualifies only explicitly selected packages, including outside packages when named.

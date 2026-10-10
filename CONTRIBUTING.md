@@ -173,10 +173,11 @@ it is not a release gate.
 
 ## Release
 
-Packages have independent versions ({§package-release-contract}). Add a changeset
-for each public change; describe the service's outward effect explicitly when it
-also needs a release. Compatible, unchanged packages do not need new versions.
-Standalone repositories use their own version preparation and dependency ranges.
+Packages have independent versions ({§package-release-contract}). Every public
+change lands with its changeset, written by whoever lands the change; describe the
+service's outward effect explicitly when it also needs a release. Compatible,
+unchanged packages do not need new versions. Standalone repositories use their own
+version preparation and dependency ranges.
 
 Dependency upgrades are separate maintenance. Inspect available updates with
 `npm outdated --include-workspace-root --workspaces`; newer versions alone do
