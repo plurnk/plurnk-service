@@ -79,9 +79,18 @@ sidecars together. Copy the backup to a fresh working path, select that path wit
 `PLURNK_SERVICE_DB_PATH`, and start the same or a newer compatible service version.
 Do not overwrite a live database or pair a restored file with old sidecars.
 
-Retention controls expire packet compositions and model-call response bodies, not every copy of
-their content. Turn sources, log receipts and physical-request evidence have separate lifetimes
-({§retention-policy}); a share contains only what remains when it is taken.
+| Restored input | Startup behaviour |
+| --- | --- |
+| Database | Retained history, approval decisions, attachments and workspace/worker configuration return. Interrupted work is settled without replaying uncertain effects ({§worker-lifecycle-restart-recovery}). |
+| Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
+| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-first-arming}). |
+| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-lifetime}). |
+
+Retention controls expire packet compositions and call payloads, including physical-request
+captures. Messages, turn sources, operation receipts, approval decisions and request accounting
+remain with their containing history ({§retention-policy}); referenced attachment bytes remain
+too ({§native-content-lifetime}). This is not content erasure. A share contains only what remains
+when it is taken.
 
 `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
 or startup writes. Its shipped setting is in `.env.defaults`. `FULL` synchronizes every commit

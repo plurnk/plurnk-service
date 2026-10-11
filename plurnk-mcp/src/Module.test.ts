@@ -745,6 +745,51 @@ test("{§oauth-lifetime} withdrawing a server with a pending authorization clear
     } finally { await h.module.stop(); }
 });
 
+for (const authorize of [false, true]) test(`{§oauth-lifetime} a fresh module restores definitions but not ${authorize ? "accepted credentials" : "pending sign-in"}`, async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const definition = httpServer("oauth", served.url);
+    const definitions = new Map([["oauth", definition]]);
+    const original = harness();
+    await original.setup();
+    let callbackUrl: string;
+    try {
+        await original.lane(1, definitions);
+        const started = await original.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { authorization: { url: string } };
+        const callback = new URL("http://127.0.0.1:54321/callback");
+        callback.searchParams.set("code", "fixture-code");
+        callback.searchParams.set("state", new URL(started.authorization.url).searchParams.get("state")!);
+        callback.searchParams.set("iss", origin);
+        callbackUrl = callback.href;
+        if (authorize) {
+            await original.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl });
+            await original.settleRefreshes();
+            assert.deepEqual(original.runtimeTags(1), ["oauth"]);
+        } else {
+            assert.equal(original.leases(), 1);
+        }
+        assert.deepEqual(original.snapshots.get(1)?.enabled.get("oauth"), definition, "neither a callback nor credentials enter the stored definition");
+    } finally { await original.module.stop(); }
+    assert.equal(original.leases(), 0);
+
+    const restored = harness();
+    await restored.setup();
+    try {
+        const prepared = await restored.lane(1, definitions);
+        assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+        assert.deepEqual(restored.runtimeTags(1), []);
+        await rejectsManagementProblem(() => restored.action(1, "workspace.mcp.oauth.complete", {
+            alias: "oauth", callbackUrl,
+        }), "oauth-not-pending", 404);
+        const restarted = await restored.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { status: number; authorization: { url: string } };
+        assert.equal(restarted.status, 202);
+        assert.notEqual(new URL(restarted.authorization.url).searchParams.get("state"), new URL(callbackUrl).searchParams.get("state"));
+    } finally { await restored.module.stop(); }
+});
+
 test("{§oauth-lifetime} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();

@@ -326,7 +326,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
     }
 });
 
-test("boot terminalizes a proposed occurrence whose process-local resolution owner vanished", async () => {
+for (const accepted of [false, true]) test(`{§proposal-decision-evidence}: boot terminalizes interrupted ${accepted ? "accepted" : "undecided"} proposals without replay`, async () => {
     const db = await openMigrated();
     const first = new Daemon({ db, provider: null });
     const second = new Daemon({ db, provider: null });
@@ -365,6 +365,9 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
             attrs: "{}",
         });
         assert.ok(inserted !== undefined);
+        if (accepted) await db.proposal_record_decision.run({
+            log_entry_id: inserted.id, decision: "accept", resolver: "_plurnk", body: "approved replacement", outcome: null,
+        });
 
         await first.start();
 
@@ -384,7 +387,14 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
         assert.equal(result?.status, 500);
         assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished");
         assert.equal(result?.problem?.status, 500);
-        assert.match(result?.problem?.detail ?? "", /proposal.*process-local owner no longer exists/);
+        assert.match(result?.problem?.detail ?? "", accepted
+            ? /after approval.*whether the effect completed is unknown.*not replayed/
+            : /proposal.*process-local owner no longer exists/);
+        const decision = await db.test_proposal_decision.get({ id: inserted.id });
+        if (accepted) {
+            assert.equal(decision?.decision, "accept");
+            assert.equal(decision?.body, "approved replacement");
+        } else assert.equal(decision, undefined, "restart never invents an approval decision");
         assert.equal(result?.problem?.instance, "log:///1/1/1/EDIT");
         const loop = await db.lifecycle_loop_status.get<{
             status: number;
@@ -408,6 +418,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
         await second.start();
         const recoveredAgain = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; outcome: string | null; rx: string }>({ id: inserted.id });
         assert.deepEqual(recoveredAgain, recovered, "a later boot leaves the terminal occurrence unchanged");
+        assert.deepEqual(await db.test_proposal_decision.get({ id: inserted.id }), decision);
     } finally {
         await Promise.allSettled([first.stop(), second.stop()]);
         await db.close();

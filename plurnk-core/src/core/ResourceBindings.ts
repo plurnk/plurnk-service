@@ -5,6 +5,7 @@ import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
+import ContentUse from "./ContentUse.ts";
 
 export interface ResourceScheme {
     readonly handler: object;
@@ -27,8 +28,9 @@ export default class ResourceBindings {
         ctx: PlurnkSchemeContext,
         action: (ctx: PlurnkSchemeContext) => Promise<T>,
     ): Promise<T> {
-        if (ctx.resourceBindings !== undefined) return action(ctx);
-        return action({ ...ctx, resourceBindings: new ResourceBindings(schemes, ctx) });
+        return ContentUse.read(ctx.db, () => action(ctx.resourceBindings === undefined
+            ? { ...ctx, resourceBindings: new ResourceBindings(schemes, ctx) }
+            : ctx));
     }
 
     static resolve(target: ParsedPath | null, ctx: PlurnkSchemeContext): Promise<ResourceScheme | undefined> {

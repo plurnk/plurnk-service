@@ -3,7 +3,7 @@
 // planner statistics. Packet/response retention is separate from unreferenced-content collection.
 import type { Db } from "../core/Db.ts";
 import { Knob } from "@plurnk/plurnk-meta";
-import DerivationUse from "../schemes/_derivation-use.ts";
+import ContentUse from "../core/ContentUse.ts";
 
 export interface RetentionPolicy {
     readonly retainPacketTurns: number;   // -1 = every packet
@@ -72,10 +72,11 @@ export default class Retention {
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });
         const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
-        const collected = await DerivationUse.collect(this.#db, async () => {
+        const collected = await ContentUse.collect(this.#db, async () => {
             const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
             const contents = await this.#db.retention_collect_contents.run({ collect: collectContents ? 1 : 0 });
-            return { derivations: derivations.changes, contents: contents.changes };
+            const native = await this.#db.retention_collect_native_contents.run({ collect: collectContents ? 1 : 0 });
+            return { derivations: derivations.changes, contents: contents.changes + native.changes };
         });
         const reclaimedPages = await this.#reclaim();
         // `.run`, not `.all`: `.all` is served by a read-only reader, and a checkpoint there is an I/O error.

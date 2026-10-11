@@ -177,7 +177,9 @@ export default class DigestRender {
         }
         const envLine = DigestRender.envLine(environment);
         const envText = envLine === null ? "" : `\n    ${envLine}`;
-        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}${envText}`;
+        const decision = le.proposalDecision;
+        const approval = decision === undefined ? "" : `\n    decision=${decision.decision} resolver=${decision.resolver} at=${decision.decided_at}${decision.body === null ? "" : " body override recorded"}${decision.outcome === null ? "" : ` outcome=${decision.outcome}`}`;
+        return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}${envText}${approval}`;
     }
 
     static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
@@ -860,6 +862,7 @@ export default class DigestRender {
                 inferenceCallId: request.inference_call_id, sequence: request.sequence,
                 state: request.state, outcome: request.outcome, admission: DigestRender.#admission(m, request),
                 startedAt: request.started_at, completedAt: request.completed_at,
+                ...(request.payloads_retired_at == null ? {} : { payloadsRetiredAt: request.payloads_retired_at }),
             }, null, 2), "json"),
             "## Accounting",
             request.state === "pending" ? "Request is unsettled; accounting is not yet available."
@@ -874,7 +877,9 @@ export default class DigestRender {
                 DigestRender.#literal(JSON.stringify(DigestRender.parseJson(call.parse_errors, []), null, 2), "json"));
         }
         if (fields.error !== undefined) lines.push("## Failure", DigestRender.#literal(JSON.stringify(fields.error, null, 2), "json"));
-        if (evidence === null) lines.push("## Response", "No settled response evidence is retained.");
+        if (evidence === null) lines.push("## Response", request.payloads_retired_at == null
+            ? "No settled response evidence is retained."
+            : `Payload retention applied at ${request.payloads_retired_at}; request identity and accounting remain.`);
         else {
             if (request.outcome === "error") lines.push("Partial output; this physical request failed. It is not an admitted response.");
             for (const [field, heading] of [["reasoning", "Reasoning"], ["content", "Content"]] as const) {
@@ -1165,6 +1170,7 @@ export default class DigestRender {
                 ...DigestRender.cacheLedger(m).get(request.id)!,
                 started_at: request.started_at,
                 completed_at: request.completed_at,
+                ...(request.payloads_retired_at == null ? {} : { payloadsRetiredAt: request.payloads_retired_at }),
             })),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
@@ -1175,6 +1181,7 @@ export default class DigestRender {
                 attrs: DigestRender.parseJson(le.attrs, {}),
                 op: le.op, target: DigestRender.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
+                ...(le.proposalDecision === undefined ? {} : { proposalDecision: le.proposalDecision }),
                 initial_folded: DigestRender.parseJson(le.initial_folded, []),
                 projection: {
                     active: le.projection_active === 1,

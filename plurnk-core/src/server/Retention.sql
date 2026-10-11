@@ -1,6 +1,16 @@
 -- Retention ({§retention-policy}): the operator's policy over what the database keeps, as set
 -- statements run by Retention on the daemon's cadence and at shutdown. Packet compositions and
--- model-call response bodies expire independently of durable records and physical-request evidence.
+-- payloads expire independently of durable identities, decisions and accounting.
+
+-- INIT: inference_payload_retirement
+DROP TRIGGER IF EXISTS inference_payload_retirement;
+CREATE TRIGGER inference_payload_retirement
+AFTER UPDATE OF payloads_retired_at ON inference_calls
+BEGIN
+    DELETE FROM model_call_responses WHERE id = NEW.id;
+    UPDATE provider_requests SET evidence = NULL
+    WHERE inference_call_id = NEW.id AND evidence IS NOT NULL;
+END;
 
 -- PREP: retention_retire_packets
 -- A completed turn older than the policy — beyond the newest $keep_turns packet-bearing turns of
@@ -21,27 +31,25 @@ WHERE ($keep_turns >= 0 OR $keep_ms >= 0)
   );
 
 -- PREP: retention_retire_responses
--- A settled call's response body beyond the newest $keep_turns body-bearing calls of its loop,
--- or whose turn completed more than $keep_ms before $now_ms, retires; the call's identity,
--- failure, capacity, admission and accounting stay, and the digest renders it request-only.
--- -1 on both disables the statement; a call on an open turn is never retired.
-DELETE FROM model_call_responses
-WHERE ($keep_turns >= 0 OR $keep_ms >= 0)
-  AND id IN (
-      SELECT ic.id FROM inference_calls ic
-      JOIN turns t ON t.id = ic.turn_id
-      WHERE t.completed_at IS NOT NULL
-        AND (
-            ($keep_turns >= 0 AND (
-                SELECT COUNT(*) FROM inference_calls newer
-                JOIN turns nt ON nt.id = newer.turn_id
-                WHERE nt.loop_id = t.loop_id
-                  AND EXISTS (SELECT 1 FROM model_call_responses r WHERE r.id = newer.id)
-                  AND (nt.sequence > t.sequence OR (nt.sequence = t.sequence AND newer.sequence > ic.sequence))
-            ) >= $keep_turns)
-            OR ($keep_ms >= 0 AND unixepoch(t.completed_at) * 1000 < $now_ms - $keep_ms)
-        )
-  );
+-- Rank logical calls, not physical retries. Already retired calls retain their place
+-- in that chronology; failed-only captures count too. Open work never expires.
+WITH ranked AS MATERIALIZED (
+    SELECT ic.id, ic.state, t.completed_at, ic.payloads_retired_at,
+           row_number() OVER (PARTITION BY t.loop_id ORDER BY t.sequence DESC, ic.sequence DESC) AS ordinal
+    FROM inference_calls ic JOIN turns t ON t.id = ic.turn_id
+    WHERE ($keep_turns >= 0 OR $keep_ms >= 0)
+      AND (ic.payloads_retired_at IS NOT NULL
+           OR EXISTS (SELECT 1 FROM model_call_responses r WHERE r.id = ic.id)
+           OR EXISTS (SELECT 1 FROM provider_requests pr WHERE pr.inference_call_id = ic.id AND pr.evidence IS NOT NULL))
+)
+UPDATE inference_calls SET payloads_retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', $now_ms / 1000.0, 'unixepoch')
+WHERE id IN (
+    SELECT id FROM ranked
+    WHERE payloads_retired_at IS NULL AND state <> 'pending' AND completed_at IS NOT NULL
+      AND (($keep_turns >= 0 AND ordinal > $keep_turns)
+        OR ($keep_ms >= 0 AND unixepoch(completed_at) * 1000 < $now_ms - $keep_ms))
+)
+AND NOT EXISTS (SELECT 1 FROM provider_requests pr WHERE pr.inference_call_id = inference_calls.id AND pr.state = 'pending');
 
 -- PREP: retention_collect_packet_items
 -- {§packet-items}: an item no turn's composition references is transient data.
@@ -65,6 +73,24 @@ DELETE FROM contents
 WHERE $collect = 1
   AND NOT EXISTS (SELECT 1 FROM entry_channel_rows r WHERE r.content_id = contents.id)
   AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.content_id = contents.id);
+
+-- PREP: retention_collect_native_contents
+-- {§native-content-lifetime}: curation flags never determine evidence ownership.
+DELETE FROM native_contents
+WHERE $collect = 1
+  AND hash NOT IN (
+      SELECT native_content_hash FROM log_entries WHERE native_content_hash IS NOT NULL
+      UNION
+      SELECT json_extract(a.value, '$.contentHash') FROM log_entries le,
+          json_each(CASE WHEN le.mimetype_rx = 'application/json' THEN le.rx ELSE '{}' END, '$.attachments') a
+      WHERE le.mimetype_rx = 'application/json' AND json_type(a.value, '$.contentHash') = 'text'
+      UNION
+      SELECT json_extract(a.value, '$.contentHash') FROM loop_messages m, json_each(m.evidence, '$.attachments') a
+      WHERE json_type(a.value, '$.contentHash') = 'text'
+      UNION
+      SELECT json_extract(a.value, '$.contentHash') FROM turns t, json_each(t.packet, '$.attachments') a
+      WHERE json_type(a.value, '$.contentHash') = 'text'
+  );
 
 -- {§db-space-reclamation} The daemon keeps its own file healthy: freed pages go back to the OS.
 

@@ -45,6 +45,7 @@ export interface AppliedProposalResolution extends ProposalResolution {
 interface ProposalWaiter {
     disposition: ProposalDisposition | null;
     resolve: (resolution: AppliedProposalResolution) => void;
+    reject: (cause: unknown) => void;
     // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
     release: () => void;
 }
@@ -200,17 +201,17 @@ export default class ProposalLifecycle {
     // watcher. Throws when the logEntryId has no
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.
-    resolve(logEntryId: number, resolution: ProposalResolution): void {
-        observedSync( // {§observability-boundary}
+    resolve(logEntryId: number, resolution: ProposalResolution, resolver: string = "_plurnk"): Promise<void> {
+        return observedSync( // {§observability-boundary}
             "proposal.resolve",
             { "entry.id": logEntryId, decision: resolution.decision },
             () => {
-                this.#resolveSettled(logEntryId, resolution);
+                return this.#resolveSettled(logEntryId, resolution, resolver);
             },
         );
     }
 
-    #resolveSettled(logEntryId: number, resolution: ProposalResolution): void {
+    #resolveSettled(logEntryId: number, resolution: ProposalResolution, resolver: string): Promise<void> {
         const waiter = this.#pending.get(logEntryId);
         if (waiter === undefined) {
             throw new OperationFailureError(Results.failure(
@@ -229,7 +230,28 @@ export default class ProposalLifecycle {
         }
         waiter.release();
         this.#pending.delete(logEntryId);
-        waiter.resolve(resolution);
+        const decision = Object.freeze({ ...resolution });
+        const recorded = this.recordDecision(logEntryId, decision, resolver);
+        // The dispatch owner receives persistence failures even when resolution
+        // came from a timer or shutdown, rather than a waiting client.
+        void recorded.then(() => waiter.resolve(decision), waiter.reject);
+        return recorded;
+    }
+
+    async recordDecision(logEntryId: number, resolution: ProposalResolution, resolver: string = "_plurnk"): Promise<void> {
+        try {
+            await this.#db.proposal_record_decision.run({
+                log_entry_id: logEntryId, resolver, decision: resolution.decision,
+                body: resolution.body ?? null, outcome: resolution.outcome ?? null,
+            });
+        } catch (cause) {
+            await this.#fail(logEntryId, cause, "decision_unrecorded", Results.failure(
+                "proposal:decision", "proposal-decision-unrecorded", 500,
+                "The approval decision could not be saved; the operation was not applied.",
+                {}, { logEntryId, stage: "proposal-decision", retryable: false },
+            ));
+            throw cause;
+        }
     }
 
     // Snapshot of pending proposals for client-interface discovery. Returns
@@ -262,7 +284,7 @@ export default class ProposalLifecycle {
     settleOwned(proposal: ProposalPendingEvent): void {
         if (proposal.disposition.decision === "review" || !this.#pending.has(proposal.logEntryId)) return;
         const { decision, outcome } = proposal.disposition;
-        this.resolve(proposal.logEntryId, {
+        void this.resolve(proposal.logEntryId, {
             decision,
             ...(outcome === undefined ? {} : { outcome }),
         });
@@ -289,25 +311,27 @@ export default class ProposalLifecycle {
                 retryable: false,
             },
         );
+        await this.#fail(logEntryId, cause, "policy_failed", failure);
+    }
+
+    async #fail(logEntryId: number, cause: unknown, outcome: string, failure: DispatchResult): Promise<void> {
         try {
             await this.applyResolution(logEntryId, {
-                resolution: { decision: "reject", outcome: "policy_failed" },
+                resolution: { decision: "reject", outcome },
                 applied: failure,
             });
         } catch (terminalCause) {
             throw new AggregateError(
                 [cause, terminalCause],
-                `Proposal ${logEntryId} policy failed and its durable row could not be terminalized.`,
+                `Proposal ${logEntryId} failed and its durable row could not be terminalized.`,
             );
         }
     }
 
     // {§worker-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
     cancelAll(outcome: string): void {
-        for (const [logEntryId, waiter] of [...this.#pending.entries()]) {
-            waiter.release();
-            this.#pending.delete(logEntryId);
-            waiter.resolve({ decision: "cancel", outcome });
+        for (const logEntryId of [...this.#pending.keys()]) {
+            void this.resolve(logEntryId, { decision: "cancel", outcome });
         }
     }
 
@@ -434,21 +458,19 @@ export default class ProposalLifecycle {
     // does, carrying the abort's own reason as the outcome (#769).
     awaitResolution(logEntryId: number, signal?: AbortSignal): Promise<AppliedProposalResolution> {
         const timeoutMs = readProposalTimeoutMs();
-        return new Promise<AppliedProposalResolution>((resolve) => {
+        return new Promise<AppliedProposalResolution>((resolve, reject) => {
             // Synthesize a cancel resolution through the same path as any other decision. State
             // transitions to cancelled with this outcome. {§proposal-timeout-cancels}
             const cancel = (outcome: string): void => {
-                const waiter = this.#pending.get(logEntryId);
-                if (waiter === undefined) return;
-                this.#pending.delete(logEntryId);
-                waiter.release();
-                resolve({ decision: "cancel", outcome });
+                if (!this.#pending.has(logEntryId)) return;
+                void this.resolve(logEntryId, { decision: "cancel", outcome });
             };
             const onAbort = (): void => cancel(abortOutcome(signal?.reason));
             const timeoutHandle = timeoutMs === null ? null : setTimeout(() => cancel("timeout"), timeoutMs);
             this.#pending.set(logEntryId, {
                 disposition: null,
                 resolve,
+                reject,
                 release: () => {
                     if (timeoutHandle !== null) clearTimeout(timeoutHandle);
                     signal?.removeEventListener("abort", onAbort);

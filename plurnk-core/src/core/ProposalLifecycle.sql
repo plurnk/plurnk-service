@@ -1,5 +1,9 @@
 -- ProposalLifecycle: resolving a proposed log row.
 
+-- PREP: proposal_record_decision
+INSERT INTO proposal_decisions (log_entry_id, decision, resolver, body, outcome)
+VALUES ($log_entry_id, $decision, $resolver, $body, $outcome);
+
 -- PREP: engine_resolve_log_entry
 -- Transitions a proposed log entry to its terminal state. Used by the
 -- proposal lifecycle (client resolution, auto resolution, timeout, abort).

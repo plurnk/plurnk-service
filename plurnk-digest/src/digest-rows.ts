@@ -76,6 +76,7 @@ export interface ModelCallRow {
     log_entry_id: number | null;
 }
 export interface ProviderRequestRow {
+    payloads_retired_at?: string | null;
     accounting: ProviderRequestAccounting | null;
     id: number;
     inference_call_id: number;
@@ -117,6 +118,13 @@ export interface LogRow {
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
     initial_folded: string; projection_active: 0 | 1; projection_folded: string;
+    proposalDecision?: {
+        decision: "accept" | "reject" | "cancel";
+        resolver: string;
+        body: string | null;
+        outcome: string | null;
+        decided_at: string;
+    };
 }
 // {§emission-row} — one announced emission: its row's coordinate, its frozen text, whether it is live.
 export interface EmissionRow { worker_id: number; coordinate: string; content: string; active: 0 | 1 }

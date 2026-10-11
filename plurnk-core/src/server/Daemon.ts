@@ -57,6 +57,7 @@ import type { ApplicationOwnerIdentity, ApplicationWorkerCreation } from "@plurn
 import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
+import ContentUse from "../core/ContentUse.ts";
 import type { ApplicationMessage, MessageResource, MessageEvidence } from "@plurnk/plurnk-contracts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
@@ -313,18 +314,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                         await this.#functionality.invoke("env", "add", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
                     }
                 }
-                const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
-                const { action, loopId } = await this.inject({
-                    workspaceId,
-                    workerId,
-                    prompt: delivered.body,
-                    evidence: delivered.evidence,
-                    sourceLoopId,
-                    ...(source === undefined ? {} : { source }),
-                    providerSpec,
-                    effort,
-                    childProviderSpec,
-                    systemPrompt });
+                const { action, loopId } = await ContentUse.read(this.#db, async () => {
+                    const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
+                    return this.inject({
+                        workspaceId,
+                        workerId,
+                        prompt: delivered.body,
+                        evidence: delivered.evidence,
+                        sourceLoopId,
+                        ...(source === undefined ? {} : { source }),
+                        providerSpec,
+                        effort,
+                        childProviderSpec,
+                        systemPrompt });
+                });
                 return { action, loopId };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
@@ -474,7 +477,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             throw daemonFailure("proposal:resolution", "owner-mismatch", 403,
                 "Only the worker's owner may resolve this proposal.", { logEntryId: checkedLogEntryId });
         }
-        this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
+        await this.#engine.resolveProposal(checkedLogEntryId, checkedResolution, owner.address);
     }
 
     async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
@@ -573,22 +576,24 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const turnCeiling: TurnCeilingSelection = {
             effective: maxTurns,
             source: requestedMaxTurns === undefined ? "implicit" : "explicit" };
-        const delivered = await this.#prepareMessage(workspaceId, workerId, body, attachments, args.envelope);
-        const { action, loopId, turnSeq } = await this.inject({
-            workspaceId,
-            workerId,
-            prompt: delivered.body,
-            ...(recipientLoopId === undefined ? {} : { loopId: recipientLoopId }),
-            evidence: delivered.evidence,
-            ...(messageAddress === undefined ? {} : { messageAddress }),
-            ...(source === undefined ? {} : { source }),
-            ...(openPaths !== undefined ? { openPaths } : {}),
-            turnCeiling,
-            providerSpec: selection,
-            providerSpecExplicit: selectorExplicit,
-            effort,
-            childProviderSpec: childSelection,
-            systemPrompt });
+        const { action, loopId, turnSeq } = await ContentUse.read(this.#db, async () => {
+            const delivered = await this.#prepareMessage(workspaceId, workerId, body, attachments, args.envelope);
+            return this.inject({
+                workspaceId,
+                workerId,
+                prompt: delivered.body,
+                ...(recipientLoopId === undefined ? {} : { loopId: recipientLoopId }),
+                evidence: delivered.evidence,
+                ...(messageAddress === undefined ? {} : { messageAddress }),
+                ...(source === undefined ? {} : { source }),
+                ...(openPaths !== undefined ? { openPaths } : {}),
+                turnCeiling,
+                providerSpec: selection,
+                providerSpecExplicit: selectorExplicit,
+                effort,
+                childProviderSpec: childSelection,
+                systemPrompt });
+        });
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 

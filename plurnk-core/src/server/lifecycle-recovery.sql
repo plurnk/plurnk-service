@@ -72,7 +72,10 @@ SET state = 'failed',
             'type', 'https://problems.plurnk.xyz/lifecycle/recovery/owner-vanished',
             'title', 'Owner vanished',
             'status', 500,
-            'detail', 'The daemon restarted while this proposal was pending; its process-local owner no longer exists.',
+            'detail', CASE WHEN EXISTS (
+                SELECT 1 FROM proposal_decisions pd WHERE pd.log_entry_id = log_entries.id AND pd.decision = 'accept'
+            ) THEN 'The daemon restarted after approval and before the operation result was saved; whether the effect completed is unknown. The operation was not replayed.'
+            ELSE 'The daemon restarted while this proposal was pending; its process-local owner no longer exists.' END,
             'instance', printf(
                 'log:///%d/%d/%d/%s',
                 (SELECT sequence FROM loops WHERE id = log_entries.loop_id),

@@ -4,7 +4,7 @@
 // exercise the pause/resume machinery + the log-render visibility filter
 // against a tiny test scheme that always proposes.
 
-import { ownWorker, serverProposals } from "./_approval.ts";
+import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -17,6 +17,12 @@ import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { parseDsl } from "./_mock.ts";
 import { sendStmt, urlPath } from "./_dsl.ts";
+import type { ProposalApplyRequest } from "@plurnk/plurnk-schemes";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
 class ProposingTest {
@@ -92,10 +98,132 @@ const dispatchAndResolve = async (engine: Engine, ctx: {
         onDispatch: (id) => idDeferred.resolve(id),
     });
     const logEntryId = await idDeferred.promise;
-    engine.resolveProposal(logEntryId, resolution);
+    await engine.resolveProposal(logEntryId, resolution, TEST_OWNER);
     const result = await dispatchPromise;
     return { status: result.status, logEntryId };
 };
+
+test("{§proposal-decision-evidence}: original approval is durable before a failing effect and cannot be rewritten", async () => {
+    const db = await openMigrated();
+    try {
+        let logEntryId = 0;
+        let applications = 0;
+        class Applying extends ProposingTest {
+            async applyResolution(request: ProposalApplyRequest) {
+                applications++;
+                const decision = await db.test_proposal_decision.get({ id: logEntryId });
+                assert.deepEqual(decision, {
+                    decision: "accept", resolver: TEST_OWNER, body: "reviewed body", outcome: "reviewed",
+                    decided_at: decision?.decided_at,
+                });
+                assert.match(String(decision?.decided_at), /^\d{4}-\d{2}-\d{2}T/);
+                assert.equal(request.body, "reviewed body");
+                return { status: 409, problem: {
+                    type: "https://problems.plurnk.xyz/test/conflict", title: "Conflict", status: 409,
+                    detail: "The resource changed after review.",
+                }, outcome: "changed" };
+            }
+        }
+        const ctx = await setupEngine(db, new Applying());
+        const id = deferred<number>();
+        const dispatch = ctx.engine.dispatch({ ...ctx, statement: editStmt("/x", "original body"),
+            sequence: 1, origin: "model", onDispatch: id.resolve });
+        logEntryId = await id.promise;
+        await ctx.engine.resolveProposal(logEntryId, { decision: "accept", body: "reviewed body", outcome: "reviewed" }, TEST_OWNER);
+        assert.equal((await dispatch).status, 409);
+        assert.equal(applications, 1);
+        assert.equal((await db.test_proposal_decision.get({ id: logEntryId }))?.decision, "accept");
+        assert.equal((await db.test_get_log_entry_by_id.get({ id: logEntryId }))?.outcome, "changed");
+        assert.throws(() => ctx.engine.resolveProposal(logEntryId, { decision: "reject" }, TEST_OWNER), /not pending/);
+        await assert.rejects(db.test_proposal_decision_rewrite.run({ id: logEntryId }), /proposal decisions are immutable/);
+        await assert.rejects(db.test_proposal_decision_delete.run({ id: logEntryId }), /proposal decisions belong to operation history/);
+    } finally { await db.close(); }
+});
+
+test("{§proposal-decision-evidence}: an unrecordable approval cannot execute", async (t) => {
+    const db = await openMigrated();
+    try {
+        let applications = 0;
+        class Applying extends ProposingTest {
+            async applyResolution() { applications++; return { status: 200 }; }
+        }
+        const ctx = await setupEngine(db, new Applying());
+        const failure = new Error("fixture decision persistence failure");
+        t.mock.method(db.proposal_record_decision, "run", async () => { throw failure; });
+        const id = deferred<number>();
+        const dispatch = ctx.engine.dispatch({ ...ctx, statement: editStmt("/x", "y"),
+            sequence: 1, origin: "model", onDispatch: id.resolve });
+        const rejected = assert.rejects(dispatch, (cause) => cause === failure);
+        const logEntryId = await id.promise;
+        await assert.rejects(ctx.engine.resolveProposal(logEntryId, { decision: "accept" }, TEST_OWNER), (cause) => cause === failure);
+        await rejected;
+        assert.equal(applications, 0);
+        assert.equal(await db.test_proposal_decision.get({ id: logEntryId }), undefined);
+        const row = await db.test_get_log_entry_by_id.get({ id: logEntryId });
+        assert.equal(row?.state, "failed");
+        assert.equal(row?.status_rx, 500);
+        assert.match(String(row?.rx), /proposal-decision-unrecorded/);
+        assert.deepEqual(ctx.engine.pendingProposalIds(), []);
+    } finally { await db.close(); }
+});
+
+test("{§digest-proposal-decisions}: curation retains original approval in the report until its history is deleted", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "plurnk-proposal-evidence-"));
+    const dbPath = join(directory, "plurnk.db");
+    const db = await openMigrated(dbPath);
+    try {
+        const ctx = await setupEngine(db);
+        const { logEntryId } = await dispatchAndResolve(ctx.engine, ctx, {
+            decision: "accept", body: "reviewed override", outcome: "reviewed",
+        });
+        const decision = await db.test_proposal_decision.get({ id: logEntryId });
+        const [statement] = parseDsl("````KILL (log:///1/1/1/EDIT)\n````");
+        assert.ok(statement);
+        assert.equal((await ctx.engine.dispatch({ ...ctx, statement, sequence: 2, origin: "model" })).status, 200);
+        const digestDir = join(directory, "digest");
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
+        const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+        const row = report.log_entries.find((entry: { id: number }) => entry.id === logEntryId);
+        assert.equal(row.projection.active, false);
+        assert.deepEqual(row.proposalDecision, decision);
+        const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
+        assert.match(markdown, /decision=accept resolver=test:\/\/primary at=.*body override recorded outcome=reviewed/);
+        await db.test_delete_worker.run({ id: ctx.workerId });
+        assert.equal(await db.test_proposal_decision.get({ id: logEntryId }), undefined);
+    } finally {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test("{§proposal-decision-evidence}: effect-policy acceptance records runtime authority before applying", async (t) => {
+    const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
+    process.env.PLURNK_SERVICE_EFFECT_HOST = "auto";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_HOST;
+        else process.env.PLURNK_SERVICE_EFFECT_HOST = prior;
+    });
+    const db = await openMigrated();
+    try {
+        let logEntryId = 0;
+        let applied = false;
+        class Auto extends ProposingTest {
+            override async editBatch() { return { ...await super.editBatch(), attrs: { effect: "host" } }; }
+            async applyResolution() {
+                const decision = await db.test_proposal_decision.get({ id: logEntryId });
+                assert.equal(decision?.decision, "accept");
+                assert.equal(decision?.resolver, "_plurnk");
+                applied = true;
+                return { status: 200 };
+            }
+        }
+        const ctx = await setupEngine(db, new Auto());
+        const result = await ctx.engine.dispatch({ ...ctx, statement: editStmt("/x", "y"),
+            sequence: 1, origin: "model", onDispatch: (id) => { logEntryId = id; } });
+        assert.equal(result.status, 200);
+        assert.equal(applied, true);
+    } finally { await db.close(); }
+});
 
 test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     const db = await openMigrated();
@@ -108,6 +236,9 @@ test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
         assert.equal(row?.state, "resolved");
         assert.equal(row?.status_rx, 200);
         assert.equal(row?.outcome, null);
+        const decision = await db.test_proposal_decision.get({ id: logEntryId });
+        assert.equal(decision?.decision, "accept");
+        assert.equal(decision?.resolver, TEST_OWNER);
     } finally { await db.close(); }
 });
 
@@ -164,6 +295,7 @@ test("proposal: reject transitions to state='failed', status=400, outcome='rejec
         assert.equal(row?.state, "failed");
         assert.equal(row?.status_rx, 400);
         assert.equal(row?.outcome, "rejected");
+        assert.equal((await db.test_proposal_decision.get({ id: logEntryId }))?.decision, "reject");
     } finally { await db.close(); }
 });
 
@@ -177,6 +309,7 @@ test("proposal: cancel transitions to state='cancelled', status=499, outcome='lo
         assert.equal(row?.state, "cancelled");
         assert.equal(row?.status_rx, 499);
         assert.equal(row?.outcome, "loop_aborted");
+        assert.equal((await db.test_proposal_decision.get({ id: logEntryId }))?.decision, "cancel");
     } finally { await db.close(); }
 });
 
@@ -355,6 +488,9 @@ test("{§worker-owner-resolution} proposal: server acceptance is core-owned and 
         });
         const logEntryId = await idDeferred.promise;
         assert.equal(result.status, 200, "loop acceptance produces status 200");
+        const decision = await db.test_proposal_decision.get({ id: logEntryId });
+        assert.equal(decision?.decision, "accept");
+        assert.equal(decision?.resolver, "_plurnk");
         const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "resolved");
         assert.equal(row?.outcome, null);
@@ -529,6 +665,10 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
         });
         const logEntryId = await idDeferred.promise;
         assert.equal(result.status, 499, "timeout produces a cancelled resolution → status 499");
+        const decision = await db.test_proposal_decision.get({ id: logEntryId });
+        assert.equal(decision?.decision, "cancel");
+        assert.equal(decision?.resolver, "_plurnk");
+        assert.equal(decision?.outcome, "timeout");
         const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");
         assert.equal(row?.outcome, "timeout");

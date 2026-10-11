@@ -4,7 +4,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 // artifacts; FTS and graph relationships consume them uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import DerivationUse from "./_derivation-use.ts";
+import ContentUse from "../core/ContentUse.ts";
 import { MimetypeDerivationError, isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
 import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -77,7 +77,7 @@ export default class SearchIndex {
 
     static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks = {}): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => DerivationUse.read(ctx.db, () => SearchIndex.#deriveOneUnlocked(ctx, r, hash, searchExcluded, binary, callbacks)));
+        const run = prior.then(() => ContentUse.read(ctx.db, () => SearchIndex.#deriveOneUnlocked(ctx, r, hash, searchExcluded, binary, callbacks)));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -200,7 +200,7 @@ export default class SearchIndex {
         pathname: string;
         scheme: string;
     }, query: (snapshot: { deepHash: string; disposition: string; reason: string | null }) => Promise<T>): Promise<T> {
-        return DerivationUse.read(ctx.db, async () => {
+        return ContentUse.read(ctx.db, async () => {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("SearchIndex.snapshot requires mimetypes");
             ctx.signal?.throwIfAborted();

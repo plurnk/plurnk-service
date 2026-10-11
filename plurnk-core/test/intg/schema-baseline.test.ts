@@ -501,6 +501,49 @@ test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier r
     } finally { after.close(); }
 });
 
+test("{§db-migrations} {§proposal-decision-evidence} {§retention-policy}: upgrade preserves old results and captures without inventing decisions or expiry", async (t) => {
+    const path = await released(V3_1_0);
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const before = new DatabaseSync(path);
+    let request: unknown;
+    let operation: unknown;
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'evidenceUpgrade');
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO loops (id, worker_id, sequence, prompt, max_turns)
+                VALUES (1, 1, 1, 'retain the facts', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
+                VALUES (1, 1, 1, 'model', 'inference', 102, NULL);
+            INSERT INTO inference_calls (id, workspace_id, turn_id, sequence, kind, request_model)
+                VALUES (1, 1, 1, 1, 'emission', 'fixture');
+            INSERT INTO provider_requests (id, inference_call_id, sequence, provider, model)
+                VALUES (1, 1, 1, 'provider:fixture', 'fixture');
+            UPDATE provider_requests SET state = 'settled', outcome = 'error', status = 502,
+                cost_kind = 'unknown', cost_reason = 'No billing response arrived.',
+                completed_at = '2026-09-01T00:00:00.000Z', evidence = '{"reasoning":"Earlier partial output."}'
+                WHERE id = 1;
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+                VALUES (1, 1, 1, 1, 1, 'model', 'EDIT', '{}', 'application/json', '{"status":200}', 'application/json', 200);
+            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES (1, 0, '[]');
+        `);
+        request = before.prepare("SELECT * FROM provider_requests").get();
+        operation = before.prepare("SELECT * FROM log_entries").get();
+    } finally { before.close(); }
+    const migrated = await openMigrated(path);
+    await migrated.close();
+    const after = new DatabaseSync(path, { readOnly: true });
+    try {
+        assert.deepEqual(after.prepare("SELECT * FROM provider_requests").get(), request);
+        assert.deepEqual(after.prepare("SELECT * FROM log_entries").get(), operation);
+        assert.deepEqual(after.prepare("SELECT * FROM proposal_decisions").all(), [], "an old successful result is not evidence of who approved it");
+        assert.equal(after.prepare("SELECT payloads_retired_at FROM inference_calls").get()!.payloads_retired_at, null);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
     const path = await released(V1_24_0);
     const before = new DatabaseSync(path);

@@ -49,6 +49,9 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
             );
             assert.deepEqual(scheme.batches, [1], "the second EDIT has not been prepared");
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "accept" });
+            const decision = await db.test_proposal_decision.get({ id: pending[0].logEntryId });
+            assert.equal(decision?.resolver, TEST_OWNER, "the public client seam retains the actual resolving owner");
+            assert.equal(decision?.decision, "accept");
             const next = await waitFor(
                 () => proposals() as Array<{ logEntryId: number }>,
                 (items) => items.length === 2,

@@ -2,16 +2,19 @@
 // unreferenced content has a separate collection policy.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { Digest } from "@plurnk/plurnk-digest";
+import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntryFts from "../../src/schemes/_entry-fts.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
+import Turn from "../../src/core/Turn.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
@@ -133,10 +136,10 @@ test("{§retention-policy}: a response policy retires bodies while the call's ev
             calls.push(call!.id);
             turns.push(turn!.id);
         }
-        const requests = () => Promise.all(turns.map((turn_id) => db.test_provider_requests.all<{ evidence: string; usage_total: number; cost_amount: string }>({ turn_id })));
+        const requests = () => Promise.all(turns.map((turn_id) => db.test_provider_requests.all<{ evidence: string | null; usage_total: number; cost_amount: string }>({ turn_id })));
         const preservedRequests = await requests();
         assert.deepEqual(preservedRequests.flat().map(({ evidence, usage_total, cost_amount }) => ({
-            evidence: JSON.parse(evidence), usage_total, cost_amount,
+            evidence: JSON.parse(evidence!), usage_total, cost_amount,
         })), [1, 2, 3].map((sequence) => ({
             evidence: { content: `Original response ${sequence}`, reasoning: `Original reasoning ${sequence}` },
             usage_total: 7, cost_amount: "0.01",
@@ -151,12 +154,16 @@ test("{§retention-policy}: a response policy retires bodies while the call's ev
         const byCount = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "1" })).run();
         assert.equal(byCount.retiredResponses, 2, "the two older bodies of the loop retire; the newest stays");
         assert.deepEqual(await bodies(), ["response:0:1", "response:0:1", "response:1:1"], "the calls stay settled with their capacity; only the bodies went");
-        assert.deepEqual(await requests(), preservedRequests, "count-based retirement preserves physical-request bodies and accounting");
+        assert.deepEqual(await requests(), preservedRequests.map((rows, index) => rows.map((row) => ({
+            ...row, evidence: index < 2 ? null : row.evidence,
+        }))), "count-based retirement removes payloads while retaining every request and accounting fact");
 
         const byAge = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_RESPONSE_MS: String(24 * 3_600_000) })).run(Date.parse("2026-09-05T00:00:00.000Z"));
         assert.equal(byAge.retiredResponses, 1, "an age policy retires the remaining body by its turn's completion");
         assert.deepEqual(await bodies(), ["response:0:1", "response:0:1", "response:0:1"]);
-        assert.deepEqual(await requests(), preservedRequests, "age-based retirement is not erasure of physical-request evidence");
+        assert.deepEqual(await requests(), preservedRequests.map((rows) => rows.map((row) => ({
+            ...row, evidence: null,
+        }))), "age-based retirement retains request identities, failures and accounting, not bulky payloads");
     } finally { await db.close(); }
 });
 
@@ -175,6 +182,76 @@ test("{§retention-policy}: an age policy retires by completion time, and a disa
         assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: fresh }))!.n, 1);
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 2, "the collector is off: the shared record and the fresh record stay, nothing else existed");
     } finally { await db.close(); }
+});
+
+test("{§retention-policy}: failed retries expire with one logical call while open work and accounting survive", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "plurnk-retired-evidence-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const dbPath = join(directory, "plurnk.db");
+    await using db = await openMigrated(dbPath);
+    const workspaceId = await insertWorkspace(db, "failed-payload-retention");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1);
+    const calls: number[] = [];
+    const turns: number[] = [];
+    const requests: number[] = [];
+    for (let sequence = 1; sequence <= 3; sequence++) {
+        const turn = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence });
+        assert.ok(turn);
+        turns.push(turn.id);
+        const call = await db.test_context_insert_model_call.get<{ id: number }>({ turn_id: turn.id, sequence: 1, kind: "emission" });
+        assert.ok(call);
+        calls.push(call.id);
+        for (let retry = 1; retry <= (sequence === 1 ? 2 : 1); retry++) {
+            const request: { id: number } | undefined = await db.engine_open_provider_request.get({ inference_call_id: call.id, sequence: retry, provider: "fixture", model: "fixture" });
+            assert.ok(request);
+            requests.push(request.id);
+            await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, {
+                provider: "fixture", model: "fixture", outcome: sequence === 2 ? "response" : "error", status: sequence === 2 ? 200 : 413,
+                ...(retry === 1 ? {} : { usage: { inputTokens: 9, outputTokens: 4, totalTokens: 13 } }),
+                cost: retry === 1 ? { kind: "unknown", reason: "No billing response arrived." }
+                    : { kind: "charged", amount: { amount: "0.02", currency: "USD" }, source: "fixture response" },
+            }, { reasoning: `Retained partial output ${sequence}/${retry}`, content: "captured text" }));
+        }
+        if (sequence === 3) continue;
+        if (sequence === 2) await db.test_context_close_model_call.run({ id: call.id, capacity: CAPACITY });
+        else await db.test_context_fail_model_call.run({ id: call.id, capacity: CAPACITY });
+        await Turn.complete(db, turn.id, sequence === 2 ? 200 : 413);
+    }
+    const captured = () => Promise.all(turns.map((turn_id) => db.test_provider_requests.all({ turn_id })));
+    const before = await captured();
+    await assert.rejects(db.test_request_payload_rewrite.run({ id: requests[0], evidence: "{}" }), /payload is immutable/);
+    const byCount = new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "2" }));
+    assert.equal((await byCount.run()).retiredResponses, 1, "both failed retries belong to one expired logical call");
+    assert.deepEqual((await captured()).flat().map(({ evidence }) => evidence === null), [true, true, false, false]);
+    const first = await db.test_retirement_state.get({ id: calls[0] });
+    assert.match(String(first?.payloads_retired_at), /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal((await byCount.run()).retiredResponses, 0, "retired calls do not change the count window");
+    await assert.rejects(db.test_retirement_rewrite.run({ id: calls[0], value: null }), /retirement.*occurs once/);
+    await assert.rejects(db.test_retirement_rewrite.run({ id: calls[2], value: new Date().toISOString() }), /retirement requires completed work/);
+    const byAge = new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_RESPONSE_MS: "0" }));
+    assert.equal((await byAge.run(Date.now() + 1000)).retiredResponses, 1);
+    assert.deepEqual((await captured()).flat().map(({ evidence }) => evidence === null), [true, true, true, false]);
+    const facts = (rows: Awaited<ReturnType<typeof captured>>) => rows.flat().map(({ evidence: _evidence, ...row }) => row);
+    assert.deepEqual(facts(await captured()), facts(before), "no request, failure, usage, price, or unknown-billing fact is erased");
+    await db.test_context_fail_model_call.run({ id: calls[2], capacity: CAPACITY });
+    await Turn.complete(db, turns[2]!, 413);
+    assert.equal((await byAge.run(Date.now() + 1000)).retiredResponses, 1);
+    assert.deepEqual((await captured()).flat().map(({ evidence }) => evidence), [null, null, null, null]);
+
+    const digestDir = join(directory, "digest");
+    Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
+    const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+    assert.deepEqual(report.provider_requests.map(({ id }: { id: number }) => id), requests);
+    for (const row of report.provider_requests) {
+        assert.match(row.payloadsRetiredAt, /^\d{4}-\d{2}-\d{2}T/);
+        const markdown = await readFile(join(digestDir, `requests/${row.id}.md`), "utf8");
+        assert.ok(markdown.includes(`Payload retention applied at ${row.payloadsRetiredAt}`));
+        assert.ok(!markdown.includes("Retained partial output"), "expired payloads are not reconstructed");
+    }
+    assert.equal(report.provider_requests[0].accounting.outcome, "error");
+    assert.equal(report.provider_requests[0].accounting.cost.kind, "unknown", "expiry does not turn missing billing into zero cost");
+    assert.equal(report.provider_requests[1].accounting.cost.amount.amount, "0.02");
 });
 
 test("{§retention-policy}: a superseded derivation and its full-text shadow are collected; a cited one stays", async () => {

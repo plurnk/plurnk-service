@@ -711,6 +711,7 @@ export default class Dispatcher {
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
             if (autoAccept) {
+                await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
                 const initialSettlement = await this.#proposals.workerApply(
                     statement,
                     result,

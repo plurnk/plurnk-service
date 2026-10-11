@@ -149,6 +149,7 @@ export class SqlRiteSync {
 	digest_provider_requests: SqlRiteSyncPreparedStatements;
 	digest_provider_request_evidence: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
+	digest_proposal_decisions: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
 	digest_emissions: SqlRiteSyncPreparedStatements;
@@ -282,6 +283,7 @@ export class SqlRiteSync {
 	engine_emission_history: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
+	proposal_record_decision: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
@@ -289,6 +291,7 @@ export class SqlRiteSync {
 	retention_collect_packet_items: SqlRiteSyncPreparedStatements;
 	retention_collect_derivations: SqlRiteSyncPreparedStatements;
 	retention_collect_contents: SqlRiteSyncPreparedStatements;
+	retention_collect_native_contents: SqlRiteSyncPreparedStatements;
 	retention_auto_vacuum_mode: SqlRiteSyncPreparedStatements;
 	retention_page_counts: SqlRiteSyncPreparedStatements;
 	retention_incremental_vacuum: SqlRiteSyncPreparedStatements;
@@ -445,6 +448,7 @@ export default class SqlRite {
 	digest_provider_requests: SqlRitePreparedStatements;
 	digest_provider_request_evidence: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
+	digest_proposal_decisions: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
 	digest_emissions: SqlRitePreparedStatements;
@@ -578,6 +582,7 @@ export default class SqlRite {
 	engine_emission_history: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
+	proposal_record_decision: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;
@@ -585,6 +590,7 @@ export default class SqlRite {
 	retention_collect_packet_items: SqlRitePreparedStatements;
 	retention_collect_derivations: SqlRitePreparedStatements;
 	retention_collect_contents: SqlRitePreparedStatements;
+	retention_collect_native_contents: SqlRitePreparedStatements;
 	retention_auto_vacuum_mode: SqlRitePreparedStatements;
 	retention_page_counts: SqlRitePreparedStatements;
 	retention_incremental_vacuum: SqlRitePreparedStatements;

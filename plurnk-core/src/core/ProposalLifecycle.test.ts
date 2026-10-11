@@ -13,7 +13,7 @@ import ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 
 const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
-    db,
+    db: { ...db, proposal_record_decision: db.proposal_record_decision ?? { run: async () => ({ changes: 1 }) } } as Db,
     schemes: new SchemeRegistry(),
     notices: { push() {} } as unknown as NoticeChannel,
     notify: {},

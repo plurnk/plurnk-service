@@ -566,8 +566,8 @@ export default class Engine {
         this.#proposals.cancelAll(outcome);
     }
 
-    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
-        this.#proposals.resolve(logEntryId, resolution);
+    resolveProposal(logEntryId: number, resolution: ProposalResolution, resolver: string = "_plurnk"): Promise<void> {
+        return this.#proposals.resolve(logEntryId, resolution, resolver);
     }
 
     // Snapshot of pending proposals for client-interface discovery.

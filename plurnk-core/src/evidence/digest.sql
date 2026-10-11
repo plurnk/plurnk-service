@@ -72,7 +72,7 @@ SELECT pr.id, pr.inference_call_id, a.id AS turn_attempt_id, ic.kind,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
        pr.usage_output_text, pr.usage_output_reasoning,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
-       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
+       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at, ic.payloads_retired_at
 FROM provider_requests pr
 JOIN inference_calls ic ON ic.id = pr.inference_call_id
 LEFT JOIN turn_attempts a ON a.model_call_id = ic.id
@@ -97,6 +97,9 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 ORDER BY loop_id, turn_id, sequence;
+
+-- PREP: digest_proposal_decisions
+SELECT log_entry_id, decision, resolver, body, outcome, decided_at FROM proposal_decisions;
 
 -- PREP: digest_worker_rollups
 -- Structural per-worker aggregates. Accounting is derived through the shared

@@ -63,6 +63,10 @@ export default class EvidenceReader implements DigestEvidence {
 
     rows(): EvidenceRows {
         const db = this.#db;
+        const decisions = new Map(
+            (db.digest_proposal_decisions as SyncPrep<NonNullable<LogRow["proposalDecision"]> & { log_entry_id: number }>).all()
+                .map(({ log_entry_id, ...decision }) => [log_entry_id, decision]),
+        );
         const rows = {
             workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow>).all(),
             workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
@@ -95,7 +99,10 @@ export default class EvidenceReader implements DigestEvidence {
             // {§fabricated-log-entry}: an echoed emission heading is counted where the model wrote it, in the text
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.
             turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: EvidenceReader.#echoes(turn.program) + FabricatedLog.echoes(turn.outside ?? "") })),
-            logEntries: rows.logEntries.map((row) => ({ ...row, target: renderTarget(row) })),
+            logEntries: rows.logEntries.map((row) => ({
+                ...row, target: renderTarget(row),
+                ...(decisions.has(row.id) ? { proposalDecision: decisions.get(row.id) } : {}),
+            })),
             providerRequests: rows.providerRequests.map((row) => ({
                 ...row,
                 accounting: row.state === "settled" ? providerRequestFromStorageRow(row as ProviderRequestStorageRow) : null,
