@@ -168,3 +168,4 @@ only through the generated ```` ```skills ```` family
 | `install-failed` | 500 | Agent Skill '*name*' could not be placed under *root*: *cause*. |
 | `skill-missing` | 404 | Agent Skill '*alias*' is not provided by this service. |
 | `skill-invalid` | 422 | Agent Skill '*alias*' is not a valid standard skill: *cause*. |
+| `entry-not-found` | 404 | No skill resource exists at the requested address. |

@@ -106,7 +106,7 @@ test("env: honors a scoped env; vars the consumer dropped read as null", { skip:
     assert.equal(JSON.parse(dropped.out!), null);
 });
 
-test("a jq program error → durable Problem, errored channel, 500", { skip: !HAS_JQ }, async () => {
+test("{§problems-executor-jq}: a jq program error → durable Problem, errored channel, 500", { skip: !HAS_JQ }, async () => {
     const { result, events, states } = await run("this is not valid jq");
     assert.equal(result.status, 500);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/jq/jq-error");

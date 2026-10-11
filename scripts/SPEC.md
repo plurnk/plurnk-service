@@ -39,4 +39,4 @@
 
 ## §problem-codes-declared Problem codes are named by their owner
 
-Every Problem code a package mints — a kebab-case literal followed by an HTTP status, the code argument of `Problems.create`, or a `code:` field in a result shape — is named in inline code inside a tagged block of that package's `SPEC.md` (a table counts when the paragraph before it carries the declaration); `scripts/problem-codes.mjs` refuses the root lint otherwise, so a code can be found from its symptom (#888).
+Every Problem code a package mints — a kebab-case literal followed by an HTTP status, the code argument of `Problems.create`, `Results.failure` or `Results.problem`, or a `code:` field in a result shape — is named in inline code inside a tagged block of that package's `SPEC.md` (a table counts when the paragraph before it carries the declaration); `scripts/problem-codes.mjs` refuses the root lint otherwise, so a code can be found from its symptom (#888). Shared constructors use the diagnostic inventory's lexical reader: their owner may be an expression, while calls inside comments or string examples are inert.

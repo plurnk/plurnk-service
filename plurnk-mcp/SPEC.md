@@ -850,4 +850,5 @@ stdio/Streamable HTTP servers are composition evidence only.
 | `server-not-connected` | 409 | MCP server '*name*' is not connected for this workspace. |
 | `completion-parameters-invalid` | 400 | MCP completion requires 'ref' and 'argument' objects. |
 | `server-unavailable` | 502 | Configured MCP server '*name*' is unavailable. |
+| `resource-part-not-found` | 404 | The resource response does not contain the requested part. |
 | `server-redirected` | 502 | MCP endpoint *url* redirected to *location*; plurnk follows no redirect, so the server's url must be the endpoint itself ({§mcp-redirect-refused}). |

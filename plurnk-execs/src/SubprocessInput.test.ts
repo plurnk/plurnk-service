@@ -48,7 +48,7 @@ test("{§executor-stdin}: cancellation releases a backpressured write and retire
     assert.equal((await input.receive({ body: "later", metadata: null, signal: lifetime.signal })).status, 410);
 });
 
-test("{§executor-stdin}: pipe failures retain native cause without asserting execution failure", async () => {
+test("{§executor-stdin} {§problems-executor-input}: pipe failures retain native cause without asserting execution failure", async () => {
     const stream = new Writable({ write(_chunk, _encoding, callback) { callback(Object.assign(new Error("closed pipe"), { code: "EPIPE" })); } });
     const controller = new AbortController();
     const input = new SubprocessInput(stream, controller.signal);

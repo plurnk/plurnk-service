@@ -6273,6 +6273,26 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
+| `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
+| `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
+| `completion-invalid` | 400 | A reply accepts one completion code: 200 or 499. |
+| `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
+
+§problems-loop **Loop and context Problems.** These codes identify the failed boundary; lifecycle and recovery remain governed by their owning contracts.
+
+| code | status | condition |
+|---|---:|---|
+| `result-exceeds-budget` | 413 | A result exceeds the remaining log budget; detail names its size, delivered portion, and a smaller selection or curation ({§context-fit}). |
+| `window-overflow` | 413 | The packet cannot fit the model's window even as receipts ({§context-wall}). |
+| `packet-exceeds-budget` | 413 | Context exceeds budget; the curation mandate is the pinned sentence below ({§context-over-budget-row}). |
+| `loop-timeout` | 504 | The loop exhausted its active execution allowance. |
+| `strike-threshold` | 508 / 500 | Repetition crossed the strike threshold (508), or another strike source crossed it (500), under {§engine-rails}. |
+| `loop-running` | 425 | The addressed execution has not concluded. |
+| `loop-cancelled` | 499 | The loop was cancelled; detail preserves the cancellation reason. |
+| `loop-threw` | 500 | The loop failed outside its operation result contract. |
+| `narration-failed` | 500 | Filesystem divergence narration failed before its operation turn settled. |
+| `provider-contract-violation` | 502 | The provider failed without returning its required Problem Details. |
+| `active-worker-limit-reached` | 508 | The workspace's active workers reach its configured limit. |
 
 §unregistered-scheme-recovery **An unregistered scheme's refusal names what does exist.** Its recovery
 lists the schemes the workspace registers, and rebuilds the address into nothing else
@@ -6313,6 +6333,12 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
 | `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. A path whose first segment begins with `~` recovers instead to: '*~*' is not substituted: paths are project-relative, so '*path*' names a file under a directory named '*~*' in the project root. An absolute path names its host location; outside the project root only a members definition under the operator's namespace scope admits it. |
+| `body-channel-required` | 400 | A file write requires a body channel. |
+| `write-failed` | 500 | Publication or its settlement failed; the result distinguishes an unpublished write from an already-published one. |
+| `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
+| `creation-incorporation-failed` | 500 | Incorporating a newly created file failed; its exclusive creation was rolled back. |
+| `materialization-failed` | 500 | The file was written to disk but could not be registered. |
+| `delete-failed` | 500 | Deletion or projection settlement failed; the result distinguishes an undeleted file from an already-deleted one. |
 
 §problems-exec **Execution Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -6322,6 +6348,19 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `input-unavailable` | 409 | This execution's input receiver is no longer enabled. |
 | `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-near-miss}): The execution at /*id* is `*runtime*:///*id*`. |
 | `input-closed` | 410 | Execution input is closed. |
+| `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this worker. |
+| `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
+| `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
+| `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |
+| `source-content-unavailable` | 422 | The source scheme did not supply execution content. |
+| `stream-entry-write-failed` | 500 | The execution's stream entry could not be created. |
+| `program-is-a-tool` | 404 | The command exited 127 and names a registered tool of another runtime ({§exec-tool-fall-through}). |
+| `executor-did-not-conclude` | 500 | The executor did not produce a terminal result. |
+| `execution-cancelled` | 499 | Execution was cancelled by the service. |
+| `executor-invalid-result` | 500 | The executor returned an invalid operation result. |
+| `executor-threw` | 500 | The executor failed outside its operation result contract. |
+| `entry-narration-failed` | 500 | An executor entry could not be materialized or narrated. |
+| `input-receiver-failed` | 500 | The input receiver failed outside its result contract; delivery may be partial. |
 
 §problems-entries **Entry scheme Problems (log, worker, entries).** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -6335,6 +6374,28 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `worker-entity-not-editable` | 400 | A worker entity is not an editable entry. Recovery: EDIT requires an entry path, such as worker:///example.md. |
 | `message-empty` | 400 | SEND has no message text or attachments. |
 | `scope-unsupported` | 400 | A worker SEND takes no scope. |
+| `control-address-invalid` | 400 | The operation requires an authority-only worker control address. |
+| `named-worker-required` | 400 | A worker deliverable READ requires a named worker. |
+| `emission-curated-whole` | 422 | An emission has no legend lines, so a line scope selects nothing on it. |
+| `entry-exists` | 409 | An entry already exists at the addressed resource. |
+| `invalid-expression` | 400 | The full-text or graph matcher expression is invalid. |
+| `delete-target-required` | 400 | KILL requires a target path. |
+
+§problems-client **Client interactions and message admission Problems.** Refused admission creates no replacement message or interaction.
+
+| code | status | condition |
+|---|---:|---|
+| `interaction-not-pending` | 409 | The requested client interaction is not pending. |
+| `interaction-unsupported` | 501 | No recipient implements the requested tool for this conversation. |
+| `recipient-mismatch` | 403 | Only the interaction's recipient may answer it. |
+| `interaction-response-invalid` | 400 | The response does not satisfy the pending interaction's schema. |
+| `invalid-body` | 400 | A question body is not JSON, or lacks its nonempty message or requested schema. |
+| `offset-invalid` | 400 | An entry offset is not a nonnegative safe integer. |
+| `userinfo-not-allowed` | 400 | An entry target URL contains userinfo. |
+| `action-threw` | 500 | The client action failed outside its operation result contract. |
+| `message-already-accepted` | 409 | The message address was already accepted in this workspace. |
+| `source-not-running` | 409 | The originating task is not running; no message was admitted. |
+| `loop-not-open` | 409 | The named loop is not an unfinished recipient of the worker; no message was admitted. |
 
 §problems-functionality **Server and Functionality Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -6363,6 +6424,14 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `proposal-decision-unrecorded` | 500 | The approval decision could not be saved; the operation was not applied. |
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
 | `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Trim one line with `<L>` or lines L through M with `<L,M>`; `KILL (log:///…/READ)` with no scope retires the whole row. |
+| `runtime-owner-reserved` | 409 | The runtime owner cannot be registered by a client. |
+| `owner-not-found` | 404 | The owner address is not registered in the workspace. |
+| `proposal-policy-failed` | 500 | Core could not establish the proposal's settlement policy. |
+| `handler-unavailable` | 410 | The proposed scheme handler is no longer available. |
+| `proposal-apply-threw` | 500 | The scheme failed outside its proposal application contract. |
+| `verb-unknown` | 400 | The requested verb is not a lifecycle verb of the addressed family. |
+| `arguments-not-json` | 400 | The lifecycle verb's body must be a JSON object. |
+| `dispatch-threw` | 500 | The Plurnk actor failed outside its operation result contract. |
 
 §pinned-wording-core **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
 

@@ -21,7 +21,7 @@ const request = {
     },
 } as const;
 
-test("{§message-envelope-evidence}: competing interaction answers admit exactly one envelope before wake", async (t) => {
+test("{§message-envelope-evidence} {§problems-client}: competing interaction answers admit exactly one envelope before wake", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, "interaction-message-race");

@@ -108,7 +108,7 @@ test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (r
     assert.deepEqual(JSON.parse(select.out!), [{ id: 1, name: "alice" }]);
 });
 
-test("invalid SQL reference -> durable prepare Problem, errored channel, 400", async () => {
+test("{§problems-executor-sqlite}: invalid SQL reference -> durable prepare Problem, errored channel, 400", async () => {
     const { result, states, events } = await run("SELECT * FROM does_not_exist");
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-invalid-statement");

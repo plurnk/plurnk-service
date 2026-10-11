@@ -125,3 +125,5 @@ or persisting a rule ({§operator-config-offline-validation}).
 | `delivery-failed` | 502 | Delivering the scheduled message '*alias*' failed. |
 | `target-missing` | 404 | No worker named '*name*' exists in this workspace. |
 | `rule-unbounded` | 400 | A workspace rule ends: give the RRULE a COUNT or an UNTIL. |
+| `authority-invalid` | 400 | Schedule resources use an empty authority. |
+| `not-found` | 404 | The schedule resource does not exist. |

@@ -3,12 +3,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyzeDiagnosticSource } from "./diagnostic-inventory.mjs";
 
 // A code is minted where a kebab-case literal is followed by an HTTP status (`failure("code", 4xx`),
-// where `Problems.create("owner", "code"` names it, or where a result shape carries `code: "…"`.
+// or where a result shape carries `code: "…"`. Shared constructors use the diagnostic
+// inventory's lexical reader, so their owner expression need not be a literal.
 const MINTED = [
     /\(\s*"([a-z][a-z0-9-]*)"\s*,\s*\d{3}\b/g,
-    /Problems\.create\(\s*"[^"]+"\s*,\s*"([a-z][a-z0-9-]*)"/g,
     /\bcode:\s*"([a-z][a-z0-9-]*)"/g,
 ];
 const SOURCE = /\.(?:ts|mjs|sql)$/;
@@ -29,6 +30,11 @@ const sourceFiles = async (dir, out = []) => {
 export const mintedCodes = (text) => {
     const codes = new Set();
     for (const pattern of MINTED) for (const match of text.matchAll(pattern)) codes.add(match[1]);
+    for (const record of analyzeDiagnosticSource("", text)) {
+        if (record.kind !== "problem-constructor" || !/^(?:Problems\.create|_?Results\.(?:failure|problem))$/.test(record.callee)) continue;
+        const code = /^(["'])([a-z][a-z0-9-]*)\1$/.exec(record.arguments[1] ?? "")?.[2];
+        if (code !== undefined) codes.add(code);
+    }
     return codes;
 };
 

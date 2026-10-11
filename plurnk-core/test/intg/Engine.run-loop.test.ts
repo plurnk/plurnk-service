@@ -352,7 +352,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
     } finally { await db.close(); }
 });
 
-test("a strike-threshold abandonment names itself in its exact terminal Problem", async () => {
+test("{§problems-loop}: a strike-threshold abandonment names itself in its exact terminal Problem", async () => {
     const db = await openMigrated();
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {

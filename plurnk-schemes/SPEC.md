@@ -710,7 +710,7 @@ refused 405 `message-immutable` with no `recovery` ({§diagnostic-observation});
 names the address as an immutable received message:
 `` `message://tester/bde40185` is a received message; it cannot be edited, moved or killed. ``
 
-§problems-schemes **Slicer and matcher Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+§problems-schemes **Selection and metadata Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
 | code | status | contract |
 |---|---:|---|
@@ -718,6 +718,9 @@ names the address as an immutable received message:
 | `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
 | `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
 | `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |
+| `metadata-unsupported` | 400 | Message metadata accepts only attachments. |
+| `attachments-invalid` | 400 | attachments must be an array of non-empty resource addresses. |
+| `metadata-invalid` | 400 | [metadata] must be a JSON array of option objects; every element is an object. |
 
 §pinned-wording-schemes **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
 

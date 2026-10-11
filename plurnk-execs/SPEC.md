@@ -204,6 +204,20 @@ is cancellation, not an executor defect; the consumer preserves its distinct
 cancellation/deadline result. Other throws and invalid results become durable
 contract failures before the consumer closes the stream.
 
+§problems-executor-input **Invocation and live-input Problems.** These failures
+belong to the shared executor implementation; leaf executors may also declare
+their own failures.
+
+| code | status | condition |
+|---|---:|---|
+| `cwd-not-found` | 400 | The requested execution directory does not exist as a directory. |
+| `invalid-command` | 400 | The command could not be parsed; detail includes a bounded cause. |
+| `input-unsupported` | 501 | The consumer does not provide live input. |
+| `invalid-input-metadata` | 400 | Stdin SEND accepts only the optional `[{"eof": true}]` option. |
+| `input-closed` | 410 | Stdin is closed, or closed during delivery; the latter may have delivered partial input. |
+| `input-cancelled` | 499 | Input delivery was cancelled and may be partial. |
+| `input-write-failed` | 502 | Stdin delivery failed and may be partial. |
+
 §executor-page-receipt **A full page says so.** When a tool result is a JSON array whose
 length equals the page size the call asked for, or the tool schema's default for one
 (`per_page`, `page_size`, `pageSize`, `limit`, first match), the result carries
