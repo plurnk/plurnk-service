@@ -1,6 +1,6 @@
 // {§retention-policy} — the operator's retention policy, read once from the environment and run
 // as set statements: on the daemon's cadence while it runs, and as a shutdown step before the
-// planner statistics. Information is kept by default; only what no row references is collected.
+// planner statistics. Packet/response retention is separate from unreferenced-content collection.
 import type { Db } from "../core/Db.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import DerivationUse from "../schemes/_derivation-use.ts";
@@ -48,8 +48,6 @@ export default class Retention {
 
     get policy(): RetentionPolicy { return this.#policy; }
 
-    // One pass, in dependency order: compositions and response bodies retire first, then the
-    // items and derivations nothing references. Each statement is a no-op under the default policy.
     // {§db-space-reclamation} — once per open: a database whose auto-vacuum mode differs from the
     // policy's is converted (a mode change takes effect through one VACUUM). Runs before any drain.
     async prepareStorage(): Promise<{ converted: boolean; pagesBefore: number; pagesAfter: number }> {
@@ -68,6 +66,7 @@ export default class Retention {
         return row;
     }
 
+    // Release expired compositions and response bodies before collecting unreferenced content.
     async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number; collectedContents: number; reclaimedPages: number }> {
         const { retainPacketTurns, retainPacketMs, retainResponseTurns, retainResponseMs, collectPacketItems, collectDerivations, collectContents } = this.#policy;
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });

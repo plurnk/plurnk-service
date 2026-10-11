@@ -421,3 +421,25 @@ the submitter the owner of the shared runtime.
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |
 | A choice of behaviour                   | The owning package's `.env.defaults`, read through the system environment; see Configuration authority. |
+
+## Data preservation
+
+Working context, execution evidence and current resource state have distinct lifetimes. Curation is
+not erasure; content addressing is not version history; a consistent database copy is not a snapshot
+of the surrounding filesystem or external services.
+
+| Data | Authority and lifetime |
+| --- | --- |
+| Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-readable-projection}). |
+| Accepted messages, operations and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history ({§message-projection}, {§turn-source-resources}, {§log-history-projection}). |
+| Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics-provider-usage}). |
+| Packet compositions and model-call response bodies | Retained according to their own count/age policy. This does not erase turn sources, log bodies or separately retained physical-request evidence ({§retention-policy}, {§provider-request-evidence}). |
+| Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
+| Project files | The filesystem is authoritative; database representations do not make filesystem effects part of a SQLite transaction. Backups include project files separately. |
+| Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§worker-lifecycle-restart-recovery}, {§notice-drain-on-read}). |
+| Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share-scope}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
+
+Audit claims name the evidence retained and its limits. Logical immutability through Plurnk's APIs
+and database guards is not tamper evidence against a host administrator. Worker and owner addresses
+provide application attribution, not proof of a person's identity. A recorded command or remote
+response is evidence of the interaction, not independent verification of every external effect.

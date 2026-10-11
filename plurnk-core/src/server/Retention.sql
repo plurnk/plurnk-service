@@ -1,6 +1,6 @@
 -- Retention ({§retention-policy}): the operator's policy over what the database keeps, as set
--- statements run by Retention on the daemon's cadence and at shutdown. Under the defaults nothing
--- that is information leaves; only what no row references.
+-- statements run by Retention on the daemon's cadence and at shutdown. Packet compositions and
+-- model-call response bodies expire independently of durable records and physical-request evidence.
 
 -- PREP: retention_retire_packets
 -- A completed turn older than the policy — beyond the newest $keep_turns packet-bearing turns of

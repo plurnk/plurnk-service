@@ -79,6 +79,14 @@ sidecars together. Copy the backup to a fresh working path, select that path wit
 `PLURNK_SERVICE_DB_PATH`, and start the same or a newer compatible service version.
 Do not overwrite a live database or pair a restored file with old sidecars.
 
+Retention controls expire packet compositions and model-call response bodies, not every copy of
+their content. Turn sources, log receipts and physical-request evidence have separate lifetimes
+({§retention-policy}); a share contains only what remains when it is taken.
+
+The installed SQLite wrapper uses WAL with `synchronous=NORMAL`. Committed database transactions
+survive an application crash, but recent commits may be lost after power loss or an operating-system
+crash. This is not a filesystem-write guarantee; see [SQLite's durability description](https://www.sqlite.org/pragma.html#pragma_synchronous).
+
 ## Precedence
 
 Highest priority first ({§operator-config-precedence}):
