@@ -23,6 +23,7 @@ interface SchemeCtxOptions {
 
 export default class SchemeCtxImpl implements SchemeCtx {
     readonly #editPrecondition: LineAnchorPrecondition | null;
+    readonly #fileRevision: string | undefined;
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
@@ -51,6 +52,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.writer = ctx.writer;
         this.signal = ctx.signal;
         this.#editPrecondition = options.editPrecondition ?? null;
+        this.#fileRevision = ctx.fileRevision;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -90,5 +92,9 @@ export default class SchemeCtxImpl implements SchemeCtx {
 
     static editPreconditionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): LineAnchorPrecondition | null {
         return ctx instanceof SchemeCtxImpl ? ctx.#editPrecondition : null;
+    }
+
+    static fileRevisionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): string | undefined {
+        return ctx instanceof SchemeCtxImpl ? ctx.#fileRevision : "db" in ctx ? ctx.fileRevision : undefined;
     }
 }

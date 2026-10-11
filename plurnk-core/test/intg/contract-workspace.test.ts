@@ -159,6 +159,7 @@ test("{§file-create-no-clobber} EDIT of an existing non-member is refused — n
         // The gate must not break legitimate edits: a tracked member still
         // proposes (202), and a new path still proposes creation (202 — creation
         // is how the model adds to its manifest).
+        await GitMembership.indexGitMembership(ctx);
         const member = await new File().edit(editStmt(filePath(trackedPath), "# Tracked by git\n\nrevised.\n", fullReplace), ctx);
         assert.equal(member.status, 202, "EDIT of a git-tracked member must still propose (202)");
         const created = await new File().edit(editStmt(filePath("new-note.md"), "fresh content\n"), ctx);
@@ -202,7 +203,7 @@ test("an out-of-band disk change between propose and accept is an edit collision
         assert.equal(proposal.status, 202, "edit proposes (202)");
 
         // An ambient writer (the user's editor, a build step, a sibling worker) changes the file on
-        // disk AFTER the proposal was computed — exactly the drift the CAS must catch.
+        // disk after the proposal was computed — the captured revision must reject that drift.
         const ambient = "# Tracked by git\n\nAMBIENT out-of-band change — written under the paused proposal, clearly a different size.\n";
         await writeFile(join(root, trackedPath), ambient, "utf8");
 

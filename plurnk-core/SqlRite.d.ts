@@ -71,8 +71,7 @@ export class SqlRiteSync {
 	crud_register_workspace_members: SqlRiteSyncPreparedStatements;
 	crud_unregister_stale_members: SqlRiteSyncPreparedStatements;
 	crud_get_member_sig: SqlRiteSyncPreparedStatements;
-	crud_set_synced_sig: SqlRiteSyncPreparedStatements;
-	crud_mark_member_absent: SqlRiteSyncPreparedStatements;
+	crud_read_file_snapshot: SqlRiteSyncPreparedStatements;
 	crud_delete_channels: SqlRiteSyncPreparedStatements;
 	crud_delete_channel: SqlRiteSyncPreparedStatements;
 	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
@@ -368,8 +367,7 @@ export default class SqlRite {
 	crud_register_workspace_members: SqlRitePreparedStatements;
 	crud_unregister_stale_members: SqlRitePreparedStatements;
 	crud_get_member_sig: SqlRitePreparedStatements;
-	crud_set_synced_sig: SqlRitePreparedStatements;
-	crud_mark_member_absent: SqlRitePreparedStatements;
+	crud_read_file_snapshot: SqlRitePreparedStatements;
 	crud_delete_channels: SqlRitePreparedStatements;
 	crud_delete_channel: SqlRitePreparedStatements;
 	crud_attach_channel_derivation: SqlRitePreparedStatements;

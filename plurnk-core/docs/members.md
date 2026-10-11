@@ -86,6 +86,13 @@ scope admits it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`). The new file is a member i
 creation record — you never need `git add` for your own creations. Deleting
 it (`KILL`) retires the record.
 
+## Changes while you work
+
+File mutations check their selected revision again at acceptance. If the file
+changed, `409 edit-collision` preserves it: inspect the current file and rebuild
+the operation. A MOVE may already have written its destination before source
+cleanup conflicts; its receipt identifies that completed effect.
+
 ## Definitions belong to the workspace
 
 `list` shows every definition with its origin (`service` from the operator's

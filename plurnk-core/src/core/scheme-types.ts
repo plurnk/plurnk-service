@@ -37,6 +37,8 @@ export interface PlurnkSchemeContext {
     readonly turnId: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
+    // {§file-delete-revision}: a selected file revision survives composed mutations and approval.
+    readonly fileRevision?: string;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeWorkerNotify?: WakeWorkerNotify;
     // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive

@@ -1,8 +1,8 @@
-import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
 import { fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
-import { basename, dirname, relative, isAbsolute, join } from "node:path";
+import { relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
@@ -55,9 +55,11 @@ import {
 import type { EditBatchReceipt } from "../content/index.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import FileMaterialization from "../core/file-materialization.ts";
+import FileSnapshot from "../core/FileSnapshot.ts";
+import FilePublication from "../core/FilePublication.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; original?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = ProposalApplyResult;
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
@@ -67,26 +69,6 @@ const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | 
     const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
     return row?.project_root ?? null;
 };
-
-// Resolve the nearest existing ancestor, then append the still-absent tail. This
-// gives a proposed create the same physical containment check as an existing path:
-// an in-root symlinked parent cannot smuggle a root-scoped write outside the namespace.
-const prospectiveRealpath = async (requested: string): Promise<string> => {
-    const tail: string[] = [basename(requested)];
-    let cursor = dirname(requested);
-    while (true) {
-        try {
-            return join(await realpath(cursor), ...tail);
-        } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-        }
-        const parent = dirname(cursor);
-        if (parent === cursor) throw new Error(`No existing ancestor contains '${requested}'.`);
-        tail.unshift(basename(cursor));
-        cursor = parent;
-    }
-};
-
 
 // Detect mimetype from a file's path through the configured registry. The
 // `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
@@ -340,7 +322,7 @@ export default class File extends CoreSchemeAdapterBase {
             } catch (occupancyCause) {
                 if ((occupancyCause as NodeJS.ErrnoException).code !== "ENOENT") throw occupancyCause;
             }
-            canonical = await prospectiveRealpath(requested);
+            canonical = await FileSnapshot.prospectivePath(requested);
             fileExists = false;
         }
         if (!isMount) {
@@ -368,7 +350,7 @@ export default class File extends CoreSchemeAdapterBase {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
-            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel });
+            const member = await ctx.db.crud_read_file_snapshot.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string; content: string | null }>({ workspace_id: ctx.workspaceId, pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
@@ -393,9 +375,13 @@ export default class File extends CoreSchemeAdapterBase {
             if (currentMaterialization.disposition === "input-limit") {
                 return { ok: false, ...FileMaterialization.rejection(rel, currentMaterialization) };
             }
-            // {§membership-edit-write-cas}: diff against the READ snapshot; CAS protects the disk landing.
-            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel, channel: "body" });
-            original = snapshot?.content ?? "";
+            // {§membership-edit-write-revision}: retain the materialized baseline through approval.
+            const revision = FileSnapshot.decode(member.synced_sig);
+            if (revision === null || revision.hash === null || member.content === null) {
+                const conflict = EditCollision.result(rel);
+                return { ok: false, code: "edit-collision", status: conflict.status, detail: conflict.problem!.detail };
+            }
+            original = member.content;
             baseSig = member.synced_sig;
         } else {
             const admission = await GitMembership.planCreation(ctx.db, ctx.workspaceId, rel, ctx.signal);
@@ -422,7 +408,7 @@ export default class File extends CoreSchemeAdapterBase {
         return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig, creationAdmission };
     }
 
-    // {§membership-edit-write-cas}, {§proposal-202-pauses}: return status=202
+    // {§membership-edit-write-revision}, {§proposal-202-pauses}: return status=202
     // with a udiff body for client review and attrs carrying the full patched
     // content. Engine pauses dispatch and calls applyResolution() after accept.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -461,6 +447,8 @@ export default class File extends CoreSchemeAdapterBase {
         const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
+        const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
+        if (selectedRevision !== undefined && selectedRevision !== baseSig) return EditCollision.result(rel) as EditResult;
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null) {
                 return failure(
@@ -550,7 +538,7 @@ export default class File extends CoreSchemeAdapterBase {
             editReceipt: batchReceipt,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             ...(merges === undefined ? {} : { merges }),
-            attrs: { path: rel, canonical, patch, patched, mimetype, editReceipt: batchReceipt, baseSig, existed: fileExists },
+            attrs: { path: rel, canonical, original, patch, patched, mimetype, editReceipt: batchReceipt, baseSig, existed: fileExists },
         };
     }
 
@@ -593,14 +581,18 @@ export default class File extends CoreSchemeAdapterBase {
             ) as WriteEntryResult;
         }
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
+        const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
+        if (selectedRevision !== undefined && selectedRevision !== baseSig) return {
+            ...EditCollision.result(rel), created: false, entryId: null,
+        } as WriteEntryResult;
         if (bytes !== undefined) {
             // {§binary-parity} — a byte write carries no text diff; the receipt is the byte count and
             // the bytes ride attrs.patchedBytes to applyResolution, which writes them verbatim to disk.
-            return { status: 202, created: !fileExists, entryId: null, body: `${bytes.length} bytes`, attrs: { path: rel, canonical, patchedBytes: bytes, patched: "", mimetype, baseSig, existed: fileExists } };
+            return { status: 202, created: !fileExists, entryId: null, body: `${bytes.length} bytes`, attrs: { path: rel, canonical, original, patchedBytes: bytes, patched: "", mimetype, baseSig, existed: fileExists } };
         }
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, mimetype, baseSig, existed: fileExists } };
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, original, patch, patched, mimetype, baseSig, existed: fileExists } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
@@ -613,39 +605,8 @@ export default class File extends CoreSchemeAdapterBase {
     async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
         const { attrs, body } = args;
-        // Delete-apply (deferred behind review — the KILL proposal, or the MOVE source-delete gated by
-        // its dest proposal): unlink the host file + deregister the entry on accept. A real unlink
-        // failure surfaces as 500, never a silent noop; ENOENT ⇒ file already gone, still deregister.
-        if (typeof attrs.deletePath === "string") {
-            const root = await loadWorkspaceRoot(core.db, core.workspaceId);
-            if (root === null) {
-                throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
-            }
-            try {
-                await rm(join(root, attrs.deletePath));
-            } catch (err) {
-                if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-                    console.error(`File deletion failed for '${attrs.deletePath}':`, err);
-                    return Results.failure("scheme:file", "delete-failed", 500, `The file could not be deleted: ${ErrorDetail.preview(err)}`, {
-                        outcome: "delete_failed",
-                    }, {
-                        path: attrs.deletePath,
-                        stage: "filesystem-delete",
-                    }) as ApplyResult;
-                }
-            }
-            if ("entries" in ctx) await ctx.entries.delete(attrs.deletePath);
-            else {
-                await EntryCrud.deleteEntry(
-                    { authority: "", pathname: attrs.deletePath },
-                    core,
-                    "file",
-                );
-            }
-            await GitMembership.removeCreationRecord(core.db, core.workspaceId, attrs.deletePath);
-            return { status: 200 };
-        }
-        let canonical = attrs.canonical;
+        if (typeof attrs.deletePath === "string") return this.#applyDelete(attrs.deletePath, attrs.baseSig ?? null, core);
+        const canonical = attrs.canonical;
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
         // {§binary-parity} — a byte write (COPY/MOVE of a binary) carries its bytes here; the disk
@@ -664,56 +625,11 @@ export default class File extends CoreSchemeAdapterBase {
         if (typeof mimetype !== "string" || mimetype.length === 0) {
             throw new InvalidOperationResultError("The accepted file proposal is missing attrs.mimetype.");
         }
-        const existed = args.attrs.existed === true;  // proposal targeted an existing member (edit) vs a fresh create
-        let creationAdmission: AdmittedCreation | null = null;
-        if (!existed) {
-            // {§file-create-transaction}: approval is a fresh admission boundary. Re-resolve
-            // the physical target so a parent symlink swapped while review was pending cannot
-            // redirect an accepted root-scoped create outside the workspace.
-            const acceptedTarget = await this.#resolveWriteTarget(relPath, core, patchedBytes !== undefined);
-            if (!acceptedTarget.ok) {
-                return Results.failure(
-                    "scheme:file",
-                    acceptedTarget.code,
-                    acceptedTarget.status,
-                    acceptedTarget.detail,
-                    { outcome: "create_refused" },
-                    acceptedTarget.extensions,
-                ) as ApplyResult;
-            }
-            if (acceptedTarget.fileExists) {
-                return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
-            }
-            canonical = acceptedTarget.canonical;
-            creationAdmission = acceptedTarget.creationAdmission;
-            if (creationAdmission === null) {
-                throw new InvalidOperationResultError("A revalidated file creation is missing its admission decision.");
-            }
-        }
-        // CAS — the write-side twin of #materializeMember's read-gate (synced_sig === sig). The
-        // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
-        // since propose, the full-blob write would clobber it. Refuse and surface the same neutral
-        // edit collision as an entry compare-and-swap —
-        // the next reconcile narrates disk truth via FsDivergence; the model re-reads + re-proposes.
-        // No clever re-diff, no clobber. {§membership-edit-write-cas}
-        const baseSig = (args.attrs.baseSig ?? null) as string | null;
-        let currentSig: string | null = null;
-        try {
-            const st = await stat(canonical);
-            currentSig = `${st.mtimeMs}:${st.size}`;
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-        }
-        // Edit → CAS on the snapshot signature (a null baseSig is an un-materialized member with no
-        // recorded snapshot — no baseline to guard, so the write proceeds). Create → the proposal
-        // assumed an absent path, so any file present now is the conflict.
-        const conflict = existed ? (baseSig !== null && currentSig !== baseSig) : (currentSig !== null);
-        if (conflict) {
-            return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
-        }
+        const existed = args.attrs.existed === true;
+        const baseline = FileSnapshot.decode(attrs.baseSig ?? null);
+        if (existed && (baseline === null || baseline.hash === null)) return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
         let receipt = attrs.editReceipt;
-        const needsOriginal = receipt !== undefined || (body !== undefined && body !== attrs.patched);
-        const original = needsOriginal ? (existed ? await readFile(canonical, "utf8") : "") : null;
+        const original = attrs.original ?? (existed ? null : "");
         if (body !== undefined && body !== attrs.patched) {
             if (original === null) {
                 throw new InvalidOperationResultError("A reviewer-modified file proposal is missing its original content.");
@@ -742,146 +658,167 @@ export default class File extends CoreSchemeAdapterBase {
             );
             receipt = withEditReceiptParseIssues(receipt, parseIssues);
         }
-        try {
-            // A write into a not-yet-existing subtree creates it — an accepted proposal must not
-            // die on a missing parent dir (the fan-out digest: tasks/… write_failed on ENOENT).
-            await mkdir(dirname(canonical), { recursive: true });
-            if (patchedBytes !== undefined) {
-                await writeFile(canonical, Buffer.from(patchedBytes), { flag: existed ? "w" : "wx" });
-            } else {
-                await writeFile(canonical, patched, { encoding: "utf8", flag: existed ? "w" : "wx" });
+        return FileSnapshot.serialize(canonical, async () => {
+            const acceptedTarget = await this.#resolveWriteTarget(relPath, core, patchedBytes !== undefined);
+            if (!acceptedTarget.ok) return Results.failure("scheme:file", acceptedTarget.code, acceptedTarget.status,
+                acceptedTarget.detail, {}, acceptedTarget.extensions) as ApplyResult;
+            if (acceptedTarget.canonical !== canonical || acceptedTarget.fileExists !== existed) return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
+            const creationAdmission = acceptedTarget.creationAdmission;
+            const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+            if (root === null) throw new InvalidOperationResultError("An accepted file write has no workspace project root.");
+            const publication = await FilePublication.write(join(root, relPath), canonical, baseline, patchedBytes ?? Buffer.from(patched));
+            if (publication.status === "conflict") return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
+            if (publication.status === "failed") {
+                console.error(`File publication failed for '${relPath}':`, publication.cause);
+                return Results.failure(
+                    "scheme:file",
+                    "write-failed",
+                    500,
+                    `${publication.published ? "The file was published, but settlement failed" : "The file was not published"}: ${ErrorDetail.preview(publication.cause)}`,
+                    { outcome: "write_failed", ...(publication.published ? { effects: [{ target: relPath, action: existed ? "update" : "create" }] } : {}) },
+                    {
+                        path: relPath,
+                        stage: "filesystem-publication",
+                        published: publication.published,
+                    },
+                ) as ApplyResult;
             }
-        } catch (err) {
-            if (!existed && (err as NodeJS.ErrnoException).code === "EEXIST") {
-                return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
-            }
-            console.error(`File write failed for '${relPath}':`, err);
-            return Results.failure(
-                "scheme:file",
-                "write-failed",
-                500,
-                `The file could not be written: ${ErrorDetail.preview(err)}`,
-                { outcome: "write_failed" },
-                {
-                    path: relPath,
-                    stage: "filesystem-write",
-                },
-            ) as ApplyResult;
-        }
-        // Register the exact mimetype resolved at proposal time, then complete the
-        // membership-owned incorporation transaction. No fallible receipt work follows.
-        try {
-            // {§entry-identity-no-null} — file members persist under the reserved
-            // `file` identity; bare-path rendering is a projection of that row.
-            // {§binary-parity} — a binary member registers with empty text content: its bytes live on
-            // disk and READ serves them through byteSource; the next membership reconcile materializes
-            // the facts line and source projection the way a git-tracked binary member gets them.
-            const registerContent = patchedBytes !== undefined ? "" : patched;
-            const write = "entries" in ctx
-                ? await ctx.entries.write(relPath, {
+            // Register the exact mimetype resolved at proposal time, then complete the
+            // membership-owned incorporation transaction. No fallible receipt work follows.
+            try {
+                // {§entry-identity-no-null} — file members persist under the reserved
+                // `file` identity; bare-path rendering is a projection of that row.
+                // {§binary-parity} — a binary member registers with empty text content: its bytes live on
+                // disk and READ serves them through byteSource; the next membership reconcile materializes
+                // the facts line and source projection the way a git-tracked binary member gets them.
+                const registerContent = patchedBytes !== undefined ? "" : patched;
+                const write = await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
                     channels: { body: { content: registerContent, mimetype } },
-                })
-                : await EntryCrud.writeEntry({ authority: "", pathname: relPath }, {
-                    channels: { body: { content: registerContent, mimetype } },
-                }, core, "file");
-            const { entryId } = write;
-            // Restamp synced_sig to the landed write so the next reconcile recognizes our own
-            // write as the synced state — not an FsDivergence narrated back at the model.
-            if (entryId !== null) {
-                const landed = await stat(canonical);
-                await core.db.crud_set_synced_sig.run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
-            }
-            if (!existed) {
-                if (entryId === null || creationAdmission === null || !creationAdmission.ok) {
-                    throw new InvalidOperationResultError("A created file is missing its entry or admission decision.");
+                    attributes: patchedBytes === undefined
+                        ? FileMaterialization.attributes(FileMaterialization.classify(Buffer.byteLength(patched)))
+                        : {},
+                }, core, "file", { syncedSig: JSON.stringify(publication.revision) });
+                const { entryId } = write;
+                if (!existed) {
+                    if (entryId === null || creationAdmission === null || !creationAdmission.ok) {
+                        throw new InvalidOperationResultError("A created file is missing its entry or admission decision.");
+                    }
+                    await GitMembership.incorporateCreation(
+                        core.db,
+                        core.workspaceId,
+                        entryId,
+                        relPath,
+                        creationAdmission,
+                    );
                 }
-                const root = await loadWorkspaceRoot(core.db, core.workspaceId);
-                if (root === null) {
-                    throw new InvalidOperationResultError("A created file lost its workspace project root.");
-                }
-                await GitMembership.incorporateCreation(
-                    core.db,
-                    core.workspaceId,
-                    entryId,
-                    relPath,
-                    creationAdmission,
-                );
-            }
-        } catch (err) {
-            if (!existed) {
-                const rollbackErrors: unknown[] = [];
-                try {
-                    const row = await core.db.crud_find_workspace_entry.get<{ id: number }>({
-                        workspace_id: core.workspaceId,
+            } catch (err) {
+                if (!existed) {
+                    const rollbackErrors: unknown[] = [];
+                    try {
+                        const row = await core.db.crud_find_workspace_entry.get<{ id: number }>({
+                            workspace_id: core.workspaceId,
 
-                        scheme: "file",
-                        authority: "",
-                        pathname: relPath,
-                    });
-                    if (row !== undefined) await core.db.crud_delete_entry.run({ entry_id: row.id });
-                } catch (rollbackCause) {
-                    rollbackErrors.push(rollbackCause);
-                }
-                try {
-                    await rm(canonical);
-                } catch (rollbackCause) {
-                    if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
+                            scheme: "file",
+                            authority: "",
+                            pathname: relPath,
+                        });
+                        if (row !== undefined) await core.db.crud_delete_entry.run({ entry_id: row.id });
+                    } catch (rollbackCause) {
                         rollbackErrors.push(rollbackCause);
                     }
-                }
-                if (rollbackErrors.length > 0) {
-                    const rollback = new AggregateError(rollbackErrors, `Creation rollback failed for '${relPath}'.`);
-                    console.error(`File creation failed and rollback was incomplete for '${relPath}':`, err, rollback);
+                    try {
+                        const current = await FileSnapshot.acquire(join(root, relPath), null);
+                        if (current === null && await FileSnapshot.observe(join(root, relPath)) !== null) {
+                            throw new Error("The created path changed during rollback validation; it was preserved.");
+                        }
+                        if (current !== null && !FileSnapshot.matches(publication.revision, current.revision)) {
+                            throw new Error("The created path changed; its replacement was preserved.");
+                        }
+                        if (current !== null) await rm(canonical);
+                    } catch (rollbackCause) {
+                        if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
+                            rollbackErrors.push(rollbackCause);
+                        }
+                    }
+                    if (rollbackErrors.length > 0) {
+                        const rollback = new AggregateError(rollbackErrors, `Creation rollback failed for '${relPath}'.`);
+                        console.error(`File creation failed and rollback was incomplete for '${relPath}':`, err, rollback);
+                        return Results.failure(
+                            "scheme:file",
+                            "creation-rollback-failed",
+                            500,
+                            `The file could not be incorporated and rollback was incomplete: ${ErrorDetail.preview(rollback)}`,
+                            { outcome: "creation_rollback_failed", effects: [{ target: relPath, action: "create" }] },
+                            {
+                                path: relPath,
+                                stage: "creation-rollback",
+                                cause: ErrorDetail.preview(err),
+                                retryable: false,
+                            },
+                        ) as ApplyResult;
+                    }
+                    console.error(`File creation incorporation failed for '${relPath}':`, err);
                     return Results.failure(
                         "scheme:file",
-                        "creation-rollback-failed",
+                        "creation-incorporation-failed",
                         500,
-                        `The file could not be incorporated and rollback was incomplete: ${ErrorDetail.preview(rollback)}`,
-                        { outcome: "creation_rollback_failed" },
+                        `The file could not be incorporated, so its exclusive creation was rolled back: ${ErrorDetail.preview(err)}`,
+                        { outcome: "creation_rolled_back" },
                         {
                             path: relPath,
-                            stage: "creation-rollback",
-                            cause: ErrorDetail.preview(err),
+                            stage: "membership-incorporation",
                             retryable: false,
                         },
                     ) as ApplyResult;
                 }
-                console.error(`File creation incorporation failed for '${relPath}':`, err);
+                // An existing-file write has already changed disk. Surface the partial
+                // failure rather than pretending the addressable entry followed it.
+                console.error(`File registration failed for '${relPath}':`, err);
                 return Results.failure(
                     "scheme:file",
-                    "creation-incorporation-failed",
+                    "materialization-failed",
                     500,
-                    `The file could not be incorporated, so its exclusive creation was rolled back: ${ErrorDetail.preview(err)}`,
-                    { outcome: "creation_rolled_back" },
+                    `The file was written to disk but could not be registered: ${ErrorDetail.preview(err)}`,
+                    { outcome: "materialize_failed", effects: [{ target: relPath, action: "update" }] },
                     {
                         path: relPath,
-                        stage: "membership-incorporation",
+                        stage: "entry-registration",
                         retryable: false,
                     },
                 ) as ApplyResult;
             }
-            // An existing-file write has already changed disk. Surface the partial
-            // failure rather than pretending the addressable entry followed it.
-            console.error(`File registration failed for '${relPath}':`, err);
-            return Results.failure(
-                "scheme:file",
-                "materialization-failed",
-                500,
-                `The file was written to disk but could not be registered: ${ErrorDetail.preview(err)}`,
-                { outcome: "materialize_failed" },
-                {
-                    path: relPath,
-                    stage: "entry-registration",
-                    retryable: false,
-                },
-            ) as ApplyResult;
-        }
-        if (receipt === undefined) return { status: 200 };
-        return {
-            status: 200,
-            editReceipt: receipt,
-            result: { receipt: projectEditReceipt(receipt, 0) },
-        };
+            if (receipt === undefined) return { status: 200 };
+            return {
+                status: 200,
+                editReceipt: receipt,
+                result: { receipt: projectEditReceipt(receipt, 0) },
+            };
+        });
+    }
+
+    async #applyDelete(pathname: string, baseSig: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
+        const baseline = FileSnapshot.decode(baseSig);
+        if (baseline === null || baseline.hash === null) return EditCollision.result(pathname) as ApplyResult;
+        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        if (root === null) throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
+        const requested = join(root, pathname);
+        return FileSnapshot.serialize(baseline.canonical, async () => {
+            const current = await FileSnapshot.acquire(requested, null);
+            if (current === null || !FileSnapshot.matches(baseline, current.revision)) return EditCollision.result(pathname) as ApplyResult;
+            let deleted = false;
+            try {
+                await rm(requested);
+                deleted = true;
+                await EntryCrud.deleteEntry({ authority: "", pathname }, core, "file");
+                await GitMembership.removeCreationRecord(core.db, core.workspaceId, pathname);
+                return { status: 200 };
+            } catch (cause) {
+                return Results.failure("scheme:file", "delete-failed", 500,
+                    `${deleted ? "The file was deleted, but projection settlement failed" : "The file could not be deleted"}: ${ErrorDetail.preview(cause)}`,
+                    { outcome: "delete_failed", ...(deleted ? { effects: [{ target: pathname, action: "delete" }] } : {}) },
+                    { path: pathname, stage: deleted ? "entry-deletion" : "filesystem-delete", deleted }) as ApplyResult;
+            }
+        });
     }
 
     // deleteEntry — the KILL / MOVE-source counterpart of writeEntry. Deleting a host file is
@@ -903,13 +840,22 @@ export default class File extends CoreSchemeAdapterBase {
         }
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", pathname)) as DeleteEntryResult;
-        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
+        const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL");
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
         }
         if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", rel)) as DeleteEntryResult;
-        return { status: 202, attrs: { deletePath: rel } };
+        const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
+        if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel) as DeleteEntryResult;
+        const baseline = FileSnapshot.decode(member.synced_sig);
+        if (baseline === null) return EditCollision.result(rel) as DeleteEntryResult;
+        // {§file-delete-revision}: an oversized marker has no body; deletion still captures exact bytes.
+        const acquired = baseline.hash === null ? await FileSnapshot.acquire(join(root, rel), null) : null;
+        if (baseline.hash === null && (acquired === null || !FileSnapshot.matches(baseline, acquired.revision))) {
+            return EditCollision.result(rel) as DeleteEntryResult;
+        }
+        return { status: 202, attrs: { deletePath: rel, baseSig: acquired === null ? member.synced_sig : JSON.stringify(acquired.revision) } };
     }
 
     async deleteChannel(

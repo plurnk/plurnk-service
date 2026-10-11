@@ -16,6 +16,7 @@ import MimetypeBinary from "../content/mimetype-binary.ts";
 
 export interface ReadEntryResult extends SchemeResultBase {
     entry: StoredEntryData | null;
+    readonly fileRevision?: string;
 }
 
 export interface WriteEntryResult extends SchemeResultBase {
@@ -64,7 +65,7 @@ export default class EntryCrud {
         const { authority, pathname } = coordinate;
         const rows = await db.crud_read_entry.all<{
             id: number; attributes: string; name: string | null; content: string;
-            mimetype: string; state: ChannelState; producer_result: string | null;
+            mimetype: string; state: ChannelState; producer_result: string | null; synced_sig: string | null;
         }>({ workspace_id: workspaceId, scheme, authority, pathname });
         const entry = rows[0];
         if (entry === undefined) {
@@ -99,6 +100,7 @@ export default class EntryCrud {
         }
         return {
             status: 200,
+            ...(scheme === "file" && entry.synced_sig !== null ? { fileRevision: entry.synced_sig } : {}),
             entry: {
                 channels,
                 ...(Object.keys(attributes).length === 0
@@ -108,7 +110,7 @@ export default class EntryCrud {
         };
     }
 
-    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, representation: { defaultChannel?: string; output?: boolean; createOnly?: boolean } = {}): Promise<WriteEntryResult> {
+    static async writeEntry(coordinate: EntryCoordinate, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, representation: { defaultChannel?: string; output?: boolean; createOnly?: boolean; syncedSig?: string } = {}): Promise<WriteEntryResult> {
         const { db, workspaceId, weigh } = ctx;
         const { authority, pathname } = coordinate;
         if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
@@ -130,6 +132,7 @@ export default class EntryCrud {
             workspace_id: workspaceId, scheme, authority, pathname,
             attributes: entry.attributes === undefined ? null : JSON.stringify(entry.attributes),
             default_channel: defaultChannel, output,
+            synced_sig: representation.syncedSig ?? null,
             create_only: representation.createOnly === true ? 1 : 0,
             channels: JSON.stringify(Object.fromEntries(channels.map(({ name, data, content, producerResult }) => [name, {
                 content, mimetype: data.mimetype, weight: weigh(content), content_hash: contentHash(content),

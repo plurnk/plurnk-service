@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
@@ -16,6 +16,10 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
+import File from "../../src/schemes/File.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { editStmt, localPath, fullReplace } from "./_dsl.ts";
 import { insertPacketTurn, MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
 // {§db-migrations} — every released schema version and the fingerprint of its shape: each release
@@ -51,6 +55,55 @@ const shape = (path: string): string => {
 
 const columns = (db: DatabaseSync, table: string): string[] =>
     (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(({ name }) => name);
+
+test("{§db-migrations} {§file-snapshot-revision}: upgrade retains projections but requires a verified source before file mutation", async (t) => {
+    const path = await released(V3_1_0);
+    const root = join(path, "..");
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await writeFile(join(root, "doc.md"), "original\n");
+    const before = new DatabaseSync(path);
+    before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        before.prepare("INSERT INTO workspaces (id, name, project_root) VALUES (1, 'fileUpgrade', ?)").run(root);
+        before.exec(`
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'writer');
+            INSERT INTO entries (id, workspace_id, scheme, authority, pathname, synced_sig, membership_origin)
+                VALUES (1, 1, 'file', '', 'doc.md', '1700000000000:9', 'constraint');
+            INSERT INTO entry_channels (entry_id, name, content, mimetype)
+                VALUES (1, 'body', 'original' || char(10), 'text/markdown');
+        `);
+    } finally { before.close(); }
+    const file = new File();
+    let landedRevision: string | undefined;
+    const db = await openMigrated(path);
+    try {
+        const ctx = makeSchemeCtx({ db, workspaceId: 1, workerId: 1, mimetypes: DEFAULT_MIMETYPES });
+        const retained = await file.readEntry("doc.md", ctx);
+        assert.equal(retained.entry?.channels.body?.content, "original\n");
+        assert.equal(retained.fileRevision, undefined);
+        const statement = editStmt(localPath("doc.md"), "verified replacement\n", fullReplace);
+        const refused = await file.edit(statement, ctx);
+        assert.equal(refused.status, 409);
+        assert.match(refused.problem?.type ?? "", /edit-collision$/);
+        assert.equal(await readFile(join(root, "doc.md"), "utf8"), "original\n");
+        await MembershipMaterialization.materializeMember("doc.md", root, ctx, new Map());
+        const proposal = await file.edit(statement, ctx);
+        assert.equal(proposal.status, 202);
+        assert.equal((await file.applyResolution({ attrs: proposal.attrs as never }, ctx)).status, 200);
+        landedRevision = (await file.readEntry("doc.md", ctx)).fileRevision;
+        assert.ok(landedRevision);
+    } finally { await db.close(); }
+    const reopened = await openMigrated(path);
+    try {
+        const ctx = makeSchemeCtx({ db: reopened, workspaceId: 1, workerId: 1, mimetypes: DEFAULT_MIMETYPES });
+        const retained = await file.readEntry("doc.md", ctx);
+        assert.equal(retained.entry?.channels.body?.content, "verified replacement\n");
+        assert.equal(retained.fileRevision, landedRevision);
+        assert.equal(await readFile(join(root, "doc.md"), "utf8"), "verified replacement\n");
+        assert.equal(await MembershipMaterialization.materializeMember("doc.md", root, ctx, new Map()), null);
+    } finally { await reopened.close(); }
+});
 
 test("{§db-migrations} {§message-completion}: upgrades preserve resolved messages and literal replies independently of curation", async (t) => {
     const path = await released(V2_0_0);

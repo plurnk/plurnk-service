@@ -36,6 +36,7 @@ export type ResolvedResourceSelection = ResourceAddress & {
 };
 
 export type SelectedSource = ResolvedResourceSelection & {
+    readonly fileRevision?: string;
     readonly identity?: string;
     readonly content: string;
     readonly completeContent: string;
@@ -51,6 +52,7 @@ export type SelectedSource = ResolvedResourceSelection & {
 };
 
 export type DeferredMoveSource = {
+    readonly fileRevision?: string;
     readonly target: ParsedPath;
     readonly metadata: SchemeMetadataOrNull;
     readonly lineMarker: LineMarker | null;

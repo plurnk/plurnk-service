@@ -6,7 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile, mkdir, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
@@ -17,7 +17,8 @@ import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES, seedStaticChannel } from "./_scheme.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -49,20 +50,13 @@ const seedWorker = (ctx: Ctx, pathname: string, content: string) =>
 const workerEntry = (ctx: Ctx, pathname: string) =>
     ctx.db.test_get_entry_by_pathname_scheme.get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
 
-// Materialize a FILE member the production way: on disk + a scheme=file entry + body channel +
-// synced_sig — so it's a tracked member (editable, movable, deletable), not untracked disk.
+// {§file-snapshot-revision}: materialize through the production snapshot owner.
 const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: string): Promise<void> => {
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
-    const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${rel}` });
-    await seedStaticChannel(ctx.db, seeded?.id, {
-        name: "body",
-        content,
-        mimetype: rel.endsWith(".md") ? "text/markdown" : "text/plain",
-    });
-    const st = await stat(abs);
-    await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
+    await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel });
+    await MembershipMaterialization.materializeMember(rel, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 };
 
 const fileMember = async (ctx: Ctx, rel: string) =>

@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -14,8 +14,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
-import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { MimetypeBinary } from "../../src/content/index.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
@@ -37,10 +36,8 @@ const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
 const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
     if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
     const row = await ctx.db.envelope_get_workspace.get<{ project_root: string }>({ id: ctx.workspaceId });
-    const canonical = join(row?.project_root ?? "", pathname);
-    const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
-    const content = await readFile(canonical, "utf8");
-    await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype } } }, ctx, "file");
+    assert.ok(row?.project_root);
+    await MembershipMaterialization.materializeMember(pathname, row.project_root, ctx, new Map());
 };
 
 const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {

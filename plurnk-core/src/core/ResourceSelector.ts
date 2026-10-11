@@ -10,7 +10,7 @@ import { entryCoordinateOf, missDetail, missExtensions, schemeNameOf } from "./p
 import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
+import { EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
@@ -23,6 +23,8 @@ import PatternEdits from "../content/pattern-edits.ts";
 import PatternSelection from "./PatternSelection.ts";
 import ByteView from "../content/byte-view.ts";
 import { contentHash } from "./content-hash.ts";
+import FileSnapshot from "./FileSnapshot.ts";
+import FileMaterialization from "./file-materialization.ts";
 
 // Shared source acquisition for explicit resource transfers.
 export default class ResourceSelector {
@@ -210,7 +212,8 @@ export default class ResourceSelector {
         }
         const acquired = await this.#sourceRepresentation(selection, handler, ctx);
         if ("result" in acquired) return acquired.result;
-        const { representation, storageAddress, visibleLines, identity } = acquired;
+        const { representation, storageAddress, visibleLines, identity, fileRevision } = acquired;
+        const revision = fileRevision === undefined ? {} : { fileRevision };
         const target = MutationEffects.resourceAddress(selection);
         const selected = representation.channels[selection.channel];
         if (selected === undefined) {
@@ -246,8 +249,17 @@ export default class ResourceSelector {
         const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation, identity);
         if ("result" in resolvedMarker) return resolvedMarker.result;
         if (binary) {
-            const byteSource = (storageAddress === undefined ? undefined : handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx)))
+            let byteSource = (storageAddress === undefined ? undefined : handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx)))
                 ?? await EntryCrud.storedByteSource(representation, selection.channel, ctx.mimetypes);
+            if (selection.scheme === "file") {
+                const baseline = FileSnapshot.decode(fileRevision ?? null);
+                const snapshot = baseline === null ? null : await FileSnapshot.acquire(baseline.canonical, FileMaterialization.maximumBytes());
+                if (baseline === null || snapshot?.bytes === null || snapshot === null || !FileSnapshot.matches(baseline, snapshot.revision)) {
+                    return EditCollision.result(target);
+                }
+                const bytes = snapshot.bytes;
+                byteSource = { size: async () => bytes.length, read: async (start, end) => bytes.subarray(start - 1, end) };
+            }
             if (byteSource === undefined) {
                 return MutationEffects.failure(
                     "binary-source-unsupported", 415,
@@ -286,6 +298,7 @@ export default class ResourceSelector {
             }
             return {
                 ...resolvedMarker.selection,
+                ...revision,
                 content: "",
                 completeContent: "",
                 bytes,
@@ -309,6 +322,7 @@ export default class ResourceSelector {
             if ("result" in matched) return matched.result;
             return {
                 ...resolvedMarker.selection,
+                ...revision,
                 content: PatternEdits.text(selected.content, matched.spans),
                 ...(identity === undefined ? {} : { identity }),
                 completeContent: selected.content,
@@ -320,6 +334,7 @@ export default class ResourceSelector {
         }
         return {
             ...resolvedMarker.selection,
+            ...revision,
             content: retained === undefined ? content : LineSelection.retain(content, retained, startLine).content,
             ...(identity === undefined ? {} : { identity }),
             completeContent: selected.content,
@@ -369,6 +384,7 @@ export default class ResourceSelector {
         storageAddress?: BoundEntryAddress;
         identity?: string;
         visibleLines?: Readonly<Record<string, readonly number[]>>;
+        fileRevision?: string;
     } | { result: DispatchResult }> {
         const provider = coreRepresentationProvider(handler);
         if (provider !== null) return provider.resolveCoreRepresentation(selection.target, ctx);
@@ -404,6 +420,7 @@ export default class ResourceSelector {
             );
         }
         return { representation: read.entry, storageAddress,
+            ...(read.fileRevision === undefined ? {} : { fileRevision: read.fileRevision }),
             identity: EntryManifest.channelPath(storageAddress, selection.channel, selection.manifest.defaultChannel) };
     }
 

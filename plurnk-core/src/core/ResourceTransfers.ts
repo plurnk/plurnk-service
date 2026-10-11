@@ -18,6 +18,8 @@ import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
+import FileSnapshot from "./FileSnapshot.ts";
+import FileMaterialization from "./file-materialization.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
@@ -261,6 +263,7 @@ export default class ResourceTransfers {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
+        if (source.fileRevision !== undefined) ctx = { ...ctx, fileRevision: source.fileRevision };
         if (source.lineMarker === null && source.matchedScopes === undefined) {
             if (destination.lineMarker !== null) {
                 return MutationEffects.failure(
@@ -334,10 +337,11 @@ export default class ResourceTransfers {
 
     async removeMoveSource(
         statement: MoveStatement,
-        source: ResolvedResourceSelection & Pick<SelectedSource, "matchedScopes" | "bytePrecondition">,
+        source: ResolvedResourceSelection & Pick<SelectedSource, "matchedScopes" | "bytePrecondition" | "fileRevision">,
         ctx: PlurnkSchemeContext,
         lineAnchorPrecondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
+        if (source.fileRevision !== undefined) ctx = { ...ctx, fileRevision: source.fileRevision };
         if (source.bytePrecondition !== undefined) {
             const current = await this.#selection.selectSource({ ...source, lineMarker: null, matcher: null }, ctx, "COPY");
             if (MutationEffects.isDispatchResult(current)) return current;
@@ -451,6 +455,7 @@ export default class ResourceTransfers {
         if (existingResult.status >= 400 && existingResult.status !== 404) {
             return existingResult;
         }
+        if (existingResult.fileRevision !== undefined) ctx = { ...ctx, fileRevision: existingResult.fileRevision };
         const existing = existingResult.status === 200
             ? existingResult.entry
             : null;
@@ -647,8 +652,17 @@ export default class ResourceTransfers {
         removals: readonly LineMarker[] = [],
         expectedHash?: string,
     ): Promise<DispatchResult> {
-        const byteSource = handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx))
+        let byteSource = handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx))
             ?? (existing === null ? undefined : await EntryCrud.storedByteSource(existing, destination.channel, ctx.mimetypes));
+        if (destination.scheme === "file") {
+            const baseline = FileSnapshot.decode(ctx.fileRevision ?? null);
+            const snapshot = baseline === null ? null : await FileSnapshot.acquire(baseline.canonical, FileMaterialization.maximumBytes());
+            if (baseline === null || snapshot === null || snapshot.bytes === null || !FileSnapshot.matches(baseline, snapshot.revision)) {
+                return EditCollision.result(MutationEffects.resourceAddress(destination));
+            }
+            const bytes = snapshot.bytes;
+            byteSource = { size: async () => bytes.length, read: async (start, end) => bytes.subarray(start - 1, end) };
+        }
         if (byteSource === undefined) {
             return MutationEffects.failure(
                 "binary-region-unsupported", 415,
@@ -932,6 +946,7 @@ export default class ResourceTransfers {
                 lineMarker: resolvedSource.lineMarker as LineMarker | null,
                 ...(deferred.matchedScopes === undefined ? {} : { matchedScopes: deferred.matchedScopes }),
                 ...(deferred.bytePrecondition === undefined ? {} : { bytePrecondition: deferred.bytePrecondition }),
+                ...(deferred.fileRevision === undefined ? {} : { fileRevision: deferred.fileRevision }),
             },
             ctx,
             deferred.lineAnchorPrecondition,

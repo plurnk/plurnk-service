@@ -16,11 +16,12 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import TurnOps from "../../src/core/TurnOps.ts";
 import File from "../../src/schemes/File.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import { DEFAULT_MIMETYPES, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { moveStmt, urlPath, localPath } from "./_dsl.ts";
 
@@ -199,13 +200,8 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
         // way READ's gate is satisfied below. A NEW path needs no prior member.
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, target), "hello\n", "utf8");
-        // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
-        // exactly as the production reconcile (#materializeMember) does. EDIT bases its diff on
-        // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
-        const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${target}` });
-        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "hello\n", mimetype: "text/plain" });
-        const seededStat = await stat(join(root, target));
-        await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
+        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
+        await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
         // {§edit-marker-required-on-existing} — the file exists, so the deliberate
         // full-rewrite escape hatch (<1,-1>) is required; this also proves it works.
@@ -302,22 +298,13 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
         const target = "unchanged.txt";
         const original = "same\n";
         await writeFile(join(root, target), original, "utf8");
-        const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
+        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0,
             workspace_id: ctx.workspaceId,
             scheme: "file",
             authority: "",
             pathname: target,
         });
-        await seedStaticChannel(ctx.db, seeded?.id, {
-            name: "body",
-            content: original,
-            mimetype: "text/plain",
-        });
-        const seededStat = await stat(join(root, target));
-        await ctx.db.crud_set_synced_sig.run({
-            entry_id: seeded?.id,
-            synced_sig: `${seededStat.mtimeMs}:${seededStat.size}`,
-        });
+        await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -351,6 +338,7 @@ test("{§proposal-outcome-terse-error} file.edit: rejection leaves file untouche
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate)
         await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
+        await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
         const stmt = fileEditStmt(target, "should-not-land\n", fullReplace);
         const idDeferred = deferred<number>();
@@ -466,8 +454,8 @@ test("{§unscoped-edit-create-only} {§edit-marker-required-on-existing}: marker
         await mkdir(join(root, "src"), { recursive: true });
         const original = "line one\nline two\nline three\n";
         await writeFile(join(root, target), original, "utf8");
-        const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
-        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: original, mimetype: "text/plain" });
+        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
+        await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
         // A marker meant for the target landed inside the body text
         // instead (a model syntax slip), so the dispatched statement carries no marker at all.
@@ -502,8 +490,8 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate);
         // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
-        const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
-        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "original\n", mimetype: "text/plain" });
+        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
+        await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
         // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
         // marker is required ({§edit-marker-required-on-existing}).

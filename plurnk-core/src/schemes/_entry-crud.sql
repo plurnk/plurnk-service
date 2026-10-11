@@ -15,7 +15,7 @@ SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE
 -- PREP: crud_read_entry
 -- {§crud} One read snapshot covers metadata and every channel.
 -- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).
-SELECT e.id, e.attributes, c.name, COALESCE(c.buffer, b.content) AS content, c.mimetype, c.state, c.producer_result
+SELECT e.id, e.attributes, e.synced_sig, c.name, COALESCE(c.buffer, b.content) AS content, c.mimetype, c.state, c.producer_result
 FROM entries e
 LEFT JOIN entry_channel_rows c ON c.entry_id = e.id
 LEFT JOIN contents b ON b.id = c.content_id
@@ -23,8 +23,9 @@ WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme
   AND e.authority = $authority AND e.pathname = $pathname;
 
 -- PREP: crud_publish_entry
-INSERT INTO entry_publication (workspace_id, scheme, authority, pathname, attributes, default_channel, output, channels, created)
+INSERT INTO entry_publication (workspace_id, scheme, authority, pathname, attributes, default_channel, output, channels, synced_sig, created)
 SELECT $workspace_id, $scheme, $authority, $pathname, $attributes, $default_channel, $output, $channels,
+       $synced_sig,
        NOT EXISTS (SELECT 1 FROM entries WHERE workspace_id = $workspace_id
            AND scheme = $scheme AND authority = $authority AND pathname = $pathname)
 WHERE $create_only = 0 OR NOT EXISTS (
@@ -72,23 +73,20 @@ RETURNING id, pathname,
 
 -- PREP: crud_get_member_sig
 -- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
--- (mtime:size), read before materializing so an unchanged file short-circuits
--- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
+-- read before materializing so an unchanged file short-circuits
+-- before projection. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT e.id, e.synced_sig, e.membership_origin, e.attributes
 FROM entries e
 WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
--- PREP: crud_set_synced_sig
--- Stamp the disk signature after a member materializes to disk truth; the next
--- pass compares against it to skip an unchanged member.
-UPDATE entries SET synced_sig = $synced_sig WHERE id = $entry_id;
-
--- PREP: crud_mark_member_absent
--- An observed deletion keeps the Git membership marker but removes its stale
--- readable/derived representation. `absent` distinguishes that observed state
--- from a member that has never been synchronized.
-UPDATE entries SET synced_sig = 'absent' WHERE id = $entry_id;
+-- PREP: crud_read_file_snapshot
+-- {§file-snapshot-revision}: content and its source revision come from one read snapshot.
+SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, COALESCE(c.buffer, b.content) AS content
+FROM entries e
+LEFT JOIN entry_channel_rows c ON c.entry_id = e.id AND c.name = 'body'
+LEFT JOIN contents b ON b.id = c.content_id
+WHERE e.workspace_id = $workspace_id AND e.scheme = 'file' AND e.authority = '' AND e.pathname = $pathname;
 
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;

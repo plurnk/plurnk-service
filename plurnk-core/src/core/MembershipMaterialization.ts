@@ -1,12 +1,13 @@
 // Materializing one tracked member from disk into its body channel, text or binary. Split out of GitMembership.
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import EntryCrud from "../schemes/_entry-crud.ts";
-import FileMaterialization, { type FileMaterializationMetadata } from "./file-materialization.ts";
+import EntryCrud, { type EntryData } from "../schemes/_entry-crud.ts";
+import FileMaterialization from "./file-materialization.ts";
 import type { FsDivergence, SourceProjectionMetadata, MemberSnapshot } from "./git-membership.ts";
+import FileSnapshot, { type FileRevision } from "./FileSnapshot.ts";
+import type { ByteSource } from "../content/byte-view.ts";
 
 const ABSENT_SIG = "absent";
 
@@ -44,62 +45,33 @@ const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null 
 };
 
 export default class MembershipMaterialization {
-    // Materialize a member's model-readable snapshot into a body channel via writeEntry (the
-    // entry-write paradigm) — so it appears in the manifest catalog and is READ-able
-    // (D4/D5). Change-gated: text changes with mtime:size; binary projections also
-    // change when their opaque reader identity changes. A binary source persists
-    // only derived Unicode when its installed handler provides it, otherwise an
-    // empty typed marker ({§membership-source-projection}).
-    // A tracked path missing on disk retains membership but loses its stale
-    // readable channels; its explicit absent signature makes a later
-    // reappearance another observable divergence.
+    // {§file-commit-serialization}, {§membership-change-gated-sync}
     static async materializeMember(
         pathname: string,
         root: string,
         ctx: PlurnkSchemeContext,
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
-        const canonical = join(root, pathname);
+        const path = join(root, pathname);
         const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
             workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname,
         });
-        // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
-        // never a content read: a member whose signature matches its last sync is a
-        // no-op (not re-read, re-tokenized, or rewritten). Coverage stays exhaustive
-        // (every member is stat'd); work is proportional to change.
-        let sig: string;
-        let sourceBytes: number;
-        try {
-            const st = await stat(canonical);
-            // A directory-shaped member — an embedded-repo boundary the untracked scan lists as
-            // `dir/` (native + iso alike) — is a membership marker: disk truth is a directory,
-            // nothing to materialize. Mirrors missing-on-disk: membership stands, no channel.
-            if (st.isDirectory()) return null;
-            sig = `${st.mtimeMs}:${st.size}`;
-            sourceBytes = st.size;
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-                if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
-                const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
-                    workspace_id: ctx.workspaceId,
-
-                    scheme: "file",
-                    authority: "",
-                    pathname,
-                    channel: "body",
-                });
-                await ctx.db.crud_delete_channels.run({ entry_id: known.id });
-                await ctx.db.crud_mark_member_absent.run({ entry_id: known.id });
-                return prior === undefined ? null : {
-                    pathname,
-                    entryId: known.id,
-                    channel: "body",
-                    before: prior.content,
-                    after: "",
-                };
-            }
-            throw err;
+        const observed = await FileSnapshot.observe(path);
+        if (observed === null) {
+            if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
+            return MembershipMaterialization.#publish(pathname, path, null, { channels: {} }, ctx);
         }
+        if (!observed.stats.isFile()) return null;
+        const { canonical } = observed;
+        const sourceBytes = Number(observed.stats.size);
+        const sourceMaterialization = FileMaterialization.classify(sourceBytes);
+        const acquired = sourceMaterialization.disposition === "input-limit"
+            ? null : await FileSnapshot.acquire(path, sourceMaterialization.maximumBytes);
+        if (sourceMaterialization.disposition !== "input-limit"
+            && (acquired === null || acquired.bytes === null || acquired.canonical !== canonical
+                || acquired.fingerprint !== observed.fingerprint)) return null;
+        const revision = acquired?.revision ?? { canonical, fingerprint: observed.fingerprint, hash: null };
+        const sig = JSON.stringify(revision);
         if (known !== undefined && known.synced_sig === sig) {
             const sourceMaterialization = FileMaterialization.fromAttributes(known.attributes);
             if (sourceMaterialization !== null) {
@@ -117,75 +89,46 @@ export default class MembershipMaterialization {
             }
         }
 
-        const mimetype = await FileMaterialization.detectMimetype(canonical, ctx.mimetypes);
-        const sourceMaterialization = FileMaterialization.classify(sourceBytes);
+        const bytes = acquired?.bytes;
+        const source: ByteSource | null = bytes === null || bytes === undefined ? null : {
+            size: async () => bytes.length,
+            read: async (start, end) => bytes.subarray(start - 1, end),
+        };
+        const mimetype = source === null
+            ? await FileMaterialization.detectMimetype(canonical, ctx.mimetypes)
+            : await FileMaterialization.detectSourceMimetype(canonical, source, ctx.mimetypes);
         if (sourceMaterialization.disposition === "input-limit") {
-            return MembershipMaterialization.#materializeLimited(
-                pathname,
-                mimetype,
-                sig,
-                known?.synced_sig !== sig,
-                known?.synced_sig === ABSENT_SIG,
-                sourceMaterialization,
-                ctx,
-            );
+            return MembershipMaterialization.#publish(pathname, path, revision, {
+                channels: { body: {
+                    content: "", mimetype, producerResult: FileMaterialization.failure(pathname, sourceMaterialization),
+                } },
+                attributes: FileMaterialization.attributes(sourceMaterialization),
+            }, ctx);
         }
+        if (acquired === null || acquired.bytes === null) throw new Error("File materialization has no acquired source bytes.");
         if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
-            return MembershipMaterialization.#materializeBinary(
-                pathname,
-                { path: canonical },
+            const entry = await MembershipMaterialization.#binaryEntry(
+                { path: canonical, content: acquired.bytes },
                 mimetype,
-                sig,
-                known?.synced_sig !== sig,
-                known?.synced_sig === ABSENT_SIG,
                 ctx,
                 identities,
             );
+            return MembershipMaterialization.#publish(pathname, path, revision, entry, ctx);
         }
-        let buf: Buffer;
-        try {
-            buf = await readFile(canonical);
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-            throw err;
-        }
-        const content = buf.toString("utf8");
-        // {§env-delta-filesystem-narration} — capture the prior snapshot before
-        // materialization replaces it, then journal the resulting net span.
-        const diskChanged = known?.synced_sig !== sig;
-        const prior = diskChanged
-            ? await ctx.db.ops_read_channel.get<{ content: string }>({
-                workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname, channel: "body",
-            })
-            : undefined;
-        const result = await EntryCrud.writeEntry(
-            { authority: "", pathname },
-            {
-                channels: { body: { content, mimetype } },
-                attributes: FileMaterialization.attributes(sourceMaterialization),
-            },
-            ctx,
-            "file",
-        );
-        if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
-        const changed = prior !== undefined && prior.content !== content;
-        if ((changed || known?.synced_sig === ABSENT_SIG) && result.entryId !== null) {
-            return { pathname, entryId: result.entryId, channel: "body", before: prior?.content ?? "", after: content };
-        }
-        return null;
+        return MembershipMaterialization.#publish(pathname, path, revision, {
+            channels: { body: { content: acquired.bytes.toString("utf8"), mimetype } },
+            attributes: FileMaterialization.attributes(sourceMaterialization),
+        }, ctx);
     }
 
 
-    static async #materializeBinary(
-        pathname: string,
+    // {§membership-source-projection}: project the acquired bytes, not a later read of their pathname.
+    static async #binaryEntry(
         input: ProcessInput,
         mimetype: string,
-        sig: string,
-        diskChanged: boolean,
-        previouslyAbsent: boolean,
         ctx: PlurnkSchemeContext,
         identities: Map<string, Promise<string>>,
-    ): Promise<FsDivergence | null> {
+    ): Promise<EntryData> {
         const mimetypes = ctx.mimetypes;
         if (mimetypes === undefined) throw new Error("GitMembership: configured mimetype registry is required");
 
@@ -223,39 +166,10 @@ export default class MembershipMaterialization {
             };
         }
 
-        const prior = diskChanged && metadata.disposition === "projected"
-            ? await ctx.db.ops_read_channel.get<{ content: string }>({
-                workspace_id: ctx.workspaceId,
-
-                scheme: "file",
-                authority: "",
-                pathname,
-                channel: "body",
-            })
-            : undefined;
-        const result = await EntryCrud.writeEntry(
-            { authority: "", pathname },
-            {
-                channels: { body: { content, mimetype: outputMimetype } },
-                attributes: { sourceProjection: metadata },
-            },
-            ctx,
-            "file",
-        );
-        if (result.entryId !== null) {
-            await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
-        }
-        const changed = prior !== undefined && prior.content !== content;
-        if ((changed || previouslyAbsent) && result.entryId !== null) {
-            return {
-                pathname,
-                entryId: result.entryId,
-                channel: "body",
-                before: prior?.content ?? "",
-                after: content,
-            };
-        }
-        return null;
+        return {
+            channels: { body: { content, mimetype: outputMimetype } },
+            attributes: { sourceProjection: metadata },
+        };
     }
 
 
@@ -274,54 +188,45 @@ export default class MembershipMaterialization {
     }
 
 
-    static async #materializeLimited(
+    // {§env-delta-filesystem-narration}: only settled source changes produce divergence evidence.
+    static async #publish(
         pathname: string,
-        mimetype: string,
-        sig: string,
-        diskChanged: boolean,
-        previouslyAbsent: boolean,
-        metadata: FileMaterializationMetadata,
+        path: string,
+        revision: FileRevision | null,
+        entry: EntryData,
         ctx: PlurnkSchemeContext,
     ): Promise<FsDivergence | null> {
-        const prior = diskChanged
-            ? await ctx.db.ops_read_channel.get<{ content: string }>({
-                workspace_id: ctx.workspaceId,
-
-                scheme: "file",
-                authority: "",
-                pathname,
-                channel: "body",
-            })
-            : undefined;
-        const result = await EntryCrud.writeEntry(
-            { authority: "", pathname },
-            {
-                channels: {
-                    body: {
-                        content: "",
-                        mimetype,
-                        producerResult: FileMaterialization.failure(pathname, metadata),
-                    },
-                },
-                attributes: FileMaterialization.attributes(metadata),
-            },
-            ctx,
-            "file",
-        );
-        if (result.entryId !== null) {
-            await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
-        }
-        const changed = prior !== undefined && prior.content !== "";
-        if ((changed || previouslyAbsent) && result.entryId !== null) {
-            return {
-                pathname,
-                entryId: result.entryId,
-                channel: "body",
-                before: prior?.content ?? "",
-                after: "",
-            };
-        }
-        return null;
+        const canonical = revision?.canonical ?? await FileSnapshot.prospectivePath(path);
+        return FileSnapshot.serialize(canonical, async () => {
+            if (revision === null) {
+                if (await FileSnapshot.observe(path) !== null || await FileSnapshot.prospectivePath(path) !== canonical) return null;
+            } else if (revision.hash === null) {
+                const current = await FileSnapshot.observe(path);
+                if (current?.canonical !== canonical || current.fingerprint !== revision.fingerprint) return null;
+            } else {
+                const current = await FileSnapshot.acquire(path, null);
+                if (current === null || !FileSnapshot.matches(revision, current.revision)) return null;
+            }
+            const prior = await ctx.db.crud_read_file_snapshot.get<{
+                synced_sig: string | null; content: string | null;
+            }>({ workspace_id: ctx.workspaceId, pathname });
+            const previous = FileSnapshot.decode(prior?.synced_sig ?? null);
+            const diskChanged = revision === null ? prior?.synced_sig !== ABSENT_SIG
+                : previous?.canonical !== revision.canonical
+                    || (previous.hash !== null && revision.hash !== null
+                        ? previous.hash !== revision.hash : previous.fingerprint !== revision.fingerprint);
+            const result = await EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "file", {
+                syncedSig: revision === null ? ABSENT_SIG : JSON.stringify(revision),
+            });
+            const content = entry.channels.body?.content ?? "";
+            const projection = entry.attributes?.sourceProjection as SourceProjectionMetadata | undefined;
+            const changed = diskChanged && prior?.content != null && (revision === null || prior.content !== content)
+                && (projection === undefined || projection.disposition === "projected");
+            if ((changed || prior?.synced_sig === ABSENT_SIG && revision !== null) && result.entryId !== null) {
+                return { pathname, entryId: result.entryId, channel: "body", before: prior?.content ?? "", after: content };
+            }
+            return null;
+        });
     }
 
 }

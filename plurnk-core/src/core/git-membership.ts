@@ -14,11 +14,8 @@
 //        member definitions and creation records remain the membership substrate.
 //        The overlay (workspace_constraints: include | exclude) composes here:
 //        `(ls-files ∪ include) − exclude` ({§membership-overlay-include}).
-//   D5 — coverage is exhaustive, work is change-gated: every member is stat'd each
-//        turn, but only one whose mtime:size signature changed is re-read,
-//        re-tokenized, and rewritten. A binary source also compares the installed
-//        projection identity without reacquiring bytes. EMI divergence rides the
-//        same pass. {§membership-change-gated-sync}
+//   D5 — source verification is exhaustive; projection and indexing are
+//        change-gated ({§membership-change-gated-sync}).
 //
 // Git resolution uses native Git (subprocess + hermeticGitEnv,
 // AbortSignal-respecting).

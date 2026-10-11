@@ -50,6 +50,7 @@ const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
 const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
+const project = join(temp, "project");
 
 // {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so
 // every client presents it. The real client reads it through its own env cascade; this harness
@@ -186,6 +187,7 @@ try {
         mkdir(install, { recursive: true }),
         mkdir(terminalStage, { recursive: true }),
         mkdir(home, { recursive: true }),
+        mkdir(project, { recursive: true }),
     ]);
     await run("npm", ["init", "-y"], { cwd: install });
     const serviceSpecs = await pack(root, ["--workspaces"]);
@@ -280,6 +282,19 @@ try {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + delivered response + observed completion\n");
+    // {§file-publication} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
+    const files = await runClient(clientBin, [
+        "--json", "--yolo", "--workspace", "installed-files", "--worker", "File_Worker",
+        "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout", "20",
+        "Exercise installed file publication and persistence.",
+    ], { cwd: project, env: clientEnv, timeout: 30_000 });
+    const fileRecord = JSON.parse(files.stdout);
+    const fileOps = fileRecord.turns?.flatMap(({ ops }) => ops).filter(({ origin }) => origin === "model").map(({ op }) => op);
+    if (fileRecord.finalStatus !== 200 || fileRecord.response !== "The installed file journey is complete."
+        || JSON.stringify(fileOps) !== JSON.stringify(["EDIT", "EDIT", "SEND"])
+        || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
+        throw new Error(`installed file publication failed\n${files.stdout}\n${files.stderr}`);
+    }
     const inspected = await runClient(process.execPath, [clientBin, "--workspace", "installed-cli", "mcp"], {
         cwd: install, env: clientEnv, timeout: 30_000,
     });
@@ -458,6 +473,17 @@ try {
 
     await daemon.stop();
     daemon = await boot();
+    const persistedFiles = new AguiTransport(
+        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
+        "file-observer",
+        { workspace: "installed-files", projectRoot: project },
+    );
+    const persistedFile = await persistedFiles.rpc("entry.read", { target: "integrity.txt" });
+    if (persistedFile.status !== 200 || persistedFile.content !== "after"
+        || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
+        throw new Error(`installed file projection did not survive reconstruction: ${JSON.stringify(persistedFile)}`);
+    }
+    process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
     const afterRestart = new AguiTransport(
         { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
         world,

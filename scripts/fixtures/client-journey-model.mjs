@@ -14,6 +14,19 @@ const journeys = Object.freeze({
             content: "````SEND [200]\nThe installed one-shot journey is complete.\n````",
         }],
     },
+    files: {
+        marker: "Exercise installed file publication and persistence.",
+        programs: [{
+            reasoning: "Create the project file.",
+            content: "```EDIT (integrity.txt)\nbefore\n```",
+        }, {
+            reasoning: "Replace the observed file through its normal proposal path.",
+            content: "```EDIT (integrity.txt) <1,-1>\nafter\n```",
+        }, {
+            reasoning: "The file operations have settled.",
+            content: "```SEND [200]\nThe installed file journey is complete.\n```",
+        }],
+    },
     tui: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
@@ -123,6 +136,13 @@ export const startClientJourneyModel = async () => {
             const program = definition.programs[index];
             // {§packet-wire-envelope}: the packet is the system and user messages; the assistant messages are the worker's emissions.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map((message) => typeof message.content === "string" ? message.content : "").join("\n\n");
+            if (journey === "files" && index > 0) {
+                const records = [...text.matchAll(/(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/gu)]
+                    .flatMap((match) => parseLogRecords(match[1].trim()));
+                const edits = records.filter((row) => String(row.logPath).endsWith("/EDIT") && row.path === "integrity.txt");
+                assert.equal(edits.length, index, "each published file operation remains observable");
+                assert.ok(edits.every((row) => (row.status ?? 200) === 200), "file publication succeeded through the installed approval path");
+            }
             if (journey === "recovery" && index === 1) {
                 assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked worker");
                 assert.ok(text.includes("retained-stream-output"), "the next packet retains the producer's output");

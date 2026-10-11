@@ -10,6 +10,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
@@ -65,6 +66,7 @@ test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without 
         await writeFile(join(root, "note.md"), "original\n");
         const seeded = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: "note.md" });
         assert.ok(seeded);
+        await MembershipMaterialization.materializeMember("note.md", root, ctx, new Map());
         const before = await db.test_entries_count_all.get<{ n: number }>({});
 
         const r = await new File().edit(editStmt(join(root, "note.md"), "revised\n", fullReplace), ctx);
@@ -154,6 +156,8 @@ test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical ro
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: mountKeyClient, source: "members" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
+        await MembershipMaterialization.materializeMember(mountKeyClient, root, ctx, new Map());
+        await MembershipMaterialization.materializeMember(mountKeyGit, root, ctx, new Map());
         for (const pathname of [mountKeyClient, join(outside, "client.md")]) {
             const rw = await file.edit(editStmt(pathname, "revised\n", fullReplace), ctx);
             assert.equal(rw.status, 202, "relative and absolute spellings preserve the outside member's write grant");

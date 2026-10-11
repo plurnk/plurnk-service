@@ -16,9 +16,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
 import GitMembership from "../../src/core/git-membership.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { DEFAULT_MIMETYPES, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
@@ -233,20 +234,14 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
             assert.equal(denied.status, 403);
 
             await writeFile(join(root, "existing.md"), "before\n");
-            const member = await db.crud_register_workspace_member.get<{ id: number }>({
+            await db.crud_register_workspace_member.get({
                 workspace_id: workspaceId,
                 scheme: "file",
                 authority: "",
                 pathname: "existing.md",
                 membership_origin: "constraint",
             });
-            await seedStaticChannel(db, member?.id, {
-                name: "body",
-                content: "before\n",
-                mimetype: "text/markdown",
-            });
-            const before = await stat(join(root, "existing.md"));
-            await db.crud_set_synced_sig.run({ entry_id: member?.id, synced_sig: `${before.mtimeMs}:${before.size}` });
+            await MembershipMaterialization.materializeMember("existing.md", root, ctx, new Map());
             const existing = await file.edit(edit("existing.md", "after\n", replaceAll), ctx);
             assert.equal(existing.status, 202, "the creation ceiling does not disable existing-member writes");
         });
