@@ -368,7 +368,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
                 );
             },
-            reconcileMessages: (workerId, endedLoopId) => this.#reconcileOrphanedMessages(workerId, endedLoopId),
             runLoop: async ({
                 workspaceId,
                 workerId,
@@ -1964,42 +1963,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
         return this.#drains.inject(args);
-    }
-
-    // Durable message promotion remains daemon policy; DrainSupervisor invokes
-    // it under the same worker lock as enqueue and drain teardown.
-    async #reconcileOrphanedMessages(workerId: number, endedLoopId: number): Promise<void> {
-        const messages = await this.#db.drain_orphaned_messages_for_loop.all<{
-            body: string;
-            source: string | null;
-            model_route_id: number | null;
-            spawn_model_route_id: number | null;
-            effort: Effort | null;
-            max_turns: number;
-        }>({ loop_id: endedLoopId });
-        const first = messages[0];
-        if (first === undefined) return;
-        const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
-            id: number;
-            sequence: number;
-            status: number;
-        }>({
-            worker_id: workerId,
-            prompt: first.body,
-            prompt_source: first.source,
-            model_route_id: first.model_route_id,
-            spawn_model_route_id: first.spawn_model_route_id,
-            effort: first.effort,
-            max_turns: first.max_turns,
-            orphan_source_loop_id: endedLoopId });
-        if (recovery === undefined) throw new Error("reconcileOrphanedMessages: enqueue returned no row");
-        if (recovery.status !== 100) return;
-        const moved = await this.#db.drain_rehome_orphaned_messages.all<{ id: number; ordinal: number }>({
-            source_loop_id: endedLoopId,
-            target_loop_id: recovery.id });
-        if (moved.length !== messages.length) {
-            throw new Error(`reconcileOrphanedMessages: expected to re-home ${messages.length} messages, moved ${moved.length}`);
-        }
     }
 
     cancelDrain(workerId: number, reason: string = "user_cancelled"): boolean {

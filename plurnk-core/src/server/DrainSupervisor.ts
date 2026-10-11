@@ -96,7 +96,6 @@ type InjectPrompt = (
     messageAddress?: string,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
-type ReconcileMessages = (workerId: number, endedLoopId: number) => Promise<void>;
 type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 
 // Owns the worker-local queue consumer and every process-local edge that may
@@ -107,7 +106,6 @@ export default class DrainSupervisor {
     readonly #lifecycle: LoopLifecycle;
     readonly #injectPrompt: InjectPrompt;
     readonly #assertInjectionCompatibility: AssertInjectionCompatibility;
-    readonly #reconcileMessages: ReconcileMessages;
     readonly #runLoop: RunLoop;
     readonly #loopUsage: (loopId: number) => Promise<LoopUsage>;
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
@@ -139,7 +137,6 @@ export default class DrainSupervisor {
         lifecycle,
         injectPrompt,
         assertInjectionCompatibility,
-        reconcileMessages,
         runLoop,
         loopUsage,
         loopAttributions,
@@ -154,7 +151,6 @@ export default class DrainSupervisor {
         lifecycle: LoopLifecycle;
         injectPrompt: InjectPrompt;
         assertInjectionCompatibility: AssertInjectionCompatibility;
-        reconcileMessages: ReconcileMessages;
         runLoop: RunLoop;
         loopUsage: (loopId: number) => Promise<LoopUsage>;
         loopAttributions: (loopId: number) => Promise<string[]>;
@@ -169,7 +165,6 @@ export default class DrainSupervisor {
         this.#lifecycle = lifecycle;
         this.#injectPrompt = injectPrompt;
         this.#assertInjectionCompatibility = assertInjectionCompatibility;
-        this.#reconcileMessages = reconcileMessages;
         this.#runLoop = runLoop;
         this.#loopUsage = loopUsage;
         this.#loopAttributions = loopAttributions;
@@ -665,13 +660,47 @@ export default class DrainSupervisor {
         return started;
     }
 
-    // Message promotion shares the worker lock with enqueue and drain teardown,
-    // while Daemon retains the durable message-policy implementation.
+    // {§worker-causal-admission}: promotion shares admission and queue control
+    // with enqueue, cancellation, and drain teardown.
     async reconcileOrphanedMessages(workerId: number, endedLoopId: number): Promise<void> {
         const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
         if (row === undefined) throw new Error(`message promotion worker ${workerId} does not exist`);
         return this.#withAdmissionLock(row.workspace_id, () =>
             this.#withDrainLock(workerId, () => this.#reconcileMessages(workerId, endedLoopId)));
+    }
+
+    async #reconcileMessages(workerId: number, endedLoopId: number): Promise<void> {
+        const messages = await this.#db.drain_orphaned_messages_for_loop.all<{
+            body: string;
+            source: string | null;
+            model_route_id: number | null;
+            spawn_model_route_id: number | null;
+            effort: Effort | null;
+            max_turns: number;
+        }>({ loop_id: endedLoopId });
+        const first = messages[0];
+        if (first === undefined) return;
+        const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
+            id: number;
+            sequence: number;
+            status: number;
+        }>({
+            worker_id: workerId,
+            prompt: first.body,
+            prompt_source: first.source,
+            model_route_id: first.model_route_id,
+            spawn_model_route_id: first.spawn_model_route_id,
+            effort: first.effort,
+            max_turns: first.max_turns,
+            orphan_source_loop_id: endedLoopId });
+        if (recovery === undefined) throw new Error("reconcileOrphanedMessages: enqueue returned no row");
+        if (recovery.status !== 100) return;
+        const moved = await this.#db.drain_rehome_orphaned_messages.all<{ id: number; ordinal: number }>({
+            source_loop_id: endedLoopId,
+            target_loop_id: recovery.id });
+        if (moved.length !== messages.length) {
+            throw new Error(`reconcileOrphanedMessages: expected to re-home ${messages.length} messages, moved ${moved.length}`);
+        }
     }
 
     #workerSignal(workerId: number): AbortController {

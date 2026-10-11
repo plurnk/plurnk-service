@@ -218,86 +218,95 @@ test("boot closes an open operation turn even when its loop already parked", asy
     }
 });
 
-test("{§message-loop-containment}: boot completes one partially staged orphan recovery without replay", async () => {
-    const db = await openMigrated();
-    const firstProvider = new Mock({
-        contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\nFirst orphan recovered.\n````\n\n````SEND [200]\nSecond orphan recovered.\n````")],
-    });
-    ProviderInstantiate.registerInstance(firstProvider, providerSpec);
-    const firstDaemon = new Daemon({ db, provider: firstProvider });
-    let secondDaemon: Daemon | undefined;
-    try {
-        const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
-        const sourceLoopId = await enqueueLoop(db, workerId, "concluded source");
-        for (const [index, content] of ["first orphan", "second orphan"].entries()) {
-            const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
-            assert.ok(message !== undefined, "the unfinished source admitted the message before forced termination");
-        }
-        await db.test_set_loop_status.run({
-            id: sourceLoopId,
-            status: 200,
-            terminal_result: JSON.stringify({ status: 200 }),
-        });
-
-        const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
-            id: number; sequence: number; status: number;
-        }>({
-            worker_id: workerId,
-            prompt: "first orphan",
-            prompt_source: "worker://sender-1",
-            model_route_id: await routeForSpec(db, providerSpec),
-            spawn_model_route_id: null,
-            effort: "adaptive",
-            max_turns: 50,
-                orphan_source_loop_id: sourceLoopId,
-        });
-        assert.ok(recovery !== undefined);
-        assert.equal(recovery.sequence, 2);
-
-        await firstDaemon.start();
-        assert.equal(await waitForDb(
-            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: recovery.id }))?.status,
-            (status) => status === 200,
-        ), 200);
-        const frames = (await db.test_log_entries_by_loop.all<{
-            op: string; origin: string; tx: string; source: string | null;
-        }>({ loop_id: recovery.id })).filter((row) => row.op === "SEND" && row.origin === "_plurnk");
-        assert.deepEqual(
-            frames.map((row) => ({
-                content: (JSON.parse(row.tx) as { body: { raw: string } }).body.raw,
-                source: row.source,
-            })),
-            [
-                { content: "first orphan", source: "worker://sender-1" },
-                { content: "second orphan", source: "worker://sender-2" },
-            ],
-            "boot completed the existing queued recovery before its drain claimed it",
-        );
-        const inbox = (await db.test_messages_by_loop.all({ loop_id: recovery.id })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
-        assert.deepEqual(inbox.map(({ ordinal, body }) => ({ ordinal, body })), [{ ordinal: 1, body: "first orphan" }, { ordinal: 2, body: "second orphan" }], "the orphans moved into the recovery loop's inbox, renumbered");
-        assert.ok(inbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them once");
-        await firstDaemon.stop();
-
-        const secondProvider = new Mock({
+for (const staged of ["loop", "messages"] as const) {
+    test(`{§message-loop-containment}: boot completes recovery with ${staged} staged without replay`, async () => {
+        const db = await openMigrated();
+        const firstProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
+            responses: [makeMockResponse("````SEND [200]\nFirst orphan recovered.\n````\n\n````SEND [200]\nSecond orphan recovered.\n````")],
         });
-        ProviderInstantiate.registerInstance(secondProvider, providerSpec);
-        secondDaemon = new Daemon({ db, provider: secondProvider });
-        await secondDaemon.start();
-        const modelLoops = (await db.application_list_worker_loops.all<{ prompt: string }>({
-            worker_id: workerId,
-        })).filter(({ prompt }) => prompt.length > 0);
-        assert.equal(modelLoops.length, 2, "a later boot neither remints nor replays the completed recovery");
-        assert.equal(secondProvider.remaining, 1, "no provider call was replayed");
-    } finally {
-        await secondDaemon?.stop();
-        await firstDaemon.stop();
-        await db.close();
-    }
-});
+        ProviderInstantiate.registerInstance(firstProvider, providerSpec);
+        const firstDaemon = new Daemon({ db, provider: firstProvider });
+        let secondDaemon: Daemon | undefined;
+        try {
+            const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
+            const sourceLoopId = await enqueueLoop(db, workerId, "concluded source");
+            for (const [index, content] of ["first orphan", "second orphan"].entries()) {
+                const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
+                assert.ok(message !== undefined, "the unfinished source admitted the message before forced termination");
+            }
+            await db.test_set_loop_status.run({
+                id: sourceLoopId,
+                status: 200,
+                terminal_result: JSON.stringify({ status: 200 }),
+            });
+
+            const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
+                id: number; sequence: number; status: number;
+            }>({
+                worker_id: workerId,
+                prompt: "first orphan",
+                prompt_source: "worker://sender-1",
+                model_route_id: await routeForSpec(db, providerSpec),
+                spawn_model_route_id: null,
+                effort: "adaptive",
+                max_turns: 50,
+                orphan_source_loop_id: sourceLoopId,
+            });
+            assert.ok(recovery !== undefined);
+            assert.equal(recovery.sequence, 2);
+            if (staged === "messages") {
+                const moved = await db.drain_rehome_orphaned_messages.all({
+                    source_loop_id: sourceLoopId,
+                    target_loop_id: recovery.id,
+                });
+                assert.equal(moved.length, 2, "the prior process moved both messages before disappearing");
+            }
+
+            await firstDaemon.start();
+            assert.equal(await waitForDb(
+                async () => (await db.test_get_loop_status.get<{ status: number }>({ id: recovery.id }))?.status,
+                (status) => status === 200,
+            ), 200);
+            const frames = (await db.test_log_entries_by_loop.all<{
+                op: string; origin: string; tx: string; source: string | null;
+            }>({ loop_id: recovery.id })).filter((row) => row.op === "SEND" && row.origin === "_plurnk");
+            assert.deepEqual(
+                frames.map((row) => ({
+                    content: (JSON.parse(row.tx) as { body: { raw: string } }).body.raw,
+                    source: row.source,
+                })),
+                [
+                    { content: "first orphan", source: "worker://sender-1" },
+                    { content: "second orphan", source: "worker://sender-2" },
+                ],
+                "boot completed the existing queued recovery before its drain claimed it",
+            );
+            const inbox = (await db.test_messages_by_loop.all({ loop_id: recovery.id })) as Array<{ ordinal: number; body: string; log_entry_id: number | null }>;
+            assert.deepEqual(inbox.map(({ ordinal, body }) => ({ ordinal, body })), [{ ordinal: 1, body: "first orphan" }, { ordinal: 2, body: "second orphan" }], "the orphans moved into the recovery loop's inbox, renumbered");
+            assert.ok(inbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them once");
+            await firstDaemon.stop();
+
+            const secondProvider = new Mock({
+                contextWindow: 16384,
+                responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
+            });
+            ProviderInstantiate.registerInstance(secondProvider, providerSpec);
+            secondDaemon = new Daemon({ db, provider: secondProvider });
+            await secondDaemon.start();
+            const modelLoops = (await db.application_list_worker_loops.all<{ prompt: string }>({
+                worker_id: workerId,
+            })).filter(({ prompt }) => prompt.length > 0);
+            assert.equal(modelLoops.length, 2, "a later boot neither remints nor replays the completed recovery");
+            assert.equal(secondProvider.remaining, 1, "no provider call was replayed");
+        } finally {
+            await secondDaemon?.stop();
+            await firstDaemon.stop();
+            await db.close();
+        }
+    });
+}
 
 test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay cancelled across restart", async () => {
     const db = await openMigrated();
