@@ -208,6 +208,27 @@ test("{§file-delete-revision}: creation rollback preserves another writer's rep
     assert.equal(await fs.readFile(target, "utf8"), external);
 });
 
+test("{§file-delete-revision}: creation rollback follows its published identity, not a retargeted parent", async (t) => {
+    const fx = await fixture(t);
+    await fs.mkdir(join(fx.root, "first"));
+    await fs.mkdir(join(fx.root, "second"));
+    const alias = join(fx.root, "alias");
+    await fs.symlink("first", alias);
+    const proposal = await fx.file.edit(editStmt(localPath("alias/new.md"), original), fx.ctx);
+    assert.equal(proposal.status, 202);
+    t.mock.method(GitMembership, "incorporateCreation", async () => {
+        await fs.unlink(alias);
+        await fs.symlink("second", alias);
+        throw new Error("fixture: incorporation failed after the parent changed");
+    });
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    assert.equal(result.status, 500);
+    assert.match(result.problem?.type ?? "", /creation-incorporation-failed$/);
+    await assert.rejects(fs.stat(join(fx.root, "first/new.md")), { code: "ENOENT" });
+    await assert.rejects(fs.stat(join(fx.root, "second/new.md")), { code: "ENOENT" });
+    assert.equal(await fs.readlink(alias), "second");
+});
+
 for (const existing of [true, false]) {
     test(`{§file-publication}: a partial stage write preserves ${existing ? "the original" : "absence"}`, async (t) => {
         const fx = await fixture(t);

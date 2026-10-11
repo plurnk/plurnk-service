@@ -9,3 +9,5 @@ approval, preserve external replacements during rollback, and publish file
 projections together with their source revisions. Existing databases retain
 their contents and rematerialize file revisions after upgrade. Preserve original
 I/O failures alongside resource-cleanup failures.
+Rollback validates the published physical file rather than a subsequently
+retargeted alias.

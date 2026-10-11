@@ -727,14 +727,14 @@ export default class File extends CoreSchemeAdapterBase {
                         rollbackErrors.push(rollbackCause);
                     }
                     try {
-                        const current = await FileSnapshot.acquire(join(root, relPath), null);
-                        if (current === null && await FileSnapshot.observe(join(root, relPath)) !== null) {
+                        const current = await FileSnapshot.acquire(publication.revision.canonical, null);
+                        if (current === null && await FileSnapshot.observe(publication.revision.canonical) !== null) {
                             throw new Error("The created path changed during rollback validation; it was preserved.");
                         }
                         if (current !== null && !FileSnapshot.matches(publication.revision, current.revision)) {
                             throw new Error("The created path changed; its replacement was preserved.");
                         }
-                        if (current !== null) await rm(canonical);
+                        if (current !== null) await rm(publication.revision.canonical);
                     } catch (rollbackCause) {
                         if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
                             rollbackErrors.push(rollbackCause);
