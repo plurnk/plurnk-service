@@ -46,6 +46,9 @@ This is an example of the final deliverable response.
 > [!TIP]
 > SEND with the (path) to respond to a specific Open Message.
 
+> [!TIP]
+> Don't include a code (`[200]` or `[499]`) with a SEND unless it's the final deliverable response.
+
 > [!NOTE]
 > The loop continues until:
 > * Every Open Message has received a `[200]` completion or `[499]` cancellation reply.
