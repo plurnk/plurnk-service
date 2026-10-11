@@ -5,6 +5,7 @@ import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
 import { projectTarball, resolveProjected } from "./package-projection.mjs";
+import { packRecords } from "./npm-json.mjs";
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
@@ -88,13 +89,9 @@ try {
             ["pack", "--json", "--ignore-scripts", "--pack-destination", destination, "-w", manifest.name],
             { cwd: root, maxBuffer: 64 * 1024 * 1024 },
         );
-        let record;
-        try {
-            [record] = JSON.parse(packed.stdout);
-        } catch (cause) {
-            throw new Error(`${manifest.name}: npm pack did not return one JSON record`, { cause });
-        }
-        if (record?.filename === undefined) throw new Error(`${manifest.name}: npm pack returned no filename`);
+        const records = packRecords(packed.stdout);
+        if (records.length !== 1) throw new Error(`${manifest.name}: npm pack returned no unique archive`);
+        const [record] = records;
         const archive = path.join(destination, record.filename);
         // The tarball that ships is the projection (#797): no dev condition, every target shipped,
         // and every export resolving into the tarball under --conditions=plurnk-dev.

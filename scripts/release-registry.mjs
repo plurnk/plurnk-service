@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { candidateGraph, publicationBatches } from "./release-package-graph.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
+import { viewManifest } from "./npm-json.mjs";
 
 const exec = promisify(execFile);
 const view = async (spec) => (await exec("npm", ["view", spec, "--json"], { maxBuffer: 16 * 1024 * 1024 })).stdout;
@@ -17,7 +18,7 @@ export const registryPackage = async (name, version, lookup = view) => {
         if (diagnostic?.error?.code === "E404") return undefined;
         throw new Error(`registry lookup failed for ${name}@${version}`, { cause });
     }
-    const manifest = JSON.parse(response);
+    const manifest = viewManifest(response);
     if (manifest?.name !== name || manifest.version !== version) throw new Error(`registry returned a different identity for ${name}@${version}`);
     return manifest;
 };

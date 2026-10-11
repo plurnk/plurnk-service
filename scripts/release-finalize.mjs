@@ -3,6 +3,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { canonicalForgeOrigin } from "./release-authority.mjs";
 import { readCandidate, readJson } from "./release-candidate.mjs";
+import { viewManifest } from "./npm-json.mjs";
 
 const exec = promisify(execFile);
 const output = async (command, args, cwd) => (await exec(command, args, {
@@ -42,7 +43,7 @@ export const finalizeRelease = async ({ root, repo, packageFile, version, commit
     const revision = await git("rev-parse", `${commit ?? tag}^{commit}`);
     const manifest = JSON.parse(await git("show", `${revision}:${packageFile}`));
     if (manifest.version !== version) throw new Error(`${repo}: ${revision} contains ${manifest.version}, not ${version}`);
-    const published = JSON.parse(await run("npm", ["view", `${manifest.name}@${version}`, "--json"], root));
+    const published = viewManifest(await run("npm", ["view", `${manifest.name}@${version}`, "--json"], root));
     if (published.version !== version) throw new Error(`${manifest.name}@${version} is not served`);
     if (published.gitHead !== undefined && published.gitHead !== revision) {
         throw new Error(`${repo}: published gitHead ${published.gitHead} differs from ${revision}`);

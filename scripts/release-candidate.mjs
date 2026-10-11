@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { candidateGraph, publicationOrder } from "./release-package-graph.mjs";
 import { projectTarball } from "./package-projection.mjs";
 import { repositoryName } from "./release-authority.mjs";
+import { packRecords } from "./npm-json.mjs";
 
 const exec = promisify(execFile);
 export const output = async (command, args, cwd) => (await exec(command, args, { cwd, maxBuffer: 128 * 1024 * 1024 })).stdout.trim();
@@ -36,8 +37,8 @@ export const selectPackages = async (directories) => {
 };
 
 export const packCandidate = async (record, directory) => {
-    const packed = JSON.parse(await output("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", directory], record.cwd));
-    if (packed.length !== 1 || typeof packed[0]?.filename !== "string") throw new Error(`${record.manifest.name}: npm pack returned no unique archive`);
+    const packed = packRecords(await output("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", directory], record.cwd));
+    if (packed.length !== 1) throw new Error(`${record.manifest.name}: npm pack returned no unique archive`);
     const archive = packed[0].filename;
     const file = path.join(directory, archive);
     const { manifest } = await projectTarball(file, { gitHead: record.commit });

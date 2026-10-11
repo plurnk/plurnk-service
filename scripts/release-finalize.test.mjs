@@ -178,6 +178,17 @@ test("an unserved version cannot create a tag or a Release", async () => {
     assert.ok(!calls.some((c) => c.includes("push") || c.includes("-s") || c.includes("create")));
 });
 
+test("{§release-finalization} npm 12's manifest array preserves publication verification", async () => {
+    const { run, options, calls } = fixture({ tag: true });
+    await finalizeRelease(options, async (command, args, root) => {
+        const result = await run(command, args, root);
+        return command === "npm" ? JSON.stringify([JSON.parse(result)]) : result;
+    });
+    assert.ok(calls.some((call) => call[1] === "verify-commit"));
+    assert.ok(calls.some((call) => call[1] === "verify-tag"));
+    assert.ok(calls.some((call) => call[0] === "gh" && call[1] === "release" && call[2] === "create"));
+});
+
 test("a conflicting remote tag is never overwritten or announced", async () => {
     const { run, options, calls } = fixture({ tag: true, remoteTag: "c".repeat(40) });
     await assert.rejects(finalizeRelease(options, run), /conflicting.*tag/);

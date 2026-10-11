@@ -12,6 +12,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { projectTarball } from "./package-projection.mjs";
+import { packRecords } from "./npm-json.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import SqlRite from "@possumtech/sqlrite";
@@ -91,12 +92,9 @@ const runClient = (file, args, options) => new Promise((accept, reject) => {
 });
 
 const pack = async (cwd, args = []) => {
-    const packed = JSON.parse((await run("npm", [
+    const packed = packRecords((await run("npm", [
         "pack", ...args, "--ignore-scripts", "--json", "--pack-destination", temp,
     ], { cwd, maxBuffer: 128 * 1024 * 1024 })).stdout);
-    if (!Array.isArray(packed) || packed.some(({ filename }) => typeof filename !== "string")) {
-        throw new Error(`npm pack returned no artifact for ${cwd}`);
-    }
     return packed.map(({ filename }) => join(temp, filename));
 };
 

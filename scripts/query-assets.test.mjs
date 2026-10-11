@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
+import { packRecords } from "./npm-json.mjs";
 
 const run = promisify(execFile);
 
@@ -15,7 +16,9 @@ test("{§mimetype-query-assets} built query loading is contained in the packed p
     const directory = await mkdtemp(join(tmpdir(), "plurnk-query-assets-"));
     try {
         const { stdout } = await run("npm", ["pack", "--json", "--pack-destination", directory], { cwd: workspace });
-        const [packed] = JSON.parse(stdout);
+        const records = packRecords(stdout);
+        assert.equal(records.length, 1);
+        const [packed] = records;
         assert.deepEqual(packageArtifactViolations("plurnk-mimetypes", packed.files.map(({ path }) => path)), []);
         await run("tar", ["-xzf", join(directory, packed.filename), "-C", directory]);
         const root = join(directory, "package");

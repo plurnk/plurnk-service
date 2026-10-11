@@ -15,6 +15,13 @@ test("{§release-candidate-graph} registry queries the exact version even when i
     assert.equal(result.version, version);
 });
 
+test("{§release-candidate-graph} npm 12's manifest array still verifies exact registry identity", async () => {
+    const manifest = { name, version, dist: { integrity: candidate.integrity } };
+    assert.deepEqual(await registryPackage(name, version, async () => JSON.stringify([manifest])), manifest);
+    await assert.rejects(registryPackage(name, version, async () => JSON.stringify([{ ...manifest, version: "3.0.0" }])), /different identity/);
+    await assert.rejects(registryPackage(name, version, async () => JSON.stringify([manifest, manifest])), /no unique package manifest/);
+});
+
 test("{§release-candidate-graph} only explicit missing-version evidence permits publication", async () => {
     assert.equal(await registryPackage(name, version, async () => { throw error("E404"); }), undefined);
     for (const cause of [error("E401"), error("E500"), error("ETIMEDOUT"), new Error("connection lost")]) {
