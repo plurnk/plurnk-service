@@ -10,9 +10,11 @@ import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import { EntryCoordinates } from "@plurnk/plurnk-schemes";
 import type {
+    EditBatchResult,
     EntryAddress,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
+    ResolvedEditStatement,
     SchemeCtx,
     ProposalApplyRequest,
     SchemeHandler,
@@ -20,7 +22,7 @@ import type {
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 
 // {§runtime-resource-binding} Stored output and live runtime facets use one entry face.
-export default class ExecOutputScheme extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
+export default class ExecOutputScheme extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill" | "editBatch"> {
     #manifest: SchemeManifest;
     #exec: Exec;
     #facet: RuntimeSchemeFacet | undefined;
@@ -96,6 +98,18 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         if (prepared !== undefined && prepared.status >= 300) return prepared as FindResult;
         const core = this.coreContext(ctx);
         return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {});
+    }
+
+    // {§runtime-resource-binding} A claimed resource's EDIT is its facet's; stored output has none.
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditBatchResult> {
+        const edit = this.#facet?.editBatch;
+        const target = statements[0]?.target ?? null;
+        if (edit !== undefined && target !== null && this.claimsLiveResource(target)) {
+            return edit.call(this.#facet, statements, await this.#facetContext(ctx, target));
+        }
+        return Results.failure("scheme:exec", "operation-not-implemented", 501,
+            `Scheme '${this.#manifest.name}' does not implement EDIT.`, { entryId: null, channel: null },
+            { scheme: this.#manifest.name, operation: "EDIT", retryable: false });
     }
 
     // {§exec-input} reaches a stored execution's process; a claimed resource is a recipient of its own.

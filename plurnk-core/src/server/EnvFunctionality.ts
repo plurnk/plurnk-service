@@ -9,7 +9,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
-import { MetadataOptions } from "@plurnk/plurnk-schemes";
+import { MetadataOptions, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
@@ -45,7 +45,9 @@ const DEFINITION: JsonSchema = {
     },
 } as unknown as JsonSchema;
 
-export default class EnvFunctionality implements FunctionalityAdapter {
+export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet> {
+    // {§env-scheme} — the registry as this family's own address space, env:///NAME.
+    readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;
     readonly summary = "Read and shape the environment your commands run in";
@@ -68,8 +70,9 @@ export default class EnvFunctionality implements FunctionalityAdapter {
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
 
-    constructor(defaults: () => Promise<readonly EnvDefaultsFile[]>) {
+    constructor(defaults: () => Promise<readonly EnvDefaultsFile[]>, scheme?: RuntimeSchemeFacet) {
         this.#defaults = defaults;
+        this.scheme = scheme;
     }
 
     // Service origin: every ambient name the operator's ceiling admits, exactly as a

@@ -43,6 +43,7 @@ import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
 import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
+import EnvScheme from "../schemes/Env.ts";
 import HostPaths from "../core/HostPaths.ts";
 import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
@@ -242,7 +243,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Worker's commands run in.
-        this.#functionality.register(new EnvFunctionality(EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath)));
+        // {§env-scheme} — the family's face: reads project the dispatching Worker's effective
+        // environment, writes go through the family's own admission at the Worker's layer.
+        this.#functionality.register(new EnvFunctionality(
+            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
+            new EnvScheme(
+                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId),
+                (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
+            ),
+        ));
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights

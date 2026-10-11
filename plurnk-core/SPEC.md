@@ -4504,14 +4504,15 @@ core owns discovery roots.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
-whole live half there: READ and FIND preparation, FIND, SEND, WAIT and KILL are
-its own wherever it implements them. A claimed KILL the facet does not implement
+whole live half there: READ and FIND preparation, FIND, EDIT, SEND, WAIT and KILL
+are its own wherever it implements them. A claimed KILL the facet does not implement
 is the ordinary entry KILL ({§stream-control}); an unclaimed coordinate keeps the
 stored-execution behaviour, SEND to a process included. Where its resources are
 not shaped like the executor's output, the facet states their representation —
-resource authority, channels, the default channel — and that manifest governs
-every claimed coordinate: its address, its fragmentless READ, the channel a
-subscription publishes. An adapter states the `traits` of its runtime — `web`
+resource authority, channels, the default channel, who may write them — and that
+manifest governs every claimed coordinate: its address, its fragmentless READ, the
+channel a subscription publishes, the writer gate ({§scheme-surface}) an EDIT or a
+COPY into it passes. An adapter states the `traits` of its runtime — `web`
 for a family that reaches the network — so {§capability-admission} selects its
 manager and its resources alike.
 
@@ -4547,6 +4548,23 @@ door past the ceiling.
 
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
 not from a live process or a cached worker environment.
+
+§env-scheme **The registry is an address space.** Every name in effect for a Worker's commands —
+the ambient names the ceiling admits, workspace defaults and the Worker's own entries, exactly
+what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a
+reserved or masked name is no resource. The family's manager exposes it as the facet of its own
+`env://` namespace ({§runtime-resource-binding}), read for the dispatching Worker: READ projects
+the value its commands receive now, FIND lists the names in effect and a pattern on it matches
+values, COPY carries a value out. The manager's own output streams, eight hexadecimal characters
+({§execution-output-identity}), stay the executor's. A write is the Worker's own layer, never the
+workspace's or the operator's: EDIT sets the whole value through the family's `add` for the
+Worker, and KILL retires the name from the Worker's commands — `remove` for an entry the Worker
+owns, which restores an inherited value, `disable` for an inherited one, which keeps its
+definition. Admission is the family's ({§env-functionality}) and its refusal is the operation's
+result. A value has no lines: a line scope on EDIT or KILL is `value-whole` (400), and a pattern
+on EDIT is the dispatcher's refusal for any scheme without text scopes; a target that is not
+`env:///NAME` is `name-invalid` (400), or `target-required` (400) when absent; a name not in
+effect is `entry-not-found` (404) on READ and KILL alike.
 
 §functionality-scope **A family declares its supported scopes.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,

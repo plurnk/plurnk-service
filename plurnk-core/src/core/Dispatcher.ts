@@ -1105,17 +1105,17 @@ export default class Dispatcher {
         // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}
-        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workspaceId);
+        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workspaceId, statement.target);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.destination.target;
             const dstScheme = schemeNameOf(dst);
-            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId);
+            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId, dst);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
                 const srcScheme = schemeNameOf(statement.source.target);
                 if (srcScheme !== dstScheme) {
-                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId);
+                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId, statement.source.target);
                     if (srcDenial !== null) return srcDenial;
                 }
             }
@@ -1123,7 +1123,7 @@ export default class Dispatcher {
         }
 
         const target = schemeNameOf(statement.target);
-        const denial = this.#denyIfDisallowed(target, origin, workspaceId);
+        const denial = this.#denyIfDisallowed(target, origin, workspaceId, statement.target);
         // {§send-target-recipient} — SEND addresses recipients, not otherwise
         // read-only resources. State that boundary without guessing whether the
         // model intended a reply, deletion, or directed message.
@@ -1144,11 +1144,13 @@ export default class Dispatcher {
         return denial;
     }
 
-    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number): DispatchResult | null {
+    // {§runtime-resource-binding} The manifest that governs the coordinate decides: a runtime
+    // scheme's facet may make its claimed resources writable where the stored output is not.
+    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number, target: ParsedPath | null = null): DispatchResult | null {
         if (schemeName === null) return null;
         const handler = this.#schemes.get(schemeName, workspaceId);
         if (handler === undefined) return null;
-        const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
+        const manifest = this.#schemes.manifestAt(schemeName, target, workspaceId);
         if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
         if (manifest.writableBy.includes(origin)) return null;
         return Dispatcher.#failure(

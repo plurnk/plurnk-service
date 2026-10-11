@@ -78,3 +78,25 @@ the declaring package as provenance and its comment as the summary. Undeclared,
 non-reserved names are also allowed. Plurnk's own configuration and provider
 credential names are excluded; READ `skill://plurnk/.env.defaults` for the full
 configuration reference. Discovery shows declarations, not effective values.
+
+## The registry as an address space
+
+Every effective name is a resource at `env:///NAME`: ambient names the operator admitted,
+workspace defaults, and your own overrides, exactly the set `list` shows. The body is the
+value, verbatim. The ordinary verbs reach it:
+
+```READ (env:///PROD_VERSION)
+```
+
+```FIND (env:///NODE_*) <!-- names by glob; a pattern matches values -->
+```
+
+```COPY (env:///PROD_VERSION) (product.md) <42,24,42,24> <!-- the value, inserted at a point -->
+```
+
+A write is your own layer, never the workspace's or the operator's. `EDIT` sets the value
+(the body, whole: a value has no lines to scope) as `add` does for your worker; `KILL`
+retires the name from your commands as `remove` does for an entry you own and as
+`disable` does for one you inherited, so the inherited definition is kept and can be
+enabled again. Names plurnk reserves — its own configuration and provider credentials —
+are not resources and are refused as they are at `add`.

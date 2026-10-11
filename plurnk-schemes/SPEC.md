@@ -663,7 +663,7 @@ owns.** They complete the module contract's slices ({§module-seam-slices}).
 | --- | --- |
 | `SchemeRegistrationSeam` | `registerScheme(name, handler)` adds one process-wide addressable `SchemeHandler`; scheme readiness and model-facing capability publication remain the host's. |
 | `ResourceTreeRegistrationSeam` | `registerResourceTreeScheme(name, source)` exposes named read-only resource trees through {§resource-tree-scheme}, without giving the module a storage interface. |
-| `RuntimeSchemeFacet` | A scheme face over a module's own resources. It claims only its own path subtree and there is the scheme's whole live half; unclaimed coordinates keep the standard executor-output behavior. A runtime carries one on its registration ({§executor-module-slice}), and a Functionality family's manager may expose one ({§functionality-adapter}). |
+| `RuntimeSchemeFacet` | A scheme face over a module's own resources. It claims only its own path subtree and there is the scheme's whole live half: READ and FIND preparation, FIND, EDIT, SEND and KILL are its own wherever it implements them, and its `manifest` states what the executor's output contract does not — the resource authority, channels, default channel and `writableBy` that govern every claimed coordinate. Unclaimed coordinates keep the standard executor-output behavior. A runtime carries one on its registration ({§executor-module-slice}), and a Functionality family's manager may expose one ({§functionality-adapter}). |
 
 §resource-tree-scheme **A tree supplies resources; the host supplies their entry projections.**
 `ResourceTreeSource.trees(workspaceId)` returns the currently available trees keyed by URI
