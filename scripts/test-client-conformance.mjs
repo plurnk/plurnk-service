@@ -478,8 +478,8 @@ try {
         "file-observer",
         { workspace: "installed-files", projectRoot: project },
     );
-    const persistedFile = await persistedFiles.rpc("entry.read", { target: "integrity.txt" });
-    if (persistedFile.status !== 200 || persistedFile.content !== "after"
+    const persistedFile = await persistedFiles.rpc("entry.read", { target: "file:///integrity.txt" });
+    if (persistedFile.status !== 200 || persistedFile.entry?.channels.body?.content !== "after"
         || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
         throw new Error(`installed file projection did not survive reconstruction: ${JSON.stringify(persistedFile)}`);
     }
