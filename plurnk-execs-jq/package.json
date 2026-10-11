@@ -65,6 +65,7 @@
     "files": [
         "dist/**/*",
         "README.md",
+        "SPEC.md",
         ".env.defaults",
         "docs/**/*"
     ],

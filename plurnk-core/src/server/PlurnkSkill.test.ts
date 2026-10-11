@@ -29,10 +29,9 @@ test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chap
 test("{§plurnk-skill} each installed ecosystem package's contract is a chapter where its package installed it", async () => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     const contracts = (await tree.list()).filter((path) => path.startsWith("packages/"));
-    for (const name of ["@plurnk/plurnk-service", "@plurnk/plurnk-modules", "@plurnk/plurnk-execs", "@plurnk/plurnk-schemes", "@plurnk/plurnk-meta"]) {
+    for (const name of ["@plurnk/plurnk-service", "@plurnk/plurnk-modules", "@plurnk/plurnk-execs", "@plurnk/plurnk-execs-jq", "@plurnk/plurnk-execs-sqlite", "@plurnk/plurnk-schemes", "@plurnk/plurnk-meta"]) {
         assert.ok(contracts.includes(`packages/${name}/SPEC.md`), `${name} publishes its contract`);
     }
-    assert.equal(contracts.includes("packages/@plurnk/plurnk-execs-jq/SPEC.md"), false, "a package without a SPEC.md lists none");
     assert.ok(contracts.every((path) => path.endsWith("/SPEC.md") || path.endsWith(".d.ts")), "only contracts live under packages/");
     assert.equal(contracts.some((path) => path.startsWith("packages/@plurnk/plurnk-service/dist/")), false, "the service's declarations are internals");
     assert.equal(await tree.resource("packages/@plurnk/plurnk-service/SPEC.md").nativePath?.(), resolve(Paths.packageRoot, "SPEC.md"));
