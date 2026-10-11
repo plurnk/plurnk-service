@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import {
     SKILL_NAME,
@@ -356,7 +357,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 } });
             } catch (cause) {
                 if (!(cause instanceof SkillsActionError)) throw cause;
-                const fresh = !carried.has(alias) || preparation.force === alias;
+                const fresh = !carried.has(alias) || !isDeepStrictEqual(previous?.definitions.get(alias), definition) || preparation.force === alias;
                 if (preparation.failure === "reject" && fresh) throw cause;
                 if (fresh) console.error(`Agent Skill '${alias}' unavailable: ${cause.problem.detail}`);
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(cause.problem) });

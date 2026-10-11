@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SkillsFunctionality, { serviceSkills } from "./Functionality.ts";
+import { SkillsActionError } from "./problems.ts";
 
 test("{§module-workspace-paths} skills use the host's opaque source scopes and precedence without private services", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-seam-"));
@@ -41,6 +42,36 @@ test("{§skills-configuration} native env parsing retains exact standard skill n
     const actual = serviceSkills(env);
     assert.equal(actual.size, names.length, "controls do not manufacture resource definitions");
     for (const definition of definitions) assert.deepEqual(actual.get(definition.name), definition);
+});
+
+test("{§functionality-replacement} a changed unavailable skill is a new preparation failure, not its alias's carried outcome", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skill-replacement-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    for (const name of ["before", "after"]) await mkdir(join(root, name));
+    const family = new SkillsFunctionality({
+        workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots: [] }),
+        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
+        readProvidedSkills: async () => new Map(),
+        workspaceStateDirectory: async () => root,
+        operatorEnvironment: () => ({}),
+    });
+    const prepare = (source: string, previous: unknown | null, failure: "reject" | "publish-unavailable") => family.prepare({
+        workspaceId: 1, enabled: new Map([["review", { definition: { name: "review", source } }]]),
+        previous, failure, progress: () => {}, retain: () => () => {},
+    });
+    const prior = await prepare(join(root, "before"), null, "publish-unavailable");
+    assert.equal(prior.outcomes.get("review")?.state, "unavailable");
+    await prior.commit();
+    const carried = await prepare(join(root, "before"), prior.snapshot, "reject");
+    assert.deepEqual(carried.outcomes, prior.outcomes, "the unchanged prior failure can still accompany unrelated mutations");
+    await carried.abort();
+    await assert.rejects(prepare(join(root, "after"), prior.snapshot, "reject"), (cause: unknown) => {
+        assert.ok(cause instanceof SkillsActionError);
+        assert.equal(cause.problem.type, "https://problems.plurnk.xyz/skills/functionality/skill-not-found");
+        assert.equal(cause.problem.status, 404);
+        assert.equal(cause.problem.source, join(root, "after"));
+        return true;
+    });
 });
 
 test("{§skills-configuration} invalid disabled definitions still fail validation; absent definitions inherit", () => {

@@ -53,6 +53,8 @@ interface Family {
     readonly addable: Definition;              // a second live definition
     readonly conflicting: Definition;          // same alias as addable, different definition
     readonly unreachable: Definition;          // admits, fails preparation
+    readonly replacementUnavailable: object;
+    readonly attachmentIdentity?: (context: Context) => Promise<number>;
     readonly discover: Readonly<Record<string, unknown>>;
     readonly collidingAlias?: string;          // a publication the host refuses
     readonly projectRoot?: string;             // the workspace's project root, when the family needs one
@@ -131,6 +133,8 @@ const skillsFamily = async (): Promise<Family> => {
     };
     await mkdir(project, { recursive: true });
     await mkdir(home, { recursive: true });
+    const emptySource = join(base, "empty-source");
+    await mkdir(emptySource);
     await skill(hostPaths.projectSkillsDir(project), "grep", "Find text");
     await skill(sourceA, "extra", "Extra from source A");
     await skill(sourceB, "extra", "Extra from source B");
@@ -144,6 +148,7 @@ const skillsFamily = async (): Promise<Family> => {
         addable: { alias: "extra", definition: { name: "extra", source: sourceA }, probe: probe("extra") },
         conflicting: { alias: "extra", definition: { name: "extra", source: sourceB }, probe: probe("extra") },
         unreachable: { alias: "ghost", definition: { name: "ghost", source: sourceA }, probe: probe("ghost") },
+        replacementUnavailable: { name: "extra", source: emptySource },
         discover: { source: sourceA },
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider, hostPaths });
@@ -190,7 +195,7 @@ const mcpFamily = async (): Promise<Family> => {
         return status;
     };
     // The echo tool declares readOnlyHint, so a client execution of it runs ungated; the legacy one proposes.
-    const server = (name: string, file: string) => ({ name, type: "stdio", command: "node", args: [file] });
+    const server = (name: string, file: string) => ({ name, type: "stdio", command: "node", args: [file], env: { PLURNK_MCP_TEST_LAUNCH: "1" } });
     return {
         family: "mcp",
         teaching: /## discover, then add/u,
@@ -199,6 +204,14 @@ const mcpFamily = async (): Promise<Family> => {
         addable: { alias: "extra", definition: server("extra", echo), probe: exec("extra", "echo") },
         conflicting: { alias: "extra", definition: server("extra", legacy), probe: exec("extra", "legacy_echo") },
         unreachable: { alias: "ghost", definition: server("ghost", join(tmpdir(), "no-such-mcp-server.mjs")), probe: exec("ghost", "echo") },
+        replacementUnavailable: server("extra", join(tmpdir(), "no-such-mcp-server.mjs")),
+        attachmentIdentity: async (context) => {
+            const after = (await context.db.test_entries_by_scheme_prefix.all({ workspace_id: context.workspaceId, scheme: "extra", prefix: "/%" })).length;
+            assert.equal((await dispatch(context, parseOne(PlurnkParser.frame("extra (launch)", "{}")))).status, 200);
+            const result = await awaitExecOutcome(context.db, { workspaceId: context.workspaceId, scheme: "extra", channel: "body", after });
+            assert.equal(typeof result.pid, "number");
+            return result.pid as number;
+        },
         discover: { query: "example" },
         collidingAlias: "sh",
         boot: async (db, provider) => {
@@ -229,6 +242,7 @@ const agentsFamily = async (): Promise<Family> => {
         addable: { alias: "extra", definition: { name: "extra", url: agentA.baseUrl }, probe: send("extra") },
         conflicting: { alias: "extra", definition: { name: "extra", url: agentB.baseUrl }, probe: send("extra") },
         unreachable: { alias: "ghost", definition: { name: "ghost", url: "http://127.0.0.1:9" }, probe: send("ghost") },
+        replacementUnavailable: { name: "extra", url: "http://127.0.0.1:9" },
         discover: { source: agentB.baseUrl },
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider });
@@ -274,7 +288,7 @@ const matrix = async (family: Family): Promise<void> => {
             }
         }
     };
-    type Listed = { alias: string; origin: string; state: string; problem?: ProblemDetails };
+    type Listed = { alias: string; origin: string; state: string; definition: object; problem?: ProblemDetails };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const stateOf = async (alias: string): Promise<string | undefined> => (await listed()).find((entry) => entry.alias === alias)?.state;
     const live = async (definition: Definition, workerId = model, clientWorkerId = clientA): Promise<boolean> => {
@@ -321,10 +335,10 @@ const matrix = async (family: Family): Promise<void> => {
     const add = (definition: Definition) => invoke<{ status: number; definition: { state: string } }>("add", { alias: definition.alias, definition: definition.definition });
 
     try {
-        // 1. Registration: the six common actions, nothing family-specific in the grammar.
+        // 1. Registration: the common actions, nothing family-specific in the grammar.
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
-            ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `workspace.${family.family}.${verb}`),
+            ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => `workspace.${family.family}.${verb}`),
         );
         // 2. Inspection is passive; real use activates the service definition.
         assert.equal(await stateOf(family.service.alias), "dormant");
@@ -337,8 +351,14 @@ const matrix = async (family: Family): Promise<void> => {
         const managerPath = `/_plurnk/plurnk/${family.family}`;
         const managerDoc = references.find(({ pathname }) => pathname === `${managerPath}.md`)!;
         const addDoc = references.find(({ pathname }) => pathname === `${managerPath}/add.json`)!;
+        const replaceDoc = references.find(({ pathname }) => pathname === `${managerPath}/replace.json`)!;
         assert.ok(managerDoc && addDoc, "the manager catalog links to a materialized input schema");
         assert.ok(managerDoc.content.includes(`Schema: worker://${managerPath}/add.json`));
+        assert.ok(replaceDoc && managerDoc.content.includes(`Schema: worker://${managerPath}/replace.json`));
+        const replaceSchema = JSON.parse(replaceDoc.content);
+        assert.deepEqual(replaceSchema.required, ["alias", "definition"]);
+        assert.deepEqual(replaceSchema.properties.definition, JSON.parse(addDoc.content).properties.definition,
+            "replacement uses the same complete definition schema");
         // {§functionality-document-body} — the adapter package's docs/<family>.md rides beneath the generated header.
         assert.match(managerDoc.content, family.teaching, `${family.family}.md carries its authored teaching body`);
         assert.ok(managerDoc.content.indexOf("## Tools") < managerDoc.content.search(family.teaching), "the generated verb table precedes the authored body");
@@ -438,6 +458,57 @@ ${JSON.stringify({ alias: family.addable.alias })}
         const conflict = await problemOf(() => add(family.conflicting));
         assert.equal(conflict.type, "https://problems.plurnk.xyz/functionality/alias-exists");
         assert.equal(await live(family.addable, peer), true, "the rejected replacement did not withdraw the shared definition");
+        // {§functionality-replacement} Both projections keep the old attachment on failure and
+        // publish a complete replacement only on success. Disabled replacements stay offline.
+        const beforeReplacement = (await listed()).find(({ alias }) => alias === family.addable.alias);
+        const attachment = await family.attachmentIdentity?.(context());
+        for (const caller of ["action", "operation"] as const) {
+            const params = { alias: family.addable.alias, definition: family.replacementUnavailable };
+            let problem: ProblemDetails;
+            if (caller === "action") problem = await problemOf(() => invoke("replace", params));
+            else {
+                await proposed(PlurnkParser.frame(`${family.family} (replace)`, JSON.stringify(params)), "accept");
+                problem = (await verbResult()).problem as ProblemDetails;
+            }
+            assert.equal(problem.type, refused.type, "the failed replacement reports its preparation problem");
+            assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias), beforeReplacement);
+            assert.equal(await live(family.addable, peer), true, `${caller} failure leaves the old capability usable`);
+            if (attachment !== undefined) assert.equal(await family.attachmentIdentity!(context()), attachment,
+                "a failed replacement preserves the actual server process, not just a re-created configuration");
+        }
+        const replacement = { alias: family.addable.alias, definition: family.conflicting.definition };
+        await proposed(PlurnkParser.frame(`${family.family} (replace)`, JSON.stringify(replacement)), "accept");
+        assert.equal((await verbResult()).status, 200);
+        assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias)?.definition, family.conflicting.definition);
+        if (family.family === "mcp") {
+            assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 404, "the old tool schema is withdrawn");
+            assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/legacy_echo.json"), 200, "the new server's tool schema is published");
+            const seen = proposals.length;
+            const execution = exec(PlurnkParser.frame("extra (legacy_echo)", JSON.stringify({ text: "replacement works" })));
+            await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
+            await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+            assert.equal((await execution).status, 200);
+            const output = await waitForDb(async () => {
+                const entries = await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme: "extra", prefix: "/%" });
+                const latest = entries.toSorted((left, right) => right.id - left.id)[0]!;
+                return db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: latest.pathname, scheme: "extra", name: "body" });
+            }, (channel) => channel?.state === "closed", { timeoutMs: 10_000 });
+            assert.equal(output?.content, "legacy echo: replacement works", "the replacement's actual tool is callable");
+        } else assert.equal(await live(family.conflicting, peer), true);
+        await invoke("disable", { alias: family.addable.alias });
+        const offline = await invoke<{ status: number; definition: Listed }>("replace", {
+            alias: family.addable.alias, definition: family.replacementUnavailable,
+        });
+        assert.equal(offline.status, 200);
+        assert.equal(offline.definition.state, "disabled");
+        assert.deepEqual(offline.definition.definition, family.replacementUnavailable);
+        await invoke("replace", { alias: family.addable.alias, definition: family.addable.definition });
+        assert.equal(await stateOf(family.addable.alias), "disabled");
+        await invoke("enable", { alias: family.addable.alias });
+        const restoredAttachment = await family.attachmentIdentity?.(context());
+        await invoke("replace", { alias: family.addable.alias, definition: family.addable.definition });
+        if (restoredAttachment !== undefined) assert.equal(await family.attachmentIdentity!(context()), restoredAttachment,
+            "an identical replacement keeps its current attachment");
         // 11. A child's environment remains the same shared workspace, not a copied snapshot.
         const child = await insertWorker(db, workspaceId, model, "child", "model");
         assert.equal(await live(family.addable, child), true);

@@ -9,7 +9,7 @@ const invocations: Array<{ family: string; verb: string; params: unknown; caller
 const identities: unknown[] = [];
 const emptySchema = { type: "object" };
 const inputSchemas: Record<FunctionalityVerb, JsonSchema> = {
-    list: emptySchema, discover: emptySchema, add: emptySchema,
+    list: emptySchema, discover: emptySchema, add: emptySchema, replace: emptySchema,
     enable: emptySchema, disable: emptySchema, remove: emptySchema,
 };
 const coordinator = {
@@ -64,12 +64,12 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
     assert.match(tool("discover").details ?? "", /fixture locator/u);
 });
 
-test("{§functionality-model-projection} the family manager exposes exactly the six verbs with read/host effects", () => {
+test("{§functionality-model-projection} the family manager exposes the shared verbs with read/host effects", () => {
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS]);
     assert.deepEqual(manager.toolRegistry().tools.map(({ invocation }) => invocation.body.required),
-        [false, true, true, true, true, true], "documentation changes do not alter the invocation's body-presence contract");
-    assert.deepEqual(FUNCTIONALITY_VERBS.map((verb) => manager.effect(verb)), ["read", "read", "host", "host", "host", "host"]);
+        [false, true, true, true, true, true, true], "only the list body is optional");
+    assert.deepEqual(FUNCTIONALITY_VERBS.map((verb) => manager.effect(verb)), ["read", "read", "host", "host", "host", "host", "host"]);
     assert.equal(manager.effect("destroy"), "host", "an unregistered verb can never run ungated");
     assert.equal(manager.manifest.name, "fx");
     assert.equal(functionalityRuntimeDecl("fx", "Manage fixtures.", "").invocation.target?.kind, "literal");
@@ -81,12 +81,12 @@ test("{§functionality-discover-advertisement} a family without discovery has no
     invocations.length = 0;
     const { discover: _discover, ...served } = inputSchemas;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas: served });
-    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), ["list", "add", "enable", "disable", "remove"]);
+    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), ["list", "add", "replace", "enable", "disable", "remove"]);
     const refused = await manager.run(args("discover", '{"query": "x"}').args);
     assert.equal(refused.status, 400);
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
     assert.equal(refused.problem?.detail, "'discover' is not a fx lifecycle verb.");
-    assert.equal(refused.problem?.recovery, "Select one of list, add, enable, disable, remove.");
+    assert.equal(refused.problem?.recovery, "Select one of list, add, replace, enable, disable, remove.");
     assert.deepEqual(invocations, [], "the refusal never reaches the coordinator");
 });
 

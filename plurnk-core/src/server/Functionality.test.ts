@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { JsonSchema, WorkspaceCapabilityGate } from "@plurnk/plurnk-contracts";
+import type { FunctionalityAdmission, JsonSchema, WorkspaceCapabilityGate } from "@plurnk/plurnk-contracts";
 import type { ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import Functionality from "./Functionality.ts";
 import { OperationFailureError } from "../core/results.ts";
@@ -105,6 +105,78 @@ const family = (name: string, overrides: Partial<HostFunctionalityAdapter> = {})
     ...overrides,
 });
 
+for (const scope of ["workspace", "worker"] as const) {
+    test(`{§functionality-admission-preparation} ${scope} admission data reaches only its candidate preparation`, async () => {
+        let provider!: WorkspaceCapabilityProvider;
+        let state: unknown = null;
+        let refuse = false;
+        let aborts = 0;
+        const seen: Array<FunctionalityAdmission | undefined> = [];
+        const payload = { readAt: 42 };
+        const publish = (next: unknown): void => {
+            if (refuse) throw new Error("fixture publication refused");
+            state = structuredClone(next);
+        };
+        const coordinator = new Functionality({
+            registerModuleAction: () => {},
+            registerWorkspaceCapabilityProvider: (_owner, value) => { provider = value; },
+            readWorkspaceModuleState: async () => state,
+            replaceWorkspaceCapabilities: async (replacement, options) => {
+                publish(replacement.state);
+                options?.publish?.();
+            },
+            readWorkerModuleState: async () => state,
+            replaceWorkerModuleState: async (_worker, _owner, next) => { publish(next); },
+            withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
+            retainWorkspace: () => () => {},
+            preparationChanged: () => {},
+        });
+        const handle = coordinator.register(family("fixture", {
+            scopes: [scope],
+            admit: async (input) => ({ ...input as { alias: string; definition: object }, preparation: payload }),
+            prepare: async ({ enabled, admission }) => {
+                seen.push(admission);
+                return {
+                    documents: [],
+                    outcomes: new Map([...enabled.keys()].map((alias) => [alias, { state: "active" as const }])),
+                    snapshot: null,
+                    commit: async () => {},
+                    abort: async () => { aborts += 1; },
+                };
+            },
+        }));
+        if (scope === "workspace") await provider.activate({ workspaceId: 1, retain: () => () => {} });
+        const identity = { workspaceId: 1, workerId: 2, scope };
+        const input = { alias: "entry", definition: { value: "original" } };
+        const added = await handle.invoke("replace", input, identity);
+        assert.deepEqual(seen.at(-1), { ...input, preparation: payload });
+        assert.equal(seen.at(-1)?.preparation, payload, "opaque admission data is passed through, not cloned into the definition");
+        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: input.definition, enabled: true } } });
+        assert.equal(JSON.stringify(added.body).includes("readAt"), false, "admission data is not configuration output");
+
+        const changed = { alias: "entry", definition: { value: "changed" } };
+        const count = seen.length;
+        await assert.rejects(handle.invoke("add", changed, identity), (cause: unknown) => {
+            assert.ok(cause instanceof OperationFailureError);
+            assert.equal(cause.result.problem?.type, "https://problems.plurnk.xyz/functionality/alias-exists");
+            return true;
+        });
+        assert.equal(seen.length, count, "a refused admission never reaches preparation");
+        const before = structuredClone(state);
+        refuse = true;
+        await assert.rejects(handle.invoke("replace", changed, identity), /fixture publication refused/u);
+        assert.deepEqual(state, before, "publication refusal preserves durable state");
+        assert.equal(aborts, 1);
+        refuse = false;
+        if (scope === "workspace") await handle.refresh(identity);
+        else await handle.invoke("list", {}, identity);
+        assert.equal(seen.at(-1), undefined, "a subsequent preparation has no stale admission data");
+        assert.deepEqual(state, before);
+        await handle.invoke("replace", changed, identity);
+        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: changed.definition, enabled: true } } });
+    });
+}
+
 const QUERY = { type: "string", minLength: 1 };
 const CONFIGURATION = {
     description: "Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_A2A_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.",
@@ -137,7 +209,7 @@ test("{§functionality-discover-advertisement} discover's input schema carries e
         }, "a multi-scope family's discover adds scope beside its inputs");
     }
     assert.deepEqual([...actions.keys()].filter((name) => name.startsWith("workspace.none.")).toSorted(),
-        ["add", "disable", "enable", "list", "remove"].map((verb) => `workspace.none.${verb}`),
+        ["add", "disable", "enable", "list", "remove", "replace"].map((verb) => `workspace.none.${verb}`),
         "a family without discovery registers no discover action");
 });
 

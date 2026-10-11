@@ -50,6 +50,11 @@ unless `cwd` supplies an absolute directory. Use absolute project paths in
 arguments. This is file placement, not a sandbox or plugin installation.
 A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effect.
 
+To change a definition, use `replace` with the same `{alias, definition}` shape.
+Supply the complete definition; omitted fields are not inherited. It retains
+enabledness and preserves the old server if the replacement is refused. A disabled
+definition is saved without connecting; a new alias is created enabled.
+
 ## Environment
 
 Shared definitions may come from `~/.agents/mcp.json`,

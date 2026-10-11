@@ -371,10 +371,10 @@ entries and masks applied, and resolved ambient values are never copied into def
 stale-configuration state. HTTP servers have no local process environment.
 
 §mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
-coordinator publishes `workspace.mcp.list | add | enable | disable | remove`, with `discover`
+coordinator publishes `workspace.mcp.list | add | replace | enable | disable | remove`, with `discover`
 while a registry is configured, and the model's
 `mcp` runtime with the common semantics, durable state, and publication; this module
-registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add` and `remove` change workspace state ({§mcp-definitions}), and
+registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add`, `replace` ({§functionality-replacement}), and `remove` change workspace state ({§mcp-definitions}), and
 `discover` searches the MCP Registry ({§mcp-registry-discovery}). `prepare` connects the enabled set, reusing
 unchanged live attachments, and returns one runtime and resource facet per connected server,
 one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity,

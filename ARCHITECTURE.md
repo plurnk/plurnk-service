@@ -27,7 +27,7 @@ flowchart LR
 
 Eight principles govern which exterior standards PLURNK conforms to:
 
-1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap. So is one shape per concern: one operation syntax, one address shape, and one management grammar (`list | discover | add | enable | disable | remove`) for every family, with proposals the gate on every choice with security or boundary implications and the cascade the home of every operator choice. Each exception to that shape is a permanent tax on the model, the client, and the product.
+1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap. So is one shape per concern: one operation syntax, one address shape, and one management grammar (`list | discover | add | replace | enable | disable | remove`) for every family, with proposals the gate on every choice with security or boundary implications and the cascade the home of every operator choice. Each exception to that shape is a permanent tax on the model, the client, and the product.
 2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
 3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
 4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) govern wherever a domain standard is silent. Where a domain standard names its own location for cross-client interoperability, such as `.agents/skills`, PLURNK reads it, and its XDG location beside it holds PLURNK-only entries, which shadow the global ones.
@@ -163,7 +163,7 @@ flowchart TD
 | Surface | What it is | Code in the daemon |
 | --- | --- | --- |
 | Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill roots | none |
-| Definition | a skill, MCP server, A2A agent, member rule, env entry or schedule rule, managed by its family's six verbs | none; an MCP server or A2A agent runs elsewhere |
+| Definition | a skill, MCP server, A2A agent, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server or A2A agent runs elsewhere |
 | Plugin | an Agent Plugin carrying skills and MCP servers, from npm or a plugin root | none, unless it declares an extension |
 | Hook | the operator's command on lifecycle events (`plurnk-hooks`) | none |
 | Client | an application or agent driving an existing face | none |
@@ -215,7 +215,7 @@ One word per concept, defined here.
 | framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the host loads | A capability, which is what policy admits |
 | grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
 | module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
-| family | Core's six-verb manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind or its framework; a runtime or its document |
+| family | Core's shared manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
 | face | A module role that serves a protocol: AG-UI, inbound A2A, ACP | |
 | hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |

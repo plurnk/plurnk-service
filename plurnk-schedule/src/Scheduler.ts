@@ -5,6 +5,7 @@
 // A delivery failure disarms the rule and holds its Problem for the outcome; `enable` retries.
 import { MAX_TIMER_MS, Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import { targetWorkerName, type ScheduleDefinition } from "./definition.ts";
 import { nextOccurrence, type ParsedRule } from "./rules.ts";
@@ -39,7 +40,7 @@ export interface SchedulerOptions {
 }
 
 export interface ScheduleFailure {
-    readonly text: string;
+    readonly definition: ScheduleDefinition;
     readonly problem: ProblemDetails;
 }
 
@@ -86,9 +87,6 @@ export default class Scheduler {
     readonly #settled: (workspaceId: number, alias: string) => void;
     readonly #armed = new Map<string, Armed>();
     readonly #failures = new Map<string, ScheduleFailure>();
-    // {§schedule-first-arming} — the instant each admitted rule was read at its `add`, until its
-    // first arming consumes it. Memory of the running daemon only.
-    readonly #admissions = new Map<string, number>();
     readonly #pending = new Set<Promise<void>>();
     #port: DeliveryPort | null = null;
     #serial: Promise<void> = Promise.resolve();
@@ -130,27 +128,27 @@ export default class Scheduler {
 
     // {§schedule-residency} — a workspace's rule set as published: aliases absent from it disarm,
     // unchanged occurrences retain identity. A held failure clears when its rule leaves the set or changes.
-    sync(workspaceId: number, rules: ReadonlyMap<string, ScheduledRule>): Promise<void> {
+    sync(workspaceId: number, rules: ReadonlyMap<string, ScheduledRule>, options: {
+        readonly admission?: { readonly alias: string; readonly at: number };
+        readonly force?: string;
+    } = {}): Promise<void> {
         return this.#exclusive(async () => {
             for (const [entryKey, armed] of this.#armed) {
                 if (armed.workspaceId !== workspaceId) continue;
                 const replacement = rules.get(armed.rule.alias);
-                if (replacement !== undefined && JSON.stringify(replacement.definition) === JSON.stringify(armed.rule.definition)) continue;
+                if (replacement !== undefined && isDeepStrictEqual(replacement.definition, armed.rule.definition)) continue;
                 if (armed.handle !== null) this.#timers.clear(armed.handle);
                 this.#armed.delete(entryKey);
             }
             for (const [entryKey, failed] of this.#failures) {
                 if (!entryKey.startsWith(`${workspaceId}:`)) continue;
                 const rule = rules.get(entryKey.slice(entryKey.indexOf(":") + 1));
-                if (rule === undefined || rule.parsed.text !== failed.text) this.#failures.delete(entryKey);
-            }
-            for (const entryKey of this.#admissions.keys()) {
-                if (entryKey.startsWith(`${workspaceId}:`) && !rules.has(entryKey.slice(entryKey.indexOf(":") + 1))) this.#admissions.delete(entryKey);
+                if (rule === undefined || rule.alias === options.force || !isDeepStrictEqual(rule.definition, failed.definition)) this.#failures.delete(entryKey);
             }
             for (const rule of rules.values()) {
                 if (this.#failures.has(key(workspaceId, rule.alias))) continue;
                 if (this.#armed.has(key(workspaceId, rule.alias))) continue;
-                this.#arm(workspaceId, rule);
+                this.#arm(workspaceId, rule, options.admission?.alias === rule.alias ? options.admission.at : undefined);
             }
         });
     }
@@ -159,26 +157,11 @@ export default class Scheduler {
         return this.#failures.get(key(workspaceId, alias));
     }
 
-    // {§schedule-first-arming} — `add` read the rule at this instant; preparation and arming come later.
-    admitted(workspaceId: number, alias: string, atMs: number): void {
-        this.#admissions.set(key(workspaceId, alias), atMs);
-    }
-
-    // The instant a rule's next occurrence is judged from: its admission until the first arming
-    // consumes it, the present afterwards.
-    cursor(workspaceId: number, alias: string, nowMs: number): number {
-        return this.#admissions.get(key(workspaceId, alias)) ?? nowMs;
-    }
-
-    forgive(workspaceId: number, alias: string): void {
-        this.#failures.delete(key(workspaceId, alias));
-    }
-
     armed(workspaceId: number): readonly string[] {
         return [...this.#armed.values()].filter((armed) => armed.workspaceId === workspaceId).map((armed) => armed.rule.alias).toSorted();
     }
 
-    #arm(workspaceId: number, rule: ScheduledRule): void {
+    #arm(workspaceId: number, rule: ScheduledRule, after = this.#clock()): void {
         if (this.#closing) return;
         const entryKey = key(workspaceId, rule.alias);
         const existing = this.#armed.get(entryKey);
@@ -186,9 +169,7 @@ export default class Scheduler {
             if (existing.handle !== null) this.#timers.clear(existing.handle);
             this.#armed.delete(entryKey);
         }
-        const now = this.#clock();
-        const due = nextOccurrence(rule.parsed, this.cursor(workspaceId, rule.alias, now));
-        this.#admissions.delete(entryKey);
+        const due = nextOccurrence(rule.parsed, after);
         if (due === null) return;
         const dueMs = due.epochMilliseconds;
         const fingerprint = createHash("sha256").update(JSON.stringify(rule.definition)).digest("hex");
@@ -227,7 +208,7 @@ export default class Scheduler {
             await this.#exclusive(async () => {
                 if (this.#armed.get(entryKey) !== armed) return;
                 this.#armed.delete(entryKey);
-                if (result.status >= 400) this.#failures.set(entryKey, { text: rule.parsed.text, problem: result.problem! });
+                if (result.status >= 400) this.#failures.set(entryKey, { definition: rule.definition, problem: result.problem! });
                 else this.#arm(workspaceId, rule);
             });
         })()

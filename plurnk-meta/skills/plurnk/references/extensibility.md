@@ -26,7 +26,7 @@ before it cannot do:
   model provider or a page materializer. The operator installs and trusts it, and
   it loads when the daemon starts.
 - **A module** only when the daemon itself serves or manages something: a family
-  behind the six verbs, an endpoint on Plurnk's listener, or an observer of its events.
+  behind the shared management verbs, an endpoint on Plurnk's listener, or an observer of its events.
 
 ## Plurnk uses X
 
@@ -39,7 +39,7 @@ before it cannot do:
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
 Skills, MCP servers and A2A agents are definitions. The `skills`, `mcp` and
-`a2a` runtimes add, enable, disable and remove them in the current workspace,
+`a2a` runtimes add, replace, enable, disable and remove them in the current workspace,
 and `worker:///_plurnk/plurnk/skills.md`, `mcp.md` and `a2a.md` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
@@ -65,7 +65,7 @@ An extension is one package of one kind, declared once: under `plurnk` in its
 | `mimetype` | readers for media types | `handlers` | `skill://plurnk/packages/@plurnk/plurnk-mimetypes/SPEC.md` |
 | `provider` | a model provider | `name` | `skill://plurnk/packages/@plurnk/plurnk-providers/SPEC.md` |
 | `http-materializer` | page rendering for web reads | `materializers` | `skill://plurnk/packages/@plurnk/plurnk-schemes-http/SPEC.md` |
-| `module` | lifecycle membership: a definition family behind the six verbs, a protocol server, or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
+| `module` | lifecycle membership: a definition family behind the shared management verbs, a protocol server, or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
 - An extension loads when the daemon starts, from the service's installed npm
   packages. A module also loads from a plugin in `$XDG_CONFIG_HOME/plurnk/plugins/`

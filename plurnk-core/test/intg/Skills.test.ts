@@ -511,8 +511,14 @@ test("{§skills-sources} a git source is fetched at its ref, its commit is recor
     const moved = listed.find(({ alias }) => alias === "alpha")!;
     assert.equal(moved.state, "unavailable");
     assert.equal(moved.problem?.type, `${PROBLEM}source-moved`);
+    assert.equal(moved.problem?.recovery, "Use skills (replace) with the complete source definition to take the current commit.");
     assert.equal(await exists(alphaPath), false, "nothing was installed from the moved branch");
     assert.equal(listed.find(({ alias }) => alias === "beta")?.state, "active", "a tag that did not move stays put");
+    const refreshed = await s.action<Added>("replace", { alias: "alpha", definition: { name: "alpha", source: remote } });
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.definition.definition.commit, await git(repository, "rev-parse", "HEAD"));
+    assert.match(await readFile(join(refreshed.definition.detail.path, "SKILL.md"), "utf8"), /Alpha, third edition/u,
+        "replacement follows the recovery without removing the definition first");
 });
 
 test("{§skills-configuration} a configured Git snapshot survives enable and restart; changing its definition fetches a separate revision", async (t) => {

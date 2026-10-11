@@ -1,7 +1,7 @@
 import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // {§functionality-scope} {§env-functionality} — the environment family beneath the shared
 // coordinator, registered by Core. Worker-scoped client actions, one durable value per worker, and
-// the model's manager bound to the invoking worker: the same six verbs, acting for one worker.
+// the model's manager bound to the invoking worker: the shared verbs, acting for one worker.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
@@ -19,7 +19,7 @@ import { fixtureExecutors } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 
-const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];
+const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });

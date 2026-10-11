@@ -304,11 +304,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                         spawn_model_route_id: null,
                         effort: effort,
                         effort_source: "default" });
-                                    // {§env-option} — the heading's environment lands as the child's own entries through the
-                    // family's add, after the copy it inherited at creation ({§functionality-scope}); names
-                    // were admitted at the operation, so a refusal here is a defect and throws.
+                    // {§env-option} — explicit child overrides replace copied values and enable them.
+                    // Names were admitted at the operation; a refusal here is a defect and throws.
                     for (const [alias, value] of Object.entries(environment ?? {})) {
-                        await this.#functionality.invoke("env", "add", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
+                        await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
+                        await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
                     }
                 }
                 const { action, loopId } = await ContentUse.read(this.#db, async () => {

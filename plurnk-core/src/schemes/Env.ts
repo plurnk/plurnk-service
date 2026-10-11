@@ -20,7 +20,7 @@ export interface EnvRegistry {
     readonly record: Readonly<Record<string, EnvRecord>>;
 }
 export type EnvResolve = (workspaceId: number, workerId: number) => Promise<EnvRegistry>;
-export type EnvWriteVerb = "add" | "remove" | "disable";
+export type EnvWriteVerb = "replace" | "remove" | "disable";
 export interface EnvWriteIdentity {
     readonly workspaceId: number;
     readonly workerId: number;
@@ -128,7 +128,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         return { status: 200 };
     }
 
-    // EDIT sets the Worker's own value, whole, through the family's `add`.
+    // {§functionality-replacement} — EDIT assigns a whole value without changing enabledness.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1) {
@@ -139,7 +139,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "EDIT");
-        const refused = await this.#write("add", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx);
+        const refused = await this.#write("replace", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);
         return { status: 200 };

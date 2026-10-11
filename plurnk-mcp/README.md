@@ -99,7 +99,7 @@ exact RFC 9457 Problem Details:
 } } } }
 ```
 
-The model manages the same family through ````` ````mcp (list|discover|add|enable|disable|remove) `````
+The model manages the same family through ````` ````mcp (list|discover|add|replace|enable|disable|remove) `````
 (`discover` while a registry is configured), each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.

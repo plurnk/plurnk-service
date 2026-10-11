@@ -1,5 +1,5 @@
 // {§members-functionality} — file membership as one workspace Functionality family. The model, the
-// client, and the operator learn one surface (list | discover | add | enable | disable | remove)
+// client, and the operator learn one surface ({§functionality-coordinator})
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
 // gitignore-style glob and `!glob` excludes; definitions are workspace desired state and the
 // membership overlay is their projection ({§members-projection}) — the one truth every worker sees

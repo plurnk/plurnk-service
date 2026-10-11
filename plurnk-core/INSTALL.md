@@ -144,7 +144,7 @@ outside the package.
 | --- | --- |
 | Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
-| MCPs, skills, outbound agents, schedules, membership | Workspace Functionality: list, discover, add, enable, disable, remove. Workers share the workspace's current selection. |
+| MCPs, skills, outbound agents, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Workers share the workspace's current selection. |
 | Command environment | `env` manages worker overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
 | External capabilities | Service policy is a ceiling; workspace policy can narrow it for every worker. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |

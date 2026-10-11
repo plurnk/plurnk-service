@@ -52,7 +52,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
             display.find((capability) => capability.kind === "mimetype" && capability.mimetype === "text/html"),
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "🌐" } },
         );
-        assert.equal(Object.keys(discovery.actions).length, 71, "26 built-ins, six Skills verbs, six members verbs, twelve env verbs across worker and workspace scopes, nine MCP actions, and six verbs each of the discovered schedule and A2A families");
+        assert.equal(Object.keys(discovery.actions).length, 78, "26 built-ins, seven Skills verbs, seven members verbs, fourteen env verbs across worker and workspace scopes, ten MCP actions, and seven verbs each of the discovered schedule and A2A families");
         assert.equal(Object.hasOwn(discovery.actions, "workspace.derivation"), false, "indexing activity uses the status stream, not a polling action");
         assert.deepEqual(
             Object.keys(discovery.actions).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
@@ -66,10 +66,11 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
                 "workspace.mcp.oauth.begin",
                 "workspace.mcp.oauth.complete",
                 "workspace.mcp.remove",
+                "workspace.mcp.replace",
             ],
         );
         for (const scope of ["worker", "workspace"]) {
-            const names = ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `${scope}.env.${verb}`);
+            const names = ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => `${scope}.env.${verb}`);
             assert.deepEqual(Object.keys(discovery.actions).filter((name) => name.startsWith(`${scope}.env.`)).toSorted(), names);
             for (const name of names) assert.equal(discovery.actions[name]?.scope, scope, `${name} binds its advertised scope`);
         }

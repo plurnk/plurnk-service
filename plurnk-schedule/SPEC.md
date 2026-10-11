@@ -7,7 +7,7 @@ owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}). A definition is
 `{ rule, target, prompt }`: RFC 5545 rule text ({§schedule-rule}), a
 `worker://<name>` target in the workspace ({§worker-name}, preserved exactly), the message delivered at each
 occurrence ({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
-coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `enable`,
+coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `replace`, `enable`,
 `disable`, `remove`. The adapter publishes no documents of its own; the
 runtime document's authored body is `docs/schedule.md`
 ({§functionality-model-projection}).
@@ -33,7 +33,7 @@ defect, not a refusal.
 
 ## §schedule-bound Bound
 
-A workspace rule ends: its RRULE carries `COUNT` or `UNTIL`, else `add`
+A workspace rule ends: its RRULE carries `COUNT` or `UNTIL`, else admission
 refuses with `rule-unbounded`. A service rule ({§schedule-environment}) may be
 unbounded; the operator owns it. An exhausted rule stays listed `active` with
 `exhausted: true` and `next: null`; it arms nothing. Exhaustion states that no
@@ -82,17 +82,20 @@ A future occurrence is not live work for WAIT ({§wait-obligation-matrix}); it
 neither holds a loop open nor concludes it. The next occurrence
 then arms from the present: a late fire delivers once and skips what it
 missed, never a backlog. A missing worker or a refused delivery disarms the
-rule and lists it `unavailable` with the Problem; `enable` retries. After
+rule and lists it `unavailable` with the Problem; `enable` retries. A failure
+belongs to the complete definition, including its target and prompt, not just
+the recurrence. Retry or replacement clears it only on successful publication. After
 every delivery attempt the family's outcomes are refreshed where the workspace
 is resident.
 
-§schedule-first-arming **A rule's first arming is judged from its `add`.** `add` reads the
-rule at the instant it admits it; preparation and arming come later, and a single
+§schedule-first-arming **A new or changed rule's first arming is judged from admission.**
+`add`/`replace` reads the rule at the instant it admits it; preparation and arming come later, and a single
 occurrence can fall between. The first arming of an admitted rule takes the admission
 instant as its cursor, so that occurrence still arms, fires at once, and delivers once, and
-the `add` receipt names it as `next`. The present is the cursor from then on. The admission
-is remembered by the running daemon only: a daemon that starts arms every stored rule from
-the present, as above.
+the receipt names it as `next`. Admission travels only with that candidate
+({§functionality-admission-preparation}); a rejected or identical replacement cannot
+reset the live timer or replay a delivered occurrence. The present is the cursor
+after first arming and when a daemon starts with stored rules, never a backlog.
 
 ## §schedule-residency Residency
 
@@ -119,7 +122,7 @@ or persisting a rule ({§operator-config-offline-validation}).
 
 | code | status | contract |
 |---|---:|---|
-| `alias-required` | 400 | schedule add needs an alias. |
+| `alias-required` | 400 | schedule definition needs an alias. |
 | `definition-invalid` | 400 | The schedule definition is invalid. |
 | `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |
 | `delivery-failed` | 502 | Delivering the scheduled message '*alias*' failed. |

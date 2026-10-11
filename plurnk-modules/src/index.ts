@@ -7,6 +7,7 @@ import type {
     ApplicationPort,
     FunctionalityCaller,
     FunctionalityCandidate,
+    FunctionalityAdmission,
     FunctionalityDefinitionSource,
     FunctionalityDiscoverInput,
     FunctionalityDiscoverQuery,
@@ -70,7 +71,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     // The one publication owner for this family's runtimes and state.
     readonly namespaceOwner: string;
     readonly summary: string;
-    // The exact definition one `add` accepts and the coordinator persists.
+    // The exact definition `add`/`replace` accept and the coordinator persists.
     readonly definitionSchema: JsonSchema;
     // Teaching for the family's generated document ({§functionality-model-projection}): one exact
     // `add` example.
@@ -85,7 +86,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     // Receives only a query the family's declared discovery admits.
     discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityDefinitionSource>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<Runtime>>;
     teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace definition installed or provisioned, before the coordinator

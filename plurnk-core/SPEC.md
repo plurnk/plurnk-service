@@ -3397,7 +3397,7 @@ The runtime scheme participates in the durable lookup; a completed `sh:///`
 stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 §workspace-env **Workspace environment.** The `env` family has workspace defaults and
-worker overrides. Its six verbs accept `scope: "workspace" | "worker"`; model calls
+worker overrides. Its management verbs accept `scope: "workspace" | "worker"`; model calls
 default to `worker`. Client actions bind the scope in `workspace.env.*` or
 `worker.env.*`. An explicit scope must agree with that action's context.
 
@@ -3453,7 +3453,8 @@ body prefixes.
   retain explicit launch overrides when adding a process-backed definition; it never
   persists the composed ambient environment. On
   WORK and FORK it is the child's starting environment: after the copy the child inherits
-  ({§functionality-scope}), each name lands as the child's own entry through the family's `add`,
+  ({§functionality-scope}), each supplied name replaces its copied definition as an enabled child-owned entry
+  through the family's `replace` and `enable`,
   so a parent hands down its registry and overrides specific names for one child in one heading.
   Names follow the family's admission — a name a shell can export, never plurnk's own — and a
   refusal names the key and the reason at the operation, before anything runs or is created; a
@@ -4413,7 +4414,7 @@ registry. Deleting the workspace cascades its state; worker lifecycle does not.
 
 §functionality-coordinator **One coordinator owns the common lifecycle.**
 Functionality families are adapters beneath
-`list | discover | add | enable | disable | remove`. State and mutations
+`list | discover | add | replace | enable | disable | remove`. State and mutations
 serialize per workspace and family. Scope-bound client actions
 `workspace.<family>.<verb>` / `worker.<family>.<verb>` and model manager executors invoke the same
 coordinator. Families do not invent another management grammar, proposal
@@ -4426,9 +4427,24 @@ Retryability describes the actual failed condition, not its numeric status.
 | `list` | Project definitions, ownership (`origin`), winning configuration source (`provenance`), enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
 | `discover` | Return inert candidates for the inputs the family serves ({§functionality-discover-advertisement}). Never install, persist, enable, or execute them. |
 | `add` | Admit and persist a local definition, prepare it, and enable it atomically. It may override an inherited definition. Reapplying the same local definition enables it idempotently (200); a different local definition for that alias fails 409 without replacing it. |
+| `replace` | Assign a complete definition to an explicit alias through {§functionality-replacement}. Preserve existing enabledness; a new alias is enabled. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions cannot be removed at this scope. Saved results remain. |
+
+§functionality-replacement **Replacement is a named whole-definition assignment.**
+The shared coordinator admits it through the family's existing schema and adapter,
+then uses the same serialized preparation and publication path as other mutations.
+It neither removes the old definition first nor merges omitted fields.
+
+| Boundary | Outcome |
+|---|---|
+| Existing local or inherited alias | Persist the complete admitted definition in the selected scope, retaining the alias's effective enabledness. A local override replaces inherited interpretation context and provenance. |
+| Absent alias | Create the named local definition, enabled. The alias is required; replacement never derives one. |
+| Disabled candidate | Persist without preparing that alias. Editing a definition does not enable it. |
+| Admission, preparation, or publication refuses | Keep the preceding definition, enabledness, attachment and documents. Return the exact failure to either client or model caller. External effects of preparation retain the limits of {§functionality-publication}. |
+| Authorization required | Publish the existing authorization-required handoff; this is not a failed preparation. |
+| Identical definition | Retain enabledness and normal attachment reuse; this is not an explicit enable/restart. |
 
 §functionality-mutation-status **Mutation status describes the committed resource
 outcome, not the management invocation's stream lifetime.** Apply these rows in
@@ -4437,10 +4453,10 @@ order; refusals retain their own Problems and do not commit a replacement.
 | Outcome | Status |
 |---|---:|
 | The resulting definition requires authorization | 202 |
-| `add` creates a local definition, including an override of an inherited definition | 201 |
-| `add` reapplies the identical local definition; `enable`, `disable`, or `remove` settles | 200 |
+| `add` or `replace` creates a local definition, including an override of an inherited definition | 201 |
+| `add` reapplies the identical local definition; `replace` assigns an existing local definition; `enable`, `disable`, or `remove` settles | 200 |
 
-A different local definition remains `alias-exists` (409), not a 200 replacement.
+`add` of a different local definition remains `alias-exists` (409); `replace` is explicit.
 Model invocation settlement follows {§functionality-model-mutation} independently.
 
 §functionality-discover-advertisement **A family's `discover` advertises exactly the inputs it
@@ -4654,7 +4670,7 @@ reserved or masked name is no resource. The family's manager exposes it as the f
 the value its commands receive now, FIND lists the names in effect and a pattern on it matches
 values, COPY carries a value out. The manager's own output streams, eight hexadecimal characters
 ({§execution-output-identity}), stay the executor's. A write is the Worker's own layer, never the
-workspace's or the operator's: EDIT sets the whole value through the family's `add` for the
+workspace's or the operator's: EDIT sets the whole value through the family's `replace` for the
 Worker, and KILL retires the name from the Worker's commands — `remove` for an entry the Worker
 owns, which restores an inherited value, `disable` for an inherited one, which keeps its
 definition. Admission is the family's ({§env-functionality}) and its refusal is the operation's
@@ -4691,7 +4707,7 @@ reach the other, and depth is transitive with no further rule. Each copied entry
 `inherited`, the Worker that set it, preserved across generations until the child changes that
 entry, so `list` never claims the child set what it inherited; a parent's masking of an
 ambient name travels the same way. WORK and FORK may hand the child more: the heading's `env`
-option lands as the child's own entries through `add`, after the copy ({§env-option}).
+option replaces and enables the child's own entries after the copy ({§env-option}).
 
 §functionality-state **One durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
@@ -4761,7 +4777,7 @@ It then reports `active`, `unavailable`, or `authorization-required`, or the exa
 publication failure. Resource readiness is not execution liveness: a mutation's
 `202 authorization-required` body remains exact, while the finished manager
 execution closes with `200`. It does not wait for sign-in. A preparation failure may publish enabled-but-unavailable
-state; a publication failure never reports a successful mutation. Stream polling,
+state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Stream polling,
 waiting, and result observation use the ordinary execution lifecycle, without a
 separate deferred-commit queue. An explicit client action publishes now, rejects
 a failed preparation, and fails 409 while the workspace is held
@@ -5758,7 +5774,7 @@ remain one compact orientation line, not an expansion of every tool's signature.
 
 §members-functionality **File membership is one workspace Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
-the model, the client, and the operator learn one surface — `list | discover | add |
+the model, the client, and the operator learn one surface — `list | discover | add | replace |
 enable | disable | remove`, `workspace.members.<verb>` for the client,
 ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
 MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project

@@ -21,6 +21,7 @@ import type {
     Notice,
 } from "@plurnk/plurnk-contracts";
 import type {
+    FunctionalityAdmission,
     FunctionalityCaller,
     FunctionalityFamilyHandle,
     FunctionalityIdentity,
@@ -67,7 +68,8 @@ export interface FunctionalityHost {
 // "action": an explicit client action under user authority — publishes now,
 // rejects a failed preparation, 409 when the workspace is held. "operation": an
 // execution verb inside a turn that holds the workspace — its ordinary execution
-// stream waits for publication and carries enabled-but-unavailable outcomes.
+// stream waits for publication. Replacement preserves the preceding publication
+// on refusal for both callers ({§functionality-replacement}).
 export type { FunctionalityCaller };
 
 export interface FunctionalityInvocation {
@@ -221,6 +223,7 @@ export default class Functionality {
             list: scopedInput(EMPTY_INPUT),
             ...(discovery === undefined ? {} : { discover: scopedInput(discoverInput(discovery)) }),
             add: addInput,
+            replace: { ...addInput, required: ["alias", "definition"] },
             enable: scopedInput(ALIAS_INPUT),
             disable: scopedInput(ALIAS_INPUT),
             remove: scopedInput(ALIAS_INPUT),
@@ -629,23 +632,26 @@ export default class Functionality {
         state: FamilyState,
         effective: ReadonlyMap<string, EffectiveDefinition>,
         options: FunctionalityOptions,
-    ): Promise<{ definitions: Record<string, DefinitionRecord>; alias: string; status: 200 | 201; removed: boolean }> {
+    ): Promise<{ definitions: Record<string, DefinitionRecord>; alias: string; status: 200 | 201; removed: boolean; admission?: FunctionalityAdmission }> {
         const local = Functionality.#localOrigin(identity);
         const here = local === "worker" ? "this worker" : "this workspace";
         const definitions: Record<string, DefinitionRecord> = { ...state.definitions };
         let alias: string;
         let status: 200 | 201 = 200;
         let removed = false;
+        let admission: FunctionalityAdmission | undefined;
         switch (verb) {
-            case "add": {
+            case "add":
+            case "replace": {
                 const admitted = await adapter.admit(input, identity, caller, options);
+                admission = admitted;
                 alias = admitted.alias;
                 if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
                 const current = effective.get(alias);
-                if (current?.origin === local && !isDeepStrictEqual(current.definition, admitted.definition)) {
-                    throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different ${local} definition.`, { alias, recovery: "Use the existing definition, or remove it before adding its replacement.", retryable: false });
+                if (verb === "add" && current?.origin === local && !isDeepStrictEqual(current.definition, admitted.definition)) {
+                    throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different ${local} definition.`, { alias, recovery: "Use replace with the complete definition to change it.", retryable: false });
                 }
-                definitions[alias] = { origin: local, definition: admitted.definition, enabled: true };
+                definitions[alias] = { origin: local, definition: admitted.definition, enabled: verb === "replace" ? current?.enabled ?? true : true };
                 status = current?.origin === local ? 200 : 201;
                 break;
             }
@@ -672,7 +678,7 @@ export default class Functionality {
             }
             default: throw new Error(`unreachable verb ${verb}`);
         }
-        return { definitions, alias, status, removed };
+        return { definitions, alias, status, removed, ...(admission === undefined ? {} : { admission }) };
     }
 
     #mutationResult(
@@ -711,10 +717,11 @@ export default class Functionality {
         // already-active alias keeps its live attachment.
         const retry = verb === "enable" && family.prepared?.outcomes.get(transition.alias)?.state !== "active";
         const publication = await this.#publish(adapter, identity, nextState, {
-            failure: caller === "action" ? "reject" : "publish-unavailable",
+            failure: caller === "action" || verb === "replace" ? "reject" : "publish-unavailable",
             configurationFailure: "reject",
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
             forceAlias: retry ? transition.alias : null,
+            admission: transition.admission,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         return this.#mutationResult(adapter, transition, effectiveAfter, publication.outcomes);
@@ -745,7 +752,7 @@ export default class Functionality {
         const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective, options);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
-        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" ? "reject" : "publish-unavailable");
+        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admission);
         try {
             await this.#host.replaceWorkerModuleState(workerId, adapter.namespaceOwner, Functionality.#persisted(nextState));
         } catch (cause) {
@@ -763,10 +770,12 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         effective: ReadonlyMap<string, EffectiveDefinition>,
         failureMode: "publish-unavailable" | "reject",
+        admission?: FunctionalityAdmission,
     ): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         const enabled = Functionality.#enabled(effective);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode,
+            ...(admission === undefined ? {} : { admission }),
             progress: () => undefined,
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
         });
@@ -832,6 +841,7 @@ export default class Functionality {
             readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
             readonly forceAlias?: string | null;
+            readonly admission?: FunctionalityAdmission;
         },
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const { workspaceId } = identity;
@@ -860,6 +870,7 @@ export default class Functionality {
             readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
             readonly forceAlias?: string | null;
+            readonly admission?: FunctionalityAdmission;
         },
         report: (alias: string | null, phase: FunctionalityPreparationActivity["phase"]) => void,
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
@@ -877,6 +888,7 @@ export default class Functionality {
                 enabled,
                 previous: previous?.snapshot ?? null,
                 failure: options.failure,
+                ...(options.admission === undefined ? {} : { admission: options.admission }),
                 progress: (alias) => {
                     if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
                     report(alias, "preparing");

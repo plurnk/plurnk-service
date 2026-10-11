@@ -3,6 +3,7 @@
 // and tells the time ({§schedule-clock}), admission that canonicalizes and bounds a rule, and the
 // outcomes the timers stand behind ({§schedule-delivery}, {§schedule-residency}).
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import {
     Problems,
     type FunctionalityCandidate,
@@ -148,9 +149,9 @@ export default class ScheduleFunctionality {
         }];
     }
 
-    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<{ alias: string; definition: object }> {
+    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<{ alias: string; definition: object; preparation: number }> {
         const params = isRecord(input) ? input : {};
-        if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule add needs an alias.", { retryable: false });
+        if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule definition needs an alias.", { retryable: false });
         let definition: ScheduleDefinition;
         try {
             definition = readDefinition(params.definition);
@@ -163,19 +164,23 @@ export default class ScheduleFunctionality {
         // {§schedule-bound}
         if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
         // {§schedule-first-arming} — the rule was read now; its first arming is judged from now.
-        this.#scheduler.admitted(identity.workspaceId, params.alias, now);
-        return { alias: params.alias, definition: { ...definition, rule: parsed.text } };
+        return { alias: params.alias, definition: { ...definition, rule: parsed.text }, preparation: now };
     }
 
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const { workspaceId } = preparation;
         const previous = preparation.previous as Snapshot | null;
+        let admission: { alias: string; at: number } | undefined;
+        if (preparation.admission !== undefined) {
+            const { alias, definition, preparation: at } = preparation.admission;
+            if (typeof at !== "number" || !Number.isFinite(at)) throw new Error("Schedule admission has no valid preparation timestamp.");
+            if (!isDeepStrictEqual(previous?.rules.get(alias)?.definition, definition)) admission = { alias, at };
+        }
         const rules = new Map<string, ScheduledRule>();
         const unavailable = new Map<string, string>();
         const outcomes = new Map<string, FunctionalityOutcome>();
         const now = this.#scheduler.now();
         for (const [alias, { definition: raw }] of preparation.enabled) {
-            if (preparation.force === alias) this.#scheduler.forgive(workspaceId, alias);
             let definition: ScheduleDefinition;
             let parsed: ParsedRule;
             try {
@@ -193,12 +198,12 @@ export default class ScheduleFunctionality {
             }
             rules.set(alias, { alias, definition, parsed });
             const failed = this.#scheduler.failure(workspaceId, alias);
-            if (failed !== undefined && failed.text === parsed.text) {
+            if (preparation.force !== alias && failed !== undefined && isDeepStrictEqual(failed.definition, definition)) {
                 unavailable.set(alias, parsed.text);
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(failed.problem) });
                 continue;
             }
-            const next = nextOccurrence(parsed, this.#scheduler.cursor(workspaceId, alias, now));
+            const next = nextOccurrence(parsed, admission?.alias === alias ? admission.at : now);
             outcomes.set(alias, {
                 state: "active",
                 detail: {
@@ -217,7 +222,7 @@ export default class ScheduleFunctionality {
             documents: [],
             outcomes,
             snapshot,
-            commit: async () => { await this.#scheduler.sync(workspaceId, rules); },
+            commit: async () => { await this.#scheduler.sync(workspaceId, rules, { admission, force: preparation.force }); },
             abort: async () => {},
         };
     }

@@ -19,6 +19,7 @@ import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/M
 import type { Executor } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
+import { dispatchSettled } from "./_scheme.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -165,6 +166,98 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 };
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
+
+for (const caller of ["action", "operation"] as const) {
+    test(`{§functionality-replacement} ${caller} replacement preserves enabledness and rejects without losing the prior publication`, { timeout: 30_000 }, async (t) => {
+        const db = await openMigrated();
+        const log: string[] = [];
+        const daemon = await boot(db, log);
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        const workspaceId = await insertWorkspace(db, `replacement-${caller}`);
+        const workerId = await insertWorker(db, workspaceId, null, "client", "client");
+        await ownWorker(db, workspaceId, workerId);
+        const owner = { workspaceId, address: TEST_OWNER };
+        const action = (verb: string, params: Readonly<Record<string, unknown>>) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+        const listed = async () => (await action("list", {}) as FunctionalityListResult).definitions;
+        const operate = (verb: string, params: object, decision: "accept" | "reject" = "accept") =>
+            dispatchSettled(daemon, owner, () => daemon.dispatchAsClient({
+                workspaceId, workerId, statement: parseOne(PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params))),
+            }), decision);
+        const invoke = async (verb: string, params: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>> => {
+            if (caller === "action") {
+                try { return await action(verb, params) as Record<string, unknown>; }
+                catch (cause) {
+                    if (cause instanceof OperationFailureError) return { ...cause.result };
+                    throw cause;
+                }
+            }
+            const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "fx", prefix: "/%" })).length;
+            const dispatched = await operate(verb, params);
+            if (dispatched.status >= 400) return { ...dispatched };
+            const result = await awaitExecOutcome(db, { workspaceId, scheme: "fx", after });
+            await daemon.settleFunctionality(workspaceId);
+            return result;
+        };
+        const replace = (alias: string, kind: string) => invoke("replace", { alias, definition: { kind } });
+        await action("add", { alias: "local", definition: { kind: "ok" } });
+        const original = await listed();
+        const invalid = await invoke("replace", { alias: "local", definition: {} });
+        assert.equal(invalid.status, 400);
+        assert.equal((invalid.problem as ProblemDetails).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+        assert.deepEqual(await listed(), original);
+        const unavailable = await replace("local", "fail");
+        assert.equal(unavailable.status, 502);
+        assert.equal((unavailable.problem as ProblemDetails).type, "https://problems.plurnk.xyz/fx/fixture/refused");
+        assert.deepEqual(await listed(), original, "preparation failure preserves the complete prior state");
+        assert.equal((await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(PlurnkParser.frame("local", "fixture")) })).status, 200,
+            "the preceding capability still executes after replacement fails");
+
+        const auth = await replace("local", "auth");
+        assert.equal(auth.status, 202, "authorization-required is a successful handoff, not a refused replacement");
+        assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "authorization-required");
+        assert.equal((await replace("local", "ok")).status, 200);
+        await action("disable", { alias: "local" });
+        assert.equal((await replace("local", "fail")).status, 200, "disabled definitions do not prepare their unavailable candidate");
+        assert.deepEqual((await listed()).find(({ alias }) => alias === "local"), {
+            alias: "local", origin: "workspace", definition: { kind: "fail" }, state: "disabled",
+        });
+        assert.equal((await replace("local", "doc")).status, 200);
+        assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "disabled");
+        await action("enable", { alias: "local" });
+        assert.equal((await replace("local", "doc")).status, 200, "identical replacement is idempotent");
+
+        const published = await listed();
+        const refused = Results.failure("fx:fixture", "publication-refused", 409, "Fixture publication refused.", {}, { retryable: true });
+        t.mock.method(daemon, "replaceWorkspaceCapabilities", async () => { throw new OperationFailureError(refused); }, { times: 1 });
+        assert.deepEqual(await replace("local", "ok"), refused);
+        assert.deepEqual(await listed(), published, "publication failure preserves the admitted configuration");
+        assert.ok((await daemon.engine.referenceEntries(workspaceId)).some(({ pathname, content }) =>
+            pathname === "/_plurnk/fx/local.md" && content.includes("fixture document")), "the preceding document remains published");
+
+        await action("disable", { alias: "svc" });
+        assert.equal((await replace("svc", "doc")).status, 201, "replacement can create a local override");
+        assert.deepEqual((await listed()).find(({ alias }) => alias === "svc"), {
+            alias: "svc", origin: "workspace", definition: { kind: "doc" }, state: "disabled",
+        }, "an inherited disabled definition stays disabled when overridden");
+        await action("remove", { alias: "svc" });
+        assert.deepEqual((await listed()).find(({ alias }) => alias === "svc"), {
+            alias: "svc", origin: "service", definition: { kind: "ok" }, state: "active",
+        }, "removing the local replacement restores the inherited definition and enabledness");
+
+        assert.equal((await replace("new", "ok")).status, 201, "named assignment creates an absent definition");
+        assert.equal((await listed()).find(({ alias }) => alias === "new")?.state, "active");
+        const unnamed = await invoke("replace", { definition: { kind: "ok" } });
+        assert.equal(unnamed.status, 400, "replacement always names its alias");
+        assert.equal((unnamed.problem as ProblemDetails).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+        if (caller === "operation") {
+            const before = await listed();
+            log.length = 0;
+            assert.equal((await operate("replace", { alias: "local", definition: { kind: "ok" } }, "reject")).status, 400);
+            assert.deepEqual(await listed(), before);
+            assert.deepEqual(log, [], "a rejected replacement never prepares or publishes");
+        }
+    });
+}
 
 test("{§functionality-mutation-status} mutations distinguish local creation, settlement, and authorization", async (t) => {
     const db = await openMigrated();
@@ -589,6 +682,11 @@ test("{§configuration-definition-resolution} a workspace definition replaces th
     baseline = { kind: "ok", args: ["another-service-argument"], env: { SERVICE: "third" } };
     await invoke("enable", { alias: "svc" });
     assert.deepEqual(prepared, replacement, "behavior changes cannot merge the later baseline into the local definition");
+
+    const reassigned = { kind: "ok", args: ["local-argument"] };
+    await invoke("replace", { alias: "svc", definition: reassigned });
+    assert.deepEqual(prepared, reassigned, "replacement drops the old local env instead of patching the definition");
+    assert.deepEqual(await listed(), [{ alias: "svc", origin: "workspace", state: "active", definition: reassigned }]);
 });
 
 for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false], ["absent", undefined]] as const) {
@@ -677,10 +775,10 @@ fixture
         (await invoke<{ definitions: Array<{ alias: string; origin: string; state: string }> }>("list", {})).definitions
             .map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
     try {
-        // Registration projects six workspace-scoped actions.
+        // Registration projects the shared workspace-scoped actions.
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.fx.")),
-            ["workspace.fx.add", "workspace.fx.disable", "workspace.fx.discover", "workspace.fx.enable", "workspace.fx.list", "workspace.fx.remove"],
+            ["workspace.fx.add", "workspace.fx.disable", "workspace.fx.discover", "workspace.fx.enable", "workspace.fx.list", "workspace.fx.remove", "workspace.fx.replace"],
         );
         assert.deepEqual(await states(), ["svc:service:dormant"]);
         assert.equal((await exec("svc")).status, 200, "the service definition's capability is published");
@@ -829,15 +927,16 @@ test("{§functionality-publication} a management stream reports publication refu
     assert.equal(daemon.schemes.has("candidate", workspaceId), false);
 });
 
-for (const hold of ["", "fx:host"]) {
-    test(`{§functionality-model-mutation} a model uses its published tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
+for (const verb of ["add", "replace"]) for (const hold of ["", "fx:host"]) {
+    test(`{§functionality-model-mutation} a model uses its ${verb} tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
+        serverProposals(approvalContext, "accept");
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
         process.env.PLURNK_SERVICE_EXEC_HOLD = hold;
+        const alias = verb === "add" ? "candidate" : "svc";
         const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Tool result inspected.");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`${PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "ok" } }))}\n${step("NOTE")}`),
-            makeMockResponse(`${PlurnkParser.frame("candidate", "fixture")}\n${step("NOTE")}`),
+            makeMockResponse(`${PlurnkParser.frame(`fx (${verb})`, JSON.stringify({ alias, definition: { kind: "doc" } }))}\n${step("NOTE")}`),
+            makeMockResponse(`${PlurnkParser.frame(alias, "fixture")}\n${step("NOTE")}`),
             makeMockResponse(step("SEND [200]")),
         ] });
         const db = await openMigrated();
@@ -848,9 +947,9 @@ for (const hold of ["", "fx:host"]) {
         try {
             await daemon.start();
             await rpcCall(ws, 1, "workspace.create", { name: `model-publication-${crypto.randomUUID()}` });
-            const result = await runLoopToTerminal(ws, 2, { prompt: "Add and use the candidate fixture tool." });
+            const result = await runLoopToTerminal(ws, 2, { prompt: `${verb} and use the ${alias} fixture tool.` });
             assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
-            assert.equal(log.filter((line) => line === "run:candidate").length, 1,
+            assert.equal(log.filter((line) => line === `run:${alias}`).length, 1,
                 "the next model turn executes the newly published tool, including under hold-until-concluded");
         } finally {
             ws.close();

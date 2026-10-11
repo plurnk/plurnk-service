@@ -37,7 +37,7 @@ leaves no model-facing trace.
 | Service | Host-provided trees |
 | Standard locations | Global, plurnk, then project roots selected by {§agent-roots} |
 | Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition |
-| Live workspace | `skills (add)` creates a workspace definition through {§functionality-coordinator} |
+| Live workspace | `skills (add)` creates a workspace definition; `replace` assigns a complete named definition through {§functionality-replacement} |
 
 `PLURNK_SKILLS_ENABLED` supplies default enabledness; `<name>_ENABLED` overrides
 it independently ({§resource-environment}). The decoded environment alias must
@@ -51,7 +51,7 @@ fetching or opening a source; `commit` is service-recorded, not an input.
 skills one source carries, each a candidate with `source` provenance and the exact
 definition to add; it never installs, persists, or enables.
 
-*Admission.* `add {alias, definition}` requires `alias = name` and a `source`;
+*Admission.* `add` and `replace` take `{alias, definition}`, requiring `alias = name` and a `source`;
 the workspace definition may shadow a service skill of the same name. Relative
 sources require a project root; absolute sources work in headless workspaces.
 A local source is recorded as its absolute path.
@@ -158,7 +158,7 @@ only through the generated ```` ```skills ```` family
 | `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |
 | `source-unreachable` | 502 | git could not reach '*remote*', or fetch it (at '*ref*'): *reason*. |
 | `ref-missing` | 404 | '*remote*' has no branch or tag '*ref*', or names no default branch. |
-| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Remove the skill and add it again to take the current commit. |
+| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Use `skills (replace)` with the complete source definition to take the current commit. |
 | `source-is-plugin` | 422 | '*source*' is an Agent Plugin, not a skill. |
 | `source-unsafe` | 422 | '*path*' links outside its skill, or is neither a file, a directory, nor an inward link. |
 | `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |

@@ -15,7 +15,7 @@ import EnvFunctionality from "./EnvFunctionality.ts";
 import type Functionality from "./Functionality.ts";
 
 const CHANNEL = "results";
-export const FUNCTIONALITY_VERBS = Object.freeze(["list", "discover", "add", "enable", "disable", "remove"] as const);
+export const FUNCTIONALITY_VERBS = Object.freeze(["list", "discover", "add", "replace", "enable", "disable", "remove"] as const);
 export type FunctionalityVerb = (typeof FUNCTIONALITY_VERBS)[number];
 const READ_VERBS: ReadonlySet<FunctionalityVerb> = new Set(["list", "discover"]);
 
@@ -31,6 +31,10 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
     add: {
         summary: "Validate one exact definition, persist it at the selected scope, prepare it, and enable it atomically.",
         details: "A host effect: it proposes and runs only on acceptance. The definition must conform to the family definition schema.",
+    },
+    replace: {
+        summary: "Assign a complete definition to a named alias, retaining its enabledness.",
+        details: "A host effect. A new alias is enabled. Rejection preserves the preceding definition and attachment; disabled definitions are saved without preparation.",
     },
     enable: {
         summary: "Prepare and publish one already-available definition.",

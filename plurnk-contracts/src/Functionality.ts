@@ -31,6 +31,11 @@ export interface FunctionalityDefinitionSource {
     readonly definition: object;
 }
 
+export interface FunctionalityAdmission extends FunctionalityDefinitionSource {
+    // Attempt-local data carried to prepare, never persisted or used as definition identity.
+    readonly preparation?: unknown;
+}
+
 // A service- or configuration-contributed definition with its default
 // enabledness; a workspace's durable state may override the enabledness only.
 export interface FunctionalityServiceDefinition extends FunctionalityDefinitionSource {
@@ -62,8 +67,10 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     // The adapter's previous process snapshot for this workspace, when one exists.
     readonly previous: unknown | null;
+    // The current add/replace admission only; absent on refresh, activation and other verbs.
+    readonly admission?: FunctionalityAdmission;
     // Whether failures publish as unavailable outcomes (activation, model
-    // mutations) or reject the mutation (explicit client mutations).
+    // mutations except replacement) or reject it (explicit client mutations and replacement).
     readonly failure: "publish-unavailable" | "reject";
     // An alias whose preparation must be retried even when its definition is
     // unchanged (re-enabling an unavailable definition).
@@ -103,7 +110,7 @@ export type WorkspaceCapabilityGate = "none" | "try" | "wait";
 // change republishes the unchanged state through the same publication path.
 export interface FunctionalityFamilyHandle {
     invoke(
-        verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
+        verb: "list" | "discover" | "add" | "replace" | "enable" | "disable" | "remove",
         params: unknown,
         identity: FunctionalityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;

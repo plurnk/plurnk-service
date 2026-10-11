@@ -19,11 +19,14 @@ existing environment.
 
 ## Your entries
 
-`add` sets one variable for every command you run from now on. The name is the
+`add` declares and enables one variable for every command you run from now on. The name is the
 alias, `{ "value": "…" }` the definition, used verbatim: no interpolation, no
 escapes. It persists until you `remove` it. This is a registry, not a prefix —
 `CARGO_TARGET_DIR=/tmp/x cargo build` sets a value for one command; `add` sets
 it for all of them.
+
+`replace` takes the same `{alias, definition}` to change a value, retaining its
+enabledness. A new name is created enabled. Both verbs accept workspace scope.
 
 `disable` withdraws a name from your commands while keeping the entry listed;
 `enable` restores it. For an ambient name that is how `CI=1` goes away for you
@@ -69,7 +72,7 @@ not the command's lifetime.
 ## Names you cannot set
 
 `PLURNK_*` and provider credential names are plurnk's own and never reach a
-command, so `add` refuses them and tells you why.
+command, so `add` and `replace` refuse them and tell you why.
 
 ## Finding a name
 
@@ -95,8 +98,8 @@ value, verbatim. The ordinary verbs reach it:
 ```
 
 A write is your own layer, never the workspace's or the operator's. `EDIT` sets the value
-(the body, whole: a value has no lines to scope) as `add` does for your worker; `KILL`
+(the body, whole: a value has no lines to scope) as `replace` does for your worker; `KILL`
 retires the name from your commands as `remove` does for an entry you own and as
 `disable` does for one you inherited, so the inherited definition is kept and can be
 enabled again. Names plurnk reserves — its own configuration and provider credentials —
-are not resources and are refused as they are at `add`.
+are not resources and are refused as they are at `add` and `replace`.

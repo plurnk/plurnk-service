@@ -1,27 +1,34 @@
 import { serverProposals } from "./_approval.ts";
-// {§env-option} — the heading's environment on WORK: the child starts with the parent's copy plus the
-// names the heading gives it as its own, and its first command sees them. Through the real loop:
-// the parent's WORK proposes and is accepted, the child runs, the parent collects.
+// {§env-option} — WORK/FORK override the parent's copied environment before the child's first command.
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§env-option} WORK hands the child an environment of its own, seen by its first command", async (approvalContext) => {
+for (const op of ["WORK", "FORK"]) for (const inherited of ["absent", "active", "disabled"] as const)
+test(`{§env-option} ${op} replaces the child's ${inherited} inherited value before its first command`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````WORK (worker://kid) [{\"env\": {\"KID_ONLY\": \"1\"}}]\nPrint KID_ONLY and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse(`\`\`\`\`${op} (worker://kid) [{"env": {"KID_ONLY": "1"}}]\nPrint KID_ONLY and conclude.\n\`\`\`\`\n\n\`\`\`\`WAIT\nwaiting\n\`\`\`\``, 10),
         makeMockResponse("````sh\necho kid=[$KID_ONLY]\n````\n\n````NOTE\nprinted\n````", 10),
         makeMockResponse("````SEND [200]\nprinted\n````", 10),
         makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
+    await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "env-modifier" });
-            const workspaceId = 1;
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20_000 });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "env-modifier" });
+            const { id: workspaceId } = created.result as { id: number };
+            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`worker.env.${verb}`, params, { scope: "worker", workspaceId, workerId });
+            if (inherited !== "absent") {
+                await invoke("add", { alias: "KID_ONLY", definition: { value: "parent" } });
+                if (inherited === "disabled") await invoke("disable", { alias: "KID_ONLY" });
+            }
+            const parentBefore = await invoke("list") as FunctionalityListResult;
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { workerId, prompt: "delegate" }, { timeoutMs: 20_000 });
             assert.equal(finalStatus, 200);
 
             const kid = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "kid" });
@@ -29,7 +36,8 @@ test("{§env-option} WORK hands the child an environment of its own, seen by its
             const state = await db.worker_module_state_get.get<{ state: string }>({ worker_id: kid.id, namespace_owner: "@plurnk/plurnk-service" });
             const definitions = (JSON.parse(state!.state) as { definitions: Record<string, unknown> }).definitions;
             assert.deepEqual(definitions.KID_ONLY, { origin: "worker", enabled: true, definition: { value: "1" } },
-                "the heading's name is the child's own entry — not inherited, since the child set nothing and the parent never had it");
+                "an explicit child override is its own enabled value, even when the copied definition was disabled");
+            assert.deepEqual(await invoke("list"), parentBefore, "the override never mutates the parent's definition or enabledness");
 
             const outputs = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "sh", prefix: "/%" });
             assert.equal(outputs.length, 1, "the child's one command");

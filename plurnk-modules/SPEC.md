@@ -127,6 +127,15 @@ expose; both default to none, and the frameworks that own those types name them 
 An adapter may expose current partial-source `configurationNotices`; these join the ordinary
 workspace diagnostics without preventing independently valid definitions from preparing.
 
+§functionality-admission-preparation **Admission data belongs to one attempt.**
+`admit` returns `{ alias, definition, preparation? }`; the coordinator passes this
+result to that mutation's `prepare` as `admission`. The optional `preparation`
+payload is adapter-owned, not configuration: it is never persisted, projected,
+used as definition identity, or carried into later refreshes. Admission and
+preparation must not change the preceding publication's live state. Candidate
+state becomes live at `commit`; `abort` discards only the candidate
+({§functionality-publication}).
+
 §functionality-discovery-inputs **An adapter declares the discovery inputs it serves.**
 `discovery` names `inputs`, keys of the shared discovery query (`FunctionalityDiscoverInput`:
 `query`, `source`, `configuration`); `emptyListsAll` when a request naming none of them lists

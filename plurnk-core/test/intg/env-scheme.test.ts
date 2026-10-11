@@ -73,6 +73,18 @@ test("{§env-scheme} every effective name reads at env:///NAME; EDIT and KILL ac
     assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/target"))).status, 200);
     assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/target");
     assert.equal(await state(alice, "CARGO_TARGET_DIR"), "worker:active");
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/replaced"))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/replaced", "EDIT replaces an already-local value");
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), ""))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 204, "an empty value reads as an empty resource");
+    const emptyValue = await daemon.invokeModuleAction("worker.env.list", {}, { scope: "worker", workspaceId, workerId: alice }) as FunctionalityListResult;
+    assert.deepEqual(emptyValue.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.definition, { value: "" });
+    await daemon.invokeModuleAction("worker.env.disable", { alias: "CARGO_TARGET_DIR" }, { scope: "worker", workspaceId, workerId: alice });
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/offline"))).status, 200);
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "worker:disabled", "replacement does not enable a disabled definition");
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 404);
+    await daemon.invokeModuleAction("worker.env.enable", { alias: "CARGO_TARGET_DIR" }, { scope: "worker", workspaceId, workerId: alice });
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/offline");
     assert.equal(await content(bob, "CARGO_TARGET_DIR"), 404, "a sibling sees nothing of alice's layer");
     assert.equal((await dispatch(editStmt(env("ENV_WITNESS"), "mine"))).status, 200);
     assert.equal(await content(alice, "ENV_WITNESS"), "mine");
