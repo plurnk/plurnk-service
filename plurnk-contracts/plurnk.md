@@ -17,7 +17,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Internal Annotation Register. Emit NOTE for every fact, finding, conclusion, decision, and plan.
+* NOTE: Persistent Detailed Internal Annotation Register. Emit NOTE for every fact, finding, decision, and plan (and why).
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
