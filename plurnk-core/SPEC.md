@@ -3625,6 +3625,26 @@ The model is NOT a stream/event consumer — turn-based only; sees whatever's in
 
 SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
 
+### §db-durability Connection durability
+
+The service launcher applies `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` through SqlRite's
+connection options before migrations or `INIT` write anything. The same policy
+reaches the writer and read pool on every open, including `migrate` and reopening
+an existing database. Its default lives in `.env.defaults`; an invalid value is
+diagnosed by `config check` and refuses database admission, never silently choosing
+a weaker mode. Configuration inspection and editing remain available.
+
+| Mode | WAL guarantee |
+| --- | --- |
+| `FULL` | Each committed transaction is synchronized to storage, surviving application/OS crashes and power loss when the filesystem and device honor synchronization. |
+| `EXTRA` | Same guarantee as `FULL` in WAL mode. |
+| `NORMAL` | Consistent after a crash, but recent commits may be lost after an OS crash or power loss. |
+| `OFF` | Unsynchronized writes; a crash may corrupt the database. |
+
+These are [SQLite's guarantees](https://www.sqlite.org/pragma.html#pragma_synchronous),
+not filesystem-write atomicity, external-effect rollback, a backup, or protection
+against storage hardware that fails to honor synchronization.
+
 ### DDL strategy
 
 No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, explicit `NOT NULL`, indexed query paths, deliberate FK `ON DELETE`/`ON UPDATE`, `WITHOUT ROWID` where access pattern warrants, generated columns, FTS5.
@@ -3953,6 +3973,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | Var | Purpose |
 |---|---|
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
+| `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
 | §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |

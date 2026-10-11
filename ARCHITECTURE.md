@@ -438,6 +438,7 @@ of the surrounding filesystem or external services.
 | --- | --- |
 | Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-readable-projection}). |
 | Accepted messages, operations and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history ({§message-projection}, {§turn-source-resources}, {§log-history-projection}). |
+| Database commits | Connection-time WAL synchronization governs crash/power-loss durability, separately from retention and backups ({§db-durability}). |
 | Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics-provider-usage}). |
 | Packet compositions and model-call response bodies | Retained according to their own count/age policy. This does not erase turn sources, log bodies or separately retained physical-request evidence ({§retention-policy}, {§provider-request-evidence}). |
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |

@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
+import { sqliteSynchronous } from "../../src/core/sqlite-synchronous.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
@@ -31,6 +32,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
     await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({
         path: dbPath,
+        synchronous: sqliteSynchronous(),
         // The suite already runs eight isolated databases concurrently. One reader
         // per fixture exercises the WAL read lane without multiplying a host-sized
         // pool by every test database.

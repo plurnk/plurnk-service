@@ -83,9 +83,11 @@ Retention controls expire packet compositions and model-call response bodies, no
 their content. Turn sources, log receipts and physical-request evidence have separate lifetimes
 ({§retention-policy}); a share contains only what remains when it is taken.
 
-The installed SQLite wrapper uses WAL with `synchronous=NORMAL`. Committed database transactions
-survive an application crash, but recent commits may be lost after power loss or an operating-system
-crash. This is not a filesystem-write guarantee; see [SQLite's durability description](https://www.sqlite.org/pragma.html#pragma_synchronous).
+`PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
+or startup writes. Its shipped setting is in `.env.defaults`. `FULL` synchronizes every commit
+to storage; selecting `NORMAL` explicitly trades power-loss durability for fewer synchronizations.
+The guarantees and storage assumptions are defined in {§db-durability}. Neither setting makes
+project-file writes transactional or replaces backups.
 
 ## Precedence
 

@@ -14,6 +14,11 @@ export interface SqlRiteOptions {
 	cacheSize?: number;
 	mmapSize?: number;
 	maxPageCount?: number;
+	/**
+	 * WAL synchronization policy (default NORMAL).
+	 * OFF can corrupt after an OS crash or power loss; EXTRA equals FULL in WAL.
+	 */
+	synchronous?: "OFF" | "NORMAL" | "FULL" | "EXTRA";
 	[option: string]: unknown; // passthrough to node:sqlite DatabaseSync
 }
 

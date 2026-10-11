@@ -10,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
+import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
 import Daemon from "./server/Daemon.ts";
 import HttpListener from "./server/HttpListener.ts";
 import DaemonLock from "./server/DaemonLock.ts";
@@ -113,6 +114,7 @@ export default class Service {
     }
 
     static async #validateConfiguration(): Promise<void> {
+        sqliteSynchronous();
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(workspacePaths(Service.#hostPaths, process.cwd()).configurationRoots.map(({ directory }) => directory));
@@ -152,6 +154,7 @@ export default class Service {
     }
 
     static async #openDb(dbPath: string, exclusive: boolean = false): Promise<Db> {
+        const synchronous = sqliteSynchronous();
         const tuning: Record<string, number> = {};
         for (const [env, opt] of [
             ["PLURNK_SERVICE_SQLITE_TIMEOUT", "timeout"],
@@ -175,6 +178,7 @@ export default class Service {
         try {
             const db = await SqlRite.open({
                 path: dbPath,
+                synchronous,
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
                 functions: sqlFunctionPaths,
                 ...tuning,
