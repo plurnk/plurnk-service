@@ -131,6 +131,10 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.ok(catalog.some(({ alias }) => alias === "PAGER"), "the empty request lists the catalog");
         assert.ok(catalog.length > discovered.candidates.length, "the whole catalog, not a query's matches");
         assert.equal(await refusal(() => invoke(alice, "discover", { configuration: {} })), "https://problems.plurnk.xyz/functionality/arguments-invalid");
+        assert.equal(await refusal(() => invoke(alice, "discover", { source: ".env" })), "https://problems.plurnk.xyz/env/functionality/source-unknown");
+        assert.deepEqual((await invoke<FunctionalityDiscoverResult>(alice, "discover", {
+            source: "@plurnk/plurnk-execs", query: "no-such-catalog-name",
+        })).candidates, []);
 
         // WORK owns its heading slot ({§env-option}): a key it does not take and a reserved name are
         // refused by name, before any child exists.

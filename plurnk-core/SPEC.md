@@ -4622,8 +4622,11 @@ set any name it lists or none of them — it answers which names have a **consum
 a Worker learns the name of a value only the operator can supply. The catalog projects
 declarations, never the host environment, so a credential the operator has filled in appears by
 name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never
-read). `source` selects one declaring package, and a request naming neither input is the whole
-catalog. A client's own environment is no input: contributing candidates, it would be a second
+read). `source` selects one declaring package; an unknown source is `source-unknown`
+(400), not an empty catalog. A known source with no matching settable declarations
+returns an empty candidate list. A request naming neither input is the whole
+catalog. Files are read with READ; variables are set with `add` or `EDIT (env:///NAME)`.
+A client's own environment is no input: contributing candidates, it would be a second
 door past the ceiling.
 
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
@@ -6330,6 +6333,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
 | `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
+| `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME). |
 | `query-invalid` | 400 | '*query*' names no path or pattern. Recovery: Supply a path such as `docs/guide.md` or a pattern such as `docs/**`. |
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
 | `definition-invalid` | 400 | A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude. |

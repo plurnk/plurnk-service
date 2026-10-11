@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import EnvFunctionality from "./EnvFunctionality.ts";
+import { OperationFailureError } from "../core/results.ts";
 
 // The contract types a definition as `object`, deliberately: the coordinator does not know any
 // family's shape. A test that reads through it narrows first rather than asserting on `any`.
@@ -68,6 +69,23 @@ test("{§env-functionality} discover projects the configuration catalog as addab
     assert.equal(candidate!.alias, "PAGER");
     assert.equal(valueOf(candidate!.definition), "cat");
     assert.equal(candidate!.provenance.source, "@plurnk/plurnk-execs");
+});
+
+test("{§env-functionality} discover distinguishes an unknown source from a known source with no matches", async () => {
+    const source = "@plurnk/plurnk-execs";
+    assert.deepEqual((await adapter.discover({ source }, identity)).map(({ alias }) => alias), ["PAGER"]);
+    assert.deepEqual(await adapter.discover({ source, query: "not-a-declared-name" }, identity), []);
+    for (const source of [".env", "/tmp/settings.env", "@plurnk/not-installed"]) {
+        await assert.rejects(adapter.discover({ source }, identity), (cause: unknown) => {
+            assert.ok(cause instanceof OperationFailureError);
+            assert.equal(cause.result.status, 400);
+            assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/source-unknown");
+            assert.equal(cause.result.problem.source, source);
+            assert.match(cause.result.problem.detail, /package in the configuration catalog/u);
+            assert.match(String(cause.result.problem.recovery), /READ/u);
+            return true;
+        });
+    }
 });
 
 // The catalog is what a Worker may set (#586's converged shape): plurnk's own names are the

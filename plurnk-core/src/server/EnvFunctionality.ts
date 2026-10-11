@@ -65,7 +65,8 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             + "comment as the summary; plurnk's own names never appear. `query` matches a name or the "
             + "comment that documents it; `source` selects one owning package; an empty body is the "
             + "whole catalog, which is short — start there. It is how you learn which names have a "
-            + "consumer, and how you learn the name of a value only the operator can supply.",
+            + "consumer, and how you learn the name of a value only the operator can supply. "
+            + "READ a dotenv file; set its variables with `add` or `EDIT (env:///NAME)`.",
     };
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
@@ -96,7 +97,14 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         // configuration and provider credential names are the operator's, refused by `add`, and would
         // only bury the few names that matter under the operator's knobs.
         const reserved = ExecEnv.ownSecretTest();
-        return EnvCatalog.candidates(await this.#defaults(), {
+        const files = await this.#defaults();
+        if (query.source !== undefined && !files.some(({ owner }) => owner === query.source)) {
+            throw actionError("source-unknown", 400, `'${query.source}' is not a package in the configuration catalog.`, {
+                source: query.source,
+                recovery: "Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME).",
+            });
+        }
+        return EnvCatalog.candidates(files, {
             ...(query.query === undefined ? {} : { query: query.query }),
             ...(query.source === undefined ? {} : { source: query.source }),
         }).filter(({ alias }) => !reserved(alias)) as readonly FunctionalityCandidate[];
