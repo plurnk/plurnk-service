@@ -445,6 +445,8 @@ configured arguments/headers, referenced environment values, and URL userinfo.
 This is known-value redaction, not classification of arbitrary server content.
 Stderr capture retains only the bounded tail plus overlap needed to redact a
 value crossing its boundary; it does not replace ordinary daemon stderr.
+Overlap retained for redaction is never displayed when replacements shorten
+the visible diagnostic or stderr window.
 Unavailable process exit codes, signals, and negotiation-probe stderr are
 omitted. Transport closure does not prove a particular process exit.
 
