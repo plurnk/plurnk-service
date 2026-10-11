@@ -7,6 +7,8 @@ workers. Use local or hosted models through the same environment.
 **To use Plurnk, start with the [terminal client](https://github.com/plurnk/plurnk#get-started).**
 This repository owns the daemon, language contracts, and bundled extensions.
 
+**Why it is built this way, and what that costs today: [PLURNK.md](PLURNK.md).**
+
 ## Design
 
 - The model controls its context and workflow through composable operations.
