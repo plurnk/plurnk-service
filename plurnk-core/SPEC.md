@@ -1930,7 +1930,7 @@ Every entry is uniformly listed in the catalog (```` ```FIND (scheme:///**) ````
 
 Mimetype is declared by scheme manifest ({§scheme-manifest}) or supplied per-call for dynamic schemes. Writing a channel without a declared mimetype throws. No default mimetype anywhere.
 
-- §channel-mimetype-cross-mimetype-415 COPY/MOVE compatibility follows {§mimetype-verbatim-transfer}; incompatible pairs return 415. Transfers preserve content verbatim and retain the destination's declared type, resolving it through {§ext-mimetype} only for an absent channel ({§copy}).
+- §channel-mimetype-cross-mimetype-415 COPY/MOVE compatibility follows {§mimetype-verbatim-transfer}; incompatible pairs return 415. Transfers preserve content verbatim and retain the destination's declared type, resolving an absent channel under {§copy-destination-mimetype}.
 
 ### §channel-selection Channel selection in the DSL
 
@@ -2710,6 +2710,22 @@ Operand syntax: {§transfer-resource-selections}. Result projection: {§copy-mov
 §copy-cross-scheme-copy The result is 201 for a new entry, 200 for a write, 304 for an exact no-op, or
 202 when the owning scheme requires proposal review. Same- and cross-scheme
 COPY use this one orchestrator.
+
+§copy-destination-mimetype **A transfer carries a type into an untyped destination.**
+Resolve the destination channel's type in this order, then apply
+{§mimetype-verbatim-transfer}; a refusal leaves both operands unchanged.
+
+| Destination evidence | Type |
+| --- | --- |
+| Existing channel | Its stored source type, not a derived readable projection. |
+| Absent channel with a recognized pathname extension | The extension's type under {§ext-mimetype}. |
+| Absent channel without a recognized extension | The source's declared type, with automatic `text/plain` normalization under {§markdown-primitive}. |
+
+The admitted type accompanies the content through proposal review and publication.
+This rule applies to whole and scoped transfers across entry-bearing schemes;
+the scheme's text-creation fallback does not override a transfer's supplied type.
+Filesystem reconciliation retains that type while the verified source revision is
+unchanged, including readable reprojection; a changed disk source is detected afresh.
 
 ### §move MOVE (engine-orchestrated)
 

@@ -202,13 +202,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // in-repo tests. discover() takes a cwd and joins node_modules, so derive the parent.
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
-        // Mimetypes owns discovery + detection; default mimetype text/markdown. (Token counting
-        // is NOT wired here — the engine's ruler below is {§tokenomics-agnostic-ruler}.)
-        // Constructor ownership is the lifecycle boundary
-        // ({§mimetype-owned-lifecycle}).
+        // {§copy-destination-mimetype}: detection misses remain absent; resource
+        // owners supply their creation type. {§mimetype-owned-lifecycle}
         this.#ownsMimetypes = mimetypes === undefined;
         this.#mimetypes = mimetypes ?? new Mimetypes({
-            defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd } });
         const bootSpec = this.#provider === null ? null : resolveActiveRoute();
         if (this.#provider !== null && bootSpec !== null) {

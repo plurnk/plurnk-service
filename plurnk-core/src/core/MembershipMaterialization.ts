@@ -72,12 +72,13 @@ export default class MembershipMaterialization {
                 || acquired.fingerprint !== observed.fingerprint)) return null;
         const revision = acquired?.revision ?? { canonical, fingerprint: observed.fingerprint, hash: null };
         const sig = JSON.stringify(revision);
-        if (known !== undefined && known.synced_sig === sig) {
+        const unchanged = known !== undefined && known.synced_sig === sig;
+        const sourceProjection = unchanged ? sourceProjectionFrom(known.attributes) : null;
+        if (unchanged) {
             const sourceMaterialization = FileMaterialization.fromAttributes(known.attributes);
             if (sourceMaterialization !== null) {
                 if (FileMaterialization.matchesCurrent(sourceMaterialization, sourceBytes)) return null;
             } else {
-                const sourceProjection = sourceProjectionFrom(known.attributes);
                 if (sourceProjection !== null) {
                     const currentIdentity = await MembershipMaterialization.#projectionIdentity(
                         sourceProjection.mimetype,
@@ -94,9 +95,11 @@ export default class MembershipMaterialization {
             size: async () => bytes.length,
             read: async (start, end) => bytes.subarray(start - 1, end),
         };
-        const mimetype = source === null
+        // {§copy-destination-mimetype}: reprojecting unchanged bytes must not erase their admitted type.
+        const retainedMimetype = unchanged ? sourceProjection?.mimetype ?? known.mimetype : null;
+        const mimetype = retainedMimetype ?? (source === null
             ? await FileMaterialization.detectMimetype(canonical, ctx.mimetypes)
-            : await FileMaterialization.detectSourceMimetype(canonical, source, ctx.mimetypes);
+            : await FileMaterialization.detectSourceMimetype(canonical, source, ctx.mimetypes));
         if (sourceMaterialization.disposition === "input-limit") {
             return MembershipMaterialization.#publish(pathname, path, revision, {
                 channels: { body: {
@@ -136,7 +139,7 @@ export default class MembershipMaterialization {
         let outputMimetype = mimetype;
         let metadata: SourceProjectionMetadata;
         try {
-            const projected = await mimetypes.projectReadable(input);
+            const projected = await mimetypes.projectReadable({ ...input, hint: mimetype });
             if (projected === null) {
                 metadata = {
                     mimetype,

@@ -470,10 +470,12 @@ export default class ResourceTransfers {
         // match and re-write. A text destination has no source projection, so this is its channel mimetype.
         const destProjection = (existing?.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
         const destRealMimetype = typeof destProjection?.mimetype === "string" ? destProjection.mimetype : destinationChannel?.mimetype;
+        // {§copy-destination-mimetype}: a transfer supplies the absent channel's type;
+        // a recognized destination suffix still participates in compatibility checking.
         const expectedMimetype = destRealMimetype
             ?? await PathMimetype.resolveEntryMimetype(
                 destination.pathname,
-                destination.manifest.channels[destination.channel] ?? source.mimetype,
+                MimetypeClassifier.normalizeAutoText(source.mimetype),
                 ctx.mimetypes,
             );
         if (!MimetypeClassifier.isTransferCompatible(source.mimetype, expectedMimetype, {

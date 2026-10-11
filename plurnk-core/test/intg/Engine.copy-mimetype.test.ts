@@ -34,7 +34,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             const body = binary ? "AP+A" : content;
             const mimetypes = new Mimetypes({
                 discovery: {
-                    registry: { byExtension: new Map(), byFilename: new Map() },
+                    registry: { byExtension: new Map([[".md", "text/markdown"]]), byFilename: new Map() },
                     handlers: new Map([[mimetype, {
                         mimetype, binary, glyph: "", extensions: [],
                         packageName: "stub://transfer-classification",
@@ -69,6 +69,41 @@ for (const transfer of [copyStmt, moveStmt]) {
                 assert.equal(result.status, 201);
                 assert.deepEqual(await read(pathname), { content: body, mimetype: "text/markdown" });
                 assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype: "text/plain" } : undefined);
+            } finally { await db.close(); }
+        });
+    }
+
+    for (const pathname of ["/destination", "/destination.bin", "/destination.unknownext"]) {
+        for (const [mimetype, body] of [
+            ["application/json", '{"value":"kept"}'],
+            ["application/octet-stream", "AP+A"],
+            ["application/octet-stream", ""],
+            ["image/png", "AP+A"],
+        ] as const) {
+            test(`{§copy-destination-mimetype}: ${op} carries ${mimetype} (${body.length} stored characters) into new ${pathname}`, async () => {
+                const { db, seed, read, dispatch } = await setup();
+                try {
+                    await seed("/src", mimetype, body);
+                    const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", pathname)));
+                    assert.equal(result.status, 201, JSON.stringify(result));
+                    assert.deepEqual(await read(pathname), { content: body, mimetype });
+                    assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
+                } finally { await db.close(); }
+            });
+        }
+    }
+
+    for (const [pathname, destinationMimetype] of [["/destination.md", "text/markdown"], ["/destination.png", "image/png"]] as const) {
+        test(`{§copy-destination-mimetype}: ${op} does not override the recognized type of absent ${pathname}`, async () => {
+            const { db, seed, read, dispatch } = await setup();
+            try {
+                await seed("/src", "application/octet-stream", "AP+A");
+                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", pathname)));
+                assert.equal(result.status, 415);
+                assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
+                assert.equal(result.problem?.destinationMimetype, destinationMimetype);
+                assert.equal(await read(pathname), undefined);
+                assert.deepEqual(await read("/src"), { content: "AP+A", mimetype: "application/octet-stream" });
             } finally { await db.close(); }
         });
     }

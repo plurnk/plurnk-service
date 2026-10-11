@@ -229,6 +229,10 @@ copied
                 (r) => r?.status === 200,
                 { timeoutMs: 20000 },
             );
+            const operations = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
+            for (const operation of operations.filter(({ op }) => op === "COPY" || op === "MOVE")) {
+                assert.ok([200, 201].includes(operation.status_rx), JSON.stringify(operation));
+            }
         } finally { ws.close(); }
     });
     return root;
@@ -240,6 +244,38 @@ test("{§binary-parity} a binary lives in a worker:// entry and round-trips to a
         assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a worker:// round-trip byte-for-byte");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+for (const intermediate of ["copy.bin", "worker:///stash"]) {
+    test(`{§copy-destination-mimetype} binary transfers through ${intermediate} retain bytes and type across real turns`, async () => {
+        const root = await runRoundTrip(`\`\`\`\`COPY (logo.png) <1,8> (${intermediate})\`\`\`\``,
+            `\`\`\`\`COPY (logo.png) <9,-1> (${intermediate}) <-1>\`\`\`\`\n\`\`\`\`MOVE (${intermediate}) (output.png)\`\`\`\``);
+        try {
+            assert.deepEqual(await readFile(join(root, "output.png")), PNG);
+            assert.deepEqual(await readFile(join(root, "logo.png")), PNG);
+            if (intermediate === "copy.bin") await assert.rejects(readFile(join(root, intermediate)), { code: "ENOENT" });
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+}
+
+for (const op of ["COPY", "MOVE"]) {
+    for (const target of ["absent.md", "existing.bin"]) {
+        test(`{§copy-destination-mimetype} ${op} refuses the known textual type of ${target} without changing either file`, async () => {
+            const original = Buffer.from("retained text\n");
+            const { root, operations } = await runCopy({ "logo.png": PNG, "existing.bin": original },
+                `\`\`\`\`${op} (logo.png) (${target}) <1,-1>\`\`\`\``);
+            try {
+                const result = operations.find((operation) => operation.op === op);
+                assert.equal(result?.status_rx, 415, JSON.stringify(result));
+                const receipt = JSON.parse(result?.rx ?? "null");
+                assert.equal(receipt.problem.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
+                assert.equal(receipt.problem.destinationMimetype, "text/markdown");
+                assert.deepEqual(await readFile(join(root, "logo.png")), PNG);
+                assert.deepEqual(await readFile(join(root, "existing.bin")), original);
+                await assert.rejects(readFile(join(root, "absent.md")), { code: "ENOENT" });
+            } finally { await rm(root, { recursive: true, force: true }); }
+        });
+    }
+}
 
 test("{§binary-parity} a byte range copies out of a worker:// entry exactly (coordinate = byte)", async () => {
     const root = await runRoundTrip("````COPY (logo.png) (worker:///stash.png)````", "````COPY (worker:///stash.png) <1,8> (head.png)````");

@@ -75,14 +75,16 @@ RETURNING id, pathname,
 -- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
 -- read before materializing so an unchanged file short-circuits
 -- before projection. File members store scheme='file' ({§entry-identity-no-null}).
-SELECT e.id, e.synced_sig, e.membership_origin, e.attributes
+SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, c.mimetype
 FROM entries e
+LEFT JOIN entry_channel_rows c ON c.entry_id = e.id AND c.name = 'body'
 WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
 -- PREP: crud_read_file_snapshot
 -- {§file-snapshot-revision}: content and its source revision come from one read snapshot.
-SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, COALESCE(c.buffer, b.content) AS content
+SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, COALESCE(c.buffer, b.content) AS content,
+       COALESCE(json_extract(e.attributes, '$.sourceProjection.mimetype'), c.mimetype) AS source_mimetype
 FROM entries e
 LEFT JOIN entry_channel_rows c ON c.entry_id = e.id AND c.name = 'body'
 LEFT JOIN contents b ON b.id = c.content_id

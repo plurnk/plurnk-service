@@ -59,6 +59,7 @@ export interface MemberSnapshot {
     id: number;
     synced_sig: string | null;
     attributes: string;
+    mimetype: string | null;
 }
 
 interface MembershipResolution {

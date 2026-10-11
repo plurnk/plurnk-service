@@ -22,6 +22,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import File from "../../src/schemes/File.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
+import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
@@ -403,6 +404,46 @@ test("a binary file persists only derived Unicode and refreshes when its project
         assert.equal(rawView.content, "01\n02\n03\n04");
         assert.equal(rawView.mimetype, "application/x-readable-binary");
         assert.deepEqual(rawView.range, { unit: "byte", total: 4, requested: [1, PAGE], returned: [1, 4] });
+    } finally {
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§copy-destination-mimetype} an admitted file type survives reprojection, but not an external source change", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-retained-type-"));
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "retained-type");
+        await rootWorkspace(db, workspaceId, root);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: binaryProjectionMimetypes("first") });
+        const pathname = "document.unknownext";
+        const file = new File();
+        const proposed = await file.writeEntry(pathname, {
+            channels: { body: { content: "", bytes: Uint8Array.of(1, 2, 3, 4), mimetype: "application/x-readable-binary" } },
+        }, ctx);
+        assert.equal(proposed.status, 202);
+        assert.equal((await file.applyResolution({ attrs: proposed.attrs as never }, ctx)).status, 200);
+        for (const revision of ["first", "second"]) {
+            const projectedCtx = makeSchemeCtx({ ...ctx, mimetypes: binaryProjectionMimetypes(revision) });
+            assert.equal(await MembershipMaterialization.materializeMember(pathname, root, projectedCtx, new Map()), null);
+            const read = await readFileScheme(readStmt(localPath(pathname)), projectedCtx);
+            assert.equal(read.status, 200);
+            assert.equal(read.mimetype, "text/markdown");
+            assert.equal(read.content, `${revision}:1,2,3,4`);
+        }
+        const editing = await file.edit(editStmt(localPath(pathname), "not binary", { marks: [1, -1] }), ctx);
+        assert.equal(editing.status, 415);
+        assert.equal(editing.problem?.type, "https://problems.plurnk.xyz/scheme/file/binary-write-unsupported");
+        await writeFile(join(root, pathname), "externally replaced\n");
+        await MembershipMaterialization.materializeMember(pathname, root, ctx, new Map());
+        const changed = await readFileScheme(readStmt(localPath(pathname)), ctx);
+        assert.equal(changed.status, 200);
+        assert.equal(changed.mimetype, "text/markdown");
+        assert.equal(changed.content, "externally replaced\n");
+        const entry = await file.readEntry(pathname, ctx);
+        assert.equal(entry.entry?.attributes?.sourceProjection, undefined);
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

@@ -23,7 +23,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { moveStmt, urlPath, localPath } from "./_dsl.ts";
+import { copyStmt, moveStmt, urlPath, localPath } from "./_dsl.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -137,6 +137,64 @@ test("{§binary-parity}: a deferred byte MOVE cannot remove a source that change
         assert.equal(read.entry?.channels.body?.content, Buffer.from(updated).toString("base64"));
     });
 });
+
+for (const transfer of [copyStmt, moveStmt]) {
+    const op = transfer(urlPath("worker", "/source"), localPath("destination")).op;
+    for (const target of ["destination.bin", "destination", "destination.unknownext"]) {
+        for (const shape of ["whole", "scoped", "empty"] as const) {
+            test(`{§copy-destination-mimetype}: ${op} publishes ${shape} bytes at ${target} with the admitted type`, async () => {
+                await withWorkspaceRoot(async (root, ctx) => {
+                    const source = { authority: "", pathname: "/source" };
+                    const schemeCtx = makeSchemeCtx(ctx);
+                    const bytes = shape === "empty" ? Buffer.alloc(0) : Buffer.from([0, 0xff, 0x80, 42]);
+                    assert.equal((await EntryCrud.writeEntry(source, {
+                        channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } },
+                    }, schemeCtx, "worker")).status, 201);
+                    const pending = Promise.withResolvers<number>();
+                    const applying = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
+                        statement: transfer(urlPath("worker", "/source"), localPath(target),
+                            shape === "scoped" ? { marks: [2, 3] } : null,
+                            shape === "scoped" ? { marks: [0] } : null) });
+                    const id = await pending.promise;
+                    const proposal = await ctx.db.test_get_log_entry_by_id.get<{ state: string; attrs: string }>({ id });
+                    assert.equal(proposal?.state, "proposed", JSON.stringify(proposal));
+                    assert.equal(JSON.parse(proposal.attrs).mimetype, "application/octet-stream");
+                    await assert.rejects(readFile(join(root, target)), { code: "ENOENT" });
+                    await ctx.engine.resolveProposal(id, { decision: "accept" });
+                    const result = await applying;
+                    assert.equal(result.status, 200, JSON.stringify(result));
+                    assert.deepEqual(await readFile(join(root, target)), shape === "scoped" ? bytes.subarray(1, 3) : bytes);
+                    const destination = await EntryCrud.readEntry({ authority: "", pathname: target }, schemeCtx, "file");
+                    assert.equal(destination.entry?.channels.body?.mimetype, "application/octet-stream");
+                    const remaining = await EntryCrud.readEntry(source, schemeCtx, "worker");
+                    if (op === "MOVE" && shape !== "scoped") assert.equal(remaining.status, 404);
+                    else assert.equal(remaining.entry?.channels.body?.content,
+                        (op === "MOVE" ? Buffer.from([0, 42]) : bytes).toString("base64"));
+                });
+            });
+        }
+    }
+    test(`{§copy-destination-mimetype}: rejecting ${op} to an untyped file preserves its byte source`, async () => {
+        await withWorkspaceRoot(async (root, ctx) => {
+            const source = { authority: "", pathname: "/source" };
+            const schemeCtx = makeSchemeCtx(ctx);
+            const bytes = Buffer.from([0, 0xff, 42]);
+            await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } } }, schemeCtx, "worker");
+            const pending = Promise.withResolvers<number>();
+            const applying = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
+                statement: transfer(urlPath("worker", "/source"), localPath("destination.bin")) });
+            const id = await pending.promise;
+            const proposals = await ctx.engine.pendingProposals(ctx.workspaceId);
+            assert.equal(proposals.length, 1);
+            await ctx.engine.resolveProposal(id, { decision: "reject" });
+            const result = await applying;
+            assert.equal(result.status, 400);
+            assert.match(String(result.problem?.type), /\/rejected$/);
+            await assert.rejects(readFile(join(root, "destination.bin")), { code: "ENOENT" });
+            assert.equal((await EntryCrud.readEntry(source, schemeCtx, "worker")).entry?.channels.body?.content, bytes.toString("base64"));
+        });
+    });
+}
 
 for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`{§edit-anchor-continuity}: file proposals with ${decision} preserve the individual mutation boundary`, async () => {
     await withWorkspaceRoot(async (root, ctx) => {

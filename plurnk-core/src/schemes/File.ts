@@ -348,9 +348,10 @@ export default class File extends CoreSchemeAdapterBase {
 
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
+        let sourceMimetype: string | null = null;
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
-            const member = await ctx.db.crud_read_file_snapshot.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string; content: string | null }>({ workspace_id: ctx.workspaceId, pathname: rel });
+            const member = await ctx.db.crud_read_file_snapshot.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string; content: string | null; source_mimetype: string | null }>({ workspace_id: ctx.workspaceId, pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
@@ -377,19 +378,20 @@ export default class File extends CoreSchemeAdapterBase {
             }
             // {§membership-edit-write-revision}: retain the materialized baseline through approval.
             const revision = FileSnapshot.decode(member.synced_sig);
-            if (revision === null || revision.hash === null || member.content === null) {
+            if (revision === null || revision.hash === null || member.content === null || member.source_mimetype === null) {
                 const conflict = EditCollision.result(rel);
                 return { ok: false, code: "edit-collision", status: conflict.status, detail: conflict.problem!.detail };
             }
             original = member.content;
             baseSig = member.synced_sig;
+            sourceMimetype = member.source_mimetype;
         } else {
             const admission = await GitMembership.planCreation(ctx.db, ctx.workspaceId, rel, ctx.signal);
             if (!admission.ok) return admission;
             creationAdmission = admission;
         }
 
-        const mimetype = await detectFileMimetype(canonical, ctx);
+        const mimetype = sourceMimetype ?? await detectFileMimetype(canonical, ctx);
         // {§binary-parity} — a text EDIT still cannot author bytes into a binary file (a text body is
         // not bytes). A whole-resource or byte-range TRANSFER passes bytesMode: it writes the source's
         // bytes verbatim, so the binary mimetype is the point, not an error.
@@ -580,7 +582,9 @@ export default class File extends CoreSchemeAdapterBase {
                 target.extensions,
             ) as WriteEntryResult;
         }
-        const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
+        const { canonical, rel, fileExists, original, baseSig } = target;
+        // {§copy-destination-mimetype}: retain the admitted per-call type on creation.
+        const mimetype = fileExists ? target.mimetype : bodyChannel.mimetype;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== baseSig) return {
             ...EditCollision.result(rel), created: false, entryId: null,
