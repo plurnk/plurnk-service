@@ -72,6 +72,16 @@ export const finalizeRelease = async ({ root, repo, packageFile, version, commit
         // The canonical push owns verification; GitHub is the existing no-CI mirror.
         await git("push", ...(remote === "github" ? ["--no-verify"] : []), remote, `refs/tags/${tag}`);
     }
+    // {§release-mirror}: the mirror's main carries the release before any record names it. The
+    // canonical main holds the revision (checked above); the mirror follows it by fast-forward alone,
+    // and one that cannot is a stop, never a force.
+    const mirrorMain = (await git("ls-remote", "github", "refs/heads/main")).split(/\s/)[0];
+    if (mirrorMain !== main) {
+        await git("fetch", "origin", "refs/heads/main");
+        await git("push", "--no-verify", "github", `${main}:refs/heads/main`);
+        const carried = (await git("ls-remote", "github", "refs/heads/main")).split(/\s/)[0];
+        if (carried !== main) throw new Error(`${repo}: GitHub mirror main is ${carried || "missing"} after the push, not ${main}`);
+    }
     if (!record) return;
 
     const releases = JSON.parse(await run("gh", [

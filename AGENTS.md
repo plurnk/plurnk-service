@@ -55,7 +55,10 @@ Where things are, for an agent that has to act before it has read everything:
   stay dirty and be edited while it runs. Intg scopes to the changed workspaces and runs
   in full for a root-level, `plurnk-core`, `plurnk-contracts` or `plurnk-parser` change.
   The drill prints a phase's output only when that phase goes red, so a hung phase shows
-  nothing until its runner exits.
+  nothing until its runner exits. GitHub is a mirror of the Forge with no automation of its
+  own: after the gate lands a commit, mirror it with
+  `git push --no-verify github origin/main:refs/heads/main`; a release carries and checks the
+  mirror itself before it records anything ({§release-mirror}).
 - **Releases are independent** ({§package-release-contract}). Every public change lands
   with its changeset, written by whoever lands the change (`npm run changeset`);
   `npm run release:version` applies the pending changesets and synchronizes the lockfile.

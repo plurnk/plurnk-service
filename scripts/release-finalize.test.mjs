@@ -31,7 +31,7 @@ test("{§release-finalization} missing or ambiguous package release notes fail q
     const failure = new Error("changelog is absent from the verified commit");
     await assert.rejects(packageReleaseNotes(record, async () => { throw failure; }), (cause) => cause === failure);
 });
-const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true, releaseTag = "v1.2.3" } = {}) => {
+const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true, releaseTag = "v1.2.3", mirrorMain = COMMIT } = {}) => {
     const calls = [];
     const manifest = { name: "@plurnk/plurnk-service", version: "1.2.3" };
     const run = async (command, args) => {
@@ -50,11 +50,16 @@ const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, 
             if (args[0] === "rev-parse") return args[1].endsWith("^{commit}") ? COMMIT : "b".repeat(40);
             if (line === `tag --list ${releaseTag}`) return tag ? releaseTag : "";
             if (args[0] === "ls-remote") {
-                if (args.includes("refs/heads/main")) return `${COMMIT}\trefs/heads/main`;
+                if (args.includes("refs/heads/main")) {
+                    if (args[1] === "github") return mirrorMain ? `${mirrorMain}\trefs/heads/main` : "";
+                    return `${COMMIT}\trefs/heads/main`;
+                }
                 return remoteTags[args[1]] ? `${remoteTags[args[1]]}\trefs/tags/${releaseTag}` : "";
             }
             if (args[0] === "tag" && args[1] === "-s") { tag = true; return ""; }
+            if (args[0] === "fetch") return "";
             if (args[0] === "push") {
+                if (args.some((arg) => arg.endsWith(":refs/heads/main"))) { mirrorMain = COMMIT; return ""; }
                 remoteTags[args.includes("origin") ? "origin" : "github"] = "b".repeat(40);
                 return "";
             }
@@ -84,6 +89,36 @@ test("finalization signs the exact published commit, pushes tags, then creates a
     assert.ok(calls[create].includes(options.notes));
     assert.ok(!calls.some((c) => c[0] === "npm" && c.includes("publish")));
     assert.ok(!calls.some((c) => c.includes("--force")));
+});
+
+test("{§release-mirror} finalization brings a stale mirror's main to the canonical main before any record, and leaves a current one alone", async () => {
+    for (const mirrorMain of ["e".repeat(40), ""]) {
+        const { calls, run, options } = fixture({ mirrorMain });
+        await finalizeRelease(options, run);
+        const carry = calls.findIndex((c) => c[0] === "git" && c[1] === "push" && c.includes(`${COMMIT}:refs/heads/main`));
+        const create = calls.findIndex((c) => c[0] === "gh" && c[2] === "create");
+        assert.ok(carry >= 0 && carry < create, `the mirror is carried before the record (${mirrorMain || "missing"})`);
+        assert.deepEqual(calls[carry], ["git", "push", "--no-verify", "github", `${COMMIT}:refs/heads/main`]);
+        assert.ok(!calls.some((c) => c.includes("--force")));
+    }
+    const current = fixture();
+    await finalizeRelease(current.options, current.run);
+    assert.ok(!current.calls.some((c) => c[1] === "push" && c.some((arg) => arg.endsWith(":refs/heads/main"))), "a current mirror is not pushed");
+});
+
+test("{§release-mirror} a mirror that cannot fast-forward stops publication with no record written", async () => {
+    const { calls, run, options } = fixture({ mirrorMain: "e".repeat(40) });
+    await assert.rejects(finalizeRelease(options, async (cmd, args, root) => {
+        if (cmd === "git" && args[0] === "push" && args.some((arg) => arg.endsWith(":refs/heads/main"))) throw new Error("rejected: non-fast-forward");
+        return run(cmd, args, root);
+    }), /non-fast-forward/);
+    assert.ok(!calls.some((c) => c[0] === "gh" && c[2] === "create"));
+    const silent = fixture({ mirrorMain: "e".repeat(40) });
+    await assert.rejects(finalizeRelease(silent.options, async (cmd, args, root) => {
+        if (cmd === "git" && args[0] === "push" && args.some((arg) => arg.endsWith(":refs/heads/main"))) return "";
+        return silent.run(cmd, args, root);
+    }), /mirror main is/);
+    assert.ok(!silent.calls.some((c) => c[0] === "gh" && c[2] === "create"));
 });
 
 test("repair requires an existing signed tag, not today's HEAD", async () => {

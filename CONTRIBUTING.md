@@ -207,10 +207,19 @@ shipped migration `-- Released in <version> and frozen ({§db-migrations})`.
 `release:check` builds and gates source, projects archives, and tests a fresh
 installed composition. It retains those exact archives, source identities, and
 resolved dependency evidence. `release:publish` changes no source: it publishes
-dependencies before consumers, verifies registry-installed products, and records
-the release. Registry errors stop publication; only an explicit missing version
-permits a new upload. On interruption, retry **the same artifact directory**;
+dependencies before consumers, verifies registry-installed products, carries each
+released commit to the GitHub mirror's `main`, and records the release. Registry
+errors stop publication; only an explicit missing version permits a new upload. A
+mirror that cannot fast-forward stops publication before any record
+({§release-mirror}). On interruption, retry **the same artifact directory**;
 already-served artifacts must match byte-for-byte ({§release-candidate-graph}).
+
+GitHub is a mirror of the canonical forge with no automation of its own. After any
+gated landing, mirror it the same way the release stage does:
+
+```sh
+git push --no-verify github origin/main:refs/heads/main
+```
 
 Products and standalone packages use signed `v<version>` tags; other monorepo
 packages use `<package-name>@<version>`. Service releases gather their concurrent
