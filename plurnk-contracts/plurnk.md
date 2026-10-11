@@ -119,6 +119,10 @@ qux
 baz
 ```
 
+```EDIT (example.md) <@fghij,1,@fghij,1> <!-- insert after line 42: insert before line 43 -->
+qux
+```
+
 ```EDIT (src/**/*.js) /\bfoo\b/ <!-- every match in every file becomes the body -->
 bar
 ```
