@@ -4,7 +4,7 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST emit at least one NOTE operation and at least one other operation per turn.
+> YOU MUST emit at least one NOTE operation with a complete status summary and at least one other operation per turn.
 
 > [!TIP]
 > All operations except for NOTEs are converted into log items.
@@ -17,7 +17,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Internal Annotation Register. Emit a NOTE for every fact, finding, conclusion, decision, and plan.
+* NOTE: Persistent Internal Annotation Register. Emit NOTE for every fact, finding, conclusion, decision, and plan.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
