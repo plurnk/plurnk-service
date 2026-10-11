@@ -6327,6 +6327,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `offset-channel-required` | 400 | Recovery: Select the channel to read from the offset. |
 | `target-invalid` | 400 | Recovery: Use a scheme://path target. |
 | `proposal-not-pending` | 409 | Recovery: Refresh pending proposals before resolving one. |
+| `proposal-decision-unrecorded` | 500 | The approval decision could not be saved; the operation was not applied. |
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
 | `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Trim one line with `<L>` or lines L through M with `<L,M>`; `KILL (log:///…/READ)` with no scope retires the whole row. |
 
