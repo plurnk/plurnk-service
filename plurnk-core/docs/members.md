@@ -71,6 +71,14 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 - **Excluded by `!glob`**: an exclusion outranks every inclusion, and a model
   definition cannot lift it; only the user can.
 
+- **Outside the project root** (`../notes.md`, or an absolute path beyond the
+  root): no model definition reaches it; only a members definition under the
+  operator's namespace scope admits it. `~` is not substituted: paths are
+  project-relative, so `~/notes.md` names a directory called `~` in the
+  project, and an absolute path names the host location. A command runs on the
+  host from the project root, where `~` and absolute paths keep their host
+  meaning, and its output is a stream the worker reads.
+
 ## Files you create
 
 An `EDIT` to a path that does not exist creates it when the file-creation

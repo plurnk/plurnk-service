@@ -64,7 +64,7 @@ const runtime = async (t: TestContext) => {
         assert.ok(written, source);
         return { status: written.status_rx, problem: (JSON.parse(written.rx) as { problem?: Problem }).problem ?? {} };
     };
-    return { db, engine, ids, dispatch, sequence: () => sequence };
+    return { db, engine, ids, root, dispatch, sequence: () => sequence };
 };
 
 test("{§membership-read-refusal} every file miss names its member key and carries the miss recovery", async (t) => {
@@ -85,6 +85,30 @@ test("{§membership-read-refusal} a key beyond the root is told it is outside th
         assert.equal(problem.detail, "No member of this workspace is at '../outside/delete_tests.log'.", `${source}: the address's membership, nothing about the disk`);
         assert.equal(problem.recovery, "'../outside/delete_tests.log' is outside the project root: only a members definition under the operator's namespace scope admits it.", source);
     }
+});
+
+test("{§membership-read-refusal} a miss per path shape: `~` is a plain segment, an absolute path its host location (#1082)", async (t) => {
+    const { dispatch, root } = await runtime(t);
+    const admission = "An absolute path names its host location; outside the project root only a members definition under the operator's namespace scope admits it.";
+    // `~` is not the home directory ({§fs-namei}): the key is the spelling, and the recovery says what
+    // was done with it, presuming nothing about what the author meant.
+    const tilde = await dispatch("````READ (~/plurnk-vm.md)````");
+    assert.equal(tilde.status, 404);
+    assert.equal(tilde.problem.detail, "No member of this workspace is at '~/plurnk-vm.md'.", "the key is the spelling: `~` resolved as a plain segment");
+    assert.equal(tilde.problem.recovery, `'~' is not substituted: paths are project-relative, so '~/plurnk-vm.md' names a file under a directory named '~' in the project root. ${admission}`);
+    assert.equal((await dispatch("````READ (~)````")).problem.recovery, `'~' is not substituted: paths are project-relative, so '~' names a file in the project root. ${admission}`, "a bare `~` is a file name");
+    assert.equal((await dispatch("````FIND (~someone/notes.md)````")).problem.recovery, `'~someone' is not substituted: paths are project-relative, so '~someone/notes.md' names a file under a directory named '~someone' in the project root. ${admission}`, "a `~user` segment is quoted as spelled, on every exact-path miss");
+    // An absolute path beyond the root is its `../` key and carries the outside-root recovery.
+    const outsideName = `plurnk-outside-${crypto.randomUUID()}.md`;
+    const outside = await dispatch(`\`\`\`\`READ (${join(root, "..", outsideName)})\`\`\`\``);
+    assert.equal(outside.status, 404);
+    assert.equal(outside.problem.detail, `No member of this workspace is at '../${outsideName}'.`, "the key, never the absolute spelling");
+    assert.equal(outside.problem.recovery, `'../${outsideName}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
+    // An absolute path inside the root is its in-root key and keeps the in-root recovery.
+    const inside = await dispatch(`\`\`\`\`READ (${join(root, "missing.py")})\`\`\`\``);
+    assert.equal(inside.status, 404);
+    assert.equal(inside.problem.detail, "No member of this workspace is at 'missing.py'.");
+    assert.equal(inside.problem.recovery, FILE_MISS_RECOVERY, "inside the root the listing, creation and admission doors stand");
 });
 
 test("{§membership-read-refusal} a non-member the repository ignores is not offered an admission no model definition can make", async (t) => {

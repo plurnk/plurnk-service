@@ -85,12 +85,22 @@ export function entryAddress(scheme: string, authority: string, pathname: string
     return renderAddress({ scheme, authority, pathname });
 }
 
+const OUTSIDE_ROOT_ADMISSION = "outside the project root only a members definition under the operator's namespace scope admits it.";
+
 // {§membership-read-refusal} — a key beyond the root (`../tmp/x`) is past every door the miss recovery
-// names under the default scopes; the sentence holds under every members scope (#1005).
+// names under the default scopes; the sentence holds under every members scope (#1005). A first
+// segment beginning with `~` is a plain segment ({§fs-namei}), never the home directory: its miss says
+// what was done with the spelling and shows the form that names a host location, presuming nothing
+// about what the author meant ({§diagnostic-observation}, #1082).
 export function fileMissRecovery(key: string): string {
-    return key.startsWith("../")
-        ? `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`
-        : FILE_MISS_RECOVERY;
+    if (key.startsWith("../")) {
+        return `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`;
+    }
+    const tilde = /^(~[^/]*)(\/|$)/u.exec(key);
+    if (tilde === null) return FILE_MISS_RECOVERY;
+    const [, segment, slash] = tilde;
+    const names = slash === "" ? `'${key}' names a file in the project root` : `'${key}' names a file under a directory named '${segment}' in the project root`;
+    return `'${segment}' is not substituted: paths are project-relative, so ${names}. An absolute path names its host location; ${OUTSIDE_ROOT_ADMISSION}`;
 }
 
 // The extensions every miss carries: its target, and for a file the recovery above.
