@@ -5,17 +5,18 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { McpServer, ResourceTemplate, completable, createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
+import type { FunctionalityListResult, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
-import { httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { httpEntry, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { waitForDb } from "./_rpc.ts";
 
 type Event = Record<string, unknown>;
-type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: { type: string; status: number } };
+type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: ProblemDetails };
 
 // {§mcp-configuration} {§mcp-server-settings}
 const setup = async (
@@ -75,6 +76,35 @@ const setup = async (
     };
     return { provider, post, action, hostPaths };
 };
+
+test("{§mcp-preparation-diagnostics}: AG-UI exposes the same unavailable preparation evidence through Functionality list", { timeout: 20000 }, async (t) => {
+    const { action, provider } = await setup(t, { broken: stdioEntry("preparation-failure.mjs", {
+        FIXTURE_SECRET: "${FIXTURE_SECRET}",
+    }) }, [], { FIXTURE_SECRET: "fixture-private-value" });
+    const activated = await action("preparation-diagnostics", "workspace.mcp.enable", { alias: "broken" });
+    assert.equal(activated.ok, false, "activation actually attempted preparation; list alone stays dormant");
+    const list = await action("preparation-diagnostics", "workspace.mcp.list");
+    assert.equal(list.ok, true);
+    const rows = list.result?.definitions as FunctionalityListResult["definitions"];
+    const broken = rows.find(({ alias }) => alias === "broken");
+    assert.equal(broken?.state, "unavailable");
+    const problem = broken?.problem;
+    assert.ok(problem);
+    assert.equal(problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+    assert.equal(problem.timeoutMs, 5000);
+    assert.ok(typeof problem.elapsedMs === "number" && problem.elapsedMs >= 0);
+    assert.match(String(problem.stderr), /session rejected __redacted__/u);
+    assert.match(String(problem.diagnostic), /closed|exit/iu);
+    assert.equal(problem.exitCode, undefined);
+    const repeated = await action("preparation-diagnostics", "workspace.mcp.list");
+    assert.deepEqual(repeated.result, list.result, "inspection preserves the captured failure rather than probing again");
+    const enabled = await action("preparation-diagnostics", "workspace.mcp.enable", { alias: "broken" });
+    assert.equal(enabled.ok, false);
+    assert.match(String(enabled.problem?.stderr), /session rejected __redacted__/u);
+    assert.equal(enabled.problem?.timeoutMs, 5000);
+    assert.doesNotMatch(JSON.stringify([list, repeated, enabled]), /fixture-private-value|probe-only diagnostic/u);
+    assert.equal(provider.received.length, 0);
+});
 
 test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
     const served = await serveMcpHttp(t, createMcpHandler(() => {

@@ -159,6 +159,7 @@ const preparationError = (
     authorization: McpAuthorization | undefined,
     cause: unknown,
     closeCause?: unknown,
+    observation: Readonly<Record<string, unknown>> = {},
 ): ModuleActionError => {
     const completeCause = closeCause === undefined
         ? cause
@@ -213,6 +214,7 @@ const preparationError = (
             server: definition.name,
             type: definition.type,
             retryable: true,
+            ...observation,
         },
         completeCause,
     );
@@ -521,6 +523,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             }, cause);
         }
         let candidate = connection;
+        const started = performance.now();
         try {
             const environment = await this.#workspaceEnvironment(workspaceId);
             this.#assertOpen();
@@ -572,6 +575,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 },
             };
         } catch (cause) {
+            const elapsedMs = Math.round(performance.now() - started);
             if (cause instanceof AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     ...(context === undefined ? {} : { context }),
@@ -589,7 +593,11 @@ export default class Module implements DaemonModule<SetupSeam> {
                     closeCause = error;
                 }
             }
-            throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause);
+            throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
+                elapsedMs,
+                timeoutMs: connectTimeoutMs(this.#env),
+                ...(isClientCredentialsRejection(cause) ? {} : candidate?.preparationDiagnostic(cause)),
+            });
         }
     }
 

@@ -363,7 +363,7 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
+test("{§mcp-catalog-deadline} {§mcp-preparation-diagnostics} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
     let stalled = true;
     const handler = createMcpHandler(() => {
         const server = new McpServer({ name: "stall", version: "1" });
@@ -392,6 +392,10 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         assert.equal(unavailable?.state, "unavailable");
         if (unavailable?.state !== "unavailable") throw new Error("missing unavailable outcome");
         assert.equal(unavailable.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.equal(unavailable.problem.timeoutMs, 500);
+        assert.ok(typeof unavailable.problem.elapsedMs === "number" && unavailable.problem.elapsedMs >= 400);
+        assert.match(String(unavailable.problem.diagnostic), /timed? ?out|timeout/iu);
+        assert.equal(unavailable.problem.exitCode, undefined, "no process exit is inferred for an HTTP timeout");
         assert.ok(served.requests.some(({ body }) => (body as { method?: string })?.method === "tools/list"), "the failing connection reached catalog discovery");
         assert.equal(diagnostic.mock.callCount(), 1, "only the stalled catalog failed");
         const cause: unknown = diagnostic.mock.calls[0]!.arguments[1];
@@ -404,6 +408,76 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         assert.equal(retry.outcomes.get("stall")?.state, "active");
         assert.deepEqual(h.runtimeTags(1).toSorted(), ["echo", "stall"]);
         assert.equal(retry.runtimes.find(({ decl }) => decl.name === "echo"), healthy.runtimes[0], "retry replaces only the failed attachment");
+    } finally { await h.teardown(1); await h.module.stop(); }
+});
+
+test("{§mcp-preparation-diagnostics}: connection timeout reports measured preparation and its configured bound", { timeout: 10000 }, async (t) => {
+    const handler = createMcpHandler(() => new McpServer({ name: "silent", version: "1" }));
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        await delay(1000, undefined, { signal: request.signal });
+        return null;
+    });
+    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "300" });
+    await h.setup();
+    try {
+        const prepared = await h.lane(1, new Map([["silent", httpServer("silent", served.url)]]));
+        const outcome = prepared.outcomes.get("silent");
+        assert.equal(outcome?.state, "unavailable");
+        if (outcome?.state !== "unavailable") throw new Error("missing unavailable outcome");
+        assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.equal(outcome.problem.timeoutMs, 300);
+        assert.ok(typeof outcome.problem.elapsedMs === "number" && outcome.problem.elapsedMs >= 250);
+        assert.match(String(outcome.problem.diagnostic), /timed? ?out|timeout/iu);
+        assert.equal(outcome.problem.stderr, undefined);
+        assert.equal(outcome.problem.exitCode, undefined);
+        assert.deepEqual(h.runtimeTags(1), []);
+    } finally { await h.teardown(1); await h.module.stop(); }
+});
+
+test("{§mcp-preparation-diagnostics}: remote diagnostics cannot echo referenced authorization or header values", async (t) => {
+    const secret = "fixture-sensitive-authorization";
+    const header = "fixture-sensitive-header";
+    const handler = createMcpHandler(() => new McpServer({ name: "failed", version: "1" }));
+    const served = await serveMcpHttp(t, handler, async () => new Response(`Unavailable ${secret} ${header}`, { status: 503 }));
+    const h = harness({ CREDENTIAL: secret });
+    await h.setup();
+    try {
+        const prepared = await h.lane(1, new Map([["remote", {
+            ...httpServer("remote", served.url, { "x-api-key": header }),
+            authorization: { type: "bearer", token: "${CREDENTIAL}" },
+        }]]));
+        const outcome = prepared.outcomes.get("remote");
+        assert.equal(outcome?.state, "unavailable");
+        if (outcome?.state !== "unavailable") throw new Error("missing unavailable outcome");
+        assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.ok(String(outcome.problem.diagnostic).length > 0);
+        assert.doesNotMatch(JSON.stringify(outcome), /fixture-sensitive/u);
+        assert.ok(served.requests.some(({ headers }) => headers.get("authorization") === `Bearer ${secret}`), "the intended credential actually reached the server");
+    } finally { await h.teardown(1); await h.module.stop(); }
+});
+
+test("{§mcp-preparation-diagnostics}: early stdio exit retains bounded session stderr and timing without inventing an exit code", async (t) => {
+    const fixture = fileURLToPath(new URL("./fixtures/preparation-failure.mjs", import.meta.url));
+    const h = harness({ FIXTURE_SECRET: "fixture-private-value" });
+    await h.setup();
+    t.mock.method(console, "error");
+    try {
+        const prepared = await h.lane(1, new Map([["early", stdio("early", [fixture], {
+            env: { FIXTURE_SECRET: "${FIXTURE_SECRET}" },
+        })]]));
+        const outcome = prepared.outcomes.get("early");
+        assert.equal(outcome?.state, "unavailable");
+        if (outcome?.state !== "unavailable") throw new Error("missing unavailable outcome");
+        assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.equal(outcome.problem.timeoutMs, 30000);
+        assert.ok(typeof outcome.problem.elapsedMs === "number" && outcome.problem.elapsedMs >= 0);
+        assert.match(String(outcome.problem.stderr), /session rejected __redacted__/u);
+        assert.match(String(outcome.problem.diagnostic), /closed|exit/iu);
+        assert.equal(outcome.problem.exitCode, undefined, "the SDK does not expose the process exit code");
+        assert.equal(outcome.problem.signal, undefined, "transport closure is not a process signal");
+        assert.doesNotMatch(JSON.stringify(outcome), /fixture-private-value|probe-only diagnostic/u);
+        assert.ok(String(outcome.problem.stderr).length <= Number(process.env.PLURNK_EXECS_ERROR_DETAIL_LIMIT));
+        assert.deepEqual(h.runtimeTags(1), []);
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 

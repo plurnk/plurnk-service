@@ -39,6 +39,8 @@ import {
     type McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
 import packageJson from "../package.json" with { type: "json" };
+import { ErrorDetail } from "@plurnk/plurnk-execs";
+import PreparationDiagnostics, { type PreparationDiagnostic } from "./PreparationDiagnostics.ts";
 import {
     connectTimeoutMs,
     expandReferences,
@@ -314,6 +316,7 @@ const openTransport = (
             ...definition.args,
         ],
         cwd: definition.cwd,
+        stderr: "pipe",
         env: {
             // The SDK merges its defaults even with an explicit env. Node spawn
             // accepts undefined to omit a key; the SDK's narrower type does not.
@@ -553,6 +556,7 @@ export default class ServerConnection {
     readonly #resolved: ResolvedDefinition;
     readonly #environ: NodeJS.ProcessEnv;
     readonly #options: ServerConnectionOptions;
+    readonly #diagnostics: PreparationDiagnostics;
     #client: Promise<OpenClient> | undefined;
     #pendingAuthorization: {
         readonly transport: StreamableHTTPClientTransport;
@@ -575,6 +579,13 @@ export default class ServerConnection {
         this.#resolved = resolveDefinition(this.#definition, environ, options.cwd, options.plugin, options.oauthRedirectUrl);
         this.#environ = environ;
         this.#options = options;
+        const symbolic = JSON.stringify(definition);
+        const references = Object.entries(environ).flatMap(([name, value]) =>
+            value !== undefined && symbolic.includes(`\${${name}}`) ? [value] : []);
+        const values = this.#resolved.type === "stdio"
+            ? [...Object.values(options.environment ?? getDefaultEnvironment()), ...Object.values(this.#resolved.env), ...this.#resolved.args]
+            : [...Object.values(this.#resolved.headers ?? {}), new URL(this.#resolved.url).username, new URL(this.#resolved.url).password];
+        this.#diagnostics = new PreparationDiagnostics([...references, ...values.filter((value): value is string => value !== undefined)], ErrorDetail.limit());
     }
 
     get definition(): McpServerDefinition {
@@ -587,6 +598,10 @@ export default class ServerConnection {
 
     get authorizationUrl(): string | null {
         return this.#pendingAuthorization?.authorizationUrl ?? null;
+    }
+
+    preparationDiagnostic(cause: unknown): PreparationDiagnostic {
+        return this.#diagnostics.describe(cause);
     }
 
     async #open(): Promise<OpenClient> {
@@ -603,6 +618,10 @@ export default class ServerConnection {
             }
             if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
+            if (transport instanceof StdioClientTransport && transport.stderr !== null) {
+                transport.stderr.on("data", (chunk: Buffer) => this.#diagnostics.write(chunk));
+                transport.stderr.pipe(process.stderr, { end: false });
+            }
             this.#openingTransport = transport;
             return openClient(definition, this.#environ, this.#options, transport);
         })().catch((cause: unknown) => {

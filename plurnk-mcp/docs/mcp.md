@@ -21,7 +21,9 @@ definitions without reading the whole catalog:
 
 The turn-0 catalog lists every enabled server's Markdown document. `list`
 shows every server, including disabled ones and unavailable ones with their
-exact Problem; `enable` turns a server on.
+exact Problem; `enable` turns a server on. An unavailable server's Problem
+reports elapsed preparation time, its configured timeout, and any bounded,
+redacted connection diagnostic or session stderr available to the host.
 
 ## discover, then add
 

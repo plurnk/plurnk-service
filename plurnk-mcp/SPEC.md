@@ -428,6 +428,26 @@ Resource and prompt failures retain one caught remote diagnostic only through
 the executor-owned `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bound; complete causes stay
 in daemon diagnostics. No MCP resource Problem admits an unbounded SDK message.
 
+§mcp-preparation-diagnostics **Unavailable preparation reports observations.**
+The `server-unavailable` Problem carries these extensions; `list` projects the
+same published Problem rather than reconstructing it from an earlier catalog.
+
+| Field | Observation |
+|---|---|
+| `elapsedMs` | Measured preparation call time, rounded to milliseconds; excludes subsequent adapter cleanup. |
+| `timeoutMs` | Configured connection/catalog timeout; not a claim that negotiation, catalog loading, and cleanup share one total deadline. |
+| `diagnostic` | Bounded cause-chain text, innermost causes first, when available. OAuth error text remains excluded. |
+| `stderr` | Bounded tail of stderr exposed by the public session transport, when nonempty. |
+
+Each text field is bounded by `PLURNK_EXECS_ERROR_DETAIL_LIMIT`; zero omits
+text. Redaction precedes truncation and masks known launch-environment values,
+configured arguments/headers, referenced environment values, and URL userinfo.
+This is known-value redaction, not classification of arbitrary server content.
+Stderr capture retains only the bounded tail plus overlap needed to redact a
+value crossing its boundary; it does not replace ordinary daemon stderr.
+Unavailable process exit codes, signals, and negotiation-probe stderr are
+omitted. Transport closure does not prove a particular process exit.
+
 §oauth-continuation A URL-only HTTP definition is sufficient to reach the client
 sign-in handoff. An unauthenticated 401 publishes `authorization-required` with
 an empty `authorization` object, not retryable downtime. No browser is opened,
