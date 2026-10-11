@@ -288,6 +288,12 @@ a second home for a choice, and it will eventually disagree with the first.
   concrete dependency failure, not merely the existence of an invalid setting.
 - **One knob per choice.** Independent behavior choices override independently
   through the environment cascade.
+- **Least surprise, then least regret.** Defaults follow established expectations;
+  where those leave a trade-off, prefer recoverable consequences over irreversible
+  loss or unintended authority. An operator may explicitly choose another posture.
+  Review defaults together where they compose: an outer deadline must leave room
+  for the work its inner default promises. Do not weaken a guarantee for an
+  unmeasured performance benefit.
 - **A knob earns its place.** PLURNK is as configurable as is practical, and the
   panel is still something an operator reads: a knob is a lever somebody would
   turn for their deployment — a deadline, a page, a disposition, how much the
