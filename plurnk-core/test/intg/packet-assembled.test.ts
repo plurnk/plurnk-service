@@ -10,7 +10,6 @@ import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
-import PacketWire from "../../src/core/packet-wire.ts";
 import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -229,26 +228,27 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => String(path).split("/").at(-1)))].sort(),
-            ["FIND", "NOTE"],
-            "{§worker-initialization-entry}: turn 0 exposes its NOTE and its surveys, and nothing else",
+            ["FIND", "NOTE", "READ"],
+            "{§worker-initialization-entry}: turn 0 exposes its NOTE, the READ of its own program and its surveys, and nothing else",
         );
         assert.deepEqual(
             initialization.filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath: path }) => path),
-            [],
-            "turn 0 has no content source or assistant emission ({§emission-row})",
+            ["log:///1/1/2/READ"],
+            "turn 0 reads its own program as an ordinary row; it announces no emission ({§emission-row})",
         );
         assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), []);
         const initializationOutcomes = initialization;
         assert.deepEqual(
-            initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 5).map(({ path: target }) => target),
+            initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 6).map(({ path: target }) => target),
             [
+                "ops://subject/1/1",
                 "worker:///_plurnk/plurnk/*.md",
                 "worker:///_plurnk/tools/*.md",
                 "worker:///_plurnk/a2a/*.md",
                 "worker:///_plurnk/members/*.md",
                 "*",
             ],
-            "reference discovery precedes workspace discovery",
+            "the program READ leads; reference discovery precedes workspace discovery ({§actor-boundary-catalog-preview})",
         );
         assert.doesNotMatch(log, /worker:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
@@ -393,7 +393,7 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
-        assert.ok(packetSection(packet, "recap").endsWith("\n\nCUSTOM_RECAP_SENTINEL"), "{§recap}: the override replaces the source, behind the recap lines");
+        assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL", "{§recap}: the override replaces the source; no recap line ships ahead of it");
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
     } finally { await db.close(); }
 });

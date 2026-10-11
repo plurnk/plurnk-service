@@ -33,14 +33,17 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(String(row.logPath)));
-        assert.equal(notes.length, 2);
+        assert.equal(notes.length, 1, "{§emission-history}: the reasoning NOTE is an ordinary row; the content NOTE rides its turn's legend and replay");
         assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${String(row.logPath).replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         const firstSource = await engine.look({ ...context, statement: statement(frame(`READ (${notes[0]!.resource}) <1,-1>`, null)) });
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
-        const secondSource = await engine.look({ ...context, statement: statement(frame(`READ (${notes[1]!.resource}) <1,-1>`, null)) });
-        assert.equal(secondSource.content, "Inspect the parser next.");
+        const legend = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/emission$/.test(String(row.logPath)));
+        const contentNote = /1:log:\/\/\/(1\/2\/\d+)\/NOTE · \d+/u.exec(String(legend?.body))?.[1];
+        assert.ok(contentNote, "the legend names the content NOTE's row");
+        const secondSource = await engine.look({ ...context, statement: statement(frame(`READ (note://alice/${contentNote}) <1,-1>`, null)) });
+        assert.equal(secondSource.content, "Inspect the parser next.", "the legend's coordinate reads the content NOTE's durable source");
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
@@ -53,7 +56,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
             statement: statement(frame("FIND (note://alice/1/2/*) /parser/", null)),
         });
         assert.equal(found.status, 200);
-        assert.deepEqual(resourcePaths(found as FindResult), [notes[1]!.resource], "source search still works after log curation");
+        assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
         const fork = await Fork.fork(db, workerId, "branch");
         const inherited = await engine.look({ ...context, workerId: fork, statement: statement(frame(`READ (${String(notes[0]!.resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null)) });
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");

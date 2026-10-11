@@ -22,6 +22,14 @@ export default class FabricatedLog {
     static echoes(text: string): number {
         return [...text.matchAll(HEADINGS)].filter((match) => FabricatedLog.#isEmission(match[1] ?? "")).length;
     }
+    // The text without its echoed emission headings: an echo is the model announcing its own emission, not
+    // annotation, so it never becomes a NOTE ({§outside-text}).
+    static stripEchoes(text: string): string {
+        return text.split("\n").filter((line) => {
+            const match = /^### log:\/\/\/\d+\/\d+\/\d+\/(\S*)/u.exec(line);
+            return match === null || !FabricatedLog.#isEmission(match[1] ?? "");
+        }).join("\n").trim();
+    }
 
     static message(heading: string): string {
         return `\`${heading}\` is a log entry, and only the harness writes the log.`;

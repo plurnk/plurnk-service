@@ -23,7 +23,7 @@ test("a KILL of legend line 1 retires that NOTE: the legend, the replay and the 
             provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
         });
         assert.equal(result.result.status, 200);
-        const [, noted, killed, final] = result.turnIds;
+        const [, , killed, final] = result.turnIds;
         const packetOf = async (turnId: number) => JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
         const before = await packetOf(killed!);
         const beforeUser = PacketWire.renderSlot(before.sections, "user");

@@ -273,10 +273,11 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; tx: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND"], "the text is no row; only the authored SEND delivers");
+        assert.deepEqual(modelRows.map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op),
+            ["Prelude: preparing the edit.", "EDIT", "3 — invented result, not a receipt.", "SEND", "Postscript: not a second message."],
+            "each span is the turn's NOTE at its position; only the authored SEND delivers ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside")?.content,
-            "Prelude: preparing the edit.\n\n3 — invented result, not a receipt.\n\nPostscript: not a second message.", "every outside span, in order");
+        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "worker", name: "body" });
@@ -896,7 +897,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const context = { workspaceId, workerId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
-        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["READ", 200], ["READ", 200], [null, 400]], "the interstitial text is no operation ({§outside-text})");
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["NOTE", 200], ["READ", 200], ["READ", 200], [null, 400]], "the interstitial text is the turn's NOTE beside the operations ({§outside-text})");
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");

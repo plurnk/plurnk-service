@@ -10,7 +10,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
-import { contentWeight } from "../../src/core/content-weight.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -256,28 +255,26 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§outside-text}: outside fragments are one source in order, never a row, and siblings run without a strike", async () => {
+test("{§outside-text}: each span beside the operations is one NOTE at its position, and siblings run without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
-        assert.equal(result.result.status, 200, "commentary does not strike even at a one-strike threshold");
+        assert.equal(result.result.status, 200, "annotation does not strike even at a one-strike threshold");
         assert.equal(provider.received.length, 2);
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: turnId });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
         assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
-            [["NOTE", "remember"], ["SEND", "Four."]], "only the authored operations are rows");
-        assert.equal(rows.some(({ op }) => op === "error"), false, "stray text is not a failed operation");
-        const text = "Before.\n\nBetween.\n\nAfter.";
+            [["NOTE", "Before."], ["NOTE", "remember"], ["NOTE", "Between."], ["SEND", "Four."], ["NOTE", "After."]], "each span is the turn's NOTE at its position, in source order");
+        assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content, text, "every outside span in source order, joined by a blank line");
-        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ kind, message }) => [kind, message]),
-            [["outside_text", `${contentWeight(text)} tokens emitted outside OPs. Discarded.`]], "the one complaint is the weight of what was discarded");
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ kind, message }) => [kind, message]), [], "annotation draws no notice");
     } finally { await db.close(); }
 });
 
-test("{§outside-text}: a mixed turn stores its text as the turn's outside source, and the next packet's Notices carry its weight", async () => {
+test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the model's voice, with no notice and no outside source", async () => {
     const prose = ["Let me check the input first.", "That settles it."];
     const source = `${prose[0]}\n\n${PlurnkParser.frame("READ (worker:///input.txt)", null)}\n\n${prose[1]}`;
     const { db, turn, ids, notices } = await setup([said(source), said(conclude())]);
@@ -287,36 +284,37 @@ test("{§outside-text}: a mixed turn stores its text as the turn's outside sourc
         const mixed = await turn();
         assert.equal(mixed.status, 102);
         assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: mixed.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["READ"], "no NOTE row is minted for the text");
-        const text = prose.join("\n\n");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op), [prose[0], "READ", prose[1]], "each span is a NOTE row at its position");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ worker_id: ids.workerId });
-        const outside = sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside");
-        assert.equal(outside?.content, text, "every outside span, in source order, joined by a blank line");
-        assert.equal(typeof outside?.model_call_id, "number", "the source cites the admitted call");
-        const line = `${contentWeight(text)} tokens emitted outside OPs. Discarded.`;
-        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text").map(({ source: from, level, message }) => [from, level, message]),
-            [["engine:turn", "warn", line]]);
+        assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside fenced operations");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: the card's register is where the text belongs");
         const next = await turn();
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        assert.ok(packetSection(packet, "notices").split("\n").includes(`> YOU MUST NOT emit anything except whitespace between fenced operations. ${line} [outside_text]`), "the next packet's Notices section carries the exact line");
-        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "the text itself never enters a packet");
+        assert.doesNotMatch(packetSection(packet, "notices"), /outside_text/u);
+        assert.match(packetSection(packet, "emission-history"), /Let me check the input first\.[\s\S]*That settles it\./u, "{§emission-history}: the NOTEs replay in the model's own voice");
+        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "their rows are legend lines, not a second copy of the text");
     } finally { await db.close(); }
 });
 
 // The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside a
 // fence minted 2,858 NOTE rows in one turn, one per fragment.
-test("{§outside-text}: a repetitive response stores its outside text as one source, however many fragments, and mints no NOTE", async () => {
+test("{§outside-text}: a repetitive response beside operations is one NOTE per span between them, and a prose-only repetition is one outside source", async () => {
     const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\n${PlurnkParser.frame("NOTE", "waiting")}`).join("\n\n");
-    const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(conclude())]);
+    const proseOnly = Array.from({ length: 400 }, () => "Proceeding.").join("\n\n");
+    const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(proseOnly), said(conclude())]);
     try {
-        const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
-        const turnId = result.turnIds.at(-2)!;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: turnId });
-        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 0, "no NOTE carries outside text");
+        const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
+        const [, mixedTurn, proseTurn] = result.turnIds;
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn! });
+        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
-        assert.deepEqual(sources.filter((row) => row.turn_id === turnId && row.kind === "outside").map(({ content }) => content),
-            [[...Array.from({ length: 400 }, () => "Proceeding."), "Proceeding"].join("\n\n")], "one outside source holds every fragment");
+        assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
+        assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
+            "a response with no fenced operation keeps every fragment as one outside source and mints no NOTE");
+        const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn! });
+        assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false);
+        assert.deepEqual(proseRows.filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx), [422], "{§empty-turn}: the prose-only turn strikes once");
     } finally { await db.close(); }
 });
 
@@ -390,7 +388,7 @@ for (const [failure, operation, failedOp] of [
 }
 
 for (const op of ["NOTE", "WAIT"] as const) {
-    test(`{§wait-obligation-matrix}: stray text beside ${op} is stored outside the turn, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
+    test(`{§wait-obligation-matrix}: stray text beside ${op} is the turn's NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.workerId);
@@ -398,9 +396,9 @@ for (const op of ["NOTE", "WAIT"] as const) {
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-                [[op, op === "WAIT" ? 202 : 200]], "the stray text is no row, and never delivered ({§outside-text})");
+                [["NOTE", 200], [op, op === "WAIT" ? 202 : 200]], "the stray text is the turn's NOTE at its position, never delivered ({§outside-text})");
             assert.deepEqual(notices.filter(({ level, kind }) => (level === "warn" || level === "error")
-                && kind !== "outside_text" && kind !== "continued_without_note"), []);
+                && kind !== "continued_without_note" && kind !== "noted_without_operation"), []);
         } finally { await db.close(); }
     });
 }

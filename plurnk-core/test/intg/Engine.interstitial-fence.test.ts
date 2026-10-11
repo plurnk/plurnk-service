@@ -7,7 +7,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { testExecutors } from "./_execs.ts";
-import { contentWeight } from "../../src/core/content-weight.ts";
 
 const FENCE = "`".repeat(4);
 
@@ -51,11 +50,12 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["NOTE", 200]]);
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
+        assert.match(JSON.parse(model[0]!.tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
+            "the prose and its quoted KILL, one span before the SEND, are the turn's NOTE, literally ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        assert.match(sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content ?? "", /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```/u,
-            "the prose and its quoted KILL are kept literally as the turn's outside source ({§outside-text})");
-        assert.equal(JSON.parse(model[0]!.tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
+        assert.equal(JSON.parse(model[1]!.tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.", "the quoted KILL never ran: an unlabeled fence quotes");
@@ -262,19 +262,19 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         );
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const outsideOf = (turnId: number) => sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content;
-        assert.deepEqual(await notesOf(workingTurn!), ["plan"], "only the fenced NOTE is a row");
-        assert.equal(outsideOf(workingTurn!), narration, "narration beside a real operation is the turn's outside source");
-        assert.deepEqual(await notesOf(proseTurn!), [], "prose is never a NOTE");
-        assert.equal(outsideOf(proseTurn!), prose, "prose is stored even without an authored operation");
+        assert.deepEqual(await notesOf(workingTurn!), [narration, "plan"], "narration beside a real operation is the turn's NOTE at its position ({§outside-text})");
+        assert.equal(outsideOf(workingTurn!), undefined, "beside a fenced operation there is no outside source");
+        assert.deepEqual(await notesOf(proseTurn!), [], "prose alone is never a NOTE");
+        assert.equal(outsideOf(proseTurn!), prose, "prose is stored as the outside source when the turn fenced no operation");
         assert.equal((await rowsOf(proseTurn!)).some(({ op }) => op === "SEND"), false, "storage is not message delivery");
         const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: toxinTurn! }))!.packet);
         assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
-        assert.ok(packetSection(following, "notices").split("\n").includes(`> YOU MUST NOT emit anything except whitespace between fenced operations. ${contentWeight(prose)} tokens emitted outside OPs. Discarded. [outside_text]`), "it carries the weight of what was discarded");
+        assert.doesNotMatch(packetSection(following, "notices"), /outside_text/u, "the empty turn's error row is the one thing the model hears of it; no second notice");
         assert.notEqual(packetSection(following, "messages"), "[]", "the original message still needs a reply");
         assert.deepEqual(await notesOf(untranslatedTurn!), []);
         assert.equal(outsideOf(untranslatedTurn!), untranslated, "foreign tool-call markup is stored verbatim; nothing filters the source");
-        assert.deepEqual(await notesOf(brokenTurn!), ["still here"], "the fenced NOTE stays a row");
-        assert.equal(outsideOf(brokenTurn!), "Checking the source.", "the unfenced heading is not response text, the narration around it is");
+        assert.deepEqual(await notesOf(brokenTurn!), ["Checking the source.", "still here"], "the narration around the unfenced heading is the turn's NOTE; the heading itself is not response text");
+        assert.equal(outsideOf(brokenTurn!), undefined);
         assert.equal(sources.find((row) => row.turn_id === toxinTurn && row.kind === "ops")?.content, toxin, "the exact emission stays readable at ops://");
         assert.equal(sources.find((row) => row.turn_id === untranslatedTurn && row.kind === "reasoning")?.content, "Read the note first.", "the reasoning is kept even when it is not read back");
         assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, prose);

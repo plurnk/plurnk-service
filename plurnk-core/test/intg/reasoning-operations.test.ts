@@ -118,8 +118,8 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             const rows = logEntries(packet).filter((row) => String(row.logPath).startsWith("log:///1/2/"));
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
-            assert.deepEqual(provider.received[1]!.map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"]);
-            assert.equal(packetSection(packet, "emission-history"), content, "only the content program is replayed; reasoning OPs stay in their own channel");
+            assert.deepEqual(provider.received[1]!.map(({ role }) => role), ["system", "user"], "{§emission-history}: a program without NOTEs replays nothing, and reasoning OPs never replay");
+            assert.equal(packetSection(packet, "emission-history"), "", "only a content NOTE is replayed; reasoning OPs stay in their own channel");
             if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply retains its own log row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
             const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
@@ -219,9 +219,9 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         assert.equal(second.status, 200);
         assert.equal(requests.length, 2);
         assert.match(JSON.stringify(requests[1]!.messages), /Established fact/u);
-        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user"]);
-        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [],
-            "NOTE-only content and reasoning OPs stay in their receipts, not assistant history");
+        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant").map(({ content: text }) => text), [content],
+            "{§emission-history}: the content NOTE is the turn's replay; reasoning OPs stay in their receipts, not assistant history");
     } finally {
         release.resolve();
         try { await running; } finally {

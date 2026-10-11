@@ -161,8 +161,8 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
             assert.ok(!initializationRows.some(({ op }) => op === null));
             assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-            assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1"), [],
-                "`_plurnk` initialization never fabricates a content announcement ({§emission-row})");
+            assert.deepEqual(logEntries(packet).filter(({ logPath }) => String(logPath).endsWith("/emission")), [],
+                "`_plurnk` initialization never fabricates a content announcement ({§emission-row}); its READ of its own program is an ordinary row");
 
             const inferenceRows = await rowsFor(turns[1]!.id);
             const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
@@ -1031,11 +1031,14 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
+            { op: "NOTE", status: 200, problemType: null },
             { op: "SEND", status: 200, problemType: null },
-        ], "only the authored message is an operation, delivered without a corrective failure");
+        ], "the text beside the message is the turn's NOTE at its position; the message is delivered without a corrective failure");
         assert.equal(result.status, 102);
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside")?.content, "Just thinking out loud here.");
+        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside a fenced operation the text is a NOTE, not an outside source");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body), ["Just thinking out loud here."]);
     } finally { await db.close(); }
 });
 

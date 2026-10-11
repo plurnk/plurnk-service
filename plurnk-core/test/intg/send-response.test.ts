@@ -63,9 +63,9 @@ test("{§forgotten-tag}: operations on the line after a bare fence run; a bare e
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
             assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
             assert.ok(model.some(({ op }) => op === "WAIT"), "the WAIT under a bare fence ran");
-            assert.equal(model.some(({ op }) => op === "NOTE"), false, "quoted text is no row");
+            assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
-            assert.ok(sources.some((row) => row.kind === "outside" && /printf plurnk/.test(row.content)), "a bare executor name is a word: its block stays quoted text, stored outside the turn ({§outside-text})");
+            assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
             assert.match(JSON.stringify(mock.received[1]), /ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line/, "the next packet states the form once");
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });

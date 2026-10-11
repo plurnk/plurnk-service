@@ -267,14 +267,16 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const settledTurn = (await db.test_get_turn.get<{ packet: string; sequence: number }>({ id: third.turnId }))!;
         const settled = JSON.parse(settledTurn.packet) as { weight: number };
-        const betaRow = logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
-        assert.ok(betaRow, "the newest large NOTE is a bodied row of the settled packet");
-        // {§emission-history}: pin the wall below this request even without its optional replay,
-        // so fitting still requires a result body. The preceding packet had a different replay.
+        assert.equal(logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))), undefined,
+            "{§emission-history}: replayed, the newest large NOTE's text is in the replay and its row is a legend line");
+        // {§emission-history}: pin the wall below this request even without its optional replay, so fitting
+        // still requires a result body. Without the replay the NOTE stands as a bodied row again.
         const baseline = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
             initialMessages: messages, workspaceId, workerId, loopId, provider: wide,
             currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitEmissionHistory: true,
         });
+        const betaRow = logEntries(baseline).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
+        assert.ok(betaRow, "not replayed, the newest large NOTE is a bodied row");
         const contextWindow = Math.ceil((baseline.weight - 600) / 0.9);
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
@@ -307,7 +309,9 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
         const after = logEntries(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet));
         assert.equal(after.find((row) => row.logPath === betaRow.logPath), undefined, "{§context-verbs}: the KILL retired the row");
         assert.equal(after.filter((row) => row.size !== undefined).length, 0, "with the room restored, nothing is taken: each packet decides afresh");
-        assert.ok(after.some((row) => /alpha alpha/u.test(String(row.body))), "the older NOTE stands whole");
+        const afterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet);
+        assert.match(packetSection(afterPacket, "emission-history"), /alpha alpha/u, "{§emission-history}: with the room restored the replay returns, and the older NOTE's text stands whole in it");
+        assert.equal(after.some((row) => /alpha alpha/u.test(String(row.body))), false, "its row is a legend line again, never a second copy");
     } finally {
         await db.close();
         if (output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = output;

@@ -63,8 +63,10 @@ test("{§emission-row} a long body is frozen whole", () => {
     assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
 });
 
-test("{§emission-history}: readback omits NOTE and log curation without inspecting retained bodies", () => {
-    const kept = [
+test("{§emission-history}: readback is the program's NOTEs, whole and in order; every other operation is omitted without inspecting its body", () => {
+    const first = PlurnkParser.frame("NOTE", "Already retained in the log.");
+    const second = PlurnkParser.frame("NOTE", "A second finding,\nover two lines.");
+    const omitted = [
         PlurnkParser.frame("EDIT (worker:///notes.md)", "Literal examples:\n```NOTE\nKeep this text.\n```\n```KILL (log:///*)\n```\n"),
         PlurnkParser.frame("READ (log:///1/2/*)", null),
         PlurnkParser.frame("FIND (note://writer/**)", null),
@@ -72,30 +74,33 @@ test("{§emission-history}: readback omits NOTE and log curation without inspect
         PlurnkParser.frame("WAIT [0]", "The complete progress update."),
         ...["notes.md", "file:///tmp/notes.md", "worker:///notes.md", "worker://helper", "sh:///abcd1234", "note://writer/1/2/3"].map((path) =>
             PlurnkParser.frame(`KILL (${path})`, null)),
-    ];
-    const source = [
-        PlurnkParser.frame("NOTE", "Already retained in the log."),
-        ...kept,
         PlurnkParser.frame("KILL (log:///1/2/*/READ) <2,4> <!-- curate -->", "The distilled memory."),
-    ].join("\n\n");
-    assert.equal(TurnOps.renderHistory(source, []), kept.join("\n\n"));
+    ];
+    const source = [first, ...omitted.slice(0, 3), second, ...omitted.slice(3)].join("\n\n");
+    assert.equal(TurnOps.renderHistory(source, []), `${first}\n\n${second}`, "a NOTE nested inside an EDIT body is body text, not a NOTE");
     assert.equal(TurnOps.renderEmission(TurnOps.parseInternal(source)), source, "the frozen program is not changed by readback");
 });
 
-test("{§emission-history} {§target-group}: mixed KILL targets retain the non-log operations", () => {
+test("{§emission-history} {§target-group}: a program without NOTEs replays nothing, whatever its targets", () => {
     const source = PlurnkParser.frame("KILL (log:///1/2/*) (worker:///draft.md) (sh:///abcd1234)", null);
-    assert.equal(TurnOps.renderHistory(source, []), [
-        PlurnkParser.frame("KILL (worker:///draft.md)", null),
-        PlurnkParser.frame("KILL (sh:///abcd1234)", null),
-    ].join("\n\n"));
+    assert.equal(TurnOps.renderHistory(source, []), "");
 });
 
-test("{§emission-history}: memory-only content has no assistant readback", () => {
+test("{§emission-history}: a NOTE replays; a log KILL's distillation does not, since it lands as the log's own NOTE row", () => {
     const source = [
         PlurnkParser.frame("NOTE", "Retain this memory."),
         PlurnkParser.frame("KILL (log:///1/2/*)", "Distilled memory."),
     ].join("\n\n");
-    assert.equal(TurnOps.renderHistory(source, []), "");
+    assert.equal(TurnOps.renderHistory(source, []), PlurnkParser.frame("NOTE", "Retain this memory."));
+});
+
+test("{§emission-history}: a NOTE whose log row was retired leaves the replay, one occurrence per retired row", () => {
+    const kept = PlurnkParser.frame("NOTE", "Kept.");
+    const twice = PlurnkParser.frame("NOTE", "Said twice.");
+    const source = [twice, kept, twice].join("\n\n");
+    assert.equal(TurnOps.renderHistory(source, [], ["Said twice.", "Kept.", "Said twice."]), source, "every row visible, every NOTE replays");
+    assert.equal(TurnOps.renderHistory(source, [], ["Kept.", "Said twice."]), `${twice}\n\n${kept}`, "one retired row removes one occurrence of its body");
+    assert.equal(TurnOps.renderHistory(source, [], []), "", "no visible rows, nothing replays");
 });
 
 test("{§emission-history}: retained executor identities come from admission, not current registration", () => {
@@ -104,7 +109,9 @@ test("{§emission-history}: retained executor identities come from admission, no
         PlurnkParser.frame("gitea (list_issues)", '{"query":"all"}'),
         PlurnkParser.frame("a-removed-plugin (skill://example/task.js)", null),
     ].join("\n\n");
-    assert.equal(TurnOps.renderHistory(`${calls}\n\n${PlurnkParser.frame("NOTE", "Log memory.")}`, ["sh", "gitea", "a-removed-plugin"]), calls);
+    const note = PlurnkParser.frame("NOTE", "Log memory.");
+    assert.equal(TurnOps.renderHistory(`${calls}\n\n${note}`, ["sh", "gitea", "a-removed-plugin"]), note, "the admitted executors parse the frozen program; its calls are omitted and its NOTE replays");
+    assert.throws(() => TurnOps.renderHistory(`${calls}\n\n${note}`, []), SyntaxError, "without its admitted executors the frozen program does not parse");
 });
 
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {

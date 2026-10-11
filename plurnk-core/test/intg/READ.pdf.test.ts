@@ -65,11 +65,12 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
     assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
     assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
-    assert.match(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /1:looking[\s\S]*## Worker/u, "the subsequent NOTE and footer follow the PDF");
+    assert.match(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /## Worker/u, "the footer follows the PDF");
+    assert.doesNotMatch(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /1:looking/u, "{§emission-history}: the NOTE's text is in the replay, its row a legend line");
     assert.deepEqual(second[2], {
         role: "assistant",
-        content: PlurnkParser.frame("READ (contract.pdf)", null),
-    }, "the complete READ precedes its native result; NOTE stays in the log");
+        content: PlurnkParser.frame("NOTE", "looking"),
+    }, "the turn replays as its NOTE, before its native result; the READ is omitted and its receipt is its record");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

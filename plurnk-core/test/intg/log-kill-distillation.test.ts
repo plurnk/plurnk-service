@@ -33,8 +33,9 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
             assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
             const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3]! }))!.packet);
             const notes = rows(afterCuration, "NOTE");
-            assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n`, "1:curated\n"],
-                "the distillation is the next packet's first NOTE; the killed NOTE and READ are gone");
+            assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n`],
+                "the distillation is the next packet's one NOTE row; the killed NOTE and READ are gone, and the turn's own NOTE rides its legend ({§emission-history})");
+            assert.match(afterCuration, /\d+:log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "the curating turn's NOTE is a legend line of its emission row");
             assert.equal(rows(afterCuration, "KILL").length, 0, "both kills succeeded, so neither receipt renders");
             assert.equal(rows(afterCuration, "READ").length, 0);
             const history = await db.test_log_entries_by_loop.all<{
@@ -88,8 +89,9 @@ test("{§log-kill-distillation} a failed log KILL still keeps its body as the mo
             assert.equal((JSON.parse(kept!.tx) as { body: string }).body, "nothing here");
             const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3]! }))!.packet);
             assert.equal(rows(next, "KILL").length, 1, "a missed log KILL's receipt renders");
-            assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-3), ["1:wrote\n", "1:nothing here\n", "1:checked\n"],
-                "the model possesses what it wrote, and may retire it (turn zero's survey NOTE precedes the model's rows)");
+            assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-1), ["1:nothing here\n"],
+                "the distillation is the one NOTE row the model's turns show; its authored NOTEs ride their turns' legends ({§emission-history})");
+            assert.match(next, /\d+:log:\/\/\/1\/2\/\d+\/NOTE · \d+[\s\S]*\d+:log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "both authored NOTEs keep their handles, so the model may retire them");
         } finally { ws.close(); }
     });
 });

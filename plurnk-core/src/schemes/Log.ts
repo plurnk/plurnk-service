@@ -777,12 +777,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 if (!Array.isArray(rawAnchors)) {
                     throw new TypeError("A READ log body carries malformed published line anchors.");
                 }
-                // Trial (#1073): an emission row's legend lines are its turn's NOTEs. An exact line scope
-                // aimed at the row retires the NOTEs on those lines; `<1,-1>` keeps its meaning and retires
-                // the row itself, the turn's voice, leaving its NOTEs as ordinary rows.
+                // {§emission-row}: an emission row's lines are its legend, its turn's NOTEs. A line scope aimed
+                // at the row retires the NOTEs on the lines it selects and leaves the row; the unscoped KILL
+                // alone retires the row.
                 const marks = statement.lineMarker?.marks ?? null;
-                const wholeMarks = marks !== null && marks.length === 2 && marks[0] === 1 && marks[1] === -1;
-                if (exact && marks !== null && !wholeMarks && LogEntryProjection.isEmission(row)) {
+                if (exact && marks !== null && LogEntryProjection.isEmission(row)) {
                     const legend = await ctx.db.log_turn_note_rows.all<{ id: number; folded: string }>({ id: row.id });
                     if (legend.length > 0) {
                         const count = legend.length;
@@ -834,26 +833,20 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     };
                 }
                 const before = LogVisibility.parse(row.folded);
-                // {§emission-row} — an emission is curated whole. A scope covering every line (`<1,-1>`)
-                // retires it like an unscoped KILL; a partial scope aimed at it is refused, and a partial
-                // scope that sweeps across it leaves it intact.
+                // {§emission-row} — an emission is curated whole, and a line scope addresses only its legend.
+                // Here the row has no legend lines: an exact scope is refused, and a sweep leaves it intact.
                 if (LogEntryProjection.isEmission(row)) {
-                    const lines = TextCoordinates.lineCount(body.content);
-                    if (LogVisibility.fullyFolded(LogVisibility.apply(LogVisibility.OPEN, scope.range, lines), lines)) {
-                        targets.push({ id: row.id, activeBefore: 1, activeAfter: 0, foldedBefore: before, foldedAfter: before });
-                        continue;
-                    }
                     if (exact) {
                         return {
                             result: Results.failure(
                                 "scheme:log",
                                 "emission-curated-whole",
                                 422,
-                                `${identity} is an emission, curated whole: a line scope cannot trim it.`,
+                                `${identity} is an emission with no legend lines: a line scope selects nothing on it.`,
                                 {},
                                 {
                                     target: identity,
-                                    recovery: `KILL (${identity}) retires it, and so does the scope <1,-1>.`,
+                                    recovery: `KILL (${identity}) retires it.`,
                                     retryable: false,
                                 },
                             ) as OpenFoldResult,

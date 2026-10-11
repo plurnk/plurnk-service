@@ -44,12 +44,13 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const retained = frame("EDIT (worker:///memory.md) <!-- remember -->", body);
-    assert.equal(previous(provider.received[1]!), retained);
+    const retained = frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.");
+    assert.equal(previous(provider.received[1]!), retained, "the turn replays as its NOTE; the EDIT's receipt is its record");
     assert.match(userText(provider.received[1]!), /REASONING-MEMORY/u);
-    assert.equal(previous(provider.received[2]!), retained);
+    assert.doesNotMatch(userText(provider.received[1]!), /CURATABLE-MEMORY/u, "the replayed NOTE's row is a legend line");
+    assert.equal(previous(provider.received[2]!), "", "the curated NOTE leaves the replay; a curation-only turn replays nothing");
     assert.doesNotMatch(userText(provider.received[2]!), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]!), `${retained}\n\n${read}`);
+    assert.equal(previous(provider.received[3]!), "", "a READ-only turn replays nothing");
     assert.match(userText(provider.received[3]!), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]!), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
@@ -57,10 +58,10 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
 });
 
-test("{§emission-row}: initialization has no replay; canonical content excludes interstitial text and preserves row chronology", async (t) => {
-    const canonical = `${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}`;
+test("{§emission-row}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
+    const canonical = `${frame("NOTE", "Let me look around first.")}\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\n${frame("NOTE", "Done for now.")}`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
-        say(`Let me look around first.\n\n${canonical}\n\nDone for now.`), say(frame("SEND [200]", "Answer.")),
+        say(`Let me look around first.\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -74,22 +75,23 @@ test("{§emission-row}: initialization has no replay; canonical content excludes
         assert.equal(row.active, 1);
     }
     assert.equal(previous(provider.received[0]!), "");
-    assert.equal(previous(provider.received[1]!), surveyRead);
-    assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program");
-    assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/3\/READ/u);
+    assert.equal(previous(provider.received[1]!), [frame("NOTE", "Let me look around first."), frame("NOTE", "Bearings: nothing read yet."), frame("NOTE", "Done for now.")].join("\n\n"),
+        "{§emission-history}: the turn replays as its NOTEs, the text it wrote outside its fences among them, in order");
+    assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
+    assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
     const request = provider.received[1]!;
     assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    assert.match(chatMessageText(request[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming rows in the same turn precede the program's own anchor");
-    assert.match(chatMessageText(request[3]!), /^### log:\/\/\/1\/2\/3\/READ/u, "the program's results follow it, not the incoming message");
-    assert.doesNotMatch(previous(provider.received[1]!), /Let me look around|Done for now/u);
+    assert.match(chatMessageText(request[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*\n1:log:\/\/\/1\/2\/3\/NOTE · \d+\n2:log:\/\/\/1\/2\/5\/NOTE · \d+\n3:log:\/\/\/1\/2\/6\/NOTE · \d+$/u,
+        "incoming rows in the same turn precede the program's own anchor, whose lines are the legend of its NOTEs");
+    assert.match(chatMessageText(request[3]!), /^### log:\/\/\/1\/2\/4\/READ/u, "the program's results follow it, not the incoming message");
 });
 
 test("{§emission-row}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
     const mode = process.env.PLURNK_SERVICE_EMISSION_HISTORY;
     process.env.PLURNK_SERVICE_EMISSION_HISTORY = "latest";
     t.after(() => { if (mode === undefined) delete process.env.PLURNK_SERVICE_EMISSION_HISTORY; else process.env.PLURNK_SERVICE_EMISSION_HISTORY = mode; });
-    const newest = frame("SEND", "Newest program.");
-    const f = await run("envelope-retire", "Work.", [say(surveyRead), say(newest)], 2);
+    const newest = frame("NOTE", "Newest memory.");
+    const f = await run("envelope-retire", "Work.", [say(`${surveyRead}\n\n${frame("NOTE", "Older memory.")}`), say(`${newest}\n\n${frame("SEND", "Newest program.")}`)], 2);
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
@@ -102,32 +104,34 @@ test("{§emission-row}: curation retires the immediately preceding emission with
     assert.ok(PacketWire.sectionContent(await build(), "log").includes("log:///1/2/2/emission"), "an older live emission is not replayed");
 });
 
-test("{§emission-row}: a whole scope retires an emission; a partial scope refuses and a partial sweep preserves it", async (t) => {
+test("{§emission-row}: a line scope on an emission addresses its legend; without legend lines it is refused, a sweep preserves it, and only the unscoped KILL retires it", async (t) => {
     const { db, result, provider, rows } = await run("envelope-scope", "Answer.\nSecond line.\nThird line.", [
         say(frame("EDIT (worker:///scope.md)", "line one\nline two\nline three")),
-        say(frame("KILL (log:///1/2/2/emission) <2,3>", null)),
+        say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)),
         say(frame("KILL (log:///1/2/*) <2,3>", null)),
-        say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)), say(frame("SEND [200]", "Answer.")),
+        say(frame("KILL (log:///1/2/2/emission)", null)), say(frame("SEND [200]", "Answer.")),
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.match(userText(provider.received[2]!), /### log:\/\/\/1\/3\/\d+\/KILL → log:\/\/\/1\/2\/2\/emission[^\n]*\n\{[^\n]*"status":422/u);
-    assert.match(userText(provider.received[2]!), /curated whole/u);
+    assert.match(userText(provider.received[2]!), /no legend lines: a line scope selects nothing on it/u, "the refusal says what the scope addressed and found");
+    assert.match(userText(provider.received[2]!), /KILL \(log:\/\/\/1\/2\/2\/emission\) retires it\./u, "the recovery names the one form that retires it");
     assert.match(userText(provider.received[2]!), /### log:\/\/\/1\/2\/2\/emission/u);
-    assert.match(userText(provider.received[3]!), /### log:\/\/\/1\/2\/2\/emission/u);
-    assert.doesNotMatch(userText(provider.received[4]!), /### log:\/\/\/1\/2\/2\/emission/u);
+    assert.match(userText(provider.received[3]!), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
+    assert.doesNotMatch(userText(provider.received[4]!), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");
     const retired = rows.find(({ coordinate }) => coordinate === "1/2/2")!;
     assert.equal(retired.active, 0);
     assert.deepEqual(JSON.parse(retired.folded), []);
 });
 
-test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is tolerated outside text, never replayed", async (t) => {
+test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission → ops://exampleWorkerName/1/2 · 30\n\n${surveyRead}`), say(frame("SEND [200]", "Answer.")),
+        say(`### log:///1/2/2/emission → ops://exampleWorkerName/1/2 · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
-    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, surveyRead);
-    assert.equal(previous(provider.received[1]!), surveyRead);
+    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\n${frame("NOTE", "Noted.")}`,
+        "the echo is absent from the canonical program; the text beside the operations that was not an echo would be a NOTE");
+    assert.equal(previous(provider.received[1]!), frame("NOTE", "Noted."), "the replay carries the NOTE the model wrote, not the echo");
 });

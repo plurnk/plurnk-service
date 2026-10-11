@@ -67,8 +67,9 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 workspaceId, workerId, loopId, currentTurnSeq: 3,
                 provider: new Mock({ contextWindow: 100_000, responses: [] }), initialMessages: [], gitStatus: null,
             });
-            assert.equal(PacketWire.sectionContent(detached, "emission-history"), frame("receiptfixture (inspect)", body),
-                "{§emission-history}: removing the runtime registration cannot erase an admitted invocation");
+            assert.equal(PacketWire.sectionContent(detached, "emission-history"), "", "{§emission-history}: an invocation without a NOTE replays nothing");
+            assert.match(PacketWire.sectionContent(detached, "log"), /\/emission → ops:\/\/[^\s]+\/1\/2 · \d+/u,
+                "{§emission-history}: removing the runtime registration cannot erase an admitted invocation; its emission row and frozen program stand, parsed with the executors it was admitted with");
             const observed = await observe();
             const invocation = observed.rows.find((row) => String(row.logPath).endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");

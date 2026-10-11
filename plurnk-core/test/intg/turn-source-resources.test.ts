@@ -37,8 +37,8 @@ test("{§turn-source-resources}: the initialization program and later content so
         const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        assert.deepEqual(records.filter((row: Record<string, unknown>) => row.path === "ops://analyst/1/1"), [],
-            "`_plurnk` initialization has no content announcement ({§emission-row})");
+        assert.deepEqual(records.filter((row: Record<string, unknown>) => String(row.logPath).endsWith("/emission")), [],
+            "`_plurnk` initialization has no content announcement ({§emission-row}); its READ of its own program is an ordinary row");
         assert.ok(!records.some((row: Record<string, unknown>) => String(row.logPath).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;
@@ -71,12 +71,15 @@ test("{§turn-source-resources}: the initialization program and later content so
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
         }
-        // {§outside-text}: the outside source is snapshotted with the others, at the same coordinates, and has no address of its own.
-        const outsideOf = async (id: number) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ worker_id: id }))
-            .filter(({ kind }) => kind === "outside").map(({ loop_seq, turn_seq, content }) => [loop_seq, turn_seq, content]);
-        const parentOutside = await outsideOf(workerId);
-        assert.ok(parentOutside.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
-        assert.deepEqual(await outsideOf(child), parentOutside, "the fork carries every outside source under the child's coordinates");
+        // {§outside-text}: beside the operations, the interstitial sentence became the turn's NOTE, so its source is a
+        // note source snapshotted with the others at the same coordinates; no outside source exists for a turn that
+        // fenced an operation, and outside text has no address of its own.
+        const sourcesOf = async (id: number, kind: string) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ worker_id: id }))
+            .filter((row) => row.kind === kind).map(({ loop_seq, turn_seq, content }) => [loop_seq, turn_seq, content]);
+        const parentNotes = await sourcesOf(workerId, "note");
+        assert.ok(parentNotes.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
+        assert.deepEqual(await sourcesOf(child, "note"), parentNotes, "the fork carries every note source under the child's coordinates");
+        assert.deepEqual(await sourcesOf(workerId, "outside"), [], "every turn here fenced an operation, so none keeps an outside source");
         const unaddressed = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`\`READ (outside://branch/${coordinate}) <1,-1>\`\`\`\``) });
         assert.ok(unaddressed.status >= 400, "outside text is not a readable resource");
     } finally { await db.close(); }

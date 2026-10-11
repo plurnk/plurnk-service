@@ -31,8 +31,8 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
-import { contentWeight } from "./content-weight.ts";
 import { generatedPathname } from "./plurnk-uri.ts";
+import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
@@ -148,6 +148,9 @@ type SplitProviderResponse = {
     emptyTurn: boolean;
     // {§loop-completion}: an incomplete or malformed emission cannot conclude.
     completionAllowed: boolean;
+    // {§outside-text}: the text of a turn that fenced no operation, in source order; null when the turn
+    // fenced one, since its text then joined the program as NOTEs.
+    outside: string | null;
     // {§emission-row}: the admitted content program; null when none was admitted. The emission
     // site renders them against their own source; reasoning operations stay in their own source.
     emissionStatements: readonly PlurnkStatement[] | null;
@@ -235,7 +238,7 @@ const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation."
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST emit at least one NOTE operation and at least one other operation per turn.",
+    note: "YOU MUST emit at least one NOTE operation with a complete status summary and at least one other operation per turn.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
@@ -1736,6 +1739,16 @@ export default class TurnRunner {
                 level: "warn",
             });
         }
+        // {§outside-text} — a turn that fenced no operation keeps its text as its outside source: the
+        // evidence behind the empty turn's strike and a terminal's citation; no row, notice or NOTE.
+        if (split.outside !== null) {
+            await Turn.recordSource(this.#db, request.turnId, "outside", split.outside, { modelCallId: emission.modelCallId });
+            this.#notify.outsideEventNotify?.(workspaceId, {
+                workerId, loopId, turnId: request.turnId,
+                coordinate: `${request.workerName}-${request.loopSeq}-${request.seq}`,
+                text: split.outside, tokens: contentWeight(split.outside),
+            });
+        }
         // {§operator-grammar} — transport evidence only: the turn records whether the operator's
         // grammar reached the wire. Nothing grades the response against it; the parser's
         // admission is the one verdict (#588).
@@ -1874,6 +1887,7 @@ export default class TurnRunner {
         let operationOmitted = false;
         const parseNotices: Notice[] = [];
         const fabrications: ParseErrorInfo[] = [];
+        const outside: string[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
             contentStatementCount = preParsedOps.length;
@@ -1887,13 +1901,29 @@ export default class TurnRunner {
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
+            // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
+            // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
+            // its text as its outside source and stays an empty turn ({§empty-turn}). Echoed emission
+            // headings are announcements, not annotation, and are dropped ({§fabricated-log-entry}).
+            const fenced = parsed.items.filter((item) => item.kind === "statement").length;
+            let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
+            const flushSpan = (): void => {
+                if (span === null) return;
+                const body = span.body.join("\n\n");
+                if (body.length > 0) {
+                    if (fenced > 0) {
+                        ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: span.position });
+                        contentStatementCount += 1;
+                    } else outside.push(body);
+                }
+                span = null;
+            };
             for (const item of parsed.items) {
+                if (item.kind !== "text") flushSpan();
                 if (item.kind === "statement") {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
-                // Trial (#1073): text outside the fences is annotation the model wrote without its fence. It
-                // joins the program as a NOTE at its position, lands as one, and is frozen as one.
                 else if (item.kind === "text") {
                     // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
                     const fabricated = FabricatedLog.find(item.content);
@@ -1901,11 +1931,10 @@ export default class TurnRunner {
                         fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
                         continue;
                     }
-                    const body = item.content.trim();
-                    if (body.length > 0) {
-                        ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: item.position });
-                        contentStatementCount += 1;
-                    }
+                    const body = FabricatedLog.stripEchoes(item.content);
+                    if (body.length === 0) continue;
+                    span ??= { body: [], position: item.position };
+                    span.body.push(body);
                 }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
@@ -1934,6 +1963,7 @@ export default class TurnRunner {
                     }
                 }
             }
+            flushSpan();
             // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
             // nothing was read. The statements that closed before it are ordinary facts and run; the
             // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
@@ -1987,6 +2017,7 @@ export default class TurnRunner {
             completionAllowed,
             parseNotices,
             emissionValid,
+            outside: outside.length === 0 ? null : outside.join("\n\n"),
             emissionStatements,
         };
     }

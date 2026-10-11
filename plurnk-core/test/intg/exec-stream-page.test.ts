@@ -31,7 +31,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
-            makeRawMockResponse("````sh\nseq 1 40\n````\n\n````WAIT\nwaiting\n````", 10),
+            makeRawMockResponse("````sh\nseq 1 40\n````\n\n````NOTE\nlaunched the count\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````READ ($STREAM#stdout) <38,40>````\n````NOTE\nreading the tail\n````", 10),
             makeMockResponse("````SEND [200]\ndone\n````", 10),
         ],
@@ -84,9 +84,10 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
             assert.equal(explicit.range, "<38,40> of 40 lines");
             const request = provider.received.at(-1)!;
-            const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
+            // {§emission-history}: a turn replays as its NOTEs, so each turn's NOTE stands for its program here.
+            const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("launched the count"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("<38,40>"));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("reading the tail"));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
