@@ -97,32 +97,29 @@ export default class FileSnapshot {
             if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw cause;
         }
-        try {
-            const initial = await handle.stat({ bigint: true });
-            if (FileSnapshot.fingerprint(initial) !== observed.fingerprint) return null;
-            if (maximumBytes !== null && initial.size > BigInt(maximumBytes)) return null;
-            const hash = createHash("sha256");
-            const chunks: Buffer[] = [];
-            let length = 0;
-            if (initial.size > 0n) {
-                for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: Number(initial.size) - 1 })) {
-                    const bytes = chunk as Buffer;
-                    hash.update(bytes);
-                    length += bytes.length;
-                    if (maximumBytes !== null) chunks.push(bytes);
-                }
+        await using descriptor = handle;
+        const initial = await descriptor.stat({ bigint: true });
+        if (FileSnapshot.fingerprint(initial) !== observed.fingerprint) return null;
+        if (maximumBytes !== null && initial.size > BigInt(maximumBytes)) return null;
+        const hash = createHash("sha256");
+        const chunks: Buffer[] = [];
+        let length = 0;
+        if (initial.size > 0n) {
+            for await (const chunk of descriptor.createReadStream({ autoClose: false, start: 0, end: Number(initial.size) - 1 })) {
+                const bytes = chunk as Buffer;
+                hash.update(bytes);
+                length += bytes.length;
+                if (maximumBytes !== null) chunks.push(bytes);
             }
-            const final = await handle.stat({ bigint: true });
-            const current = await FileSnapshot.observe(path);
-            if (BigInt(length) !== initial.size || FileSnapshot.fingerprint(final) !== observed.fingerprint
-                || current?.canonical !== observed.canonical || current.fingerprint !== observed.fingerprint) return null;
-            return {
-                ...observed,
-                revision: { canonical: observed.canonical, fingerprint: observed.fingerprint, hash: hash.digest("hex") },
-                bytes: maximumBytes !== null ? Buffer.concat(chunks, length) : null,
-            };
-        } finally {
-            await handle.close();
         }
+        const final = await descriptor.stat({ bigint: true });
+        const current = await FileSnapshot.observe(path);
+        if (BigInt(length) !== initial.size || FileSnapshot.fingerprint(final) !== observed.fingerprint
+            || current?.canonical !== observed.canonical || current.fingerprint !== observed.fingerprint) return null;
+        return {
+            ...observed,
+            revision: { canonical: observed.canonical, fingerprint: observed.fingerprint, hash: hash.digest("hex") },
+            bytes: maximumBytes !== null ? Buffer.concat(chunks, length) : null,
+        };
     }
 }

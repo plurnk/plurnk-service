@@ -19,9 +19,9 @@ export default class FilePublication {
             await fs.mkdir(dirname(canonical), { recursive: true });
             directory = await fs.mkdtemp(join(dirname(canonical), ".plurnk-write-"));
             const staged = join(directory, "content");
-            const handle = await fs.open(staged, "wx", 0o600);
             let identity: BigIntStats;
-            try {
+            {
+                await using handle = await fs.open(staged, "wx", 0o600);
                 identity = await handle.stat({ bigint: true });
                 await handle.writeFile(bytes);
                 const source = baseline === null ? null : await FileSnapshot.observe(requested);
@@ -31,8 +31,6 @@ export default class FilePublication {
                 }
                 await handle.chmod(source === null ? 0o666 & ~process.umask() : Number(source.stats.mode & 0o7777n));
                 await handle.sync();
-            } finally {
-                await handle.close();
             }
             if (baseline !== null) {
                 const current = await FileSnapshot.acquire(requested, null);

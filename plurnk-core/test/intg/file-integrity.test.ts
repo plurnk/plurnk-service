@@ -519,6 +519,32 @@ test("{§file-publication}: staging cleanup failure preserves the original write
     t.mock.restoreAll();
 });
 
+test("{§file-publication}: a close failure preserves the original staging failure", async (t) => {
+    const fx = await fixture(t);
+    const baseline = (await FileSnapshot.acquire(fx.path, null))!.revision;
+    const writeFailure = new Error("fixture: stage write failed");
+    const closeFailure = new Error("fixture: close failed");
+    const open = fs.open;
+    t.mock.method(fs, "open", async (...args: Parameters<typeof open>) => {
+        const handle = await open(...args);
+        if (args[1] === "wx") {
+            t.mock.method(handle, "writeFile", async () => { throw writeFailure; });
+            const close = handle.close.bind(handle);
+            t.mock.method(handle, "close", async () => { await close(); throw closeFailure; });
+        }
+        return handle;
+    });
+    const result = await FilePublication.write(fx.path, fx.path, baseline, Buffer.from("replacement\n"));
+    assert.equal(result.status, "failed");
+    if (result.status !== "failed") assert.fail("Expected the failed publication");
+    assert.equal(result.published, false);
+    assert.ok(result.cause instanceof SuppressedError);
+    assert.equal(result.cause.suppressed, writeFailure);
+    assert.equal(result.cause.error, closeFailure);
+    assert.equal(await fs.readFile(fx.path, "utf8"), original);
+    assert.deepEqual((await fs.readdir(fx.root)).filter((name) => name.startsWith(".plurnk-write-")), []);
+});
+
 test("{§file-commit-serialization} {§membership-source-projection}: a slow projection never reserves its file and cannot publish over a newer edit", async (t) => {
     const release = Promise.withResolvers<void>();
     t.after(() => release.resolve());
