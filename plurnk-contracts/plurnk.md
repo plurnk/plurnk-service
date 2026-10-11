@@ -26,7 +26,7 @@ body?
 * KILL: Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams (You may include `[60]` to check in after 60 seconds).
+* WAIT: Yield to child workers and streams (not the user). You may include `[60]` to check in after 60 seconds.
 * SEND: Message endpoints, workers, or respond to Open Messages.
 
 ## Loop Protocol
