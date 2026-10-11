@@ -87,8 +87,11 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
             "skill://alpha/SKILL.md", "skill://beta/SKILL.md",
         ]);
         const unknownType = await dispatch(copyStmt(parsePath("skill://alpha/binary.bin")!, parsePath("worker:///copied.bin")!));
-        assert.equal(unknownType.status, 415, "an unrecognized suffix retains the destination scheme's text default");
-        assert.equal((unknownType.problem as { type?: string } | undefined)?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
+        assert.equal(unknownType.status, 201, JSON.stringify(unknownType));
+        const unknownBytes = await dispatch(readStmt(parsePath("worker:///copied.bin"), { marks: [1, -1] }));
+        assert.equal(unknownBytes.status, 200);
+        assert.equal(unknownBytes.content, "00\nff\n80", "{§copy-destination-mimetype} an untyped destination preserves every source byte");
+        assert.equal((await find("worker:///copied.bin"))[0]?.mimetype, "application/octet-stream");
         const copied = await dispatch(copyStmt(parsePath("skill://alpha/image.png")!, parsePath("worker:///copied.png")!));
         assert.equal(copied.status, 201, JSON.stringify(copied));
         const bytes = await dispatch(readStmt(parsePath("worker:///copied.png"), { marks: [1, -1] }));

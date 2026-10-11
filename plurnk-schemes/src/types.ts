@@ -23,7 +23,7 @@ export interface EntryCoordinate {
 interface SchemeManifestBase {
     readonly name: string;                       // addressing/routing identity (the URI prefix)
     readonly authority?: SchemeAuthority;        // absent = namespace
-    readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
+    readonly channels: Record<string, string>;  // channel name → declared mimetype; the default may be dynamic
     // The channel selected for an unqualified read. Dynamic-channel schemes may
     // name it without declaring a fixed mimetype; empty means no default.
     readonly defaultChannel: string;

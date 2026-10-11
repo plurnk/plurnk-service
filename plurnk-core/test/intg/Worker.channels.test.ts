@@ -14,8 +14,8 @@ const setup = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Worker declares static channels manifest + defaultChannel", () => {
-    assert.deepEqual(Worker.manifest.channels, { body: "text/markdown", readable: "text/markdown" });
+test("{§manifest} Worker declares a dynamic body beside its typed readable projection", () => {
+    assert.deepEqual(Worker.manifest.channels, { readable: "text/markdown" });
     assert.equal(Worker.manifest.defaultChannel, "body");
 });
 

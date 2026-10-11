@@ -1,11 +1,5 @@
-// Path-extension mimetype resolver for entry schemes — single source of truth
-// is @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the
-// framework's function; call sites stay `PathMimetype.resolveEntryMimetype(...)`.
-//
-// A pathname's extension drives the effective mimetype ({§ext-mimetype-extension-mimetype}; via the sibling
-// Mimetypes detect service); the scheme manifest's channel default is the
-// fallback when no extension is present. `worker:///users.json` →
-// application/json; `worker:///notes` → scheme default.
+// Core facade over the shared resolver; callers supply their creation type
+// under {§ext-mimetype-extension-mimetype} and {§copy-destination-mimetype}.
 import { PathMimetype as _PathMimetype } from "@plurnk/plurnk-schemes";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 

@@ -2719,7 +2719,8 @@ Resolve the destination channel's type in this order, then apply
 | --- | --- |
 | Existing channel | Its stored source type, not a derived readable projection. |
 | Absent channel with a recognized pathname extension | The extension's type under {§ext-mimetype}. |
-| Absent channel without a recognized extension | The source's declared type, with automatic `text/plain` normalization under {§markdown-primitive}. |
+| Absent channel without a recognized extension, with a declared manifest type | The declared channel type, including explicit `text/plain`. |
+| Absent channel without either declaration | The source's declared type, with automatic `text/plain` normalization under {§markdown-primitive}. |
 
 The admitted type accompanies the content through proposal review and publication.
 This rule applies to whole and scoped transfers across entry-bearing schemes;
@@ -6094,12 +6095,12 @@ repair neighboring punctuation. Readable projections have their own coordinates.
 
 ### §ext-mimetype Path-extension declares mimetype
 
-`resolveEntryMimetype` (exported from `@plurnk/plurnk-schemes`): pathname extension → `Mimetypes.detect({ ext })` (with `text/plain` normalized to `text/markdown` per the text-primitive rule {§markdown-primitive}); falls back to scheme manifest channel default when no extension.
+`PathMimetype.resolve` (exported from `@plurnk/plurnk-schemes`): pathname extension → `Mimetypes.detect({ ext })` (with `text/plain` normalized to `text/markdown` per {§markdown-primitive}); an unrecognized or absent extension uses the caller's supplied type. Text EDIT creation supplies the scheme's declared channel type or the Markdown primitive for a dynamically typed channel. Transfers follow {§copy-destination-mimetype}.
 
 - `worker:///users.json` → `application/json` (extension wins)
 - `worker:///notes.md` → `text/markdown` (extension; matches default)
 - `worker:///config.yaml` → `application/yaml`
-- `worker:///users` (no suffix) → `text/markdown` (worker manifest default)
+- Text EDIT of `worker:///users` (no suffix) → `text/markdown` (text primitive)
 
 §ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme when
 creating a channel without a per-call type declaration. EDIT and COPY/MOVE into

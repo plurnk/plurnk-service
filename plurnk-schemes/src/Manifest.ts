@@ -54,8 +54,8 @@ export default class Manifest {
             throw new Error(`scheme '${name}' manifest.channels must map lowercase channel names to non-empty mimetypes`);
         }
         const defaultChannel = Manifest.#string(manifest, "defaultChannel", true);
-        if (Object.keys(channels).length > 0 && !Object.hasOwn(channels, defaultChannel)) {
-            throw new Error(`scheme '${name}' manifest.defaultChannel '${defaultChannel}' is not declared in channels`);
+        if (defaultChannel !== defaultChannel.toLowerCase()) {
+            throw new Error(`scheme '${name}' manifest.defaultChannel must be lowercase`);
         }
         if (!CATEGORIES.has(manifest.category as SchemeManifest["category"])) {
             throw new Error(`scheme '${name}' manifest.category must be data, logging, or control`);

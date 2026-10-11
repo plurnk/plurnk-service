@@ -1,23 +1,4 @@
-// Path-extension mimetype resolver for entry schemes ({§path-extension-mimetype}):
-// a path suffix (`.json`, `.md`, `.txt`, etc.) declares the
-// mimetype; an absent suffix defers to the scheme default.
-//
-// Plurnk-service implements this uniformly across entry schemes: a
-// pathname's extension drives the effective mimetype (via the sibling
-// Mimetypes detect service), and the scheme manifest's channel default
-// is the fallback when no extension is present.
-//
-// This makes structural ops (`<L>` item-index, matcher dialect dispatch)
-// fire correctly without content-sniffing: a model writing JSON to
-// `notes:///users.json` opts into JSON treatment via the `.json` suffix,
-// while `notes:///scratch` (no suffix) stays at that scheme's default of
-// `text/markdown`.
-//
-// Consistent across:
-//   - notes:///users.json     → application/json
-//   - notes:///scratch.md     → text/markdown
-//   - notes:///config.yaml    → application/yaml
-//   - notes:///scratch        → scheme default
+// {§path-extension-mimetype}: recognized suffixes precede the caller's supplied type.
 
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeClassifier from "./MimetypeClassifier.ts";

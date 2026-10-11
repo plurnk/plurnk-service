@@ -36,8 +36,8 @@ class Notes {
 |---|---|
 | `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
 | §manifest-authority `authority?` | URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"` preserves it as the entry authority. Absent means `"namespace"`. |
-| `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
-| `defaultChannel` | Channel targeted when path has no `#fragment`. Dynamic-channel schemes may name it without fixing a mimetype; empty means no default. |
+| `channels` | `Record<channelName, mimetype>` for declared channel types. Channel names lowercase; an untyped default may coexist with typed siblings. |
+| `defaultChannel` | Lowercase channel targeted when path has no `#fragment`. Its omission from `channels` means its type is determined per resource; empty means no default. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (owns no entries). |
 | `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes, such as a runtime's output, which its execution writes through its own stream. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |

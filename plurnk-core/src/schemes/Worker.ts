@@ -30,7 +30,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         name: "worker",
         authority: "resource",
         // {§readable-channel} — `readable` is the source's derived projection, never written.
-        channels: { body: "text/markdown", readable: "text/markdown" },
+        channels: { readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
         writableBy: ["model", "client", "_plurnk"],

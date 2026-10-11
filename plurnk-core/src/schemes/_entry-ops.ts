@@ -58,9 +58,8 @@ export default class EntryOps {
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
         const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — {§channel-selection-fragment-selects-named-channel} {§channel-selection-fragmentless-targets-default-channel}
-        // The default channel is always valid — dynamic-channel schemes (File:
-        // channels={}, mimetype derived per-file) declare none, but their body
-        // channel still exists. A non-default fragment must be a declared channel.
+        // The default may be dynamically typed even alongside declared siblings.
+        // A non-default fragment must be a declared channel. {§manifest}
         if (target === defaultChannel) return target;
         if (!Object.hasOwn(channels, target)) return null; // {§channel-selection-missing}
         return target;
@@ -187,7 +186,11 @@ export default class EntryOps {
 
         // {§ext-mimetype-extension-mimetype} Resolve a type only for a new channel.
         const effectiveMimetype = channel?.mimetype
-            ?? await PathMimetype.resolveEntryMimetype(pathname, channels[targetChannel], ctx.mimetypes);
+            ?? await PathMimetype.resolveEntryMimetype(
+                pathname,
+                channels[targetChannel] ?? MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
+                ctx.mimetypes,
+            );
 
         // 415 on binary entries (SPEC.md {§op-invariants}).
         if (await MimetypeBinary.isBinaryMimetype(effectiveMimetype, ctx.mimetypes)) {

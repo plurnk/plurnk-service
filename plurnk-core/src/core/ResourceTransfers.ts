@@ -475,7 +475,7 @@ export default class ResourceTransfers {
         const expectedMimetype = destRealMimetype
             ?? await PathMimetype.resolveEntryMimetype(
                 destination.pathname,
-                MimetypeClassifier.normalizeAutoText(source.mimetype),
+                destination.manifest.channels[destination.channel] ?? MimetypeClassifier.normalizeAutoText(source.mimetype),
                 ctx.mimetypes,
             );
         if (!MimetypeClassifier.isTransferCompatible(source.mimetype, expectedMimetype, {

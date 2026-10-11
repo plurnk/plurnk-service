@@ -39,10 +39,6 @@ test("Manifest.of validates dispatch-critical fields", () => {
         "an empty writer set declares a scheme no operation writes",
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...manifest("channels"), defaultChannel: "missing" } }, "channels"),
-        /defaultChannel/,
-    );
-    assert.throws(
         () => Manifest.of({ manifest: { ...manifest("case"), channels: { Body: "text/plain" }, defaultChannel: "Body" } }, "case"),
         /lowercase channel names/,
     );
@@ -62,6 +58,19 @@ test("Manifest.of validates dispatch-critical fields", () => {
         () => Manifest.of({ manifest: { ...manifest("traits"), traits: ["web", "interaction"] } }, "traits"),
     );
     assert.doesNotThrow(() => Manifest.of({ manifest: manifest("resource") }));
+});
+
+test("{§manifest} a dynamic default channel composes with typed sibling channels", () => {
+    for (const channels of [{}, { readable: "text/markdown" }]) {
+        const declared = { ...manifest("dynamic"), channels };
+        assert.equal(Manifest.of({ manifest: declared }), declared);
+        assert.equal(declared.defaultChannel, "body");
+        assert.equal(Object.hasOwn(declared.channels, "body"), false);
+    }
+    assert.throws(
+        () => Manifest.of({ manifest: { ...manifest("case"), channels: {}, defaultChannel: "Body" } }),
+        /defaultChannel.*lowercase/,
+    );
 });
 
 test("{§manifest} Manifest.of admits only declared top-level fields", () => {

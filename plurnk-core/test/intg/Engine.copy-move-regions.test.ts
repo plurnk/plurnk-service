@@ -98,6 +98,19 @@ const setup = async () => {
 
 for (const transfer of [copyStmt, moveStmt]) {
     const op = transfer(urlPath("multi", "/src"), urlPath("multi", "/dst", "plain")).op;
+    test(`{§copy-destination-mimetype}: ${op} rejects a binary transfer into a declared text default channel`, async () => {
+        const { db, seed, read, dispatch } = await setup();
+        try {
+            await seed("/src", { channels: { blob: { content: "AP+A", mimetype: "application/octet-stream" } } });
+            const result = await dispatch(transfer(urlPath("multi", "/src", "blob"), urlPath("multi", "/dst")));
+            assert.equal(result.status, 415);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
+            assert.equal(result.problem?.destinationMimetype, "text/markdown");
+            assert.equal((await read("/dst")).status, 404);
+            assert.equal((await read("/src")).entry?.channels.blob?.content, "AP+A");
+        } finally { await db.close(); }
+    });
+
     test(`{§mimetype-verbatim-transfer}: ${op} creates a declared plain channel from Markdown without relabeling or disturbing siblings`, async () => {
         const { db, seed, read, dispatch } = await setup();
         try {
