@@ -22,6 +22,7 @@ import { insertPacketTurn, MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 // freezes what it shipped, and a database from any of them keeps its path through the versions after it.
 // A release that ships migrations adds its entry here; each witness names the release whose shape it seeds.
 type Release = { readonly version: number; readonly release: string; readonly shape: string };
+const V3_1_0: Release = Object.freeze({ version: 22, release: "3.1.0", shape: "2520e04fc1cbafa9c5848ac44120851e600644a59fd381f208633652a7b4cb07" });
 const V3_0_0: Release = Object.freeze({ version: 20, release: "3.0.0", shape: "39f52f9fe61e6e61c3f0766d3bcef6d0edec1692058124d1a33ff91e8e0d39b0" });
 const V2_0_0: Release = Object.freeze({ version: 17, release: "2.0.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
 const V1_27_0: Release = Object.freeze({ version: 15, release: "1.27.0", shape: "500dd916fd0de1704f42d1e2e60dce895fd14714224edb3eb8841e30ea318a07" });
@@ -413,7 +414,7 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-for (const release of [V3_0_0, V2_0_0, V1_27_0, V1_24_0, V1_21_1]) {
+for (const release of [V3_1_0, V3_0_0, V2_0_0, V1_27_0, V1_24_0, V1_21_1]) {
     test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async () => {
         assert.equal(shape(await released(release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
     });

@@ -1,5 +1,17 @@
 # @plurnk/plurnk-parser
 
+## 3.0.2
+
+### Patch Changes
+
+- 81f49f6: Report refused range syntax without inventing a replacement query. Resolve
+  operator grammar filenames relative to the daemon's working directory.
+- Updated dependencies [0060c82]
+- Updated dependencies [6769a6a]
+- Updated dependencies [1d585b4]
+- Updated dependencies [eb33a1f]
+  - @plurnk/plurnk-contracts@3.1.0
+
 ## 3.0.1
 
 ### Major Changes

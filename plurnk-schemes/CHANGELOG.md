@@ -1,5 +1,48 @@
 # @plurnk/plurnk-schemes
 
+## 3.1.0
+
+### Minor Changes
+
+- 9e0a3b2: The environment registry is an address space, the env family's own face: every
+  name in effect for a Worker's commands is a resource at `env:///NAME` whose body
+  is its value, so FIND lists it, READ shows it, COPY carries it into a file or an
+  entry, EDIT sets it and KILL retires it. Writes land on the Worker's own layer,
+  never the workspace's or the operator's: EDIT is the family's `add` for the
+  Worker, KILL its `remove` for an entry the Worker owns and its `disable` for one
+  it inherited. A reserved name is refused as it is at `add`. A runtime scheme
+  facet may now own writable resources: `RuntimeSchemeFacet` takes `editBatch` and
+  states `writableBy` in its manifest, and the writer gate reads the manifest that
+  governs the coordinate.
+- 7a678da: Replay each turn of the loop as the NOTEs it wrote, in the model's own voice:
+  one assistant message between the turn's emission record and its results,
+  holding every content NOTE whole and in order. Every other operation is omitted;
+  its receipt in the log is its record and the program stays readable at `ops://`.
+  A replayed turn's emission row carries the legend of its NOTEs, one numbered
+  line per NOTE with its `log:///` path and weight, and those NOTE rows render
+  nowhere else; retiring a NOTE row retires it from the replay too. A turn that is
+  not replayed, an earlier loop or a program omitted at the wall, shows its NOTEs
+  as ordinary rows: a NOTE's text is in the packet once, as replay or as row.
+  Preserve native attachments, cache-prefix stability, capacity accounting, and
+  historical request roles.
+  
+  Expose message roles in packet section drafts. Preserve retained packet sections
+  and their content-addressed items when upgrading the database.
+  
+  Add a readable, ordered request artifact and show each turn's input role
+  sequence in the digest, distinguishing assistant input history from newly
+  emitted output.
+
+### Patch Changes
+
+- Updated dependencies [0060c82]
+- Updated dependencies [6769a6a]
+- Updated dependencies [1d585b4]
+- Updated dependencies [eb33a1f]
+- Updated dependencies [9f8e27b]
+  - @plurnk/plurnk-contracts@3.1.0
+  - @plurnk/plurnk-meta@2.1.0
+
 ## 3.0.0
 
 ### Major Changes

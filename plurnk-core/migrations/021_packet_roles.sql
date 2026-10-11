@@ -1,4 +1,5 @@
 -- MIGRATE: 21 packet roles
+-- Released in 3.1.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§packet-wire-envelope} {§packet-items}: preserve every retained role, position and item.
 -- Both sides of the section-membership foreign key are copied before either old table is
 -- dropped. Foreign keys remain enabled; no dependent rows rely on surviving a parent DROP.

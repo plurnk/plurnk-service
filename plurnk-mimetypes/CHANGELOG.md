@@ -1,5 +1,21 @@
 # @plurnk/plurnk-mimetypes
 
+## 3.0.1
+
+### Patch Changes
+
+- d6fe979: Keep reference queries as packaged Tree-sitter query assets, loaded through
+  the existing lazy language mappings without changing extraction semantics.
+- 705eff4: Preserve JSONPath evaluation failures instead of reporting valid expressions as
+  malformed.
+- Updated dependencies [0060c82]
+- Updated dependencies [6769a6a]
+- Updated dependencies [1d585b4]
+- Updated dependencies [eb33a1f]
+- Updated dependencies [9f8e27b]
+  - @plurnk/plurnk-contracts@3.1.0
+  - @plurnk/plurnk-meta@2.1.0
+
 ## 3.0.0
 
 ### Major Changes

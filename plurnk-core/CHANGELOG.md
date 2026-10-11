@@ -1,5 +1,146 @@
 # @plurnk/plurnk-service
 
+## 3.1.0
+
+### Minor Changes
+
+- 0060c82: Run each hosted A2A Task in an ordinary child worker, with related conversation
+  available as a retained Context resource. Tasks can progress and be cancelled
+  independently without an extra Context worker or a second execution manager.
+  Each streaming request observes its own initial snapshot and the durable result.
+  
+  Support an exact unfinished Loop recipient on the application message boundary;
+  late continuations cannot reopen completed Tasks. Make simultaneous first model
+  selections reuse the same immutable route instead of failing a uniqueness check.
+- 0a3b974: Warn the model before its context exceeds the budget: a packet above
+  `PLURNK_SERVICE_BUDGET_PRESSURE` that stays within its budget carries one
+  `budget_pressure` notice, "Context is at N% of budget. YOU MUST NOT exceed
+  budget.", its share taken from the Context gauge's own figures.
+- 9e0a3b2: The environment registry is an address space, the env family's own face: every
+  name in effect for a Worker's commands is a resource at `env:///NAME` whose body
+  is its value, so FIND lists it, READ shows it, COPY carries it into a file or an
+  entry, EDIT sets it and KILL retires it. Writes land on the Worker's own layer,
+  never the workspace's or the operator's: EDIT is the family's `add` for the
+  Worker, KILL its `remove` for an entry the Worker owns and its `disable` for one
+  it inherited. A reserved name is refused as it is at `add`. A runtime scheme
+  facet may now own writable resources: `RuntimeSchemeFacet` takes `editBatch` and
+  states `writableBy` in its manifest, and the writer gate reads the manifest that
+  governs the coordinate.
+- 6f0c86e: Render a FIND's match locations in the scope notation the model writes: each
+  location reads `{"region":"<48,1,48,25>","matched":"…"}` instead of a
+  four-field region object, and names its `channel` only when that is not the
+  resource's default channel. A broad FIND's single-match locator reads the same
+  way. The structured `results` keep their typed regions and channels.
+- 9742599: Text the model writes outside its fences, beside at least one fenced operation,
+  is its NOTE at that position: one NOTE per span between operations, frozen in
+  the emission, landed as a NOTE row, replayed with its turn, and told nothing
+  about; an echoed emission heading in that text is dropped, not annotated. A turn
+  that fences no operation keeps its text as the turn's outside source and stays
+  an empty turn with its one error row, which is the only thing the model hears of
+  it. The `outside_text` notice is gone.
+  
+  The per-turn rule is the card's line, `YOU MUST emit at least one NOTE operation
+  with a complete status summary and at least one other operation per turn.`, and
+  the daemon's `continued_without_note` and `noted_without_operation` notices
+  quote it; both are notices at warn, never strikes.
+  
+  A line scope on an emission row addresses its legend: the NOTEs on the selected
+  lines retire and the row stays; on a row with no legend lines the scope is
+  refused with `emission-curated-whole`, whose recovery names the unscoped KILL,
+  the one form that retires the row.
+  
+  The opening survey begins by reading its own program (`READ
+  (ops://<worker>/<loop>/1)`), so the log carries one program verbatim and every
+  `ops://` turn is shown readable.
+- 1d585b4: Render each notice in the model packet as one alert callout in the card's own
+  form: the level picks the callout, an optional `directive` (`YOU MUST`,
+  `YOU SHOULD`, ...) leads, then the factual message and the kind. Notices about
+  the model's own output carry a directive; environment notices carry none.
+- 7a678da: Replay each turn of the loop as the NOTEs it wrote, in the model's own voice:
+  one assistant message between the turn's emission record and its results,
+  holding every content NOTE whole and in order. Every other operation is omitted;
+  its receipt in the log is its record and the program stays readable at `ops://`.
+  A replayed turn's emission row carries the legend of its NOTEs, one numbered
+  line per NOTE with its `log:///` path and weight, and those NOTE rows render
+  nowhere else; retiring a NOTE row retires it from the replay too. A turn that is
+  not replayed, an earlier loop or a program omitted at the wall, shows its NOTEs
+  as ordinary rows: a NOTE's text is in the packet once, as replay or as row.
+  Preserve native attachments, cache-prefix stability, capacity accounting, and
+  historical request roles.
+  
+  Expose message roles in packet section drafts. Preserve retained packet sections
+  and their content-addressed items when upgrading the database.
+  
+  Add a readable, ordered request artifact and show each turn's input role
+  sequence in the digest, distinguishing assistant input history from newly
+  emitted output.
+- 9f8e27b: Add `Knob.family(prefix)`, and recap lines: each
+  `PLURNK_SERVICE_RECAP_LINE_<alias>` renders as one directive callout ahead of
+  the recap source, and an empty value turns a shipped line off. None ships.
+- 143eb55: Treat a command's exit code as its answer: a subprocess that exits resolves
+  200 with its `exitCode`, zero or not, with no Problem, so a failing test run or
+  a `grep` that matched nothing no longer appears in Errors. A process ended by
+  a signal nobody sent it is a `terminated-by-signal` failure.
+  
+  Report a failed execution once: its status and Problem ride one conclusion
+  row, and its other channel rows are plain reads. A stream stopped by its
+  holder's own KILL concludes 200 instead of a 499 cancellation; a cancellation
+  the holder did not ask for keeps its 499. A tool named as a shell command is
+  core's `404 program-is-a-tool` receipt.
+
+### Patch Changes
+
+- 871fcf5: Hold one calibration factor per loop: a loop's first settled response fixes the
+  conversion from provider capacity into the curation budget for the rest of the
+  loop, and until then its packets use the model's most recently fixed factor.
+  The budget the model sees changes at most once in a loop, not on every turn.
+- 81f49f6: Report refused range syntax without inventing a replacement query. Resolve
+  operator grammar filenames relative to the daemon's working directory.
+- 1734172: Preserve inherited-history and ambient-event provenance in forensic log exports.
+- 7de7f76: Link packet and physical-request evidence through readable Markdown. Preserve
+  failure and missing-evidence distinctions; support opt-in capture of final
+  SDK-dispatched request bodies while omitting headers and URL details.
+- 693d96a: Preserve scheme addresses, channels and literal delimiters in initial context
+  reads. Validate malformed resource addresses before admitting the message.
+- 7e1902e: Lead the initialization program with one NOTE when its surveys run, so the first
+  example turn keeps the NOTE-per-turn teaching. Tell a continuing or parked model
+  turn that carried no NOTE forward with one notice in the next packet; the notice
+  never fails a turn or counts toward the strike rail.
+- f919ff3: Deliver a targetless SEND with no Open Message to the loop's latest message as speech:
+  it reaches the originating client and changes no message outcome. A loop with no
+  published message still refuses it.
+- c74b67d: Show a runtime's catalog aside as its fenced operation with real newlines, so
+  the row's JSON escapes each once. Format the extent of a channel READ that
+  carries its execution's failure like any other retrieval (`3 lines`). Lead an
+  EDIT receipt's `change` with its unit (`lines -7 +7`).
+- a1f12a9: Order the packet's status clump by what each section asks of the turn: Git
+  Status, Context, Worker and Delegation, then Open Messages, then Notices and
+  Errors, closing with the Recap.
+- Updated dependencies [0060c82]
+- Updated dependencies [a77e136]
+- Updated dependencies [6769a6a]
+- Updated dependencies [81f49f6]
+- Updated dependencies [1734172]
+- Updated dependencies [7de7f76]
+- Updated dependencies [9e0a3b2]
+- Updated dependencies [d6fe979]
+- Updated dependencies [1d585b4]
+- Updated dependencies [eb33a1f]
+- Updated dependencies [7a678da]
+- Updated dependencies [705eff4]
+- Updated dependencies [9f8e27b]
+- Updated dependencies [143eb55]
+  - @plurnk/plurnk-a2a@3.1.0
+  - @plurnk/plurnk-contracts@3.1.0
+  - @plurnk/plurnk-providers@3.0.1
+  - @plurnk/plurnk-parser@3.0.2
+  - @plurnk/plurnk-digest@3.1.0
+  - @plurnk/plurnk-schemes@3.1.0
+  - @plurnk/plurnk-mimetypes@3.0.1
+  - @plurnk/plurnk-meta@2.1.0
+  - @plurnk/plurnk-execs@3.1.0
+  - @plurnk/plurnk-execs-common@2.0.2
+
 ## 3.0.0
 
 ### Major Changes

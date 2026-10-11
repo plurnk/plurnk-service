@@ -1,4 +1,5 @@
 -- MIGRATE: 22 message completion
+-- Released in 3.1.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§message-completion}: message outcome is independent of reply delivery and log curation.
 CREATE TABLE message_completions (
     message_id INTEGER PRIMARY KEY REFERENCES loop_messages(id) ON DELETE CASCADE,

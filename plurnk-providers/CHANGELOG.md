@@ -1,5 +1,26 @@
 # @plurnk/plurnk-providers
 
+## 3.0.1
+
+### Patch Changes
+
+- a77e136: Read one fresh environment snapshot per alias projection instead of repeatedly
+  enumerating host variables for every knob, preserving precedence and live edits.
+- 7de7f76: Link packet and physical-request evidence through readable Markdown. Preserve
+  failure and missing-evidence distinctions; support opt-in capture of final
+  SDK-dispatched request bodies while omitting headers and URL details.
+- 1d585b4: Render each notice in the model packet as one alert callout in the card's own
+  form: the level picks the callout, an optional `directive` (`YOU MUST`,
+  `YOU SHOULD`, ...) leads, then the factual message and the kind. Notices about
+  the model's own output carry a directive; environment notices carry none.
+- Updated dependencies [0060c82]
+- Updated dependencies [6769a6a]
+- Updated dependencies [1d585b4]
+- Updated dependencies [eb33a1f]
+- Updated dependencies [9f8e27b]
+  - @plurnk/plurnk-contracts@3.1.0
+  - @plurnk/plurnk-meta@2.1.0
+
 ## 3.0.0
 
 ### Major Changes

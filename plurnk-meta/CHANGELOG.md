@@ -1,5 +1,13 @@
 # @plurnk/plurnk-meta
 
+## 2.1.0
+
+### Minor Changes
+
+- 9f8e27b: Add `Knob.family(prefix)`, and recap lines: each
+  `PLURNK_SERVICE_RECAP_LINE_<alias>` renders as one directive callout ahead of
+  the recap source, and an empty value turns a shipped line off. None ships.
+
 ## 2.0.2
 
 ### Patch Changes

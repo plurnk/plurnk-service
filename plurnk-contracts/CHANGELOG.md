@@ -1,5 +1,39 @@
 # @plurnk/plurnk-contracts
 
+## 3.1.0
+
+### Minor Changes
+
+- 0060c82: Run each hosted A2A Task in an ordinary child worker, with related conversation
+  available as a retained Context resource. Tasks can progress and be cancelled
+  independently without an extra Context worker or a second execution manager.
+  Each streaming request observes its own initial snapshot and the durable result.
+  
+  Support an exact unfinished Loop recipient on the application message boundary;
+  late continuations cannot reopen completed Tasks. Make simultaneous first model
+  selections reuse the same immutable route instead of failing a uniqueness check.
+- 1d585b4: Render each notice in the model packet as one alert callout in the card's own
+  form: the level picks the callout, an optional `directive` (`YOU MUST`,
+  `YOU SHOULD`, ...) leads, then the factual message and the kind. Notices about
+  the model's own output carry a directive; environment notices carry none.
+
+### Patch Changes
+
+- 6769a6a: Card examples: one phrase for fenced operations in the first mandate, a NOTE
+  example holding a finding, what it ruled out, what it cannot verify and assumes,
+  a decision and the next step, a pattern READ over a glob beside the FIND over
+  the same files, the four-integer scope shown on characters within one line with
+  its EDIT example, an insert-after example beside insert-before, WORK with a
+  delegation example, a two-operand COPY example, curation cut to the chunked READ
+  and the KILL whose body survives as a NOTE, and an environment example for `sh`.
+- eb33a1f: Teach the card as the Plurnk Annotated Operation Protocol: NOTE as the
+  Persistent Internal Annotation Register, a NOTE for every fact, finding,
+  conclusion, decision and plan, and the per-turn rule, at least one NOTE with a
+  complete status summary and at least one other operation per turn, which the
+  daemon's notices quote. All operations except NOTEs become log items; a reply
+  code (`[200]` or `[499]`) belongs on the final deliverable SEND alone.
+  Delegation and environment detail stay with their references.
+
 ## 3.0.1
 
 ### Major Changes
