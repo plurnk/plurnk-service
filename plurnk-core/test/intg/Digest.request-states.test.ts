@@ -89,5 +89,19 @@ test("{§digest-navigation}: pending, rejected and retired evidence remains dist
     await assert.rejects(access(join(retiredDir, "witness-1-1.user.md")), { code: "ENOENT" });
     assert.match(await readFile(join(retiredDir, "reasoning.md"), "utf8"), /response evidence is not retained; readable reasoning availability is unknown/u);
     await assert.rejects(access(join(retiredDir, "witness-1-1.attempt001.rejected.assistant.md")), { code: "ENOENT" }, "retired output cannot become a fabricated empty emission");
-    assert.ok((await readFile(join(retiredDir, "requests/1.md"), "utf8")).includes(rejectedContent), "retiring normalized responses does not erase physical-request evidence");
+    const retiredPhysical = await readFile(join(retiredDir, "requests/1.md"), "utf8");
+    assert.match(retiredPhysical, /Payload retention applied at .*; request identity and accounting remain/u);
+    assert.ok(!retiredPhysical.includes(rejectedContent), "physical payloads expire with normalized responses");
+    assert.match(retiredPhysical, /Unclosed operation fence/u, "admission evidence outlives payload retention");
+    const before = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+    const after = JSON.parse(await readFile(join(retiredDir, "digest.json"), "utf8"));
+    assert.equal(after.provider_requests.length, 4);
+    for (const [index, row] of after.provider_requests.entries()) {
+        assert.equal(row.id, before.provider_requests[index].id);
+        assert.deepEqual(row.accounting, before.provider_requests[index].accounting, "accounting stays exact, including unknown billing");
+        await access(join(retiredDir, row.evidence));
+        await access(join(retiredDir, `requests/${row.id}.md`));
+        if (row.state === "pending") assert.equal(row.payloadsRetiredAt, undefined, "open requests have no invented expiry");
+        else assert.match(row.payloadsRetiredAt, /^\d{4}-\d{2}-\d{2}T/);
+    }
 });
