@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/FunctionalityMutationResult.json",
-    "description": "The outcome of add, enable, disable, or remove: the committed state of the one affected alias. 201 added, 200 settled, 202 awaiting a protocol continuation.",
+    "description": "The committed resource outcome of add, enable, disable, or remove ({§functionality-mutation-status}): 202 when the resulting definition requires authorization; otherwise 201 when add creates a local definition (including an inherited override), or 200 for identical local re-add and settled enable/disable/remove. A conflicting local definition is refused, not replaced.",
     "title": "FunctionalityMutationResult",
     "type": "object",
     "additionalProperties": false,

@@ -4429,6 +4429,19 @@ Retryability describes the actual failed condition, not its numeric status.
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions cannot be removed at this scope. Saved results remain. |
 
+§functionality-mutation-status **Mutation status describes the committed resource
+outcome, not the management invocation's stream lifetime.** Apply these rows in
+order; refusals retain their own Problems and do not commit a replacement.
+
+| Outcome | Status |
+|---|---:|
+| The resulting definition requires authorization | 202 |
+| `add` creates a local definition, including an override of an inherited definition | 201 |
+| `add` reapplies the identical local definition; `enable`, `disable`, or `remove` settles | 200 |
+
+A different local definition remains `alias-exists` (409), not a 200 replacement.
+Model invocation settlement follows {§functionality-model-mutation} independently.
+
 §functionality-discover-advertisement **A family's `discover` advertises exactly the inputs it
 serves.** The coordinator builds the family's discover input schema from its declared discovery
 ({§functionality-discovery-inputs}): the declared inputs with their shared

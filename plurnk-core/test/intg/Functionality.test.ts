@@ -166,6 +166,37 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
 
+test("{§functionality-mutation-status} mutations distinguish local creation, settlement, and authorization", async (t) => {
+    const db = await openMigrated();
+    const daemon = await boot(db, []);
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, "mutation-status");
+    const invoke = async (verb: string, alias: string, kind?: string) =>
+        daemon.invokeModuleAction(`workspace.fx.${verb}`, {
+            alias, ...(kind === undefined ? {} : { definition: { kind } }),
+        }, workspaceContext(workspaceId)) as Promise<{ status: number; definition?: { state: string }; removed?: boolean }>;
+    assert.equal((await invoke("add", "local", "ok")).status, 201);
+    assert.equal((await invoke("add", "local", "ok")).status, 200);
+    await assert.rejects(invoke("add", "local", "doc"), (cause: unknown) => {
+        assert.ok(cause instanceof OperationFailureError);
+        assert.equal(cause.result.status, 409);
+        assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/functionality/alias-exists");
+        return true;
+    });
+    assert.equal((await invoke("add", "svc", "ok")).status, 201, "an inherited override creates a local definition");
+    assert.equal((await invoke("disable", "local")).status, 200);
+    assert.equal((await invoke("enable", "local")).status, 200);
+    assert.equal((await invoke("remove", "local")).status, 200);
+    for (const verb of ["add", "add", "enable"]) {
+        const pending = await invoke(verb, "login", verb === "add" ? "auth" : undefined);
+        assert.equal(pending.status, 202, `${verb} reports the authorization outcome, not local creation or reuse`);
+        assert.equal(pending.definition?.state, "authorization-required");
+    }
+    assert.equal((await invoke("disable", "login")).status, 200);
+    assert.equal((await invoke("enable", "login")).status, 202);
+    assert.equal((await invoke("remove", "login")).status, 200);
+});
+
 test("{§module-workspace-quiescence} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
