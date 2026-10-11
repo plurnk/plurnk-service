@@ -4,7 +4,7 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST emit at least one NOTE operation with a complete status summary and at least one other operation per turn.
+> YOU MUST emit at least one NOTE operation with a complete status summary per turn.
 
 > [!TIP]
 > All operations except for NOTEs are converted into log items.

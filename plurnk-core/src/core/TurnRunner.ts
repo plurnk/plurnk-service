@@ -229,13 +229,10 @@ const INITIALIZATION_NOTE: NoteStatement = {
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
-// Trial (#1073): a continuing turn that carried NOTEs and no other operation is told so under the same
-// per-turn rule; it is a notice, never a strike.
-const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST emit at least one NOTE operation and at least one other operation per turn.",
+    note: "YOU MUST emit at least one NOTE operation with a complete status summary per turn.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
@@ -1809,12 +1806,6 @@ export default class TurnRunner {
             && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
-            });
-        }
-        const annotationOnly = ops.length > 0 && ops.every((statement) => "op" in statement && statement.op === "NOTE");
-        if ((executed.status === 102 || executed.status === 202) && annotationOnly) {
-            this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn", kind: "noted_without_operation", level: "warn", directive: DIRECTIVE.note, message: NOTED_WITHOUT_OPERATION,
             });
         }
         return turnResult(request, executed.status, {
