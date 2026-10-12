@@ -111,8 +111,8 @@ export interface WorkspacePaths {
 export interface ModuleSetupSeam {
     // {§module-workspace-paths}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
-    // {§mcp-launch-environment} What a module's subprocess inherits: the operator's environment
-    // without plurnk's own secrets ({§exec-env-scoped}), not the model's command ceiling.
+    // {§mcp-launch-environment} Ambient launch base, before the module's explicit bindings:
+    // excludes reserved names ({§exec-env-scoped}) without applying the model-command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;
     // {§workspace-env} The workspace layer over admitted ambient values, or over a supplied
     // reference-resolution environment. Never includes worker overrides.

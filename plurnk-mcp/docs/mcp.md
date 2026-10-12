@@ -73,8 +73,8 @@ environment values, and cwd expand only those two placeholders; HTTP values
 and all other placeholder-like text remain literal. `list` identifies the
 source. A complete workspace override replaces these plugin semantics too.
 
-A local server inherits the operator's environment, which is where it reads
-its credentials, without plurnk's own settings or model provider keys.
+A local server's inherited environment excludes Plurnk settings and model
+provider keys; explicit definition bindings are separate.
 Workspace variables set with the `env` family (`env.md`) apply on top at
 every server launch; worker-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
@@ -84,8 +84,13 @@ workspace values, without a daemon restart.
 {"scope": "workspace", "alias": "SERVICE_TOKEN", "definition": {"value": "<credential>"}}
 ```
 
-Native definitions may reference workspace variables as `${NAME}` in arguments,
-environment values, working directories, HTTP headers, and authorization.
+Native definitions resolve `${NAME}` once against the operator's environment
+with workspace values and masks applied, in arguments, environment values,
+working directories, HTTP headers, and authorization. This includes credentials
+excluded from inheritance: `"env": {"GEMINI_API_KEY": "${GEMINI_API_KEY}"}` in a
+native server definition supplies that key only to that server. The definition
+retains the reference, not a copied credential, and follows ordinary launch
+approval. A missing reference prevents launch.
 Structured authorization secrets must be references, not literal credentials.
 
 ## Authorization

@@ -3415,35 +3415,26 @@ lower entry and its enabledness ({§configuration-definition-resolution}). Forki
 affect subsequent launches, not existing processes or other workspaces. A shared
 capability never acquires an invoking worker's overrides or ownership.
 
-§exec-env-scoped **Scoped environment.** An execution subprocess receives a composed
-environment, never the host's. Two mechanisms apply in order, and they are different kinds
-of thing. First the **ambient policy**, a ceiling: `PLURNK_SERVICE_EXEC_ENV_INHERIT` names
-what the host's environment may contribute at all and `_EXCLUDE` narrows that, both taking
-exact names or one trailing-`*` prefix glob, both ordinary operator knobs under
-{§operator-config-env-defaults}. A worker document or a heading modifier narrows the ceiling
-further; nothing downstream widens ambient admission. Explicit entries may supply their
-own non-reserved values. Workspace defaults precede the Worker's `env` state
-({§env-functionality}), read at the spawn: an enabled worker entry sets its own value, a disabled
-entry of either origin withholds the name, and what `list` projects is what the command
-receives. Then the **invariant**, which is not a knob:
-`PLURNK_*` config and every provider credential name are stripped last and unconditionally,
-so no policy, document or modifier can readmit plurnk's own secrets. The service composes;
-the executor spawns with the environment it is handed. Each spawn records the environment it
-received on the output it produces — every name with its provenance: the host through the
-ceiling, this Worker, an ancestor by name, or masked — and the digest renders it beside the
-operation, which closes the host-versus-container confound where it starts.
+§exec-env-scoped **Command environment admission.** Core composes an ordinary executor's
+environment; the executor spawns with the environment it is handed ({§workspace-env}).
 
-The ceiling exists because the invariant protects the wrong secrets. It knows plurnk's
-credentials and nothing about the operator's, so a denylist alone hands `SSH_AUTH_SOCK` and
-`NPM_TOKEN` to every command a model writes. Membership is an allowlist: the shipped
-`INHERIT` is what a shell, git, node and python need to run, and an operator who wants a
-tool's credential reachable by model-written commands adds it by name. An empty policy admits
-nothing ambient — the allowlist is declared in `.env.defaults`, so an empty one is a cleared
-policy rather than an unconfigured install.
+| Input | Admission |
+|---|---|
+| Ambient host values | `PLURNK_SERVICE_EXEC_ENV_INHERIT` admits exact names or one trailing-`*` prefix glob; `_EXCLUDE` removes names with the same syntax. An empty inherit list admits nothing. |
+| Reserved names | `PLURNK_*` and provider credential names from the model catalog or `PLURNK_PROVIDERS_PROVIDER_<ID>_API_KEY_ENV` are excluded from the ambient base regardless of those selectors. |
+| Workspace and worker entries | Explicit non-reserved values and masks compose at spawn under {§env-functionality}. Reserved names are refused at admission. |
+| Invocation `env` | Explicit non-reserved values override the composed environment under {§env-option}; the same reserved-name refusal applies. |
 
-The full composition for one spawn, nearest setter winning for defaults and ceilings immune,
-is package floors → operator cascade → ambient policy → workspace entries → worker entries → the op's modifier →
-body prefixes.
+Explicit values do not widen ambient inheritance. The allowlist is declared under
+{§operator-config-env-defaults}; it limits other host credentials too, not only provider keys.
+Each spawn records admitted values and their provenance (host, workspace, worker, inherited
+worker, modifier, or masked); the digest renders that record beside the operation.
+
+This is environment admission, not process containment or a prohibition on an approved
+program setting its own variables. Module-owned launches use the owning module's contract:
+the host supplies a filtered ambient base through {§module-seam-slices}, while explicit
+MCP bindings resolve under {§mcp-launch-environment}. The env family's reservation does not
+filter those explicit bindings or create a second approval path.
 
 - §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]`
   ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values.
@@ -6421,7 +6412,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
-| `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |
+| `name-reserved` | 400 | '*alias*' is reserved in env entries and invocation overrides. Recovery: READ worker:///_plurnk/plurnk/env.md for supported configuration paths. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
 | `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
 | `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME). |

@@ -69,10 +69,13 @@ outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command
 only through the current turn. WAIT's duration bounds the wait for inspection,
 not the command's lifetime.
 
-## Names you cannot set
+## Names managed elsewhere
 
-`PLURNK_*` and provider credential names are plurnk's own and never reach a
-command, so `add` and `replace` refuse them and tell you why.
+`PLURNK_*` and provider credential names are reserved in `env` entries and
+invocation overrides. Plurnk configuration belongs in the environment cascade;
+READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
+explicitly bind an operator credential without adding it to every command's
+environment; READ `worker:///_plurnk/plurnk/mcp.md` for that setup.
 
 ## Finding a name
 

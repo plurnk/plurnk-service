@@ -56,7 +56,7 @@ test("{§env-scheme} every effective name reads at env:///NAME; EDIT and KILL ac
     // READ: the ceiling's ambient names, workspace defaults; a name outside the ceiling is no resource.
     assert.equal(await content(alice, "ENV_WITNESS"), "ambient");
     assert.equal(await content(alice, "TEAM_DEFAULT"), "shared");
-    assert.equal(await content(alice, "PLURNK_SERVICE_DB_PATH"), 404, "plurnk's own names never reach a command, so they are no resource");
+    assert.equal(await content(alice, "PLURNK_SERVICE_DB_PATH"), 404, "reserved names are absent from the env resource projection");
     assert.equal(await content(alice, "GHOST"), 404);
 
     // FIND lists the names in effect and a pattern matches values.

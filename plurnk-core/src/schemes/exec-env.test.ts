@@ -27,8 +27,7 @@ test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any 
     assert.equal(scoped.AWS_REGION, "us-east-1");
     assert.equal(scoped.CLOUDFLARE_ACCOUNT_ID, "account");
     assert.equal(scoped.ACME_TOKEN, undefined);
-    // The policy admitted `PLURNK_*` explicitly; the invariant strips it anyway. That is the
-    // whole point of running the invariant last: no policy can readmit plurnk's own.
+    // {§exec-env-scoped} Ambient selectors cannot admit a reserved name.
     assert.equal(scoped.PLURNK_SERVICE_GIT_ALLOWED, undefined, "PLURNK_* config is stripped even when the policy names it");
     assert.equal(scoped.PLURNK_SERVICE_DB_PATH, undefined);
 });
@@ -69,9 +68,7 @@ test("ExecEnv.scoped: an empty policy admits nothing ambient", () => {
     assert.deepEqual(scoped, {}, "the allowlist is declared in .env.defaults; an empty one is a cleared policy, not an unconfigured install");
 });
 
-// {§exec-env-scoped} — plurnk's own tooling spawns (the skills registry CLI) run a binary the
-// operator configured, not a command a model wrote. The ceiling would only break them; the
-// invariant still applies, because plurnk's secrets have no business in any subprocess.
+// {§exec-env-scoped} Module-owned launches have a broader ambient base, not implicit provider credentials.
 test("ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
     const kept = ExecEnv.withoutOwnSecrets({
         PATH: "/usr/bin", npm_config_registry: "https://registry.npmjs.org/",
@@ -83,7 +80,7 @@ test("ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurn
     assert.equal(kept.npm_config_registry, "https://registry.npmjs.org/", "an installer CLI keeps the operator's npm configuration");
     assert.equal(kept.HTTPS_PROXY, "http://proxy:3128", "and the proxy it needs to reach a registry");
     assert.equal(kept.SSH_AUTH_SOCK, "/run/ssh", "the ceiling does not apply: this binary is not model-authored");
-    assert.equal(kept.OPENAI_API_KEY, undefined, "but a provider credential never reaches it");
+    assert.equal(kept.OPENAI_API_KEY, undefined, "a provider credential is excluded from the ambient base");
     assert.equal(kept.PLURNK_SERVICE_DB_PATH, undefined, "nor plurnk's own configuration");
 });
 

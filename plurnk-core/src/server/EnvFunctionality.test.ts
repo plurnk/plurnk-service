@@ -13,7 +13,7 @@ const valueOf = (definition: object): string => {
 const FILES = [{
     owner: "@plurnk/plurnk-execs",
     parsed: {},
-    text: "# A pager that waits for a keypress hangs a spawn that has no terminal.\nPAGER=cat\n# The service's own knob: the operator's to set, never a worker's.\nPLURNK_WITNESS_KNOB=1",
+    text: "# A pager that waits for a keypress hangs a spawn that has no terminal.\nPAGER=cat\n# Service configuration.\nPLURNK_WITNESS_KNOB=1\n# Provider credential.\nGEMINI_API_KEY=",
 }];
 
 const adapter = new EnvFunctionality(async () => FILES);
@@ -47,14 +47,26 @@ test("{§env-functionality} admit refuses a name a shell could not export", asyn
     );
 });
 
-// The invariant refused at ADMISSION rather than silently at the spawn. A model that writes
-// PLURNK_SERVICE_DB_PATH into its registry would otherwise see it accepted, then watch it never
-// appear in any command, and never learn why.
-test("{§exec-env-scoped} admit refuses plurnk's own names, so the model learns why", async () => {
-    await assert.rejects(
-        () => adapter.admit({ alias: "PLURNK_SERVICE_DB_PATH", definition: { value: "/tmp/steal.db" } }, identity),
-        /never reach a subprocess/u,
-    );
+test("{§exec-env-scoped} reserved names have the same scoped refusal at family and invocation admission", async (t) => {
+    const previous = process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV;
+    process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV = "CUSTOM_PROVIDER_TOKEN";
+    t.after(() => {
+        if (previous === undefined) delete process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV;
+        else process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV = previous;
+    });
+    for (const alias of ["PLURNK_SERVICE_DB_PATH", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "CUSTOM_PROVIDER_TOKEN"]) {
+        const refused = (cause: unknown): boolean => {
+            assert.ok(cause instanceof OperationFailureError);
+            assert.equal(cause.result.status, 400);
+            assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
+            assert.equal(cause.result.problem.alias, alias);
+            assert.equal(cause.result.problem.detail, `'${alias}' is reserved in env entries and invocation overrides.`);
+            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/plurnk/env.md for supported configuration paths.");
+            return true;
+        };
+        await assert.rejects(() => adapter.admit({ alias, definition: { value: "explicit-value" } }, identity), refused);
+        assert.throws(() => EnvFunctionality.modifier([JSON.stringify({ env: { [alias]: "explicit-value" } })]), refused);
+    }
 });
 
 test("{§env-functionality} admit refuses a non-string value", async () => {
@@ -88,13 +100,11 @@ test("{§env-functionality} discover distinguishes an unknown source from a know
     }
 });
 
-// The catalog is what a Worker may set (#586's converged shape): plurnk's own names are the
-// operator's, refused by `add`, and on the dogfood host they outnumber the settable names sixty to
-// one — a model that has to read past them runs out of turns before it finds the one it wanted.
 test("{§env-functionality} discover projects only what a Worker may set, and matches a declaration's comment", async () => {
     assert.deepEqual((await adapter.discover({}, identity)).map(({ alias }) => alias), ["PAGER"], "plurnk's own names never appear");
     assert.deepEqual((await adapter.discover({ query: "keypress" }, identity)).map(({ alias }) => alias), ["PAGER"], "a Worker finds a name by what it is for");
     assert.deepEqual(await adapter.discover({ query: "PLURNK_WITNESS_KNOB" }, identity), [], "not even by exact name");
+    assert.deepEqual(await adapter.discover({ query: "GEMINI_API_KEY" }, identity), [], "MCP credential bindings do not make provider names env-family candidates");
 });
 
 test("{§env-functionality} available projects what the ceiling admits, enabled, in name order", async () => {

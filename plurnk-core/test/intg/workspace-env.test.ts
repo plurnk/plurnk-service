@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import EnvFunctionality from "../../src/server/EnvFunctionality.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§workspace-env} workspace defaults, worker overrides and masks share the env verbs without copying workspace state", async () => {
@@ -44,7 +45,14 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
         await shared("remove", { alias: "ENV_WITNESS" });
         await shared("add", { alias: "ENV_WITNESS", definition: { value: "updated" } });
         assert.deepEqual((await get(child))?.definition, { value: "updated" }, "workspace values stay live through parentage");
-        await assert.rejects(shared("add", { alias: "PLURNK_BAD", definition: { value: "x" } }), /plurnk's own/u);
+        await assert.rejects(shared("add", { alias: "PLURNK_BAD", definition: { value: "x" } }), (cause: unknown) => {
+            assert.ok(cause instanceof OperationFailureError);
+            assert.equal(cause.result.status, 400);
+            assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
+            assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries and invocation overrides.");
+            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/plurnk/env.md for supported configuration paths.");
+            return true;
+        });
         await assert.rejects(shared("list", { scope: "worker" }), /scope does not match/u);
         await assert.rejects(local(alice, "list", { scope: "workspace" }), /scope does not match/u);
     } finally {

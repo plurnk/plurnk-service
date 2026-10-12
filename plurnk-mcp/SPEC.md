@@ -361,14 +361,27 @@ whether the family serves discovery ({§mcp-registry-discovery}). An invalid one
 other configuration error surfaces in the family's diagnostics at runtime, and all of them in the
 offline check ({§operator-config-offline-validation}). It claims no HTTP mounts.
 
-§mcp-launch-environment **A server inherits the operator's environment.** A stdio server
-starts with the operator's environment without plurnk's own secrets ({§exec-env-scoped}), as every MCP
-client launches one: stdio servers read their credentials from the environment. The model's command
-ceiling is not its base. The workspace layer ({§workspace-env}) applies on top, its values and
-withholdings included, never the invoking worker's overrides; the definition's `env` follows. Definition references resolve against the operator environment with the same workspace
-entries and masks applied, and resolved ambient values are never copied into definitions. A running server keeps its launch environment:
-`disable` and `enable` restart it after an environment change, and there is no automatic restart or
-stale-configuration state. HTTP servers have no local process environment.
+§mcp-launch-environment **Ambient inheritance and explicit bindings are distinct.** A stdio
+server receives these layers in order; it never receives the invoking worker's overrides.
+
+| Layer | Environment |
+|---|---|
+| Ambient base | The operator's environment excluding `PLURNK_*` and provider credential names ({§exec-env-scoped}). The model-command inherit/exclude selectors do not apply. |
+| Workspace | Shared `env` values and masks ({§workspace-env}); a withheld name cannot be restored by the transport's own defaults. |
+| Definition | Explicit `env` values. Native `${NAME}` references resolve once against the operator environment with workspace values and masks applied, including names excluded from ambient inheritance. Missing references fail preparation before launch. |
+
+An explicit credential binding belongs to the server's complete definition and its existing
+admission and approval path ({§functionality-model-projection}, {§capability-admission}).
+Configured definitions and approved live additions use the same resolution; no operator-only
+grant is required. Auto-approval retains its ordinary meaning. Resolved values are never copied
+back into definitions. These rules limit inherited exposure, not the authority of an approved
+program to disclose what it receives. Agent Plugin definitions retain {§mcp-plugin-configuration},
+including their distinct literal-string and placeholder rules.
+
+A running server keeps its launch environment: `disable` and `enable` restart it after an
+environment change; there is no automatic restart or stale-configuration state. HTTP servers
+have no local process environment; their native header and authorization references use the
+same workspace-composed operator environment.
 
 §mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
 coordinator publishes `workspace.mcp.list | add | replace | enable | disable | remove`, with `discover`

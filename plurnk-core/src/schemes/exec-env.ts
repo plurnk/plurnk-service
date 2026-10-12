@@ -1,18 +1,5 @@
-// SPEC {§exec-env-scoped} — the environment one execution subprocess receives.
-//
-// Two mechanisms, in this order, and they are not the same kind of thing:
-//
-//   1. The ambient policy (a ceiling). `PLURNK_SERVICE_EXEC_ENV_INHERIT` names what the
-//      HOST's environment may contribute at all; `_EXCLUDE` narrows that further. Both are
-//      ordinary operator knobs under {§operator-config-env-defaults}, so an operator widens
-//      or narrows them, and nothing downstream of this point can widen them again.
-//   2. The invariant (not a knob). plurnk's own secrets — `PLURNK_*` config and every
-//      provider credential name — are stripped last and unconditionally, so no policy,
-//      worker document or heading modifier can ever readmit them.
-//
-// The ceiling exists because the invariant alone protects the WRONG secrets: it knows
-// plurnk's credentials and nothing about the operator's. A denylist passes `SSH_AUTH_SOCK`
-// and `NPM_TOKEN` to every command a model writes. Membership is an allowlist.
+// {§exec-env-scoped} Ambient admission and ordinary env-name reservation.
+// Explicit capability bindings belong to their module ({§mcp-launch-environment}).
 import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
 
 export default class ExecEnv {
@@ -30,9 +17,8 @@ export default class ExecEnv {
         return raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
     }
 
-    // The invariant alone, for plurnk's OWN tooling spawns — an installer CLI the operator
-    // configured, not a command a model wrote. The binary is trusted, so the ceiling would
-    // only break it; plurnk's secrets still have no business in its environment.
+    // {§mcp-launch-environment} Module-owned launches start with this ambient base,
+    // not the model-command ceiling; their explicit bindings are a separate input.
     static withoutOwnSecrets(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
         const providerKeys = ExecEnv.#ownSecretNames(env);
         const out: NodeJS.ProcessEnv = {};
@@ -43,9 +29,8 @@ export default class ExecEnv {
         return out;
     }
 
-    // The invariant as a predicate, for the layers that compose above the ceiling. The worker's
-    // own values are not subject to the ceiling — they are the model's — but plurnk's own names
-    // are refused at every layer, and refusing them at admission is what lets the model learn why.
+    // {§env-functionality} {§env-option} Ordinary entries and modifiers reserve these
+    // names even when supplying literal values rather than inheriting host values.
     static ownSecretTest(env: NodeJS.ProcessEnv = process.env): (name: string) => boolean {
         const names = ExecEnv.#ownSecretNames(env);
         return (name: string) => name.startsWith("PLURNK_") || names.has(name);
@@ -79,7 +64,7 @@ export default class ExecEnv {
             // not an unconfigured install.
             if (!ExecEnv.#matches(key, inherit)) continue;
             if (ExecEnv.#matches(key, exclude)) continue;
-            // The invariant, last and unconditional — plurnk's own, never to a subprocess.
+            // Reserved names remain excluded even when the ambient selectors name them.
             if (key.startsWith("PLURNK_") || providerKeys.has(key)) continue;
             out[key] = value;
         }

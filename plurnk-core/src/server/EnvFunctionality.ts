@@ -31,6 +31,13 @@ const actionError = (code: string, status: number, detail: string, extensions: R
         Results.failure("env:functionality", code, status, detail, {}, { family: ENV_FAMILY, retryable: false, ...extensions }),
     );
 
+// {§exec-env-scoped} The family and invocation modifier share the same reservation.
+const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
+    `'${alias}' is reserved in env entries and invocation overrides.`, {
+        alias,
+        recovery: "READ worker:///_plurnk/plurnk/env.md for supported configuration paths.",
+    });
+
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
 // alias grammar ({§functionality-adapter}) — the alias IS the variable name, and case is semantic.
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -117,14 +124,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             throw actionError("name-invalid", 400,
                 `'${alias}' is not a name a shell can export.`, { retryable: false });
         }
-        // The invariant, refused at admission rather than silently at the spawn: a name the model
-        // writes here would otherwise be dropped when the environment composes, and it would never
-        // learn why. {§exec-env-scoped} strips these unconditionally at every layer.
-        if (ExecEnv.ownSecretTest()(alias)) {
-            throw actionError("name-reserved", 400,
-                `'${alias}' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess.`,
-                { retryable: false });
-        }
+        if (ExecEnv.ownSecretTest()(alias)) throw reservedNameError(alias);
         const definition = record.definition as { value?: unknown } | undefined;
         if (typeof definition?.value !== "string") {
             throw actionError("value-invalid", 400, `'${alias}' needs a string value.`, { retryable: false });
@@ -236,11 +236,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         const out: Record<string, string> = {};
         for (const [name, value] of Object.entries(raw)) {
             if (!NAME.test(name)) throw actionError("name-invalid", 400, `'${name}' is not a name a shell can export.`, { alias: name, retryable: false });
-            if (reserved(name)) {
-                throw actionError("name-reserved", 400,
-                    `'${name}' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess.`,
-                    { alias: name, retryable: false });
-            }
+            if (reserved(name)) throw reservedNameError(name);
             if (typeof value !== "string") throw actionError("value-invalid", 400, `'${name}' needs a string value.`, { alias: name, retryable: false });
             out[name] = value;
         }
