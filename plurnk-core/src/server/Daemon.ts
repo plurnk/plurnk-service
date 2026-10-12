@@ -29,7 +29,7 @@ import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
-import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { HttpRouteHandler, PlurnkStatement, RollbackReport } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
@@ -42,6 +42,7 @@ import PlurnkSkill from "./PlurnkSkill.ts";
 import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
 import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
+import Rollback from "./Rollback.ts";
 import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import EnvScheme from "../schemes/Env.ts";
@@ -1042,7 +1043,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement; onDispatch?: (logEntryId: number) => void }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, loopId, statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
@@ -1056,7 +1057,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 const entryIds: number[] = [];
                 const result = await this.#engine.dispatch({
                     statement, workspaceId, workerId, loopId, turnId, sequence: 1,
-                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); } });
+                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); args.onDispatch?.(logEntryId); } });
                 await Turn.complete(this.#db, turnId, result.status);
                 turnOpen = false;
                 for (const logEntryId of entryIds) {
@@ -1324,6 +1325,48 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
         const workerName = ClientInput.assertOptionalWorkerName("workspace.attach", "workerName", args.workerName);
         return Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName });
+    }
+
+    // {§rollback} {§methods-workspace-rollback} — the compensations are the acting client's own
+    // operations, in its worker, settled under its owner the moment they propose.
+    async rollback(args: { workspaceId: number; workerId: number; clientWorkerId: number; to: string }): Promise<RollbackReport> {
+        const workspaceId = ClientInput.assertId("workspace.rollback", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("workspace.rollback", "workerId", args.workerId);
+        const clientWorkerId = ClientInput.assertId("workspace.rollback", "clientWorkerId", args.clientWorkerId);
+        if (typeof args.to !== "string") throw daemonFailure("daemon:rollback", "coordinate-invalid", 400, "The rollback coordinate must be a string.", {});
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertWorkerOwned(workspaceId, clientWorkerId);
+        const client = await this.#db.envelope_get_worker_by_id.get<{ owner: string }>({ id: clientWorkerId });
+        if (client === undefined) throw daemonFailure("daemon:worker", "worker-not-found", 404, `Worker ${clientWorkerId} does not exist.`, { workerId: clientWorkerId });
+        const owner = { workspaceId, address: client.owner };
+        const report = await Rollback.run({
+            db: this.#db,
+            projectRoot: async (id) => (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id }))?.project_root ?? null,
+            executorTags: (id) => this.#engine.executorTags(id),
+            apply: async (statement) => {
+                const releaseCapabilities = await this.#residency.acquire(workspaceId);
+                try {
+                    const clientLoopId = await Envelope.ensureClientLoop(this.#db, clientWorkerId);
+                    try {
+                        const result = await this.#dispatchClientStatement({
+                            workspaceId, workerId: clientWorkerId, loopId: clientLoopId, statement,
+                            // A proposal pauses the dispatch until it is resolved; this is the owner's own act.
+                            onDispatch: (logEntryId) => setImmediate(() => {
+                                void this.resolveProposal(logEntryId, { decision: "accept" }, owner).catch(() => undefined);
+                            }),
+                        });
+                        await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
+                        return result as { status: number; problem?: { detail?: string } };
+                    } catch (error) {
+                        await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
+                        throw error;
+                    }
+                } finally {
+                    releaseCapabilities();
+                }
+            },
+        }, { workspaceId, workerId, to: args.to });
+        return Validator.assertRollbackReport(report);
     }
 
     async renameWorkspace(workspaceId: number, name: string): Promise<{ id: number; name: string }> {

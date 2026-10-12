@@ -124,6 +124,8 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "workspace.prompts": action("workspace", object({ workerId: POSITIVE, limit: POSITIVE }), object({ prompts: array(string()) }, ["prompts"])),
     "workspace.share": action("workspace", object({ folder: NONEMPTY }, ["folder"]), object({ folder: NONEMPTY }, ["folder"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
+    // {§rollback} — undo the bound worker's file mutations after a log coordinate, through ordinary operations.
+    "workspace.rollback": action("workspace", object({ to: NONEMPTY, workerId: POSITIVE }, ["to"]), ref("RollbackReport")),
     "entry.read": action("workspace", object({
         target: NONEMPTY,
         workerId: POSITIVE,

@@ -27,6 +27,7 @@ export {
     InvalidFunctionalityListResultError,
     InvalidFunctionalityDiscoverResultError,
     InvalidFunctionalityMutationResultError,
+    InvalidRollbackReportError,
     InvalidModelReadinessError,
     InvalidModelRouteError,
     InvalidAguiClientConformanceError,

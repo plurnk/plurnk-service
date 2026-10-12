@@ -145,6 +145,7 @@ const mockSeam = () => {
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
+        rollback: async () => { throw new Error("rollback is not exercised here"); },
         workspaceDerivationStatus: () => null,
         workspacePreparationStatus: () => [],
         readEntry: async () => ({
@@ -2691,6 +2692,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "workspace.list",
             "workspace.prompts",
             "workspace.rename",
+            "workspace.rollback",
             "workspace.share",
             "workspace.workers",
         ]);

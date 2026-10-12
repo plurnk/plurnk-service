@@ -42,6 +42,7 @@ import functionalityDiscoverResultSchema from "../schema/FunctionalityDiscoverRe
 import functionalityDefinitionStateSchema from "../schema/FunctionalityDefinitionState.json" with { type: "json" };
 import functionalityListResultSchema from "../schema/FunctionalityListResult.json" with { type: "json" };
 import functionalityMutationResultSchema from "../schema/FunctionalityMutationResult.json" with { type: "json" };
+import rollbackReportSchema from "../schema/RollbackReport.json" with { type: "json" };
 import mcpOAuthCompletionResultSchema from "../schema/McpOAuthCompletionResult.json" with { type: "json" };
 import mcpOAuthBeginResultSchema from "../schema/McpOAuthBeginResult.json" with { type: "json" };
 import functionalityPreparationActivitySchema from "../schema/FunctionalityPreparationActivity.json" with { type: "json" };
@@ -54,7 +55,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, RollbackReport, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -84,6 +85,7 @@ export class InvalidModelCatalogQueryError extends TypeError {}
 export class InvalidFunctionalityListResultError extends TypeError {}
 export class InvalidFunctionalityDiscoverResultError extends TypeError {}
 export class InvalidFunctionalityMutationResultError extends TypeError {}
+export class InvalidRollbackReportError extends TypeError {}
 export class InvalidModelReadinessError extends TypeError {}
 export class InvalidModelRouteError extends TypeError {}
 export class InvalidAguiDiscoveryError extends TypeError {}
@@ -200,6 +202,7 @@ export default class Validator {
         functionalityMutationResultSchema,
         [functionalityDefinitionStateSchema, functionalityProvenanceSchema, problemDetailsSchema],
     );
+    static #rollbackReport = new CfValidator(rollbackReportSchema as unknown as Schema, "2020-12");
     static #modelCatalogQuery = new CfValidator(
         modelCatalogQuerySchema as unknown as Schema,
         "2020-12",
@@ -247,6 +250,7 @@ export default class Validator {
         functionalityListResultSchema,
         functionalityMutationResultSchema,
         functionalityPreparationActivitySchema,
+        rollbackReportSchema,
         mcpOAuthCompletionResultSchema,
         mcpOAuthBeginResultSchema,
         mcpOAuthSchema,
@@ -450,6 +454,16 @@ export default class Validator {
 
     static validateFunctionalityMutationResult(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#functionalityMutationResult, value);
+    }
+
+    static validateRollbackReport(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#rollbackReport, value);
+    }
+
+    static assertRollbackReport(value: unknown): RollbackReport {
+        const result = Validator.validateRollbackReport(value);
+        if (!result.valid) throw new InvalidRollbackReportError(`invalid RollbackReport: ${JSON.stringify(result.errors)}`);
+        return value as RollbackReport;
     }
 
     static validateModelReadiness(value: unknown): ValidationResult {

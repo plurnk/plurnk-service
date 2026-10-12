@@ -2399,6 +2399,22 @@ byte write, a member past the materialization bound, or a row settled before thi
 nothing is reconstructed for them: such a row has no `patch` channel, and whatever reads one, a
 rollback included, fails by name rather than inventing one.
 
+§rollback **Rollback reverses a worker's settled file mutations, latest first, through ordinary
+operations.** `rollback({ workspaceId, workerId, clientWorkerId, to })` (`workspace.rollback { to,
+workerId? }` for a client) names a log coordinate of `workerId`, `<loop>/<turn>/<item>`; the state
+after that item is what remains. Every settled EDIT, COPY, MOVE or KILL row after it, latest first,
+has its patch ({§log-mutation-patch}) reversed against the file as it is now and written back as an
+operation of the acting client in `clientWorkerId`, settled under that worker's owner: a rewrite as
+`EDIT <1,-1>`, a removed file as a creating `EDIT`, a created file as `KILL`. Each reversal is a
+proposal, a row and a patch of its own, so a rollback is reviewable afterwards and reversible by the
+same means. The report (`RollbackReport`) lists what was restored, the rows skipped because they
+kept no patch or were reversed already (the file is in the state before that mutation, as an earlier
+rollback left it), and where it stopped: `drift`, the file no longer holds what that mutation wrote,
+leaves that file and everything earlier untouched; `refused` carries the reversing operation's
+Problem. A coordinate that is not one of the worker's rows is `404 coordinate-not-found`, a
+malformed one `400 coordinate-invalid`, and a workspace without a project root `400
+project-root-required`. Nothing is reconstructed for a patchless row, and the log is never rewritten.
+
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
 | Spelling | Meaning | Where |
@@ -4912,6 +4928,7 @@ Core's behavior behind them.
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
+| §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, clientWorkerId, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as the client's own operations in `clientWorkerId` ({§rollback}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. |
@@ -6384,6 +6401,9 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `kill-target-scheme-required` | 400 | KILL target requires a scheme. |
 | `worker-not-found` | 404 | Worker '*name*' does not exist in this workspace. |
 | `entry-operation-unsupported` | 400 | KILL requires an entry-bearing target; '*scheme*' does not provide one. |
+| `coordinate-invalid` | 400 | '*to*' is not a log coordinate ({§rollback}). Recovery: Name the coordinate as `<loop>/<turn>/<item>`, as the log shows it. |
+| `coordinate-not-found` | 404 | No log entry exists at log:///*coordinate* ({§rollback}). |
+| `project-root-required` | 400 | Rollback restores files, and this workspace has no project root ({§rollback}). |
 | `resource-scheme-required` | 400 | Resource selection requires an address. |
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |

@@ -1227,6 +1227,37 @@ export type Tokens = number
  * Token quantities. Physical-request instances enforce their partition identities. ProviderAccounting distinguishes complete usage from knownUsage subtotals. Omitted fields are unknown; explicit zero is observed or exactly derived.
  */
 
+export interface RollbackReport {
+/**
+ * The coordinate rolled back to, `<loop>/<turn>/<item>`; the state after that item is what remains.
+ */
+to: string
+restored: {
+coordinate: string
+path: string
+/**
+ * What the reversal did to the file: rewrote it, recreated a removed file, or removed a created one.
+ */
+action: ("update" | "create" | "delete")
+}[]
+skipped: {
+coordinate: string
+/**
+ * no-patch: the row kept no patch (a byte write, a member past the materialization bound, or a row settled before patches were kept). already-reversed: the file is in the state before that mutation, so an earlier rollback reversed it; nothing is done again.
+ */
+reason: ("no-patch" | "already-reversed")
+}[]
+stopped: (null | {
+coordinate: string
+path: string
+/**
+ * drift: the file no longer holds what that mutation wrote, so nothing was restored for it or for anything earlier; refused: the reversing operation was refused, and its Problem is the detail.
+ */
+reason: ("drift" | "refused")
+detail: string
+})
+}
+
 export interface SkillDefinition {
 /**
  * The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.

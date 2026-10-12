@@ -241,6 +241,7 @@ export class SqlRiteSync {
 	recovery_parked_workers: SqlRiteSyncPreparedStatements;
 	log_read_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_append_patch: SqlRiteSyncPreparedStatements;
+	log_file_mutations_after: SqlRiteSyncPreparedStatements;
 	log_id_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_curation_targets: SqlRiteSyncPreparedStatements;
@@ -857,6 +858,7 @@ export default class SqlRite {
 	recovery_parked_workers: SqlRitePreparedStatements;
 	log_read_by_coordinate: SqlRitePreparedStatements;
 	log_append_patch: SqlRitePreparedStatements;
+	log_file_mutations_after: SqlRitePreparedStatements;
 	log_id_by_coordinate: SqlRitePreparedStatements;
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_curation_targets: SqlRitePreparedStatements;

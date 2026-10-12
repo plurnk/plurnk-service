@@ -66,6 +66,7 @@ export type BuiltinActionsPort = Pick<
     | "readWorkerModel"
     | "readWorkspaceCapabilities"
     | "renameWorkspace"
+    | "rollback"
     | "runLoop"
     | "setWorkerEffort"
     | "setWorkerModel"
@@ -224,6 +225,33 @@ export default class BuiltinActions {
                         );
                     }
                     return { ok: true, result: await this.#seam().renameWorkspace(world.workspaceId, p.name) };
+                }
+                // {§rollback} — the bound conversation's log, or a named worker's; the reversals are this
+                // client's own operations in its worker.
+                case "workspace.rollback": {
+                    if (typeof p.to !== "string" || p.to.length === 0) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.rollback requires a log coordinate.",
+                            400,
+                            { field: "to", recovery: "Name the coordinate as <loop>/<turn>/<item>." },
+                        );
+                    }
+                    if (Object.hasOwn(p, "workerId")
+                        && (typeof p.workerId !== "number" || !Number.isSafeInteger(p.workerId) || p.workerId <= 0)) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.rollback workerId must be a positive integer.",
+                            400,
+                            { field: "workerId", recovery: "Name a worker of this workspace, or omit it for the conversation." },
+                        );
+                    }
+                    return { ok: true, result: await this.#seam().rollback({
+                        workspaceId: world.workspaceId,
+                        workerId: typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        clientWorkerId: world.workerId,
+                        to: p.to,
+                    }) };
                 }
                 case "entry.read": {
                     if (typeof p.target !== "string") {

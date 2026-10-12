@@ -16,6 +16,22 @@ UPDATE log_entries
    SET patch = CASE WHEN patch IS NULL THEN $patch ELSE patch || char(10) || $patch END
  WHERE id = $id;
 
+-- PREP: log_file_mutations_after
+-- {§rollback}: a worker's settled file mutations after a coordinate, latest first. A row keeps its
+-- patch ({§log-mutation-patch}) or, for a text-free write, none; both are listed so a rollback can
+-- say what it reversed and what it could not.
+SELECT le.id, l.sequence AS loop_seq, t.sequence AS turn_seq, le.sequence, le.op, le.scheme, le.pathname, le.patch
+FROM active_log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.worker_id = $worker_id
+  AND le.state = 'resolved' AND le.status_rx < 300
+  AND le.op IN ('EDIT', 'COPY', 'MOVE', 'KILL')
+  AND (l.sequence > $loop_seq
+       OR (l.sequence = $loop_seq AND t.sequence > $turn_seq)
+       OR (l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence > $sequence))
+ORDER BY l.sequence DESC, t.sequence DESC, le.sequence DESC;
+
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete active log:/// coordinate within the worker.
 SELECT le.id, le.origin, le.op, le.attrs, le.tx FROM active_log_entries le

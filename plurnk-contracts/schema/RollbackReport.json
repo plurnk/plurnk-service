@@ -1,0 +1,53 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/RollbackReport.json",
+    "title": "RollbackReport",
+    "description": "What a rollback to a log coordinate did ({§rollback}): the file mutations it reversed, latest first, each as an ordinary operation of the acting client; the rows it could not reverse because they kept no patch; and, when it stopped, the row and path where the file no longer matched what that mutation wrote.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["to", "restored", "skipped", "stopped"],
+    "properties": {
+        "to": { "type": "string", "minLength": 1, "description": "The coordinate rolled back to, `<loop>/<turn>/<item>`; the state after that item is what remains." },
+        "restored": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["coordinate", "path", "action"],
+                "properties": {
+                    "coordinate": { "type": "string", "minLength": 1 },
+                    "path": { "type": "string", "minLength": 1 },
+                    "action": { "enum": ["update", "create", "delete"], "description": "What the reversal did to the file: rewrote it, recreated a removed file, or removed a created one." }
+                }
+            }
+        },
+        "skipped": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["coordinate", "reason"],
+                "properties": {
+                    "coordinate": { "type": "string", "minLength": 1 },
+                    "reason": { "enum": ["no-patch", "already-reversed"], "description": "no-patch: the row kept no patch (a byte write, a member past the materialization bound, or a row settled before patches were kept). already-reversed: the file is in the state before that mutation, so an earlier rollback reversed it; nothing is done again." }
+                }
+            }
+        },
+        "stopped": {
+            "oneOf": [
+                { "type": "null" },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["coordinate", "path", "reason", "detail"],
+                    "properties": {
+                        "coordinate": { "type": "string", "minLength": 1 },
+                        "path": { "type": "string", "minLength": 1 },
+                        "reason": { "enum": ["drift", "refused"], "description": "drift: the file no longer holds what that mutation wrote, so nothing was restored for it or for anything earlier; refused: the reversing operation was refused, and its Problem is the detail." },
+                        "detail": { "type": "string" }
+                    }
+                }
+            ]
+        }
+    }
+}
