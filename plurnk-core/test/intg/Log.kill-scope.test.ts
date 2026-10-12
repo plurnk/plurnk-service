@@ -429,6 +429,46 @@ test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an er
     } finally { await db.close(); }
 });
 
+const SHAPE = /A log target is `log:\/\/\/<loop>\/<turn>\/<sequence>` with an optional `\/<op>` leaf; a shorter path is a prefix, and `\*`, `\*\*`, `\[1-7\]` or `\{a,b\}` may stand in any segment\./u;
+
+test("{§log-target-list} a `|` between KILL targets lists them, bare or as full addresses, and one bad piece refuses the whole", async () => {
+    const context = await setup();
+    const { db } = context;
+    try {
+        await seedRead(context, 2, "two\n");
+        await seedRead(context, 3, "three\n");
+        const bad = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|garbage"), null), ctxOf(context));
+        assert.equal(bad.status, 400, "one unreadable piece refuses the whole list");
+        assert.match(JSON.stringify(bad), /The log target 'garbage' is malformed\./u, "the piece is named");
+        assert.match(JSON.stringify(bad), SHAPE, "the recovery is the shape");
+        assert.equal(await db.test_log_entries_by_turn.all<{ active: number }>({ turn_id: context.turnId }).then((rows) => rows.filter((r) => r.active).length), 3, "nothing was retired");
+        const list = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|log:///1/1/3/READ"), null), ctxOf(context));
+        assert.equal(list.status, 200, "a bare piece and a full address, as the model writes them");
+        assert.equal(list.matched, 2, "the union");
+        const sweep = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|log:///9/*"), null), ctxOf(context));
+        assert.equal(sweep.status, 204, "a list with a glob piece that selects nothing is the sweep's 204");
+        const exact = await new Log().kill(killStmt(urlPath("log", "/1/1/2|1/1/3"), null), ctxOf(context));
+        assert.equal(exact.status, 404, "every piece an exact coordinate and none active: the exact miss");
+    } finally { await db.close(); }
+});
+
+test("{§log-target-shape} a sweep that matched nothing and a malformed target both show the coordinate shape", async () => {
+    const context = await setup();
+    const { db } = context;
+    try {
+        for (const written of ["/1/1/1/*/READ", "/1/*/READ", "/1/[19,24]/**/sh", "/9/9/*"]) {
+            const r = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(context));
+            assert.equal(r.status, 204, `${written}: a well-formed selection of nothing stays the no-op success`);
+            assert.equal(r.matched, 0);
+            assert.match(String(r.detail), new RegExp(`^No log row matches 'log://${written.replace(/[*[\]]/gu, "\\$&")}'\\. `, "u"), `${written}: the detail says what it read`);
+            assert.match(String(r.detail), SHAPE, `${written}: and the shape`);
+        }
+        const malformed = await new Log().kill(killStmt(urlPath("log", "/garbage"), WHOLE), ctxOf(context));
+        assert.equal(malformed.status, 400);
+        assert.match(JSON.stringify(malformed), SHAPE, "a malformed target's recovery is the shape");
+    } finally { await db.close(); }
+});
+
 test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or without a trailing slash", async () => {
     const context = await setup();
     const { db, workerId } = context;

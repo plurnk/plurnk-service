@@ -79,6 +79,16 @@ const numericCoordinateIntervalsValid = (pathname: string): boolean => pathname.
     return interval === null || BigInt(interval[1]!) <= BigInt(interval[2]!);
 });
 
+// {§log-target-shape} — the working form a log miss or a malformed log target shows; it names the
+// shape and presumes nothing about what the author meant ({§diagnostic-observation}).
+const LOG_TARGET_SHAPE = "A log target is `log:///<loop>/<turn>/<sequence>` with an optional `/<op>` leaf; a shorter path is a prefix, and `*`, `**`, `[1-7]` or `{a,b}` may stand in any segment.";
+
+// {§log-target-list} — a `|` between KILL targets lists them; each piece may be written bare or as a
+// full `log:///` address. The card teaches the brace set; the list is tolerated, never taught.
+const splitLogTargets = (pathname: string): string[] | null => pathname.includes("|")
+    ? pathname.split("|").map((piece) => piece.replace(/^log:\/\/\//u, "").replace(/^\//u, ""))
+    : null;
+
 // A log target pathname → the coordinate GLOB it scopes ({§log-coordinate-hierarchy}): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
 // slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
@@ -381,7 +391,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 `The log target '${pathname}' is malformed.`,
                 {
                     target: pathname,
-                    recovery: "Use a log coordinate, prefix, or glob.",
+                    recovery: LOG_TARGET_SHAPE,
                     retryable: false,
                 },
             );
@@ -632,7 +642,27 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
     }
 
+    // {§log-target-list} — a `|` list is the union of its pieces: one unreadable piece refuses the
+    // whole target and names the piece; an empty union is the exact miss's 404 when every piece is
+    // an exact coordinate, otherwise the sweep's 204 ({§log-curation-folder-idiom}).
     async #resolveIds(
+        pathname: string,
+        ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
+    ): Promise<{ status: number; ids: number[]; error?: string }> {
+        const pieces = splitLogTargets(pathname);
+        if (pieces === null) return this.#resolveOne(pathname, ctx, maxLogEntryId);
+        const ids = new Set<number>();
+        for (const piece of pieces) {
+            const resolved = await this.#resolveOne(piece, ctx, maxLogEntryId);
+            if (resolved.status === 400) return resolved;
+            for (const id of resolved.ids) ids.add(id);
+        }
+        if (ids.size > 0) return { status: 200, ids: [...ids] };
+        return { status: pieces.every((piece) => parseCoordinate(piece) !== null) ? 404 : 204, ids: [] };
+    }
+
+    async #resolveOne(
         pathname: string,
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
@@ -918,7 +948,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
-        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        // {§log-target-shape} — the sweep's 204 says what it read and the working form.
+        if (selected.status === 204) {
+            return { result: Results.assert({ status: 204, matched: 0, detail: `No log row matches '${statement.target.raw}'. ${LOG_TARGET_SHAPE}` }) as OpenFoldResult, plan: null };
+        }
         if (selected.status !== 200) {
             const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
             const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
@@ -934,7 +967,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
                         ...(selected.status === 400
                             ? {
-                                recovery: "Use a log coordinate, prefix, or glob.",
+                                recovery: LOG_TARGET_SHAPE,
                                 retryable: false,
                             }
                             : {}),
@@ -957,7 +990,14 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const selected: { status: number; ids: number[]; error?: string; problem?: ProblemDetails } = statement.matcher === null
             ? await this.#resolveIds(pathname, ctx, maxLogEntryId)
             : await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
-        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        // {§log-target-shape} — a sweep's 204 says what it read and the working form; a pattern
+        // selection that matched nothing stays the bare no-op, since the pattern did the selecting.
+        if (selected.status === 204) {
+            const detail = statement.matcher === null && statement.target !== null
+                ? { detail: `No log row matches '${statement.target.raw}'. ${LOG_TARGET_SHAPE}` }
+                : {};
+            return { result: Results.assert({ status: 204, matched: 0, ...detail }) as OpenFoldResult, plan: null };
+        }
         if (selected.problem !== undefined) {
             return { result: Results.assert({ status: selected.status, problem: selected.problem }) as OpenFoldResult, plan: null };
         }
@@ -976,7 +1016,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
                         ...(selected.status === 400
                             ? {
-                                recovery: "Use a log coordinate, prefix, or glob.",
+                                recovery: LOG_TARGET_SHAPE,
                                 retryable: false,
                             }
                             : {}),
