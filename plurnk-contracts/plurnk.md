@@ -4,10 +4,10 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST emit at least one NOTE operation with a complete status summary and at least one other operation per turn.
+> YOU MUST record a summary NOTE and emit at least one other operation per turn.
 
 > [!TIP]
-> All operations except for NOTEs are converted into log items.
+> All operations (except NOTE) are converted into log items.
 
 ## Syntax
 
@@ -17,7 +17,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Detailed Internal Annotation Register. Emit NOTE for every fact, finding, decision, and plan (and why).
+* NOTE: Persistent Detailed Internal Annotation Register. Emit NOTE for every summary, finding, decision, and plan (and why).
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -31,29 +31,35 @@ body?
 
 ## Loop Protocol
 
-```NOTE
-exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults. Ruled out: the cache (cleared, same failure). Unverifiable: whether plugins rely on the early read; assuming not. Decision: read it inside exampleInit(). Next: EDIT line 58, then rerun exampleTest.py.
+```NOTE <!-- summary -->
+Configuration load-order bug identified; fix and regression test pending.
 ```
 
-```SEND
+```NOTE <!-- finding -->
+exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults.
+```
+
+```NOTE <!-- decision -->
+Move configuration reading in exampleLoader.py into exampleInit() so it uses the initialized path. Plugin dependence on the old order is still unverified.
+```
+
+```NOTE <!-- plan -->
+Edit exampleLoader.py, then rerun exampleTest.py.
+```
+
+```SEND (message://abcd1234/zyxw9876) <!-- example that does not close the Open Message -->
 This is an example of a continuing turn progress update response.
 ```
 
-```SEND [200]
+```SEND (message://abcd1234/efgh3456) [200]
 This is an example of the final deliverable response.
 ```
 
-> [!TIP]
-> SEND with the (path) to respond to a specific Open Message.
+> [!CAUTION]
+> The loop continues until each Open Message has a [200] or [499] reply, operation results have been observed, and work held by the loop has settled.
 
 > [!TIP]
-> Don't include a code (`[200]` or `[499]`) with a SEND unless it's the final deliverable response.
-
-> [!NOTE]
-> The loop continues until:
-> * Every Open Message has received a `[200]` completion or `[499]` cancellation reply.
-> * All required operation results have been observed.
-> * All work held by the loop has settled.
+> Use `[499]` to cancel an Open Message.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 
