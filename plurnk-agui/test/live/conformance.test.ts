@@ -25,7 +25,10 @@ test("live: the official AG-UI client accepts the complete model response stream
     const sandbox = await mkdtemp(join(tmpdir(), "agui-conf-"));
 
     try {
-        const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/agui`, threadId: "conformance" });
+        // {§agui-http-authorization} — the operator's minted bearer reaches the daemon through the same
+        // environment file every client reads; the official client carries it as a header.
+        const token = process.env.PLURNK_AGUI_TOKEN;
+        const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/agui`, threadId: "conformance", ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) });
         agent.messages = [{ id: "m1", role: "user", content: "Reply with exactly one short sentence: say pong." }];
         const seen = new Set<string>();
         await agent.runAgent({ forwardedProps: { plurnk: { workspace: "conformance", projectRoot: sandbox, maxTurns: 6 } } }, {

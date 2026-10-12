@@ -46,10 +46,11 @@ for (const kind of FORMS) test(`live: EDIT by ${kind.form} — one taught EDIT l
         assert.equal(loop.finalStatus, 200);
         assert.equal(await readBody(s.db, "notes.md"), kind.expected, "the edit landed exactly");
         const edits = await editForms(s, loop.modelWorkerId);
-        const landed = edits.filter(({ status }) => status < 400);
+        // A 304 changed nothing ({§edit-noop-304}): neither a landing nor a refusal.
+        const landed = edits.filter(({ status }) => status < 300);
         assert.equal(landed.length, 1, `one landed EDIT: ${JSON.stringify(edits)}`);
         assert.ok(TAUGHT.includes(landed[0]!.form), `authored in a taught form: ${JSON.stringify(edits)}`);
-        assert.equal(edits.length - landed.length, 0, `no refused attempt on the way: ${JSON.stringify(edits)}`);
+        assert.equal(edits.filter(({ status }) => status >= 400).length, 0, `no refused attempt on the way: ${JSON.stringify(edits)}`);
         t.diagnostic(`${kind.form}: authored as ${landed[0]!.form}`);
     } finally { await s.cleanup(); }
 });
