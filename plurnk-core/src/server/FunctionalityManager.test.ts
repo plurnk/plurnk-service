@@ -64,6 +64,21 @@ test("{§functionality-model-projection} all verbs carry their coordinator schem
     assert.match(tool("discover").details ?? "", /fixture locator/u);
 });
 
+test("{§functionality-addressing} an addressing family's manager teaches its own add input, selects by its operand, and offers no replace", () => {
+    const { replace: _replace, ...addressed } = {
+        ...inputSchemas,
+        add: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "string" } } } },
+        enable: { type: "object", required: ["file"], properties: { file: { type: "string" } } },
+        disable: { type: "object", required: ["file"], properties: { file: { type: "string" } } },
+        remove: { type: "object", required: ["file"], properties: { file: { type: "string" } } },
+    };
+    const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas: addressed, example: { files: ["docs/**"] } });
+    const tools = manager.toolRegistry().tools;
+    assert.deepEqual(tools.map(({ target }) => target), FUNCTIONALITY_VERBS.filter((verb) => verb !== "replace"));
+    assert.match(tools.find(({ target }) => target === "add")!.details ?? "", /\n```fx \(add\)\n\{"files":\["docs\/\*\*"\]\}\n/u, "the example is the family's add input, verbatim");
+    assert.deepEqual(tools.find(({ target }) => target === "remove")!.invocation.inputSchema, addressed.remove);
+});
+
 test("{§functionality-model-projection} the family manager exposes the shared verbs with read/host effects", () => {
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS]);

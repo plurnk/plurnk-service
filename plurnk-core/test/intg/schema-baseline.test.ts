@@ -273,6 +273,33 @@ test("{§schedule-delivery}: upgrades remove message-carried authority without l
     } finally { await db.close(); }
 });
 
+test("{§db-migrations} {§functionality-addressing}: upgrading names each members definition by its glob and keeps no override an alias named", async () => {
+    const path = await released(V3_2_0);
+    const loose = { origin: "workspace", enabled: true, definition: { glob: "loose.md", provenance: { kind: "client-action" } } };
+    const noBig = { origin: "workspace", enabled: false, definition: { glob: "!big/**", provenance: { kind: "model-proposal" } } };
+    const aliased = { version: 1, definitions: { docs: { origin: "service", enabled: false }, loose, "no-big": noBig } };
+    const serviceOnly = { version: 1, definitions: { docs: { origin: "service", enabled: false } } };
+    const before = new DatabaseSync(path);
+    try {
+        before.exec("INSERT INTO workspaces (id, name) VALUES (1, 'membersUpgrade'), (2, 'membersServiceOnly')");
+        const insert = before.prepare("INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES (?, ?, ?)");
+        insert.run(1, "@plurnk/plurnk-core/members", JSON.stringify(aliased));
+        insert.run(1, "other", JSON.stringify(aliased));
+        insert.run(2, "@plurnk/plurnk-core/members", JSON.stringify(serviceOnly));
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        const read = async (workspaceId: number, owner: string) => {
+            const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: owner });
+            return row === undefined ? undefined : JSON.parse(row.state);
+        };
+        assert.deepEqual(await read(1, "@plurnk/plurnk-core/members"), { version: 1, definitions: { "loose.md": loose, "!big/**": noBig } },
+            "a workspace definition is keyed by its glob, with its enabledness and provenance");
+        assert.deepEqual(await read(1, "other"), aliased, "another family's state is untouched");
+        assert.equal(await read(2, "@plurnk/plurnk-core/members"), undefined, "a state that held only an alias-keyed override persists nothing");
+    } finally { await db.close(); }
+});
+
 test("{§worker-owner-creation}: upgrades retain conversations, assign runtime ownership and enforce inherited references", async () => {
     const path = await released(V2_0_0);
     const before = new DatabaseSync(path);

@@ -225,7 +225,7 @@ export default class File extends CoreSchemeAdapterBase {
                 recovery: occupied
                     ? ignored
                         ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
-                        : "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
+                        : "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body."
                     : fileMissRecovery(key),
                 retryable: false,
             },

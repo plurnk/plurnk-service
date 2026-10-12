@@ -50,7 +50,7 @@ test("{§skills-module} public seams connect ordinary family publication to orig
     assert.deepEqual(available, [{ alias: "guide", definition: { name: "guide" }, enabled: true }]);
     const prepared = await family.prepare({
         ...identity, enabled: new Map([["guide", { definition: { name: "guide" } }]]), previous: null,
-        failure: "reject", progress: () => {}, retain: () => () => {},
+        failure: "reject", admissions: [], progress: () => {}, retain: () => () => {},
     });
     assert.equal(source.trees(1).size, 0, "preparation alone publishes nothing");
     await prepared.commit();

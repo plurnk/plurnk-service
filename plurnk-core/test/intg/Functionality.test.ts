@@ -149,7 +149,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         wrong.registerModule({ setup: (seam: HostSetupSeam) => {
             seam.registerFunctionalityAdapter({ ...fixtureAdapter([]), example: { alias: "bogus", definition: { kind: "not-a-kind" } } });
         } }, "test-module");
-        await assert.rejects(wrong.start(), /Functionality family 'fx' teaches an add example that violates its own definition schema/u,
+        await assert.rejects(wrong.start(), /Functionality family 'fx' teaches an add example that violates its own add input/u,
             "a taught example that lies about the schema fails boot, never the model");
         await wrong.stop().catch(() => {});
     } finally {

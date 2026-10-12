@@ -171,8 +171,9 @@ export default class ScheduleFunctionality {
         const { workspaceId } = preparation;
         const previous = preparation.previous as Snapshot | null;
         let admission: { alias: string; at: number } | undefined;
-        if (preparation.admission !== undefined) {
-            const { alias, definition, preparation: at } = preparation.admission;
+        const [current] = preparation.admissions;
+        if (current !== undefined) {
+            const { alias, definition, preparation: at } = current;
             if (typeof at !== "number" || !Number.isFinite(at)) throw new Error("Schedule admission has no valid preparation timestamp.");
             if (!isDeepStrictEqual(previous?.rules.get(alias)?.definition, definition)) admission = { alias, at };
         }

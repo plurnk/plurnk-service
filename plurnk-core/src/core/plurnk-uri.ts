@@ -77,7 +77,7 @@ export function missDetail(scheme: string | null, target: string): string {
 
 // {§membership-read-refusal} {§diagnostic-observation} — every file miss carries this recovery: listing,
 // creation and admission stand as alternatives, each valid whatever the address was for.
-export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.";
+export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"files\": [\"<path>\"]}` body.";
 
 // {§fs-canonical-name} — a file member renders its literal key as a reusable path;
 // every other scheme renders its URI.

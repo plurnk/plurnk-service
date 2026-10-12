@@ -15,6 +15,7 @@ const preparation = (workspaceId: number, enabled: Record<string, object>, optio
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
     ...(options.force === undefined ? {} : { force: options.force }),
+    admissions: [],
     retain: () => () => {},
     progress: () => undefined,
 });

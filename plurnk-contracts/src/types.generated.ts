@@ -822,15 +822,23 @@ definitions: FunctionalityDefinitionState[]
  * The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.
  */
 
-export interface FunctionalityMutationResult {
+export type FunctionalityMutationResult = ({
 status: (200 | 201 | 202)
 family: string
-alias: string
+alias?: string
 definition?: FunctionalityDefinitionState
-removed?: true
-}
 /**
- * The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.
+ * Every definition an addressing family's add admitted, in the order the body named them.
+ *
+ * @minItems 1
+ */
+definitions?: [FunctionalityDefinitionState, ...(FunctionalityDefinitionState)[]]
+removed?: true
+} & {
+[k: string]: unknown
+})
+/**
+ * One workspace definition: its origin, desired enabledness, and current preparation outcome. Credentials never appear.
  */
 
 export interface FunctionalityPreparationActivity {

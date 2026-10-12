@@ -1656,7 +1656,7 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}). Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. `` The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery; a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
+§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}). Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"alias": "<name>", "definition": {"glob": "<path>"}}` body. `` The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery; a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
 
 §file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.`; a READ or KILL carries the listing as its recovery, `` `FIND (<key>/)` lists its files. ``, and an EDIT carries none. Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
@@ -4516,6 +4516,20 @@ It neither removes the old definition first nor merges omitted fields.
 | Authorization required | Publish the existing authorization-required handoff; this is not a failed preparation. |
 | Identical definition | Retain enabledness and normal attachment reuse; this is not an explicit enable/restart. |
 
+§functionality-addressing **A family may name definitions by their content.** An adapter that
+declares `addressing` supplies the input of `add` and the input of `enable`, `disable` and `remove`,
+and reads from a select input the alias it names; its alias grammar ({§functionality-adapter}) is
+the identity's own, and the generated teaching's `add` example is that input. Every other rule of
+the coordinator — ownership, enabledness, `alias-exists`, `alias-unknown`, publication, documents —
+reads the alias as that identity. The members family names its definitions by their glob
+({§members-functionality}).
+
+| Verb | Addressing family |
+|---|---|
+| `add` | Admits every definition the body names, or none: one refusal refuses the whole body. Reapplying a definition the scope holds is idempotent; a different definition under the same name is `alias-exists` (409), whose recovery is remove and add. The receipt lists the admitted definitions in body order (`definitions`) and names no one `alias`. Preparation receives them all as its admissions. |
+| `replace` | Not served: when the name is the definition there is nothing to reassign, so neither projection offers it ({§functionality-discover-advertisement}). |
+| `enable`, `disable`, `remove` | Take the family's select input; the receipt names the one alias it concerned. |
+
 §functionality-mutation-status **Mutation status describes the committed resource
 outcome, not the management invocation's stream lifetime.** Apply these rows in
 order; refusals retain their own Problems and do not commit a replacement.
@@ -4523,10 +4537,10 @@ order; refusals retain their own Problems and do not commit a replacement.
 | Outcome | Status |
 |---|---:|
 | The resulting definition requires authorization | 202 |
-| `add` or `replace` creates a local definition, including an override of an inherited definition | 201 |
-| `add` reapplies the identical local definition; `replace` assigns an existing local definition; `enable`, `disable`, or `remove` settles | 200 |
+| `add` or `replace` creates a local definition, including an override of an inherited definition; an `add` naming several ({§functionality-addressing}) creates any of them | 201 |
+| `add` reapplies the identical local definition, every one it names; `replace` assigns an existing local definition; `enable`, `disable`, or `remove` settles | 200 |
 
-`add` of a different local definition remains `alias-exists` (409); `replace` is explicit.
+`add` of a different local definition remains `alias-exists` (409); `replace` is explicit where a family serves it.
 Model invocation settlement follows {§functionality-model-mutation} independently.
 
 §functionality-discover-advertisement **A family's `discover` advertises exactly the inputs it
@@ -5842,15 +5856,18 @@ remain one compact orientation line, not an expansion of every tool's signature.
 
 §members-functionality **File membership is one workspace Functionality family.**
 Core registers the `members` family with the coordinator ({§functionality-coordinator}):
-the model, the client, and the operator learn one surface — `list | discover | add | replace |
+the model, the client, and the operator learn one surface — `list | discover | add |
 enable | disable | remove`, `workspace.members.<verb>` for the client,
 ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
-MCP servers. A definition is one shell-path glob ({§path-glob-matching}), `{ glob }`, relative to the project
-root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
-Admission provenance (`service-configuration`, `client-action`, `model-proposal`)
-rides the definition to enforce {§members-model-scope}; configuration-source
-provenance belongs to the shared inspection projection ({§configuration-provenance}).
-The alias is a short name, suggested from the glob. `list` shows each
+MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project
+root; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob
+is the definition's identity ({§functionality-addressing}): `add` takes `{"files": ["<glob>", …]}`
+and admits each glob, trimmed, as one definition, a glob named twice being one; `enable`, `disable`
+and `remove` take `{"file": "<glob>"}`, the glob as `list` shows it. A bare `!` is 400
+`definition-invalid`. Admission provenance (`service-configuration`, `client-action`,
+`model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce
+{§members-model-scope}; configuration-source provenance belongs to the shared inspection projection
+({§configuration-provenance}). `list` shows each
 definition with what it resolved to — `include` or `exclude`, the pattern, the members it
 admits or removes (count and a bounded sample), and for a model's inclusion the matches the
 repository's ignore rules refused — so the model sees what its glob did and adapts.
@@ -5861,7 +5878,9 @@ or exclude. A query that names neither, blank or a bare `!`, is 400 `query-inval
 never content; nothing is added.
 
 §members-configuration *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>`
-declares one service-origin rule (`!glob` excludes). The shared naming and
+declares one service-origin rule (`!glob` excludes), named by its glob like every definition; the
+key is its configuration provenance, which `list` shows, and two keys declaring one glob fail by
+name. The shared naming and
 enabledness dialect is {§resource-environment}; `PLURNK_MEMBERS_ENABLED` supplies
 the panel default and `PLURNK_MEMBERS_<alias>_ENABLED` overrides one rule.
 An empty glob or a bare `!` fails validation. Controls may precede their rule;
@@ -5888,7 +5907,8 @@ the repository ignores ({§membership-model-universe}). The engine's creation re
 overwrites or retires them. Projection happens at the family's publication commit and
 re-resolves membership; workspace cooling changes nothing, because desired state is
 durable. Each enabled definition is one generated document at
-`worker:///_plurnk/members/<alias>.md` ({§functionality-documents}) — its glob, origin,
+`worker:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as
+one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin,
 provenance, and what it resolved to — surveyed at turn 0 like every family's enabled
 definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is
 not a member before it asks. There is no other membership path: the client's `/members`
@@ -6419,7 +6439,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"alias": "<name>", "definition": {"glob": "<path>"}}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; the result distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -6541,5 +6561,5 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |
 | The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |
-| '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"glob": "<path>"}` body. | a non-member on disk at the addressed path |
+| '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"alias": "<name>", "definition": {"glob": "<path>"}}` body. | a non-member on disk at the addressed path |
 | '*path*' exists on disk but is not a member of this workspace. Recovery: The repository ignores it: a client or operator members definition can include it, a model definition cannot. | a non-member the repository ignores ({§membership-read-refusal}) |

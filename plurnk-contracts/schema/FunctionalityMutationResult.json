@@ -1,16 +1,23 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/FunctionalityMutationResult.json",
-    "description": "The committed resource outcome of add, replace, enable, disable, or remove ({§functionality-mutation-status}): 202 when the resulting definition requires authorization; otherwise 201 when add or replace creates a local definition (including an inherited override), or 200 for assignment to an existing local definition and settled enable/disable/remove. Only replace may change a different local definition.",
+    "description": "The committed resource outcome of add, replace, enable, disable, or remove ({§functionality-mutation-status}): 202 when the resulting definition requires authorization; otherwise 201 when add or replace creates a local definition (including an inherited override), or 200 for assignment to an existing local definition and settled enable/disable/remove. Only replace may change a different local definition. A mutation names the one alias it concerned, or, for an add that names its definitions by their content ({§functionality-addressing}), lists every definition it admitted.",
     "title": "FunctionalityMutationResult",
     "type": "object",
     "additionalProperties": false,
-    "required": ["status", "family", "alias"],
+    "required": ["status", "family"],
+    "oneOf": [{ "required": ["alias"] }, { "required": ["definitions"] }],
     "properties": {
         "status": { "type": "integer", "enum": [200, 201, 202] },
         "family": { "type": "string", "minLength": 1 },
         "alias": { "type": "string", "minLength": 1 },
         "definition": { "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityDefinitionState.json" },
+        "definitions": {
+            "description": "Every definition an addressing family's add admitted, in the order the body named them.",
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityDefinitionState.json" }
+        },
         "removed": { "const": true }
     }
 }

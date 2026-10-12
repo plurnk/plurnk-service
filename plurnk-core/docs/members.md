@@ -50,8 +50,8 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 - **Untracked, scope `root` or `namespace`**: a definition makes it a member
   from the next turn.
 
-  ```members (add) <!-- include the generated reports -->
-  {"alias": "reports", "definition": {"glob": "build/*.json"}}
+  ```members (add) <!-- include the generated reports; each glob is one definition -->
+  {"files": ["build/*.json"]}
   ```
 
 - **Untracked, scope `none`** (an operator narrowed it): the refusal names the
@@ -95,10 +95,15 @@ cleanup conflicts; its receipt identifies that completed effect.
 
 ## Definitions belong to the workspace
 
-`list` shows every definition with its origin (`service` from the operator's
-environment, `workspace` from an `add`) and whether it is enabled. `enable` and
-`disable` flip one shared alias; `remove` forgets a workspace override and
-restores inheritance. Inherited definitions cannot be removed here. Changes
-apply to every worker.
-Each enabled definition is projected as
-`worker:///_plurnk/members/<alias>.md` showing what its glob resolved to.
+A definition is its glob: `list` shows every definition with its origin (`service` from the
+operator's environment, `workspace` from an `add`) and whether it is enabled. `enable` and
+`disable` flip one definition, and `remove` forgets a workspace definition and restores
+inheritance, each named by the glob as `list` shows it:
+
+```members (disable)
+{"file": "build/*.json"}
+```
+
+Inherited definitions cannot be removed here. Changes apply to every worker. Each enabled
+definition is projected as `worker:///_plurnk/members/<glob>.md`, the glob percent-encoded,
+showing what it resolved to.

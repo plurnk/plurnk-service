@@ -1,13 +1,15 @@
 // {§members-functionality} — file membership as one workspace Functionality family. The model, the
 // client, and the operator learn one surface ({§functionality-coordinator})
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
-// shell-path glob and `!glob` excludes; definitions are workspace desired state and the
-// membership overlay is their projection ({§members-projection}) — the one truth every worker sees
-// ({§membership-baseline}). A model's `add` is admitted against the service ceiling
-// `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the workspace.
+// shell-path glob, `!glob` excludes, and the glob is the definition's identity
+// ({§functionality-addressing}): `add` names globs; enable, disable and remove name one. Definitions
+// are workspace desired state and the membership overlay is their projection ({§members-projection})
+// — the one truth every worker sees ({§membership-baseline}). A model's `add` is admitted against
+// the service ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the
+// workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PathSyntax, Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -18,21 +20,24 @@ import WorkspaceSettings from "../core/workspace-settings.ts";
 import PathGlob from "../core/PathGlob.ts";
 import Paths from "../Paths.ts";
 import type {
+    FunctionalityAdmission,
     FunctionalityCaller,
-    FunctionalityDefinitionSource,
     FunctionalityOutcome,
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
+import type { FunctionalityAddressing, FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 
 const MEMBERS_FAMILY = "members";
 const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
 const PREFIX = "PLURNK_MEMBERS_";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
+// The operator's environment alias ({§members-configuration}); a definition's own name is its glob.
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
+// {§functionality-addressing} — the glob is the alias: one line, no surrounding whitespace.
+const GLOB = /^\S(?:[^\n]*\S)?$/u;
 const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0);
 
 type MembersProvenance = {
@@ -53,18 +58,41 @@ type MembersResolution = {
     readonly ignored: number;
 };
 
-// The exact definition one `add` accepts. Provenance is the coordinator's truth, never the
-// caller's claim: `admit` overwrites whatever arrived in the definition.
+const GLOB_DESCRIPTION = "A shell-path glob relative to the project root (`docs/**`, `*.md`, `../shared/*.json`). A leading `!` excludes matching members; an exclusion wins over every inclusion.";
+
+// {§functionality-addressing} — what `add` takes: the globs, each one definition.
+const ADD: JsonSchema = Object.freeze({
+    type: "object",
+    additionalProperties: false,
+    required: ["files"],
+    properties: {
+        files: {
+            type: "array",
+            minItems: 1,
+            items: { type: "string", minLength: 1, description: GLOB_DESCRIPTION },
+            description: "The globs to add; each is one definition.",
+        },
+    },
+});
+
+// What enable, disable and remove take: one definition's glob, as `list` shows it.
+const SELECT: JsonSchema = Object.freeze({
+    type: "object",
+    additionalProperties: false,
+    required: ["file"],
+    properties: {
+        file: { type: "string", minLength: 1, description: "The glob of one definition, as `list` shows it." },
+    },
+});
+
+// The exact definition the coordinator persists. Provenance is the coordinator's truth, never the
+// caller's claim: `admit` stamps it from the caller.
 const DEFINITION: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,
     required: ["glob"],
     properties: {
-        glob: {
-            type: "string",
-            minLength: 1,
-            description: "A shell-path glob relative to the project root (`docs/**`, `*.md`, `../shared/*.json`). A leading `!` excludes matching members; an exclusion wins over every inclusion.",
-        },
+        glob: { type: "string", minLength: 1, description: GLOB_DESCRIPTION },
         provenance: {
             type: "object",
             readOnly: true,
@@ -89,22 +117,20 @@ const refuse = (
 const isExclusion = (glob: string): boolean => glob.startsWith("!");
 const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) : glob);
 
-// A glob as an alias suggestion: `docs/**` → `docs`, `!**/tokenizer.json` → `no-tokenizer-json`.
-export const aliasOf = (glob: string): string => {
-    const folded = patternOf(glob).toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 48);
-    const base = ALIAS.test(folded) ? folded : `p-${folded}`.replace(/-+$/u, "");
-    return isExclusion(glob) ? `no-${base}` : base;
-};
-
-// {§members-configuration}
+// {§members-configuration} — each `PLURNK_MEMBERS_<alias>=<glob>` is one service definition named by
+// its glob; the environment key is its provenance. Two keys naming one glob fail by name.
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
     const environment = new ResourceEnvironment(PREFIX, { controls: [], settings: [] }, environ);
+    const declared = new Map<string, string>();
     return [...environment.definitions].map(([alias, { key, value }]) => {
         const glob = value.trim();
         if (!ALIAS.test(alias)) throw new ConfigurationError(key, `${key} names an invalid members alias '${alias}'.`);
         if (patternOf(glob).length === 0) throw new ConfigurationError(key, `${key} names no pattern.`);
+        const earlier = declared.get(glob);
+        if (earlier !== undefined) throw new ConfigurationError(key, `${key} repeats the definition '${glob}' of ${earlier}.`);
+        declared.set(glob, key);
         return {
-            alias,
+            alias: glob,
             definition: { glob, provenance: { kind: "service-configuration" } } satisfies MembersDefinition,
             enabled: environment.enabled(alias),
             provenance: { kind: "environment", source: key },
@@ -145,18 +171,23 @@ const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution 
     return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored };
 };
 
+// {§members-projection} — a definition's document is named by its glob, percent-encoded as one path
+// segment: RFC 3986 unreserved characters and parentheses stay literal, everything else is `%XX`.
+export const documentName = (glob: string): string =>
+    encodeURIComponent(glob).replace(/[!'*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+
 // {§members-projection} — each enabled definition is one generated document under
 // `worker:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
 // what the glob is, whose it is, and what it resolved to.
-const membersDocument = (alias: string, definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
+const membersDocument = (definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
     const noun = resolution.effect === "exclude" ? "member" : "file";
     const ignored = resolution.ignored > 0 ? ` (${count(resolution.ignored, "match")} ignored)` : "";
     const kind = definition.provenance?.kind ?? "client-action";
     const listed = resolution.files.map((file) => `\`${file}\``).join(", ") + (resolution.matched > resolution.files.length ? ", …" : "");
     return {
-        pathname: `/members/${alias}.md`,
+        pathname: `/members/${documentName(definition.glob)}.md`,
         content: [
-            `# ${alias}`,
+            `# \`${definition.glob}\``,
             "",
             "## Summary",
             "",
@@ -164,7 +195,7 @@ const membersDocument = (alias: string, definition: MembersDefinition, resolutio
             "",
             "| Field | Value |",
             "| --- | --- |",
-            `| definition | \`${JSON.stringify({ glob: definition.glob })}\` |`,
+            `| glob | \`${definition.glob}\` |`,
             `| origin | ${kind === "service-configuration" ? "service" : "workspace"} |`,
             `| provenance | ${kind} |`,
             ...(resolution.files.length === 0 ? [] : ["", `${resolution.effect === "exclude" ? "Excluded" : "Included"}: ${listed}`]),
@@ -187,7 +218,13 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     readonly namespaceOwner = MEMBERS_OWNER;
     readonly summary = "Manage file membership";
     readonly definitionSchema = DEFINITION;
-    readonly example = { alias: "docs", definition: { glob: "docs/**" } };
+    readonly aliasPattern = GLOB;
+    readonly addressing: FunctionalityAddressing = {
+        add: ADD,
+        select: SELECT,
+        alias: (input) => (input as { file: string }).file.trim(),
+    };
+    readonly example = { files: ["docs/**"] };
     readonly docsDir = Paths.packageRoot;
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query"],
@@ -228,7 +265,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
 
     async #preview(glob: string, overlay: OverlayResolution, workspaceId: number): Promise<FunctionalityCandidate> {
         const pattern = patternOf(glob);
-        const candidate = { alias: aliasOf(glob), definition: { glob }, provenance: { kind: "preview", source: glob } };
+        const candidate = { alias: glob, definition: { glob }, provenance: { kind: "preview", source: glob } };
         if (isExclusion(glob)) {
             const excluded = overlay.members.filter((path) => PathGlob.matches(path, pattern));
             return { ...candidate, summary: `would exclude ${count(excluded.length, "member")}${sample(excluded)}` };
@@ -244,7 +281,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     }
 
     async #verdict(key: string, overlay: OverlayResolution, workspaceId: number): Promise<FunctionalityCandidate> {
-        const candidate = { alias: aliasOf(key), definition: { glob: key } };
+        const candidate = { alias: key, definition: { glob: key } };
         if (!(await isFile(resolve(overlay.root, key)))) {
             return { ...candidate, provenance: { kind: "absent", source: key }, summary: "absent — no such file under the project root" };
         }
@@ -269,26 +306,23 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         return { ...candidate, provenance: { kind: "candidate", source: key }, summary: "not a member — untracked; add this definition to include it" };
     }
 
-    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<FunctionalityDefinitionSource> {
-        const { alias, definition } = input as { alias?: unknown; definition?: unknown };
-        const validation = Validator.validateJsonSchemaInstance(DEFINITION, definition);
-        if (!validation.valid) {
-            throw refuse("definition-invalid", 400, "A members definition is { glob }: a shell-path pattern, `!glob` to exclude.", {
-                errors: validation.errors,
-                recovery: "Supply { \"alias\": \"<name>\", \"definition\": { \"glob\": \"<pattern>\" } }.",
-            });
-        }
-        const glob = (definition as MembersDefinition).glob.trim();
-        const pattern = patternOf(glob);
-        if (pattern.length === 0) {
-            throw refuse("definition-invalid", 400, "A members glob names a pattern; `!` alone excludes nothing.", {
-                recovery: "Supply a pattern such as `docs/**` or `!**/*.lock`.",
-            });
-        }
-        if (caller === "operation") {
-            const settings = await WorkspaceSettings.read(this.#db, identity.workspaceId);
-            const scope = FileCreationPolicy.effective(modelScope(this.#env), settings.membersModelScope);
-            if (!FileCreationPolicy.admits(scope, outsideRoot(pattern))) {
+    // {§functionality-addressing} — every glob the body names is admitted, or none is: a bare `!`
+    // or a glob past the model's scope refuses the whole add. The same glob twice is one definition.
+    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission[]> {
+        const { files } = input as { files: readonly string[] };
+        const scope = caller === "operation"
+            ? FileCreationPolicy.effective(modelScope(this.#env), (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope)
+            : null;
+        const admitted = new Map<string, FunctionalityAdmission>();
+        for (const raw of files) {
+            const glob = raw.trim();
+            const pattern = patternOf(glob);
+            if (pattern.length === 0) {
+                throw refuse("definition-invalid", 400, `'${raw}' names no pattern; \`!\` alone excludes nothing.`, {
+                    recovery: "Name a pattern such as `docs/**` or `!**/*.lock`.",
+                });
+            }
+            if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(pattern))) {
                 throw refuse("model-scope", 403, scope === "none"
                     ? "The model may not change membership here: the members scope is none."
                     : `The effective members scope '${scope}' does not admit '${glob}'.`, {
@@ -297,14 +331,15 @@ export default class MembersFunctionality implements FunctionalityAdapter {
                     recovery: "`git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE.",
                 });
             }
+            admitted.set(glob, {
+                alias: glob,
+                definition: {
+                    glob,
+                    provenance: { kind: caller === "operation" ? "model-proposal" : "client-action" },
+                } satisfies MembersDefinition,
+            });
         }
-        return {
-            alias: typeof alias === "string" && alias.length > 0 ? alias : aliasOf(glob),
-            definition: {
-                glob,
-                provenance: { kind: caller === "operation" ? "model-proposal" : "client-action" },
-            } satisfies MembersDefinition,
-        };
+        return [...admitted.values()];
     }
 
     // {§members-projection} — project this workspace's enabled definitions:
@@ -320,7 +355,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         for (const [alias, { definition }] of enabled) {
             const resolution = resolutionOf(definition as MembersDefinition, overlay);
             outcomes.set(alias, { state: "active", detail: resolution });
-            documents.push(membersDocument(alias, definition as MembersDefinition, resolution));
+            documents.push(membersDocument(definition as MembersDefinition, resolution));
         }
         return {
             documents,

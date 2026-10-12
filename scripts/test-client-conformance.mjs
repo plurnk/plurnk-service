@@ -460,12 +460,12 @@ try {
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
         throw new Error("a second client connection did not observe the workspace's durable capabilities");
     }
-    await observer.rpc("workspace.members.add", { alias: "cross", definition: { glob: "cross/**" } });
+    await observer.rpc("workspace.members.add", { files: ["cross/**"] });
     // Both connections observe the same workspace definition independently of their Worker.
     const membersOf = (listed) => (listed.definitions ?? [])
-        .filter((definition) => definition.alias === "cross")
+        .filter((definition) => definition.alias === "cross/**")
         .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
-    const expectedMembers = [{ alias: "cross", origin: "workspace", state: "active", glob: "cross/**" }];
+    const expectedMembers = [{ alias: "cross/**", origin: "workspace", state: "active", glob: "cross/**" }];
     const members = await terminal.rpc("workspace.members.list");
     if (JSON.stringify(membersOf(members)) !== JSON.stringify(expectedMembers)) {
         throw new Error(`terminal did not observe the other connection's durable mutation: ${JSON.stringify(members)}`);
@@ -495,7 +495,7 @@ try {
         || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers.map((definition) => ({ ...definition, state: "dormant" })))) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
-    await afterRestart.rpc("workspace.members.enable", { alias: "cross" });
+    await afterRestart.rpc("workspace.members.enable", { file: "cross/**" });
     const activatedMembers = await afterRestart.rpc("workspace.members.list");
     if (JSON.stringify(membersOf(activatedMembers)) !== JSON.stringify(expectedMembers)) {
         throw new Error(`persisted membership did not activate on explicit demand: ${JSON.stringify(activatedMembers)}`);

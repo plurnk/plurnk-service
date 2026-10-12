@@ -169,9 +169,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project });
-    await daemon.invokeModuleAction("workspace.members.add", {
-        alias: "configuration", definition: { glob: ".agents/mcp.json" },
-    }, { scope: "workspace", workspaceId });
+    await daemon.invokeModuleAction("workspace.members.add", { files: [".agents/mcp.json"] }, { scope: "workspace", workspaceId });
     const workerId = await insertWorker(db, workspaceId, null, "repairer", "model");
     const finalStatuses: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {

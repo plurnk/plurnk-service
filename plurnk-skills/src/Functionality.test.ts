@@ -57,7 +57,7 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
     });
     const prepare = (source: string, previous: unknown | null, failure: "reject" | "publish-unavailable") => family.prepare({
         workspaceId: 1, enabled: new Map([["review", { definition: { name: "review", source } }]]),
-        previous, failure, progress: () => {}, retain: () => () => {},
+        previous, failure, admissions: [], progress: () => {}, retain: () => () => {},
     });
     const prior = await prepare(join(root, "before"), null, "publish-unavailable");
     assert.equal(prior.outcomes.get("review")?.state, "unavailable");

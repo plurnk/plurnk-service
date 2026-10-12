@@ -123,7 +123,7 @@ test("{§membership-read-refusal} a non-member the repository ignores is not off
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "The repository ignores it: a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("````READ (loose.md)````");
-    assert.equal(untracked.problem.recovery, "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body.", "an untracked file is still admitted");
+    assert.equal(untracked.problem.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
 });
 
 test("{§log-near-miss} a log miss beside real rows names them", async (t) => {

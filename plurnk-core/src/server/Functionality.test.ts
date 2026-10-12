@@ -134,8 +134,8 @@ for (const scope of ["workspace", "worker"] as const) {
         const handle = coordinator.register(family("fixture", {
             scopes: [scope],
             admit: async (input) => ({ ...input as { alias: string; definition: object }, preparation: payload }),
-            prepare: async ({ enabled, admission }) => {
-                seen.push(admission);
+            prepare: async ({ enabled, admissions }) => {
+                seen.push(admissions[0]);
                 return {
                     documents: [],
                     outcomes: new Map([...enabled.keys()].map((alias) => [alias, { state: "active" as const }])),

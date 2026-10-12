@@ -51,6 +51,20 @@ export interface FunctionalityDiscovery {
     readonly details?: string;
 }
 
+// {§functionality-addressing} — a family whose definitions are named by their own content rather than
+// by a caller-chosen alias. The coordinator still keys state by alias, under the family's own alias
+// grammar; the family's verbs name it: `add` takes this input and `admit` returns one admission per
+// definition it names, and enable, disable and remove take the select input. Such a family serves
+// no `replace`: when the name is the definition, there is nothing to reassign.
+export interface FunctionalityAddressing {
+    // The exact `add` input.
+    readonly add: JsonSchema;
+    // The exact `enable`, `disable` and `remove` input.
+    readonly select: JsonSchema;
+    // The alias a select input names.
+    alias(input: object): string;
+}
+
 // {§functionality-adapter} — one family of managed Functionality beneath the host's coordinator.
 // `Runtime` is what a resident family prepares and `SchemeFacet` the face its manager may expose;
 // both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
@@ -66,16 +80,21 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     // Absent means workspace. A worker layer inherits workspace defaults by reference.
     readonly scopes?: readonly ("workspace" | "worker")[];
     // The alias grammar the coordinator enforces for this family. Absent means the shared default
-    // (`[a-z][a-z0-9-]*`); a family whose alias is case-sensitive declares its own.
+    // (`[a-z][a-z0-9-]*`); a family whose alias is case-sensitive, or whose alias is the definition's
+    // own content ({§functionality-addressing}), declares its own.
     readonly aliasPattern?: RegExp;
+    // {§functionality-addressing} Absent: a caller-chosen alias names a definition, `add` and `replace`
+    // take `{ alias?, definition }`, and the other mutations take `{ alias }`.
+    readonly addressing?: FunctionalityAddressing;
     // The one publication owner for this family's runtimes and state.
     readonly namespaceOwner: string;
     readonly summary: string;
-    // The exact definition `add`/`replace` accept and the coordinator persists.
+    // The exact definition the coordinator persists: what `add`/`replace` accept, or what an addressing
+    // family's `admit` produces from its own `add` input.
     readonly definitionSchema: JsonSchema;
     // Teaching for the family's generated document ({§functionality-model-projection}): one exact
-    // `add` example.
-    readonly example?: { readonly alias: string; readonly definition: object };
+    // `add` input.
+    readonly example?: object;
     // Absent: the family serves no discovery, and implements no `discover`.
     readonly discovery?: FunctionalityDiscovery;
     // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
@@ -86,7 +105,8 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     // Receives only a query the family's declared discovery admits.
     discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission>;
+    // One admission, or, for an addressing family's `add`, one per definition the input names.
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission | readonly FunctionalityAdmission[]>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<Runtime>>;
     teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace definition installed or provisioned, before the coordinator

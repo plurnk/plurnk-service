@@ -67,8 +67,9 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     // The adapter's previous process snapshot for this workspace, when one exists.
     readonly previous: unknown | null;
-    // The current add/replace admission only; absent on refresh, activation and other verbs.
-    readonly admission?: FunctionalityAdmission;
+    // The current add or replace's admissions: one, or every definition an addressing family's add
+    // names ({§functionality-addressing}); empty on refresh, activation and other verbs.
+    readonly admissions: readonly FunctionalityAdmission[];
     // Whether failures publish as unavailable outcomes (activation, model
     // mutations except replacement) or reject it (explicit client mutations and replacement).
     readonly failure: "publish-unavailable" | "reject";

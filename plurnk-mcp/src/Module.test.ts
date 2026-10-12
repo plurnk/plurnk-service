@@ -18,7 +18,7 @@ import {
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityAdmission, FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
@@ -71,7 +71,7 @@ interface Adapter {
     prepare(preparation: {
         workspaceId: number;
         enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>; previous: unknown | null;
-        failure: "publish-unavailable" | "reject"; force?: string; retain(): () => void;
+        failure: "publish-unavailable" | "reject"; force?: string; admissions: readonly FunctionalityAdmission[]; retain(): () => void;
         progress(alias: string): void;
     }): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
@@ -105,7 +105,7 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
         const current = snapshots.get(workspaceId);
         const prepared = await adapter.prepare({
             ...identity(workspaceId), enabled: new Map([...enabled].map(([alias, definition]) => [alias, { definition }])), previous: current?.prepared?.snapshot ?? null,
-            failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), retain,
+            failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), admissions: [], retain,
             progress: () => undefined,
         });
         await prepared.commit();
@@ -499,7 +499,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         assert.deepEqual(h.runtimeTags(1), ["a"], "the removed server's connection closed after the replacement committed");
 
         // abort: a fresh connection is opened, then discarded; the committed one survives.
-        const attempt = await h.adapter().prepare({ ...h.identity(1), enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", retain: () => () => undefined, progress: () => undefined });
+        const attempt = await h.adapter().prepare({ ...h.identity(1), enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", admissions: [], retain: () => () => undefined, progress: () => undefined });
         assert.equal(attempt.outcomes.get("c")?.state, "active");
         await attempt.abort();
         await waitForFile(marker("c"));
@@ -785,7 +785,7 @@ test("{§oauth-continuation} aborting publication retains the accepted grant for
         assert.deepEqual(await h.action(1, "workspace.mcp.oauth.complete", params), accepted);
         const attempt = await h.adapter().prepare({
             ...h.identity(1), enabled: new Map([["oauth", { definition }]]), previous: initial.snapshot,
-            failure: "publish-unavailable", retain: () => () => {}, progress: () => {},
+            failure: "publish-unavailable", admissions: [], retain: () => () => {}, progress: () => {},
         });
         assert.equal(attempt.outcomes.get("oauth")?.state, "active");
         await attempt.abort();

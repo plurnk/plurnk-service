@@ -107,7 +107,10 @@ family, namespace owner, definition schema, contributed defaults, discovery
 the shared lowercase-hyphen one: the coordinator enforces whichever grammar the
 family declares, at admission, in the service projection, and on persisted
 state, so an environment variable's name is an alias exactly as a skill name
-is. Admission distinguishes explicit client
+is. A family whose definitions are named by their own content declares its addressing
+({§functionality-addressing}): the inputs of `add` and of the select verbs, and how a select
+input names its alias; its `admit` then returns one admission per definition an `add` names.
+Admission distinguishes explicit client
 actions from model operations where the family contract requires it
 ({§members-model-scope}). Preparation receives each complete definition with optional
 adapter-owned interpretation context. Context is source semantics, not policy or provenance;
@@ -128,8 +131,9 @@ An adapter may expose current partial-source `configurationNotices`; these join 
 workspace diagnostics without preventing independently valid definitions from preparing.
 
 §functionality-admission-preparation **Admission data belongs to one attempt.**
-`admit` returns `{ alias, definition, preparation? }`; the coordinator passes this
-result to that mutation's `prepare` as `admission`. The optional `preparation`
+`admit` returns `{ alias, definition, preparation? }`, or one such admission per definition an
+addressing family's `add` names ({§functionality-addressing}); the coordinator passes them to
+that mutation's `prepare` as `admissions`. The optional `preparation`
 payload is adapter-owned, not configuration: it is never persisted, projected,
 used as definition identity, or carried into later refreshes. Admission and
 preparation must not change the preceding publication's live state. Candidate

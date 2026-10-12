@@ -1,5 +1,5 @@
 import { ownWorker, TEST_OWNER } from "./_approval.ts";
-// {§members-functionality} {§members-model-scope} {§members-projection}
+// {§members-functionality} {§functionality-addressing} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -20,8 +20,9 @@ import type { Db } from "../../src/core/Db.ts";
 
 const execFileP = promisify(execFile);
 
-type Definition = { alias: string; origin: string; state: string; detail?: { effect: string; pattern: string; matched: number; files: string[]; ignored: number } };
+type Definition = { alias: string; origin: string; state: string; definition?: { glob: string; provenance?: { kind: string } }; detail?: { effect: string; pattern: string; matched: number; files: string[]; ignored: number } };
 type Candidate = { alias?: string; definition: { glob: string }; provenance: { kind: string; source: string }; summary?: string };
+type Receipt = { status: number; family: string; alias?: string; definitions?: Definition[]; removed?: true };
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
@@ -75,6 +76,12 @@ const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
 
+const problemOf = async (run: () => Promise<unknown>): Promise<{ type?: string; status?: number; detail?: string; recovery?: string; alias?: string }> => {
+    const error = await run().then(() => null, (cause: unknown) => cause);
+    assert.ok(error instanceof OperationFailureError, `expected an OperationFailureError, got ${String(error)}`);
+    return { ...error.result.problem, status: error.result.status } as { type?: string; status?: number; detail?: string; recovery?: string; alias?: string };
+};
+
 test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree on escaped filenames", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "plurnk-members-glob-"));
     const root = join(temporary, String.raw`base\[1]`);
@@ -94,30 +101,30 @@ test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree 
         await daemon.start();
         const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
             daemon.invokeModuleAction(`workspace.members.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
-        const add = (alias: string, glob: string) => invoke("add", { alias, definition: { glob } });
+        const add = (...files: string[]) => invoke("add", { files });
         const definitions = async () => (await invoke<{ definitions: Definition[] }>("list", {})).definitions;
         const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0]!;
 
         const preview = await discover(String.raw`dir\\name/a.txt`);
         assert.equal(preview.provenance.kind, "preview", "escape syntax is classified at the shared boundary");
         assert.match(preview.summary!, /^would include 1 file/u);
-        await add("literal", pattern);
+        await add(pattern);
         assert.equal(await memberOf(db, workspaceId, intended), true);
         assert.equal(await memberOf(db, workspaceId, neighbor), false);
-        assert.deepEqual((await definitions()).find(({ alias }) => alias === "literal")?.detail?.files, [intended]);
+        assert.deepEqual((await definitions()).find(({ alias }) => alias === pattern)?.detail?.files, [intended]);
         assert.deepEqual(await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key: intended }), { included: 1 });
         assert.equal(await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key: neighbor }), undefined);
 
-        await add("wildcard-name", String.raw`a\*.txt`);
+        await add(String.raw`a\*.txt`);
         assert.equal(await memberOf(db, workspaceId, "a*.txt"), true);
         assert.equal(await memberOf(db, workspaceId, "a/b.txt"), false);
-        await add("neighbor", "dir/name/*.txt");
+        await add("dir/name/*.txt");
         const exclusionPreview = await discover(`!${pattern}`);
         assert.match(exclusionPreview.summary!, /^would exclude 1 member/u);
-        await add("no-literal", `!${pattern}`);
+        await add(`!${pattern}`);
         assert.equal(await memberOf(db, workspaceId, intended), false);
         assert.equal(await memberOf(db, workspaceId, neighbor), true);
-        assert.deepEqual((await definitions()).find(({ alias }) => alias === "no-literal")?.detail?.files, [intended]);
+        assert.deepEqual((await definitions()).find(({ alias }) => alias === `!${pattern}`)?.detail?.files, [intended]);
         assert.deepEqual(await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key: intended }), { glob: pattern });
         assert.equal(await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key: neighbor }), undefined);
     } finally {
@@ -160,7 +167,7 @@ for (const boundary of ["startup", "workspace inspection"] as const) {
     });
 }
 
-test("{§members-functionality} client and model share one surface; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
+test("{§members-functionality} {§functionality-addressing} client and model share one surface named by globs; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
     const root = await gitProject();
     await withEnv({
         PLURNK_SERVICE_GIT_ALLOWED: "1",
@@ -197,18 +204,31 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
             await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             const result = await pending;
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "members", after: before, timeoutMs: 60_000 }) as { status?: number; problem?: { type?: string; recovery?: string } };
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "members", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
             return { result, outcome };
         };
+        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
         try {
+            // {§functionality-addressing} — the surface: no replace, and the add and select inputs are the family's own.
+            assert.deepEqual(
+                daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.members.")).toSorted(),
+                ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `workspace.members.${verb}`),
+            );
+
             // The baseline: tracked is a member, loose is not ({§membership-baseline}).
             assert.equal(await memberOf(db, workspaceId, "README.md"), true);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an untracked file is dark until added");
-            // Service definitions from the operator's env ride like PLURNK_A2A_*: docs is enabled by
-            // default, and list says what it resolved to.
-            assert.deepEqual(await states(), ["docs:service:dormant"]);
-            await invoke("enable", { alias: "docs" });
-            assert.deepEqual(await states(), ["docs:service:active"]);
+            // Service definitions from the operator's env ride like PLURNK_A2A_*: docs/** is enabled by
+            // default, named by its glob, and list says what it resolved to and which key declared it.
+            assert.deepEqual(await states(), ["docs/**:service:dormant"]);
+            await invoke("enable", { file: "docs/**" });
+            assert.deepEqual(await states(), ["docs/**:service:active"]);
+            const invalid = await problemOf(() => invoke("add", { alias: "docs", definition: { glob: "docs/**" } }));
+            assert.equal(invalid.type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "an alias-named body is not the add input");
+            assert.equal((await problemOf(() => invoke("enable", { alias: "docs" }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+            assert.equal((await problemOf(() => invoke("add", { files: [] }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "add names at least one glob");
+            assert.deepEqual((await definitions())[0]?.definition, { glob: "docs/**", provenance: { kind: "service-configuration" } });
+            assert.deepEqual((await definitions() as Array<{ provenance?: object }>)[0]?.provenance, { kind: "environment", source: "PLURNK_MEMBERS_docs" });
             await daemon.settleFunctionality(workspaceId);
             // {§functionality-document-body} — the runtime document teaches tracked-or-picked and the scope
             // lattice beneath its generated header, from plurnk-core/docs/members.md.
@@ -217,110 +237,137 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
             assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
             assert.match(membersDoc.content, /git add build\/report\.json/u, "the body teaches staging as the recovery under scope none");
+            assert.match(membersDoc.content, /```members \(add\) <!--[^\n]*-->\n\{"files": \[\]\}\n```/u, "the verb table teaches the family's own add input");
+            assert.match(membersDoc.content, /```members \(remove\) <!--[^\n]*-->\n\{"file": ""\}\n```/u, "and its select input");
+            assert.doesNotMatch(membersDoc.content, /replace/u, "the family serves no replace, so nothing teaches one");
             assert.ok(membersDoc.content.indexOf("## Tools") < membersDoc.content.indexOf("## What makes a file visible"), "the generated verb table precedes the authored body");
 
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
-            await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs.md) <1,-1>````") });
+            // {§members-projection} — the document is named by the glob, percent-encoded as one segment.
+            await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````") });
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
-                .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs.md" && row.channel === "body");
+                .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");
-            assert.match(doc.content, /^# docs\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
+            assert.match(doc.content, /^# `docs\/\*\*`\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
             assert.match(doc.content, /\| origin \| service \|/u);
 
             // discover explains one file — tracked, included, ignored, untracked, absent — and
-            // previews a glob without adding anything.
+            // previews a glob without adding anything; a candidate is named by its glob.
             assert.equal((await discover("README.md")).provenance.kind, "member");
             assert.match(String((await discover("README.md")).summary), /tracked by git/u);
             assert.match(String((await discover("docs/guide.md")).summary), /included by `docs\/\*\*`/u);
             const loose = await discover("loose.md");
             assert.equal(loose.provenance.kind, "candidate");
+            assert.equal(loose.alias, "loose.md");
             assert.deepEqual(loose.definition, { glob: "loose.md" });
             assert.equal((await discover("ignored.log")).provenance.kind, "ignored");
             assert.equal((await discover("nope.md")).provenance.kind, "absent");
             const preview = await discover("*.md");
             assert.equal(preview.provenance.kind, "preview");
+            assert.equal(preview.alias, "*.md");
             assert.match(String(preview.summary), /would include 2 files \(1 already members, 0 ignored/u);
             assert.match(String((await discover("!README.md")).summary), /would exclude 1 member: README\.md/u);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "discover admits nothing");
-            assert.deepEqual(await states(), ["docs:service:active"], "discover records nothing");
+            assert.deepEqual(await states(), ["docs/**:service:active"], "discover records nothing");
             // {§functionality-discover-advertisement} `query` is the one input: `source` is refused by the
             // shared schema check, and a query naming no path or pattern by the family itself.
-            const refusedProblem = async (params: Readonly<Record<string, unknown>>) => {
-                const error = await invoke("discover", params).then(() => null, (cause: unknown) => cause);
-                assert.ok(error instanceof OperationFailureError, `expected an OperationFailureError, got ${String(error)}`);
-                return error.result.problem;
-            };
-            assert.equal((await refusedProblem({ source: "README.md" }))?.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
-            const bare = await refusedProblem({ query: "!" });
-            assert.equal(bare?.type, "https://problems.plurnk.xyz/members/functionality/query-invalid");
-            assert.equal(bare?.detail, "'!' names no path or pattern.");
+            assert.equal((await problemOf(() => invoke("discover", { source: "README.md" }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+            const bare = await problemOf(() => invoke("discover", { query: "!" }));
+            assert.equal(bare.type, "https://problems.plurnk.xyz/members/functionality/query-invalid");
+            assert.equal(bare.detail, "'!' names no path or pattern.");
 
             // A client action adds a loose file: a workspace-origin definition, active, projected, member.
-            const added = await invoke<{ status: number; alias: string }>("add", { alias: "loose", definition: { glob: "loose.md" } });
+            // The receipt lists what the add admitted.
+            const added = await invoke<Receipt>("add", { files: ["loose.md"] });
             assert.equal(added.status, 201);
+            assert.equal(added.alias, undefined, "an addressing family's add receipt lists its definitions");
+            assert.deepEqual(added.definitions?.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`), ["loose.md:workspace:active"]);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), true, "a client-added glob admits the file");
-            assert.deepEqual(await states(), ["docs:service:active", "loose:workspace:active"]);
-            assert.deepEqual((await definitions()).find((d) => d.alias === "loose")?.detail, { effect: "include", pattern: "loose.md", matched: 1, files: ["loose.md"], ignored: 0 });
+            assert.deepEqual(await states(), ["docs/**:service:active", "loose.md:workspace:active"]);
+            assert.deepEqual((await definitions()).find((d) => d.alias === "loose.md")?.detail, { effect: "include", pattern: "loose.md", matched: 1, files: ["loose.md"], ignored: 0 });
+            // Reapplying a definition is idempotent (200); naming it twice in one add is one definition.
+            const again = await invoke<Receipt>("add", { files: ["loose.md", " loose.md "] });
+            assert.equal(again.status, 200);
+            assert.deepEqual(again.definitions?.map(({ alias }) => alias), ["loose.md"]);
 
             // The model's add under the shipped ceiling (none) is refused up front, naming git add.
-            const { result: refused, outcome } = await accepted("````members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n````");
+            const { result: refused, outcome } = await modelAdd("loose2.md");
             assert.equal(refused.status, 200, "the accepted proposal settled inside the turn; the verb's own outcome rides the results channel");
             assert.equal(outcome.status, 403);
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
             assert.match(String(outcome.problem?.recovery), /git add/u);
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), false, "nothing widened");
-            assert.deepEqual(await states(), ["docs:service:active", "loose:workspace:active"], "no definition was recorded");
+            assert.deepEqual(await states(), ["docs/**:service:active", "loose.md:workspace:active"], "no definition was recorded");
 
             // Under scope root the model's glob is admitted and projected as source model; a model
-            // glob over an ignored path admits nothing, and list says so.
+            // glob over an ignored path admits nothing, and list says so. One add names several globs
+            // and the receipt lists each; one glob past the scope refuses them all.
             process.env.PLURNK_SERVICE_MEMBERS_MODEL_SCOPE = "root";
-            const granted = await accepted("````members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n````");
-            assert.equal(granted.outcome.status, 201, "the model's definition is added and enabled");
+            const granted = await modelAdd("loose2.md", "ignored.log");
+            assert.equal(granted.outcome.status, 201, "the model's definitions are added and enabled");
+            assert.deepEqual(granted.outcome.definitions?.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`), ["loose2.md:workspace:active", "ignored.log:workspace:active"]);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), true, "a model glob inside the root is a member under scope root");
             assert.ok((await rows(db, workspaceId)).includes("include loose2.md model"), "a model-proposed definition projects with source model");
-            assert.equal((await accepted("````members (add)\n{\"alias\":\"sneak\",\"definition\":{\"glob\":\"ignored.log\"}}\n````")).outcome.status, 201);
-            await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "ignored.log"), false, "a model glob never passes .gitignore");
-            assert.deepEqual((await definitions()).find((d) => d.alias === "sneak")?.detail, { effect: "include", pattern: "ignored.log", matched: 0, files: [], ignored: 1 });
+            assert.deepEqual((await definitions()).find((d) => d.alias === "ignored.log")?.detail, { effect: "include", pattern: "ignored.log", matched: 0, files: [], ignored: 1 });
+            const mixed = await modelAdd("docs/*.md", "../secrets/*.pem");
+            assert.equal(mixed.outcome.status, 403, "one glob past the scope refuses the whole add");
+            assert.equal((await definitions()).some((d) => d.alias === "docs/*.md"), false, "nothing of a refused add is recorded");
+            // The same glob from the other authority is a different definition: the 409 names the way back.
+            const taken = await modelAdd("loose.md");
+            assert.equal(taken.outcome.status, 409);
+            assert.equal(taken.outcome.problem?.type, "https://problems.plurnk.xyz/functionality/alias-exists");
+            assert.equal(taken.outcome.problem?.recovery, "Remove it, then add it again.");
+            assert.deepEqual((await definitions()).find((d) => d.alias === "loose.md")?.definition?.provenance, { kind: "client-action" }, "the client's definition stands");
 
             // An exclusion is a `!glob` definition: it removes a tracked member, list counts what it
-            // removed, and discover names the exclusion.
-            const excluded = await invoke<{ status: number }>("add", { alias: "no-big", definition: { glob: "!big/**" } });
+            // removed, and discover names the exclusion. Remove names the glob.
+            const excluded = await invoke<Receipt>("add", { files: ["!big/**"] });
             assert.equal(excluded.status, 201);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "big/tokenizer.json"), false, "an exclusion removes a tracked file from membership");
             assert.ok((await rows(db, workspaceId)).includes("exclude big/** members"));
-            assert.deepEqual((await definitions()).find((d) => d.alias === "no-big")?.detail, { effect: "exclude", pattern: "big/**", matched: 1, files: ["big/tokenizer.json"], ignored: 0 });
+            assert.deepEqual((await definitions()).find((d) => d.alias === "!big/**")?.detail, { effect: "exclude", pattern: "big/**", matched: 1, files: ["big/tokenizer.json"], ignored: 0 });
             const gone = await discover("big/tokenizer.json");
             assert.equal(gone.provenance.kind, "excluded");
             assert.match(String(gone.summary), /excluded by `!big\/\*\*`/u);
-            await invoke("remove", { alias: "no-big" });
+            const removed = await invoke<Receipt>("remove", { file: "!big/**" });
+            assert.deepEqual(removed, { status: 200, family: "members", alias: "!big/**", removed: true });
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "big/tokenizer.json"), true, "removing the exclusion restores the tracked member");
+            const unknown = await problemOf(() => invoke("remove", { file: "!big/**" }));
+            assert.equal(unknown.type, "https://problems.plurnk.xyz/functionality/alias-unknown");
+            assert.equal(unknown.detail, "'!big/**' is not available to this workspace.");
 
             // Union across workers, an exclusion wins: a child excludes what the parent included;
             // removal restores it.
             const child = await insertWorker(db, workspaceId, model, "child", "model");
-            const hidden = await invoke<{ status: number }>("add", { alias: "no-loose", definition: { glob: "!loose.md" } }, child);
+            const hidden = await invoke<Receipt>("add", { files: ["!loose.md"] }, child);
             assert.equal(hidden.status, 201);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an exclusion from any worker wins over an inclusion from another");
-            await invoke("remove", { alias: "no-loose" }, child);
+            await invoke("remove", { file: "!loose.md" }, child);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), true, "removing the exclusion restores the union");
 
             // Disable changes the workspace membership; no child keeps a copied definition.
-            await invoke("disable", { alias: "loose" });
+            const disabled = await invoke<Receipt>("disable", { file: "loose.md" });
+            assert.equal(disabled.alias, "loose.md");
+            assert.equal(disabled.definitions, undefined, "a select verb names the one definition it concerned");
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "the shared inclusion is disabled for every worker");
-            assert.deepEqual((await states()).filter((s) => s.startsWith("loose:")), ["loose:workspace:disabled"]);
-            await invoke("disable", { alias: "loose" }, child);
+            assert.deepEqual((await states()).filter((s) => s.startsWith("loose.md:")), ["loose.md:workspace:disabled"]);
+            await invoke("disable", { file: "loose.md" }, child);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "repeating disable leaves the shared state unchanged");
+            // A service definition is disabled by its glob too, and cannot be removed here.
+            await invoke("disable", { file: "docs/**" });
+            assert.deepEqual((await states()).filter((s) => s.startsWith("docs/**:")), ["docs/**:service:disabled"]);
+            assert.equal((await problemOf(() => invoke("remove", { file: "docs/**" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
         } finally {
             unsubscribe();
             await daemon.stop();
@@ -345,41 +392,28 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
         assert.equal(error.result.problem?.type, `https://problems.plurnk.xyz/members/functionality/${code}`);
         return error.result.problem as { recovery?: string; scope?: string };
     };
+    const admission = (glob: string, kind: "client-action" | "model-proposal") => ({ alias: glob, definition: { glob, provenance: { kind } } });
     try {
         const closed = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none", PLURNK_MEMBERS_ENABLED: "1" } });
-        const refused = await refusedAs(() => closed.admit({ definition: { glob: "notes.md" } }, who, "operation"), "model-scope", 403);
+        const refused = await refusedAs(() => closed.admit({ files: ["notes.md"] }, who, "operation"), "model-scope", 403);
         assert.match(String(refused.recovery), /git add/u);
-        await refusedAs(() => closed.admit({ definition: { glob: "!notes.md" } }, who, "operation"), "model-scope", 403);
-        assert.deepEqual(await closed.admit({ alias: "notes", definition: { glob: "notes.md" } }, who, "action"), {
-            alias: "notes",
-            definition: { glob: "notes.md", provenance: { kind: "client-action" } },
-        });
-        assert.deepEqual(await closed.admit({ definition: { glob: "!**/*.lock" } }, who), {
-            alias: "no-lock",
-            definition: { glob: "!**/*.lock", provenance: { kind: "client-action" } },
-        });
+        await refusedAs(() => closed.admit({ files: ["!notes.md"] }, who, "operation"), "model-scope", 403);
+        assert.deepEqual(await closed.admit({ files: ["notes.md"] }, who, "action"), [admission("notes.md", "client-action")]);
+        assert.deepEqual(await closed.admit({ files: [" !**/*.lock ", "!**/*.lock"] }, who), [admission("!**/*.lock", "client-action")], "a glob is trimmed, and named twice is one definition");
 
         const rooted = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_MEMBERS_ENABLED: "1" } });
-        assert.deepEqual(await rooted.admit({ alias: "notes", definition: { glob: "notes.md" } }, who, "operation"), {
-            alias: "notes",
-            definition: { glob: "notes.md", provenance: { kind: "model-proposal" } },
-        });
-        await refusedAs(() => rooted.admit({ definition: { glob: "../secrets/*.pem" } }, who, "operation"), "model-scope", 403);
-        await refusedAs(() => rooted.admit({ definition: { glob: "!" } }, who, "operation"), "definition-invalid", 400);
-        await refusedAs(() => rooted.admit({ definition: { pattern: "x" } }, who, "action"), "definition-invalid", 400);
+        assert.deepEqual(await rooted.admit({ files: ["notes.md", "!drafts/**"] }, who, "operation"), [admission("notes.md", "model-proposal"), admission("!drafts/**", "model-proposal")]);
+        await refusedAs(() => rooted.admit({ files: ["../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
+        await refusedAs(() => rooted.admit({ files: ["notes.md", "../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
+        const bare = await refusedAs(() => rooted.admit({ files: ["!"] }, who, "operation"), "definition-invalid", 400);
+        assert.match(String(bare.recovery), /docs\/\*\*/u);
 
         // A permissive service (namespace) narrowed by the workspace to root.
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ membersModelScope: "root" }) });
         const wide = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace", PLURNK_MEMBERS_ENABLED: "1" } });
-        assert.deepEqual(await wide.admit({ alias: "shared", definition: { glob: "../shared/*.md" } }, who, "action"), {
-            alias: "shared",
-            definition: { glob: "../shared/*.md", provenance: { kind: "client-action" } },
-        });
-        assert.deepEqual(await wide.admit({ alias: "inside", definition: { glob: "loose.md" } }, who, "operation"), {
-            alias: "inside",
-            definition: { glob: "loose.md", provenance: { kind: "model-proposal" } },
-        });
-        const narrowed = await refusedAs(() => wide.admit({ alias: "shared", definition: { glob: "../shared/*.md" } }, who, "operation"), "model-scope", 403);
+        assert.deepEqual(await wide.admit({ files: ["../shared/*.md"] }, who, "action"), [admission("../shared/*.md", "client-action")]);
+        assert.deepEqual(await wide.admit({ files: ["loose.md"] }, who, "operation"), [admission("loose.md", "model-proposal")]);
+        const narrowed = await refusedAs(() => wide.admit({ files: ["../shared/*.md"] }, who, "operation"), "model-scope", 403);
         assert.equal(narrowed.scope, "root", "settings.membersModelScope narrows the service's namespace to root");
     } finally {
         await db.close();

@@ -29,8 +29,8 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
     },
     add: {
-        summary: "Validate one exact definition, persist it at the selected scope, prepare it, and enable it atomically.",
-        details: "A host effect: it proposes and runs only on acceptance. The definition must conform to the family definition schema.",
+        summary: "Validate each definition the body names, persist it at the selected scope, prepare it, and enable it atomically.",
+        details: "A host effect: it proposes and runs only on acceptance. The body must conform to the verb's input schema.",
     },
     replace: {
         summary: "Assign a complete definition to a named alias, retaining its enabledness.",
@@ -54,7 +54,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
 export type FunctionalityTeaching = {
     readonly traits?: readonly string[];
     readonly inputSchemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>;
-    readonly example?: { readonly alias: string; readonly definition: object };
+    readonly example?: object;
     readonly discovery?: FunctionalityDiscovery;
 };
 
@@ -118,8 +118,8 @@ export default class FunctionalityManager extends BaseExecutor {
         return FUNCTIONALITY_VERBS.filter((verb) => this.#teaching.inputSchemas[verb] !== undefined);
     }
 
-    // The family's verbs in lifecycle order; `add` teaches the family's definition from its schema
-    // with one exact example, and `discover` carries the family's own teaching when it has some.
+    // The family's verbs in lifecycle order; `add` teaches the family's input from its schema with
+    // one exact example, and `discover` carries the family's own teaching when it has some.
     // A body is optional where an empty one is a complete request: `list`, and a discovery whose
     // empty request lists everything.
     toolRegistry(): RuntimeToolRegistry {
@@ -150,7 +150,7 @@ export default class FunctionalityManager extends BaseExecutor {
         if (verb !== "add") return base.details;
         const example = this.#teaching.example === undefined ? [] : [
             "",
-            PlurnkParser.frame(`${this.runtime} (add)`, JSON.stringify({ alias: this.#teaching.example.alias, definition: this.#teaching.example.definition })),
+            PlurnkParser.frame(`${this.runtime} (add)`, JSON.stringify(this.#teaching.example)),
         ];
         return [base.details, ...example].join("\n");
     }

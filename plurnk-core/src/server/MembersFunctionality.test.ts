@@ -1,9 +1,9 @@
-// {§members-configuration} {§members-model-scope}
+// {§members-configuration} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aliasOf, modelScope, serviceMembers } from "./MembersFunctionality.ts";
+import { documentName, modelScope, serviceMembers } from "./MembersFunctionality.ts";
 
-test("{§members-configuration} declarations default enabled and per-alias switches override the family default", () => {
+test("{§members-configuration} a declaration is named by its glob and keyed to its environment key; per-alias switches override the family default", () => {
     const definitions = serviceMembers({
         PLURNK_MEMBERS_docs: "docs/**",
         PLURNK_MEMBERS_no_locks: "!**/*.lock",
@@ -12,8 +12,8 @@ test("{§members-configuration} declarations default enabled and per-alias switc
         OTHER_KEY: "x",
     });
     assert.deepEqual(definitions, [
-        { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration" } }, enabled: true, provenance: { kind: "environment", source: "PLURNK_MEMBERS_docs" } },
-        { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration" } }, enabled: false, provenance: { kind: "environment", source: "PLURNK_MEMBERS_no_locks" } },
+        { alias: "docs/**", definition: { glob: "docs/**", provenance: { kind: "service-configuration" } }, enabled: true, provenance: { kind: "environment", source: "PLURNK_MEMBERS_docs" } },
+        { alias: "!**/*.lock", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration" } }, enabled: false, provenance: { kind: "environment", source: "PLURNK_MEMBERS_no_locks" } },
     ]);
     assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_ENABLED: "1" }), []);
     assert.equal(serviceMembers({ PLURNK_MEMBERS_ENABLED: "0", PLURNK_MEMBERS_docs: "docs/**" })[0].enabled, false);
@@ -21,13 +21,15 @@ test("{§members-configuration} declarations default enabled and per-alias switc
     assert.throws(() => serviceMembers({}), /PLURNK_MEMBERS_ENABLED is missing from the assembled environment floor/u);
 });
 
-test("{§members-configuration} invalid patterns and controls fail by name", () => {
+test("{§members-configuration} invalid patterns, controls and a glob declared twice fail by name", () => {
     assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "0", PLURNK_MEMBERS_ENABLED: "1" }), [], "controls for future definitions do not manufacture members");
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "true", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_nope_ENABLED must be 0 or 1/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "  ", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_docs must contain a definition/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_none: "!", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_none names no pattern/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_ENABLED must be 0 or 1/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_docs_ENABLED: "true", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_docs_ENABLED must be 0 or 1/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_guide: " docs/** ", PLURNK_MEMBERS_ENABLED: "1" }),
+        /PLURNK_MEMBERS_guide repeats the definition 'docs\/\*\*' of PLURNK_MEMBERS_docs/u);
 });
 
 test("{§members-configuration} noncanonical alias spellings cannot compete with canonical declarations", async (t) => {
@@ -44,11 +46,12 @@ test("{§members-configuration} noncanonical alias spellings cannot compete with
     }
 });
 
-test("aliasOf suggests a legal alias from any glob; an exclusion is prefixed no-", () => {
-    assert.equal(aliasOf("docs/**"), "docs");
-    assert.equal(aliasOf(".env.local"), "env-local");
-    assert.equal(aliasOf("!**/tokenizer.json"), "no-tokenizer-json");
-    assert.equal(aliasOf("2024/*.md"), "p-2024-md");
+test("{§members-projection} a definition's document is its glob as one percent-encoded path segment; parentheses stay literal", () => {
+    assert.equal(documentName("docs/**"), "docs%2F%2A%2A");
+    assert.equal(documentName("!**/tokenizer.json"), "%21%2A%2A%2Ftokenizer.json");
+    assert.equal(documentName("../shared/*.md"), "..%2Fshared%2F%2A.md");
+    assert.equal(documentName("notes (draft)/[a-z]?.md"), "notes%20(draft)%2F%5Ba-z%5D%3F.md");
+    assert.equal(documentName("plain-file_1.txt~"), "plain-file_1.txt~");
 });
 
 test("{§members-model-scope} modelScope is the panel's word in the lattice, and an unset or empty key fails by name", () => {

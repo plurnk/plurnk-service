@@ -76,7 +76,7 @@ class FakePort implements DeliveryPort {
 const preparation = (
     workspaceId: number,
     enabled: Record<string, object>,
-    options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string; admission?: FunctionalityAdmission } = {},
+    options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string; admissions?: readonly FunctionalityAdmission[] } = {},
 ) => ({
     workspaceId,
     enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
@@ -84,7 +84,7 @@ const preparation = (
     failure: options.failure ?? "publish-unavailable",
     progress: () => undefined,
     ...(options.force === undefined ? {} : { force: options.force }),
-    ...(options.admission === undefined ? {} : { admission: options.admission }),
+    admissions: options.admissions ?? [],
     retain: () => () => {},
 });
 
@@ -129,7 +129,7 @@ for (const settlement of ["commit", "abort"] as const) {
         await original.commit();
         time.now += 100;
         const admission = await adapter.admit({ alias: "beat", definition: BEAT }, { workspaceId: 1 });
-        const candidate = await adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admission }));
+        const candidate = await adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
         await candidate[settlement]();
         await time.advance(FIRST);
         assert.equal(port.deliveries.length, 1);
@@ -199,7 +199,7 @@ test("{§schedule-first-arming} identical replacement cannot replay an occurrenc
     const original = await adapter.prepare(preparation(1, { once }));
     await original.commit();
     const admission = await adapter.admit({ alias: "once", definition: once }, { workspaceId: 1 });
-    const candidate = await adapter.prepare(preparation(1, { once: admission.definition }, { previous: original.snapshot, admission }));
+    const candidate = await adapter.prepare(preparation(1, { once: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
     await time.advance(FIRST);
     assert.equal(port.deliveries.length, 1);
     await candidate.commit();
@@ -220,7 +220,7 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     const replacement = { rule: "DTSTART;TZID=UTC:20260916T123017\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://other", prompt: "Changed." };
     const prepare = async () => {
         const admission = await adapter.admit({ alias: "beat", definition: replacement }, { workspaceId: 1 });
-        return adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admission }));
+        return adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
     };
     const aborted = await prepare();
     await aborted.abort();
@@ -431,7 +431,7 @@ test("{§schedule-first-arming} a single occurrence that passes between add and 
     const admission = await adapter.admit({ alias: "soon", definition: soon }, { workspaceId: 5 });
     const { definition } = admission;
     time.now = NOW + 5 * SECOND;
-    const prepared = await adapter.prepare(preparation(5, { soon: definition }, { admission }));
+    const prepared = await adapter.prepare(preparation(5, { soon: definition }, { admissions: [admission] }));
     const detail = (outcome: unknown): { next: string | null; exhausted: boolean } => (outcome as { detail: { next: string | null; exhausted: boolean } }).detail;
     assert.deepEqual([detail(prepared.outcomes.get("soon")).next, detail(prepared.outcomes.get("soon")).exhausted],
         ["2026-09-16T12:30:19+00:00[UTC]", false], "the receipt names the occurrence the add was judged against, not exhaustion");

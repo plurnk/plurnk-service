@@ -33,9 +33,7 @@ test("live: a client-attached image persists until log curation", async (t) => {
             t.skip("The selected route does not advertise native image input.");
             return;
         }
-        const member = await s.invokeWorkspaceAction("workspace.members.add", {
-            alias: "sample", definition: { glob: "sample.png" },
-        }) as { status: number };
+        const member = await s.invokeWorkspaceAction("workspace.members.add", { files: ["sample.png"] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);
         assert.ok(await s.db.crud_find_workspace_entry.get({
@@ -97,7 +95,7 @@ test("live: a retained image is reported as one earlier READ, never as a new arr
             t.skip("The selected route does not advertise native image input.");
             return;
         }
-        const member = await s.invokeWorkspaceAction("workspace.members.add", { alias: "sample", definition: { glob: "sample.png" } }) as { status: number };
+        const member = await s.invokeWorkspaceAction("workspace.members.add", { files: ["sample.png"] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);
 
@@ -147,7 +145,7 @@ for (const kind of [
             t.skip(`The selected route does not advertise native ${kind.modality} input.`);
             return;
         }
-        const member = await s.invokeWorkspaceAction("workspace.members.add", { alias: "sample", definition: { glob: kind.file } }) as { status: number };
+        const member = await s.invokeWorkspaceAction("workspace.members.add", { files: [kind.file] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);
         const hash = createHash("sha256").update(kind.bytes).digest("hex");
