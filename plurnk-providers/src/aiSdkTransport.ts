@@ -266,14 +266,19 @@ const retainStreamFailureValues = <T extends object>(source: unknown, target: T)
     return target;
 };
 
+// {§provider-cancellation-evidence} (#971) — evidence is keyed by the failure object, so the object
+// must be this request's own. A caller's abort reason is shared by every request on that signal (the
+// SDK rejects each with the reason itself), so it is wrapped per request before anything is keyed on it.
 const preserveStreamFailure = (
     error: unknown,
     evidence: Omit<StreamFailure, "error">,
     outputObserved: boolean,
+    signal?: AbortSignal,
 ): object => {
-    const failure = typeof error === "object" && error !== null
+    const shared = signal !== undefined && signal.aborted && error === signal.reason;
+    const failure = typeof error === "object" && error !== null && !shared
         ? error
-        : new Error("Provider stream failed", { cause: error });
+        : new Error(shared ? "Provider stream cancelled" : "Provider stream failed", { cause: error });
     streamFailures.set(failure, { ...evidence, error });
     if (outputObserved) streamFailureOutput.add(failure);
     return failure;
@@ -528,7 +533,7 @@ const executeModelOnce = async (
             warnings: warnings ?? [],
         };
     } catch (error) {
-        throw preserveStreamFailure(error, { rawBody: rawChunks, content: partialContent, reasoning: partialReasoning, response: partialResponse }, outputObserved);
+        throw preserveStreamFailure(error, { rawBody: rawChunks, content: partialContent, reasoning: partialReasoning, response: partialResponse }, outputObserved, request.signal);
     }
 };
 
