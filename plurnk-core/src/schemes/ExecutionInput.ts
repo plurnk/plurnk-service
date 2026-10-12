@@ -2,7 +2,9 @@ import type { ExecInputReceiver } from "@plurnk/plurnk-execs";
 import Results, { type SchemeResult } from "../core/results.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 
-// {§exec-input} Input belongs to the existing invocation.
+// {§exec-input} Input belongs to the existing invocation. Its preparation declared whether a receiver
+// will register ({§executor-live-input}); the scheduler says whether the execution has a slot; the
+// executor registers the receiver once it runs. Those three facts name every state a SEND can meet.
 export default class ExecutionInput {
     static configuredTimeout(): number {
         return Knob.integer("PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS", 1);
@@ -11,34 +13,59 @@ export default class ExecutionInput {
     readonly #lifetime: AbortSignal;
     readonly #closed = new AbortController();
     readonly #timeoutMs: number;
+    readonly #declared: boolean;
+    readonly #opened = Promise.withResolvers<void>();
+    #started = false;
     #receiver: ExecInputReceiver | null = null;
     #tail: Promise<void> = Promise.resolve();
 
-    constructor(lifetime: AbortSignal, timeoutMs: number) {
+    constructor(lifetime: AbortSignal, timeoutMs: number, declared: boolean) {
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
             throw new RangeError("PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS must be a positive safe integer.");
         }
         this.#lifetime = lifetime;
         this.#timeoutMs = timeoutMs;
+        this.#declared = declared;
     }
 
+    // The scheduler granted the execution its slot: a declared receiver is now opening.
+    started(): void { this.#started = true; }
+
+    // Only a running executor registers, so a registration is also the start.
     register(receiver: ExecInputReceiver): void {
+        if (!this.#declared) throw new Error("Execution input receiver registered without the preparation declaring input.");
         if (this.#receiver !== null) throw new Error("Execution input receiver already registered.");
         if (this.#closed.signal.aborted || this.#lifetime.aborted) return;
+        this.#started = true;
         this.#receiver = receiver;
+        this.#opened.resolve();
     }
 
     close(): void { this.#closed.abort(); }
 
+    // What a SEND meets before delivery: closed input, an execution launched without input, or one
+    // still queued for a slot. A declared receiver that has not opened yet is not unavailable; delivery
+    // waits for it ({§exec-input}).
     unavailable(): SchemeResult | null {
         if (this.#closed.signal.aborted || this.#lifetime.aborted) {
             return Results.failure("scheme:exec", "input-closed", 410,
                 "Execution input is closed.", {}, { retryable: false });
         }
-        return this.#receiver === null
-            ? Results.failure("scheme:exec", "input-unavailable", 409,
-                "This execution is not accepting input.", {}, { retryable: false })
-            : null;
+        if (!this.#declared) {
+            return Results.failure("scheme:exec", "input-unavailable", 409,
+                "This execution was launched without input.", {}, {
+                    recovery: "Launch it with `[{\"stdin\": \"open\"}]` when its runtime takes input, then SEND to that execution.",
+                    retryable: false,
+                });
+        }
+        if (!this.#started) {
+            return Results.failure("scheme:exec", "input-unavailable", 409,
+                "This execution is queued for an execution slot; its input opens when it starts.", {}, {
+                    recovery: "SEND again once the execution has started.",
+                    retryable: true,
+                });
+        }
+        return null;
     }
 
     async deliver(body: string, metadata: readonly string[] | null, sender?: AbortSignal): Promise<SchemeResult> {
@@ -54,9 +81,14 @@ export default class ExecutionInput {
         const aborted = Promise.withResolvers<SchemeResult>();
         const cancel = (): void => {
             const expired = timeout.signal.aborted;
-            aborted.resolve(Results.failure("scheme:exec", expired ? "input-timeout" : "input-cancelled", expired ? 504 : 499,
-                `Input delivery ${expired ? "timed out" : "was cancelled"}${started ? "; delivery may be partial" : " before delivery"}.`,
-                {}, { retryable: false }));
+            const closed = this.#closed.signal.aborted || this.#lifetime.aborted;
+            // The execution settling or being torn down before delivery began closes input; a bound
+            // expiring or the sender leaving cancels the delivery.
+            aborted.resolve(closed && !started && !expired
+                ? Results.failure("scheme:exec", "input-closed", 410, "Execution input is closed.", {}, { retryable: false })
+                : Results.failure("scheme:exec", expired ? "input-timeout" : "input-cancelled", expired ? 504 : 499,
+                    `Input delivery ${expired ? "timed out" : "was cancelled"}${started ? "; delivery may be partial" : " before delivery"}.`,
+                    {}, { retryable: false }));
             if (started) this.close();
         };
         signal.addEventListener("abort", cancel, { once: true });
@@ -64,6 +96,12 @@ export default class ExecutionInput {
         const predecessor = this.#tail;
         const work = predecessor.then(async (): Promise<SchemeResult> => {
             if (signal.aborted) return aborted.promise;
+            // {§exec-input} — the receiver opens when the executor runs; its residence here counts
+            // against the same bound as the delivery, and the execution settling first closes input.
+            if (this.#receiver === null) {
+                const outcome = await Promise.race([this.#opened.promise.then(() => null), aborted.promise]);
+                if (outcome !== null) return outcome;
+            }
             const unavailable = this.unavailable();
             if (unavailable !== null) return unavailable;
             started = true;

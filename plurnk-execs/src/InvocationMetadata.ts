@@ -55,11 +55,13 @@ export default class InvocationMetadata {
     static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {
         const parsed = this.parse(input, accepted);
         if ("failure" in parsed) return parsed.failure;
+        // {§executor-live-input} — `stdin: "open"` is the declaration that a receiver will register.
+        const declared = parsed.options.stdin === "open" ? { input: "open" as const } : {};
         const directory = parsed.options.cwd;
-        if (directory === undefined) return { status: 200, cwd: input.cwd };
+        if (directory === undefined) return { status: 200, cwd: input.cwd, ...declared };
         const cwd = resolve(input.cwd ?? process.cwd(), directory);
         try {
-            if ((await stat(cwd)).isDirectory()) return { status: 200, cwd };
+            if ((await stat(cwd)).isDirectory()) return { status: 200, cwd, ...declared };
         } catch (cause) {
             const code = (cause as NodeJS.ErrnoException).code;
             if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;

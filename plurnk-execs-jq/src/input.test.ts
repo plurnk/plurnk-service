@@ -53,3 +53,10 @@ test("{§executor-stdin}: jq processes a target file before subsequent live valu
     assert.equal((await completion).status, 200);
     assert.equal(output, "6\n42\n");
 });
+
+test("{§executor-live-input}: jq's preparation declares the receiver exactly when stdin is open", async () => {
+    const executor = new Jq({ runtime: "jq", glyph: "j" });
+    const request = { runtime: "jq", body: ".", cwd: null, target: null };
+    assert.equal((await executor.prepare({ ...request, metadata: ['{"stdin": "open"}'] })).input, "open");
+    assert.equal((await executor.prepare({ ...request, metadata: null })).input, undefined);
+});

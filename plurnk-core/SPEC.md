@@ -3157,7 +3157,9 @@ of which Worker launched it ({§execution-output-identity}).
 | --- | --- |
 | Admission | Require SEND control and the original invocation's runtime/tool capabilities. Preserve its classified effect: host input proposes; pure/read input uses the same effect policy as launch. |
 | Acceptance | Recheck both capabilities, workspace, and the exact live subscription. Stale approval cannot reach a replacement invocation. |
-| Queued or starting without a receiver | `409 input-unavailable`, immediately; never wait for an execution slot while blocking another input-dependent execution. |
+| Launched without input | The invocation's preparation declared no receiver ({§executor-live-input}): `409 input-unavailable`, immediately, naming the launch form that opens input. |
+| Queued for a slot | `409 input-unavailable`, immediately and `retryable`; never wait for an execution slot while blocking another input-dependent execution. |
+| Admitted, receiver declared, not yet open | Delivery waits for the receiver to register, within the backpressure bound; the execution settling first returns `410 input-closed`. A receiver registered without the declaration is the executor's defect and fails its run. |
 | Unknown address | `404 stream-not-found`. A terminal execution or retired input returns `410 input-closed`. |
 | Delivery | Serialize accepted inputs per invocation. Preserve authored body and receiver-owned metadata. Receiver success means delivery only, not completion. |
 | Backpressure | `PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS` bounds each accepted delivery, including its queue residence. Expiry returns `504 input-timeout`; cancellation returns `499 input-cancelled`. Once delivery has begun, retire and abort input on either; delivery may be partial and is never replayed. The execution itself is not implicitly killed. |
@@ -6452,7 +6454,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | code | status | contract |
 |---|---:|---|
 | `invalid-input-target` | 400 | SEND input addresses an execution, without a channel or scope. |
-| `input-unavailable` | 409 | This execution's input receiver is no longer enabled. |
+| `input-unavailable` | 409 | This execution was launched without input. Recovery: Launch it with `[{"stdin": "open"}]` when its runtime takes input, then SEND to that execution. — This execution is queued for an execution slot; its input opens when it starts. Recovery: SEND again once the execution has started. — This execution's input receiver is no longer enabled. |
 | `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-near-miss}): The execution at /*id* is `*runtime*:///*id*`. |
 | `input-closed` | 410 | Execution input is closed. |
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this worker. |

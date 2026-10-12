@@ -148,6 +148,11 @@ signal: AbortSignal }` and resolves a universal `SchemeResult`. The body is exac
 authored text; metadata belongs to the receiver. Registration is once per run,
 never executor-instance state. An absent callback means the consumer cannot
 deliver live input. A receiver must honor cancellation at each delivery boundary.
+Preparation declares the receiver: an invocation that will register one returns
+`input: "open"` from `prepare` ({§executor-metadata}), so the consumer can tell input
+that has not opened yet from input that never will. Registering without the
+declaration is the executor's defect, refused at registration; declaring and settling
+without registering closes input when the run settles.
 
 | Responsibility | Owner |
 | --- | --- |
@@ -158,7 +163,8 @@ deliver live input. A receiver must honor cancellation at each delivery boundary
 
 #### §executor-stdin Subprocess input
 
-`SubprocessExecutor` accepts `[{"stdin": "open"}]` at invocation. The initial recipe
+`SubprocessExecutor` accepts `[{"stdin": "open"}]` at invocation, and its preparation
+then declares `input: "open"` ({§executor-live-input}). The initial recipe
 input precedes SEND bodies and stdin remains open; without this option, existing
 batch input and EOF behavior is unchanged. The same input adapter serves `jq`.
 

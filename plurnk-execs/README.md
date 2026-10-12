@@ -108,7 +108,8 @@ delivery. The consumer routes SEND to the existing execution address and owns
 ordering, deadlines, permissions, and proposals. This does not expose Worker
 identity or grant access to stored output.
 
-`SubprocessExecutor` supplies this receiver when launched with `[{"stdin": "open"}]`.
+`SubprocessExecutor` supplies this receiver when launched with `[{"stdin": "open"}]`, and
+its preparation declares it (`input: "open"`) so the consumer knows a receiver is coming.
 SEND writes exact UTF-8 input; `[{"eof": true}]` ends stdin. No option means ordinary
 batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-local-input).
 

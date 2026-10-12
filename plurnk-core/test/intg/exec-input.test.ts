@@ -2,33 +2,47 @@ import { ownWorker, serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { BaseExecutor, type ExecArgs, type Effect } from "@plurnk/plurnk-execs";
+import { BaseExecutor, type ExecArgs, type ExecInput, type ExecPreparation, type Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import type Exec from "../../src/schemes/Exec.ts";
 import Common from "@plurnk/plurnk-execs-common";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { executionAddress } from "./_execs.ts";
 import { HARNESS_WAIT_MS } from "./_rpc.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
+// A fixture executor: `accepts` registers a receiver when its run begins and `declares` says so in its
+// preparation ({§executor-live-input}); they differ only in the defect witnesses. `late` holds the
+// registration until the test releases `opens`, for input that arrives before the receiver.
 class Dialogue extends BaseExecutor {
     readonly received: Array<{ body: string; metadata: readonly string[] | null }> = [];
     readonly finished = Promise.withResolvers<void>();
     readonly started = Promise.withResolvers<void>();
+    readonly opens = Promise.withResolvers<void>();
     readonly classification: Effect;
-    readonly acceptsInput: boolean;
-    constructor(effect: Effect = "pure", acceptsInput = true) {
+    readonly accepts: boolean;
+    readonly declares: boolean;
+    readonly late: boolean;
+    constructor(effect: Effect = "pure", options: { accepts?: boolean; declares?: boolean; late?: boolean } = {}) {
         super({ runtime: "dialogue", glyph: "d" });
         this.classification = effect;
-        this.acceptsInput = acceptsInput;
+        this.accepts = options.accepts ?? true;
+        this.declares = options.declares ?? this.accepts;
+        this.late = options.late ?? false;
     }
     get channels() { return { results: { mimetype: "text/plain" } }; }
     override effect() { return this.classification; }
+    override async prepare(input: ExecInput): Promise<ExecPreparation> {
+        const base = await super.prepare(input);
+        return base.status === 200 && this.declares ? { ...base, input: "open" } : base;
+    }
     async run(args: ExecArgs) {
-        if (this.acceptsInput) args.registerInput?.(async ({ body, metadata }) => {
+        if (this.late) await this.opens.promise;
+        if (this.accepts) args.registerInput?.(async ({ body, metadata }) => {
             this.received.push({ body, metadata });
             args.write("results", body);
             return { status: 200, result: { accepted: true } };
@@ -113,6 +127,8 @@ test("{§exec-input}: queued input returns promptly and never steals the running
         const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 2)})\nnot delivered\n\`\`\`\``);
         assert.equal(result.status, 409);
         assert.match(result.problem?.type ?? "", /input-unavailable$/);
+        assert.equal(result.problem?.detail, "This execution is queued for an execution slot; its input opens when it starts.");
+        assert.equal(result.problem?.retryable, true, "input to a queued execution is refused now and works once it starts");
         assert.equal(executor.received.length, 0);
         assert.equal((await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nfirst only\n\`\`\`\``)).status, 200);
         assert.equal(executor.received.length, 1);
@@ -205,16 +221,10 @@ test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the 
     try {
         const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
-        // {§exec-input}: a SEND that lands while the launch is still starting is refused 409 at once and never
-        // waited on; the receiver opens when the real process has spawned, so the witness sends until it is open.
+        // {§exec-input}: the launch declared input, so a SEND that lands before the real process has spawned
+        // waits for the receiver within the input timeout instead of being refused.
         const address = await executionAddress(f.db, f.turnId, 1);
-        const deadline = Date.now() + HARNESS_WAIT_MS;
-        let sent = await f.dispatch(`\`\`\`\`SEND (${address}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
-        while (sent.status === 409) {
-            assert.ok(Date.now() < deadline, "the input receiver never opened");
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            sent = await f.dispatch(`\`\`\`\`SEND (${address}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
-        }
+        const sent = await f.dispatch(`\`\`\`\`SEND (${address}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
         assert.equal(sent.status, 200);
         assert.equal(sent.bytesAccepted, Buffer.byteLength("exact α\n"));
         assert.equal(sent.inputClosed, true);
@@ -263,8 +273,8 @@ test("{§exec-input}: execution KILL retires its receiver before further SEND ca
     } finally { executor.finished.resolve(); await f.close(); }
 });
 
-test("{§exec-input}: a running executor without an input receiver rejects SEND without hanging", async () => {
-    const executor = new Dialogue("read", false);
+test("{§exec-input}: an execution launched without input rejects SEND at once, naming the launch form", async () => {
+    const executor = new Dialogue("read", { accepts: false });
     const f = await fixture(executor);
     try {
         assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
@@ -272,11 +282,65 @@ test("{§exec-input}: a running executor without an input receiver rejects SEND 
         const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\`\``);
         assert.equal(result.status, 409);
         assert.match(result.problem?.type ?? "", /input-unavailable$/);
+        assert.equal(result.problem?.detail, "This execution was launched without input.");
+        assert.equal(result.problem?.recovery, "Launch it with `[{\"stdin\": \"open\"}]` when its runtime takes input, then SEND to that execution.");
+        assert.equal(result.problem?.retryable, false);
         assert.equal(executor.received.length, 0);
         for (const operand of [`(${await executionAddress(f.db, f.turnId, 1)}#results)`, `(${await executionAddress(f.db, f.turnId, 1)}) <1>`]) {
             const invalid = await f.dispatch(`\`\`\`\`SEND ${operand}\nx\n\`\`\`\``);
             assert.equal(invalid.status, 400);
             assert.match(invalid.problem?.type ?? "", /invalid-input-target$/);
         }
+    } finally { executor.finished.resolve(); await f.close(); }
+});
+
+test("{§exec-input}: input that arrives before a declared receiver opens is delivered when it does", async () => {
+    const executor = new Dialogue("pure", { late: true });
+    const f = await fixture(executor);
+    try {
+        assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
+        const pending = f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nearly\n\`\`\`\``);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.equal(executor.received.length, 0, "nothing is delivered before the receiver exists");
+        executor.opens.resolve();
+        const sent = await pending;
+        assert.equal(sent.status, 200);
+        assert.deepEqual(executor.received.map(({ body }) => body), ["early"]);
+    } finally { executor.opens.resolve(); executor.finished.resolve(); await f.close(); }
+});
+
+test("{§exec-input}: a declared receiver the run never opens closes input when the run settles", async () => {
+    const executor = new Dialogue("pure", { accepts: false, declares: true });
+    const f = await fixture(executor);
+    try {
+        assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
+        await executor.started.promise;
+        const pending = f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nwaiting\n\`\`\`\``);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        executor.finished.resolve();
+        const result = await pending;
+        assert.equal(result.status, 410);
+        assert.match(result.problem?.type ?? "", /input-closed$/);
+    } finally { executor.finished.resolve(); await f.close(); }
+});
+
+test("{§exec-input}: a receiver registered without the declaration is the executor's defect and fails its run", async () => {
+    const executor = new Dialogue("pure", { accepts: true, declares: false });
+    const f = await fixture(executor);
+    try {
+        assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
+        const address = await executionAddress(f.db, f.turnId, 1);
+        const settled = { workspaceId: f.workspaceId, scheme: "dialogue", authority: "", pathname: new URL(address).pathname };
+        const deadline = Date.now() + HARNESS_WAIT_MS;
+        let terminal = await ChannelWrite.execTerminalStatus(f.db, settled);
+        while (terminal === null) {
+            assert.ok(Date.now() < deadline, "the run never settled");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            terminal = await ChannelWrite.execTerminalStatus(f.db, settled);
+        }
+        assert.equal(terminal, 500, "the run fails at registration");
+        const result = await f.dispatch(`\`\`\`\`SEND (${address})\nnot delivered\n\`\`\`\``);
+        assert.equal(result.status, 410, "a settled execution's input is closed");
+        assert.equal(executor.received.length, 0);
     } finally { executor.finished.resolve(); await f.close(); }
 });

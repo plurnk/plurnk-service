@@ -95,9 +95,12 @@ export interface ExecInputMessage {
 
 export type ExecInputReceiver = (message: ExecInputMessage) => Promise<SchemeResult>;
 
-// Preparation owns option validation; the consumer retains only the effective cwd.
+// Preparation owns option validation; the consumer retains the effective cwd and the input
+// declaration ({§executor-live-input}): `input: "open"` says this invocation will register a
+// receiver, so the consumer can tell input that has not opened yet from input that never will.
 export interface ExecPreparation extends SchemeResult {
     readonly cwd?: string | null;
+    readonly input?: "open";
 }
 
 // Terminal result of a `run()`. The universal operation-result contract applies

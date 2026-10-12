@@ -23,6 +23,13 @@ test("{§executor-metadata} script arguments preserve exact strings without inte
     assert.equal(request.body, "unchanged stdin");
 });
 
+test("{§executor-live-input} preparation declares the receiver exactly when stdin is open", async () => {
+    assert.equal((await executor.prepare(input(['{"stdin": "open"}']))).input, "open");
+    assert.equal((await executor.prepare(input(['{"stdin": "open", "cwd": "."}']))).input, "open", "the declaration rides with a resolved cwd");
+    assert.equal((await executor.prepare(input(['{"args": ["--help"]}']))).input, undefined);
+    assert.equal((await executor.prepare(input(null))).input, undefined);
+});
+
 // Blocks are the inner text of one `[…]` slot: JSON option objects ({§scheme-metadata-modifier}).
 for (const [blocks, code] of [
     [['{"args": "--help"}'], "invalid-args"],

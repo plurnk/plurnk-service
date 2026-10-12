@@ -59,6 +59,7 @@ type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "node", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
+    input?: "open";         // the preparation declared that the invocation registers an input receiver ({§executor-live-input})
     target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-sinks})
     body: string;           // the fence body
     pathname: string;       // workspace output claim ({§execution-output-identity})
@@ -403,6 +404,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // cwd when the workspace has none — so every receipt can name it ({§exec-target-routing}).
         const defaultCwd = projectRoot ?? process.cwd();
         let cwd: string | null = defaultCwd;
+        let inputDeclared = false;
         let target: string | null = null;
         let resourceSource: string | null = null;
         const targetDecl = invocation.target;
@@ -499,6 +501,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
             }
             cwd = prepared.cwd;
+            inputDeclared = prepared.input === "open";
         } else if ((statement.metadata?.length ?? 0) > 0) {
             return Results.failure("scheme:exec", "metadata-unsupported", 400,
                 `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
@@ -577,6 +580,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // is text coordinates, which an execution has none of.
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
+            ...(inputDeclared ? { input: "open" as const } : {}),
             ...(resourceSource !== null ? { resourceSource } : {}),
             ...lifetime,
         };
@@ -802,7 +806,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs);
+        const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs, attrs.input === "open");
         this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
         const lifecycle = new LiveSubscription({
             db: core.db, registry: this.liveSubscriptions(),
@@ -821,6 +825,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const admission = execution.scheduler.admit(core.workspaceId, controller.signal);
         const tail = admission.ready.then(async (release) => {
+            input.started();
             try {
                 return await this.#runExecutor({
                     executor: resolved.executor,
