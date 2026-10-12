@@ -25,6 +25,7 @@ import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
 import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
+import FileAddress from "../core/FileAddress.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope, type PathFolderSummary } from "./_path-scope.ts";
@@ -78,6 +79,7 @@ export interface FindProjectionResource {
 interface FindAddress {
     readonly authority?: string;
     readonly pathname?: string;
+    readonly scope?: PathScope;
     // File keys are relative to this directory; other schemes have no filesystem base.
     readonly pathBase?: string;
     // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
@@ -231,8 +233,8 @@ export const projectFindResult = (
 };
 
 export default class EntryFind {
-    static #targetPath(scheme: string, authority: string, pathname: string, fragment: string | null): string {
-        const path = EntryManifest.toPath(scheme, authority, pathname);
+    static #targetPath(scheme: string, authority: string, pathname: string, fragment: string | null, projectRoot: string | null): string {
+        const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
         return fragment === null ? path : `${path}#${PathSyntax.escapeTarget(fragment)}`;
     }
 
@@ -323,14 +325,17 @@ export default class EntryFind {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
+        const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
         const authority = address.authority ?? authoredCoordinate?.authority ?? "";
         const multipleAuthorities = PathSyntax.hasGlob(authority);
         const authorityScope = pathScope(authority, false);
         const scopePathname = address.pathname ?? authoredCoordinate?.pathname ?? null;
-        const scope = scopePathname === null
+        const scope = address.scope ?? (address.pathname !== undefined
+            ? { kind: "exact" as const, pathname: address.pathname, candidatePrefix: address.pathname }
+            : scopePathname === null
             ? null
-            : pathScope(scopePathname, manifest.folderScopes === true);
+            : pathScope(scopePathname, manifest.folderScopes === true));
         // {§fs-errno} — an exact-path miss is ENOENT; an empty glob or folder
         // survey is a successful empty result.
         if (!multipleAuthorities && scope?.kind === "exact" && scope.pathname.length > 0) {
@@ -339,7 +344,7 @@ export default class EntryFind {
                 scheme, authority, pathname: scope.pathname,
             });
             if (exact === undefined) {
-                const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment);
+                const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
                 return {
                     status: 404,
                     matches: [],
@@ -405,7 +410,7 @@ export default class EntryFind {
             }
         }
         if (!multipleAuthorities && scope?.kind === "exact" && candidates.length === 0) {
-            const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment);
+            const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
             return {
                 status: 404,
                 matches: [],
@@ -645,12 +650,13 @@ export default class EntryFind {
             ) as FindResult;
         }
         const scheme = EntryCrud.identityScheme(manifest);
+        const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
         const authority = address.authority ?? authoredCoordinate?.authority ?? "";
         const multipleAuthorities = PathSyntax.hasGlob(authority);
         const addressOf = (pathname: string): string => multipleAuthorities
             ? pathname
-            : EntryManifest.toPath(scheme, authority, pathname);
+            : EntryManifest.toPath(scheme, authority, pathname, projectRoot);
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~full-text).
@@ -682,7 +688,7 @@ export default class EntryFind {
                     weight += row.reduce((sum, channel) => sum + channel.weight, 0);
                 }
                 if (items > 0) {
-                    scopes.push({ path: addressOf(folder.selector), items, weight });
+                    scopes.push({ path: `${addressOf(folder.selector.slice(0, -2))}**`, items, weight });
                 }
             }
         }

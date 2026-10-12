@@ -258,7 +258,7 @@ export default class MutationEffects {
             ? renderTarget({
                 scheme: null,
                 pathname: selection.identityPathname.replace(/^\//, ""),
-            })
+            }, selection.projectRoot)
             : renderAddress({
                 scheme: selection.scheme,
                 // {§worker-authority-carving} — storage keys the owner, so the

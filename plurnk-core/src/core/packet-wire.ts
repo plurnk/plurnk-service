@@ -11,10 +11,10 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ParsedPath, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
-import { renderTarget } from "./plurnk-uri.ts";
+import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
@@ -747,12 +747,13 @@ export default class PacketWire {
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
         if (typeof tx?.aside === "string") meta.aside = tx.aside;
-        const target = PacketWire.#operandPath(e.target ?? tx?.target);
+        const authored = tx?.target as ParsedPath | null | undefined;
+        const target = PacketWire.#operandPath(e.target ?? authored, options.projectRoot ?? null, authored ?? null);
         const pair = op === "COPY" || op === "MOVE";
         const selections = pair
             ? [tx?.source, tx?.destination]
             : [{ ...tx, target: e.target ?? tx?.target }];
-        const paths = selections.map((selection) => PacketWire.#operandPath(selection?.target));
+        const paths = selections.map((selection) => PacketWire.#operandPath(selection?.target, options.projectRoot ?? null, authored ?? null));
         if (pair && typeof e.status === "number" && e.status < 400 && paths.some((path) => path === null)) {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
@@ -1219,14 +1220,15 @@ export default class PacketWire {
         return spelled.length === 0 ? null : spelled.split(sep).join("/");
     }
 
-    static #operandPath(target: ActionTarget | null | undefined): string | null {
+    static #operandPath(target: ActionTarget | null | undefined, projectRoot: string | null, authored: ParsedPath | null): string | null {
         if (target === null || target === undefined) return null;
-        return target.kind === "local" || target.scheme == null && typeof target.raw === "string"
-            ? renderTarget({ scheme: null, pathname: typeof target.raw === "string" ? target.raw : target.pathname, fragment: target.fragment })
-            : PacketWire.#renderActionTarget(target);
+        if (typeof target.raw === "string" && (target.kind === "local" || target.scheme == null)) {
+            return renderAuthoredTarget({ kind: "local", raw: target.raw, fragment: target.fragment ?? null });
+        }
+        return PacketWire.#renderActionTarget(target, projectRoot, authored);
     }
 
-    static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
+    static #renderActionTarget(target: ActionTarget | null | undefined, projectRoot: string | null, authored: ParsedPath | null): string | null {
         if (target === null || target === undefined) return null;
         return renderTarget({
             scheme: target.scheme,
@@ -1235,7 +1237,7 @@ export default class PacketWire {
             pathname: target.pathname,
             query: target.query,
             fragment: target.fragment,
-        });
+        }, projectRoot, authored);
     }
 
     static #requestScope(marker: unknown): string | null {

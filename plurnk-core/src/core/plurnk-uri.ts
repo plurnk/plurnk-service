@@ -4,7 +4,7 @@
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { EntryCoordinates, NetworkAddress, type EntryCoordinate } from "@plurnk/plurnk-schemes";
-import Namespace from "./namespace.ts";
+import FileAddress from "./FileAddress.ts";
 
 export interface RenderTargetParts {
     readonly scheme: string | null | undefined;
@@ -81,8 +81,8 @@ export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `member
 
 // {§fs-canonical-name} — a file member renders its literal key as a reusable path;
 // every other scheme renders its URI.
-export function entryAddress(scheme: string, authority: string, pathname: string): string {
-    if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(Namespace.literalSpelling(pathname)));
+export function entryAddress(scheme: string, authority: string, pathname: string, projectRoot: string | null = null): string {
+    if (scheme === "file") return FileAddress.render(pathname, projectRoot);
     return renderAddress({ scheme, authority, pathname });
 }
 
@@ -101,14 +101,17 @@ export function missExtensions(scheme: string | null, target: string): { readonl
 }
 
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
-export function renderTarget(target: RenderTargetParts): string | null {
+export function renderTarget(target: RenderTargetParts, projectRoot: string | null = null, authored: ParsedPath | null = null): string | null {
     if (target.pathname === null || target.pathname === undefined) return null;
 
     const hostname = target.hostname ?? null;
     const scheme = target.scheme ?? null;
     let address: string;
     if (scheme === null) {
-        address = entryAddress("file", "", target.pathname.replace(/^\//, ""));
+        const key = target.pathname.replace(/^\//, "");
+        address = authored !== null && FileAddress.isPattern(authored)
+            ? FileAddress.renderSelector(key, authored)
+            : entryAddress("file", "", key, projectRoot);
     } else if (hostname !== null && hostname.length > 0) {
         const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
         address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`);
@@ -126,4 +129,11 @@ export function renderTarget(target: RenderTargetParts): string | null {
         address += `#${PathSyntax.escapeTarget(target.fragment)}`;
     }
     return address.length === 0 ? null : address;
+}
+
+// Authored local syntax is not a bound file identity: it can contain selectors or home expansion.
+export function renderAuthoredTarget(target: ParsedPath): string {
+    if (target.kind === "url") return renderTarget(target)!;
+    const path = PathSyntax.escapeTarget(PathSyntax.encodeParens(target.raw));
+    return target.fragment ? `${path}#${PathSyntax.escapeTarget(target.fragment)}` : path;
 }

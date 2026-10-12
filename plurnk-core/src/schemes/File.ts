@@ -1,17 +1,17 @@
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
+import FileAddress from "../core/FileAddress.ts";
 import { entryAddress, fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import { relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
-import type { Db } from "../core/Db.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
 import EntryManifest from "./_entry-manifest.ts";
 import GitMembership, { type FileCreationAdmission } from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import EntryFind from "./_entry-find.ts";
+import EntryFind, { emptyFindFields } from "./_entry-find.ts";
+import { pathScope } from "./_path-scope.ts";
 import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { ReadEntryResult, EntryData, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
@@ -62,14 +62,6 @@ type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceip
 type ApplyArgs = { attrs: { path?: string; canonical?: string; original?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = ProposalApplyResult;
 
-// Workspace root for file ops is sourced from `workspaces.project_root`,
-// supplied at {§methods-workspace-create}. Under {§fs-namespace}, core never
-// guesses a root: headless workspaces fail file operations at 400.
-const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | null> => {
-    const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-    return row?.project_root ?? null;
-};
-
 // Detect mimetype from a file's path through the configured registry. The
 // `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
 // service is normalized to text/markdown — plurnk-service never auto-
@@ -86,7 +78,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
-        storedScheme: "file",  // {§entry-identity-no-null} — durable identity; file addresses still render as bare paths
+        storedScheme: "file",  // {§entry-identity-no-null} — durable identity, independent of displayed spelling
         // The body is typed per resource; readable is its derived projection ({§readable-channel}).
         channels: { readable: "text/markdown" },
         defaultChannel: "body",
@@ -104,37 +96,23 @@ export default class File extends CoreSchemeAdapterBase {
         ].join("\n\n"),
     };
 
-    // {§fs-namei} Resolve FIND's address before selecting member candidates.
-    static async #canonTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): Promise<S | null> {
-        const t = statement.target;
-        if (t === null) return statement;
-        if (t.kind === "url") {
-            const key = await File.#canonSpelling(t.pathname, root);
-            if (key === null) return null;
-            return key === t.pathname ? statement : { ...statement, target: { ...t, pathname: key } };
-        }
-        if (t.kind === "local") {
-            const key = await File.#canonSpelling(t.raw, root);
-            if (key === null) return null;
-            return key === t.raw ? statement : { ...statement, target: { ...t, raw: key } };
-        }
-        return statement; // regex — not a path
-    }
-
     // {§file-find-directory}: a directory's canonical collection address does not depend on
     // whether its authored spelling included the slash. Membership still owns its contents.
-    static async #canonSpelling(raw: string, root: string | null): Promise<string | null> {
+    static async #canonSpelling(raw: string, root: string | null, pattern = false): Promise<string | null> {
         const key = Namespace.canonicalizeSpelling(raw, root);
         if (root === null || key === null || key.length === 0
-            || key.endsWith("/") || key.startsWith("../") || PathSyntax.hasGlob(key)) return key;
-        return (await File.#occupant(root, PathSyntax.decodeParens(key)))?.isDirectory() === true ? `${key}/` : key;
+            || key.endsWith("/") || key.startsWith("../") || pattern) return key;
+        return (await File.#occupant(root, key))?.isDirectory() === true ? `${key}/` : key;
     }
 
     async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext, access: "read" | "write" = "read"): Promise<EntryAddress | SchemeResultBase | null> {
         const core = this.coreContext(ctx);
+        const spelling = FileAddress.pathname(target);
+        if (typeof spelling !== "string") return spelling;
         const pathname = await File.#canonSpelling(
-            target.kind === "url" ? target.pathname : target.raw,
-            await loadWorkspaceRoot(core.db, core.workspaceId),
+            spelling,
+            await FileAddress.projectRoot(core),
+            FileAddress.isPattern(target),
         );
         if (pathname === null) return null;
         if (access === "write") {
@@ -159,9 +137,27 @@ export default class File extends CoreSchemeAdapterBase {
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         // {§fs-namei} Exact paths, folders and globs share the filesystem base.
-        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
-        const canon = await File.#canonTarget(statement, root);
-        return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
+        const root = await FileAddress.projectRoot(core);
+        const spelling = statement.target === null ? "" : FileAddress.selector(statement.target, root);
+        if (typeof spelling !== "string") return { ...emptyFindFields(), ...spelling };
+        const pattern = FileAddress.isPattern(statement.target);
+        const key = await File.#canonSpelling(spelling, root, pattern);
+        let scope = key === null ? undefined : !pattern && key !== "" && !key.endsWith("/")
+            ? { kind: "exact" as const, pathname: key, candidatePrefix: key }
+            : pathScope(key, true);
+        if (scope?.kind === "glob" && statement.target?.kind === "url") {
+            const authored = pathScope(statement.target.pathname, true);
+            // Structural catalogs use a literal prefix, even when its URL needs quoting.
+            if (authored.kind === "glob" && (authored.shallowPrefix !== null || authored.recursivePrefix !== null)) {
+                const literal = Namespace.canonicalizeSpelling(FileAddress.pathname(statement.target) as string, root)!;
+                const prefix = literal.slice(0, authored.shallowPrefix !== null ? -1 : -2);
+                scope = { ...scope, candidatePrefix: prefix,
+                    shallowPrefix: authored.shallowPrefix === null ? null : prefix,
+                    recursivePrefix: authored.recursivePrefix === null ? null : prefix };
+            }
+        }
+        return EntryFind.findWorkspaceEntries(statement, core, File.manifest, {
+            ...(scope === undefined ? {} : { scope }),
             ...(root === null ? {} : { pathBase: root }),
             bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
         });
@@ -171,7 +167,7 @@ export default class File extends CoreSchemeAdapterBase {
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
         // {§scheme-address} {§fs-namei} All read paths resolve the same member key.
-        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        const root = await FileAddress.projectRoot(core);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
         const canonical = key ?? pathname;
         const result = "entries" in ctx
@@ -190,7 +186,7 @@ export default class File extends CoreSchemeAdapterBase {
     byteSource({ pathname }: { readonly authority: string; readonly pathname: string }, ctx: CoreSchemeCallContext): ByteSource {
         const core = this.coreContext(ctx);
         const locate = async (): Promise<string | null> => {
-            const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+            const root = await FileAddress.projectRoot(core);
             if (root === null) return null;
             const key = Namespace.canonicalize(pathname, root);
             return key === null || key.startsWith("../") ? null : join(root, key);
@@ -203,13 +199,13 @@ export default class File extends CoreSchemeAdapterBase {
     // and an occupied path says so. Beyond it the disk stays dark: nothing is looked at, and the
     // sentence is true whether or not a file is there — it neither claims absence nor hints at presence.
     async missRefusal(pathname: string, core: PlurnkSchemeContext, fields: Record<string, null>): Promise<SchemeResultBase | null> {
-        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        const root = await FileAddress.projectRoot(core);
         if (root === null) return null;
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) return null;
         const occupant = key.startsWith("../") ? null : await File.#occupant(root, key);
         if (occupant?.isDirectory() === true) {
-            const { code, detail, extensions } = File.#directoryFacts(key, "READ");
+            const { code, detail, extensions } = File.#directoryFacts(key, "READ", root);
             return Results.failure("scheme:file", code, 404, detail, fields, extensions) as SchemeResultBase;
         }
         const occupied = occupant !== null;
@@ -225,7 +221,7 @@ export default class File extends CoreSchemeAdapterBase {
                 : missDetail("file", key),
             fields,
             {
-                target: entryAddress("file", "", key),
+                target: entryAddress("file", "", key, root),
                 recovery: occupied
                     ? ignored
                         ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
@@ -247,8 +243,8 @@ export default class File extends CoreSchemeAdapterBase {
 
     // {§file-directory-target} — a directory inside the root is named as one, never as a missing or non-member
     // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
-    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL"): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
-        const target = entryAddress("file", "", key);
+    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL", root: string): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
+        const target = entryAddress("file", "", key, root);
         const listing = `\`FIND (${target}/)\` lists its files.`;
         const { detail, recovery } = {
             READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: listing },
@@ -266,7 +262,7 @@ export default class File extends CoreSchemeAdapterBase {
     // and a copy into file:/// are the same disk write under the same review.
     // {§membership-edit-membership-gate} — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext, bytesMode = false): Promise<WriteTarget> {
-        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
+        const root = await FileAddress.projectRoot(ctx);
         if (root === null) {
             return {
                 ok: false,
@@ -355,7 +351,7 @@ export default class File extends CoreSchemeAdapterBase {
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
-                return { ok: false, status: 403, ...File.#directoryFacts(rel, "EDIT") };
+                return { ok: false, status: 403, ...File.#directoryFacts(rel, "EDIT", root) };
             }
             if (member === undefined) {
                 return {
@@ -445,7 +441,8 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             );
         }
-        const pathname = PathSyntax.decodeParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // {§path-parentheses}
+        const pathname = FileAddress.pathname(statement.target);
+        if (typeof pathname !== "string") return pathname;
         const target = await this.#resolveWriteTarget(Namespace.expandHome(pathname), core);
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
@@ -463,7 +460,8 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            const candidatePathname = PathSyntax.decodeParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
+            const candidatePathname = FileAddress.pathname(candidate.target);
+            if (typeof candidatePathname !== "string") return candidatePathname;
             const candidateTarget = await this.#resolveWriteTarget(Namespace.expandHome(candidatePathname), core);
             if (!candidateTarget.ok || candidateTarget.rel !== rel) {
                 return failure(
@@ -533,7 +531,7 @@ export default class File extends CoreSchemeAdapterBase {
         const receiptEdits = fileExists
             ? (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })))
             : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
-        const batchReceipt = editReceipt(original, patched, receiptEdits, undefined, EntryManifest.toPath("file", "", rel));
+        const batchReceipt = editReceipt(original, patched, receiptEdits, undefined, EntryManifest.toPath("file", "", rel, await FileAddress.projectRoot(core)));
         return {
             status: 202,
             body: patch,
@@ -649,10 +647,10 @@ export default class File extends CoreSchemeAdapterBase {
                     attrs.patched,
                     [{ marker: { marks: [1, -1] }, body: attrs.patched }],
                     undefined,
-                    EntryManifest.toPath("file", "", relPath),
+                    EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)),
                 );
             }
-            receipt = reviewerReplacementReceipt(original, patched, receipt, undefined, EntryManifest.toPath("file", "", relPath));
+            receipt = reviewerReplacementReceipt(original, patched, receipt, undefined, EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)));
         }
         if (receipt !== undefined) {
             const parseIssues = await new DbProjectionCaps(core).parseIssueTransition(
@@ -668,7 +666,7 @@ export default class File extends CoreSchemeAdapterBase {
                 acceptedTarget.detail, {}, acceptedTarget.extensions) as ApplyResult;
             if (acceptedTarget.canonical !== canonical || acceptedTarget.fileExists !== existed) return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
             const creationAdmission = acceptedTarget.creationAdmission;
-            const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+            const root = await FileAddress.projectRoot(core);
             if (root === null) throw new InvalidOperationResultError("An accepted file write has no workspace project root.");
             const publication = await FilePublication.write(join(root, relPath), canonical, baseline, patchedBytes ?? Buffer.from(patched));
             if (publication.status === "conflict") return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
@@ -803,7 +801,7 @@ export default class File extends CoreSchemeAdapterBase {
     async #applyDelete(pathname: string, baseSig: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
         const baseline = FileSnapshot.decode(baseSig);
         if (baseline === null || baseline.hash === null) return EditCollision.result(pathname) as ApplyResult;
-        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        const root = await FileAddress.projectRoot(core);
         if (root === null) throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
         const requested = join(root, pathname);
         return FileSnapshot.serialize(baseline.canonical, async () => {
@@ -831,7 +829,7 @@ export default class File extends CoreSchemeAdapterBase {
     // disk is never probed or touched. applyResolution unlinks + deregisters on accept.
     async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
         const core = this.coreContext(ctx);
-        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        const root = await FileAddress.projectRoot(core);
         if (root === null) {
             return Results.failure(
                 "scheme:file",
@@ -843,13 +841,13 @@ export default class File extends CoreSchemeAdapterBase {
             ) as DeleteEntryResult;
         }
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname))) as DeleteEntryResult;
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname, root))) as DeleteEntryResult;
         const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
-            const { code, detail, extensions } = File.#directoryFacts(rel, "KILL");
+            const { code, detail, extensions } = File.#directoryFacts(rel, "KILL", root);
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
         }
-        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", entryAddress("file", "", rel))) as DeleteEntryResult;
+        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", entryAddress("file", "", rel, root))) as DeleteEntryResult;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel) as DeleteEntryResult;
         const baseline = FileSnapshot.decode(member.synced_sig);

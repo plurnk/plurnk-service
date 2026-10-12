@@ -22,6 +22,7 @@ export type ResourceAddress = {
     readonly authority: string;
     readonly pathname: string;
     readonly identityPathname: string;
+    readonly projectRoot?: string | null;
     readonly channel: string;
     readonly manifest: SchemeManifest;
 };

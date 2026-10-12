@@ -13,7 +13,8 @@ test("{§fs-home} file address renderers protect literal home-like names", () =>
         assert.equal(missExtensions("file", entryAddress("file", "", key)).target, expected);
     }
     assert.equal(entryAddress("worker", "alice", "/~/x"), "worker://alice/~/x", "non-file paths are untouched");
-    const escaped = entryAddress("file", "", "~/a\\b");
+    const escaped = entryAddress("file", "", "~/a\\b", "/project");
+    assert.equal(escaped, "file:///project/%7E/a%5Cb");
     assert.equal(missExtensions("file", escaped).target, escaped, "a rendered address is not escaped twice");
 });
 

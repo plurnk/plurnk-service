@@ -90,6 +90,8 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call
        inherited_history, ambient_event_id,
        op, signal,
        scheme, hostname, port, pathname, query, fragment,
+       CASE WHEN scheme IS NULL AND mimetype_tx = 'application/json'
+            THEN coalesce(json_extract(tx, '$.source.target'), json_extract(tx, '$.target')) END AS target_tx,
        rx, status_rx, mimetype_rx,
        state, outcome, attrs, initial_folded,
        projection.active AS projection_active,

@@ -12,10 +12,11 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { AppliedProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryAddress, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryAddress, foldAuthorityIntoPath, renderAddress, renderAuthoredTarget, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import WorkerName from "./WorkerName.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
+import FileAddress from "./FileAddress.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import type { EngineNotifications } from "./notifications.ts";
@@ -181,7 +182,6 @@ export default class Dispatcher {
         this.#resourceSelector = new ResourceSelector({
             schemes,
             admitRead: (statement, ctx) => this.#checkCapabilities(statement, ctx),
-            canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
             prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
                 ...args,
                 handler: args.handler as SchemeWithEntryAddress & SchemeHandler,
@@ -382,10 +382,6 @@ export default class Dispatcher {
         if (key !== null) target.pathname = key;
     }
 
-    async #canonicalFilePath(pathname: string, workspaceId: number): Promise<string | null> {
-        return Namespace.canonicalizeSpelling(pathname, await this.#workspaceRoot(workspaceId));
-    }
-
     async #editTargetIdentity(
         statement: EditStatement,
         workspaceId: number,
@@ -393,7 +389,7 @@ export default class Dispatcher {
     ): Promise<string | null> {
         const target = this.#extractTarget(statement.target, workspaceId);
         await this.#canonColumns(target, workspaceId);
-        return renderTarget(target);
+        return renderTarget(target, await this.#workspaceRoot(workspaceId));
     }
 
     // {§kill-scope-entry} — a scoped KILL on an entry-bearing scheme is one EDIT with an empty
@@ -444,19 +440,24 @@ export default class Dispatcher {
         const targets = statement.op === "COPY" || statement.op === "MOVE"
             ? [statement.source.target, statement.destination.target]
             : [statement.target];
-        const normalized = targets.flatMap((target) => target === null || schemeNameOf(target) !== "file" ? []
-            : [PathSyntax.decodeParens(target.kind === "url" ? target.pathname : target.raw)])
-            .filter((pathname) => pathname.startsWith("/") || Namespace.isHomeRelative(pathname));
+        const normalized = targets.flatMap((target) => {
+            if (target === null || schemeNameOf(target) !== "file") return [];
+            const pathname = FileAddress.pathname(target);
+            return typeof pathname === "string" && (pathname.startsWith("/") || Namespace.isHomeRelative(pathname))
+                ? [{ target, pathname }] : [];
+        });
         if (normalized.length === 0) return;
         const root = await this.#workspaceRoot(workspaceId);
         if (root === null || root === "/") return;
-        for (const pathname of normalized) {
+        for (const { target, pathname } of normalized) {
             const key = Namespace.canonicalizeSpelling(pathname, root);
             if (key === null) continue;
+            const address = renderTarget({ scheme: null, pathname: key }, root, target);
+            if (address?.startsWith("file://")) continue;
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "scheme:file", kind: "path_normalized", level: "warn",
                 directive: "YOU SHOULD address the resolved path.",
-                message: `Path resolved to '${entryAddress("file", "", key) || "."}'.`,
+                message: `Path resolved to '${address || "."}'.`,
             });
         }
     }
@@ -878,10 +879,9 @@ export default class Dispatcher {
         if (resolved === null) return null;
         if (resolved.address === null) return null;
 
-        const rendered = target.kind === "url"
-            ? renderTarget({ ...target, fragment: null })
-            : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
-        if (rendered === null) throw new TypeError("Resolved entry target did not render.");
+        const rendered = resolved.address.scheme === "file"
+            ? entryAddress("file", "", resolved.address.pathname, await this.#workspaceRoot(workspaceId))
+            : renderAuthoredTarget({ ...target, fragment: null });
         return {
             scheme: resolved.address.scheme,
             authority: resolved.address.authority,
@@ -1592,7 +1592,13 @@ export default class Dispatcher {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null };
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: path.fragment ?? null }; // {§path-parentheses} {§local-path-fragment}
-        const scheme = path.scheme === "file" ? null : path.scheme;
+        if (path.scheme === "file") {
+            const pathname = FileAddress.pathname(path);
+            // An invalid URL has no resolved identity; retain the refused input alongside its failure.
+            if (typeof pathname !== "string") return { ...path };
+            return { scheme: null, username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: path.fragment };
+        }
+        const scheme = path.scheme;
         // The registered scheme owns authority disposition. Namespace authority
         // is path syntax; resource and owner authorities remain explicit in the
         // durable operation evidence.

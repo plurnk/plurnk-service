@@ -15,6 +15,7 @@ import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import ChannelWrite from "./ChannelWrite.ts";
+import FileAddress from "./FileAddress.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
 export default class KillHandler {
@@ -100,7 +101,8 @@ export default class KillHandler {
                 });
                 if (resolved.result !== null) return resolved.result;
                 if (resolved.address === null) {
-                    const target = entryAddress(schemeName, coordinate.authority, coordinate.pathname);
+                    const target = entryAddress(schemeName, coordinate.authority, coordinate.pathname,
+                        schemeName === "file" ? await FileAddress.projectRoot(ctx) : null);
                     return this.#failure("entry-not-found", 404, missDetail(schemeName, target), {}, missExtensions(schemeName, target));
                 }
                 handlerCtx = new SchemeCtxImpl(ctx, resolved.address.scheme, manifest, this.#liveSubscriptions, {

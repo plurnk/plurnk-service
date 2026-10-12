@@ -12,6 +12,13 @@ it; textual KILL removes it. Surrounding text displayed by READ is not part of
 the match. Multiple fragments are concatenated in source order without added
 separators.
 
+File addresses returned by FIND and receipts can be reused directly. Ordinary
+names are project-relative; names that collide with path syntax use native
+`file:///` URLs. For example, `/work/hash#name.txt` is addressed as
+`file:///work/hash%23name.txt`, and a literal `%28` as `%2528` in a file URL.
+This quoting changes neither the file nor its workspace membership. A fragment
+such as `#bytes` still selects a channel; a literal filename `#` must be encoded.
+
 ## What a pattern selects
 
 | Pattern | Selection |

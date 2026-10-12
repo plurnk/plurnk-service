@@ -2,7 +2,7 @@
 import type { FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
-import { entryCoordinateOf, missDetail, missExtensions, renderTarget } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, missExtensions, renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
 import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -76,10 +76,6 @@ export default class DataStatementRunner {
         return {};
     }
 
-    static #renderedTarget(target: ParsedPath): string | null {
-        return renderTarget(target.kind === "url" ? target : { scheme: null, pathname: target.raw });
-    }
-
     // {§membership-read-refusal} — a data scheme that can tell a plain miss from a refused one
     // (file: exists on disk, not a member) speaks first.
     async #missRefusal(handler: unknown, address: BoundEntryAddress | null, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
@@ -91,14 +87,14 @@ export default class DataStatementRunner {
     }
 
     #entryNotFound(schemeName: string, target: ParsedPath, op: string): DispatchResult {
-        const rendered = DataStatementRunner.#renderedTarget(target);
+        const rendered = renderAuthoredTarget(target);
         return Results.failure(
             `scheme:${schemeName}`,
             "entry-not-found",
             404,
-            missDetail(schemeName, rendered ?? "the requested address"),
+            missDetail(schemeName, rendered),
             DataStatementRunner.#emptyFields(op),
-            rendered === null ? { target: rendered } : missExtensions(schemeName, rendered),
+            missExtensions(schemeName, rendered),
         );
     }
 
@@ -249,12 +245,7 @@ export default class DataStatementRunner {
                 `Core scheme '${schemeName}' resolved a targetless READ representation.`,
             );
         }
-        const target = renderTarget(selectionNeutralTarget.kind === "url"
-            ? selectionNeutralTarget
-            : { scheme: null, pathname: selectionNeutralTarget.raw });
-        if (target === null) {
-            throw new TypeError(`Core scheme '${schemeName}' resolved an unrenderable READ target.`);
-        }
+        const target = renderAuthoredTarget(selectionNeutralTarget);
         return Results.assertReadResult(await ReadProjector.project({
             statement,
             manifest,

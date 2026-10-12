@@ -37,7 +37,14 @@ const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\
 const rebaseScope = (scope: PathScope, base: string): { scope: PathScope; base: string } => {
     const pathname = scope.kind === "folder" ? scope.prefix : scope.kind === "glob" ? scope.pattern : scope.pathname;
     const parents = /^(?:\.\.\/)+/u.exec(pathname)?.[0] ?? "";
-    return { scope: pathScope(pathname.slice(parents.length), true), base: posix.resolve(base, parents) };
+    const strip = (value: string | null): string | null => value === null ? null : value.slice(parents.length);
+    const rebased: PathScope = scope.kind === "glob"
+        ? { ...scope, pattern: scope.pattern.slice(parents.length), candidatePrefix: strip(scope.candidatePrefix),
+            shallowPrefix: strip(scope.shallowPrefix), recursivePrefix: strip(scope.recursivePrefix) }
+        : scope.kind === "folder"
+            ? { ...scope, prefix: scope.prefix.slice(parents.length), candidatePrefix: scope.candidatePrefix.slice(parents.length) }
+            : { ...scope, pathname: scope.pathname.slice(parents.length), candidatePrefix: scope.candidatePrefix.slice(parents.length) };
+    return { scope: rebased, base: posix.resolve(base, parents) };
 };
 
 export const pathScopeMatches = (scope: PathScope, pathname: string, base?: string): boolean => {

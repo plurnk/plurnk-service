@@ -14,6 +14,7 @@ import FabricatedLog from "../core/FabricatedLog.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
+import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "../core/provider-accounting.ts";
 
 const describeNonError = (value: unknown): string => {
@@ -68,7 +69,7 @@ export default class EvidenceReader implements DigestEvidence {
                 .map(({ log_entry_id, ...decision }) => [log_entry_id, decision]),
         );
         const rows = {
-            workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow>).all(),
+            workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow & { project_root: string | null }>).all(),
             workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
             loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
             turns: (db.digest_turns as SyncPrep<Omit<TurnRow, "packetEchoes">>).all(),
@@ -76,7 +77,7 @@ export default class EvidenceReader implements DigestEvidence {
             modelCalls: (db.digest_model_calls as SyncPrep<ModelCallRow>).all(),
             turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
             providerRequests: (db.digest_provider_requests as SyncPrep<Omit<ProviderRequestRow, "accounting">>).all(),
-            logEntries: (db.digest_log_entries as SyncPrep<Omit<LogRow, "target">>).all(),
+            logEntries: (db.digest_log_entries as SyncPrep<Omit<LogRow, "target"> & { target_tx: string | null }>).all(),
             editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
             emissionRows: (db.digest_emissions as SyncPrep<EmissionRow>).all(),
             reasoningRows: (db.digest_reasonings as SyncPrep<ReasoningRow>).all(),
@@ -93,14 +94,17 @@ export default class EvidenceReader implements DigestEvidence {
         };
         if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
         if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("digest: search aggregate returned no row");
+        const roots = new Map(rows.workspaces.map(({ id, project_root }) => [id, project_root]));
+        const workerRoots = new Map(rows.workers.map(({ id, workspace_id }) => [id, roots.get(workspace_id) ?? null]));
         return {
             ...rows,
             storage: rows.storage, searchState: rows.searchState, derivationState: rows.derivationState,
             // {§fabricated-log-entry}: an echoed emission heading is counted where the model wrote it, in the text
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.
             turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: EvidenceReader.#echoes(turn.program) + FabricatedLog.echoes(turn.outside ?? "") })),
-            logEntries: rows.logEntries.map((row) => ({
-                ...row, target: renderTarget(row),
+            logEntries: rows.logEntries.map(({ target_tx, ...row }) => ({
+                ...row, target: renderTarget(row, workerRoots.get(row.worker_id) ?? null,
+                    target_tx === null ? null : JSON.parse(target_tx) as ParsedPath),
                 ...(decisions.has(row.id) ? { proposalDecision: decisions.get(row.id) } : {}),
             })),
             providerRequests: rows.providerRequests.map((row) => ({

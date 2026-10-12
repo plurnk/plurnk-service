@@ -12,6 +12,7 @@ import { entryAddress, missDetail, missExtensions } from "../core/plurnk-uri.ts"
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
+import FileAddress from "../core/FileAddress.ts";
 
 
 export interface ReadEntryResult extends SchemeResultBase {
@@ -69,7 +70,7 @@ export default class EntryCrud {
         }>({ workspace_id: workspaceId, scheme, authority, pathname });
         const entry = rows[0];
         if (entry === undefined) {
-            const target = entryAddress(scheme, authority, pathname);
+            const target = entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -142,7 +143,7 @@ export default class EntryCrud {
         if (published === undefined) {
             if (representation.createOnly === true) return Results.failure(
                 `scheme:${scheme}`, "entry-exists", 409,
-                `An entry already exists at ${entryAddress(scheme, authority, pathname)}.`,
+                `An entry already exists at ${entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null)}.`,
                 { created: false, entryId: null },
             ) as WriteEntryResult;
             throw new Error("writeEntry: publication returned no row");
@@ -165,7 +166,7 @@ export default class EntryCrud {
         const { authority, pathname } = coordinate;
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme, authority, pathname });
         if (existing === undefined) {
-            const target = entryAddress(scheme, authority, pathname);
+            const target = entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -196,7 +197,7 @@ export default class EntryCrud {
             pathname,
         });
         if (existing === undefined) {
-            const target = entryAddress(scheme, authority, pathname);
+            const target = entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null);
             return Results.failure(
                 `scheme:${scheme}`,
                 "entry-not-found",
@@ -216,7 +217,7 @@ export default class EntryCrud {
             if (channel === defaultChannel) await db.crud_delete_readable_channel.run({ entry_id: existing.id });
         }
         if (deleted === undefined) {
-            const target = entryAddress(scheme, authority, pathname);
+            const target = entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null);
             return Results.failure(
                 `scheme:${scheme}`,
                 "channel-not-found",

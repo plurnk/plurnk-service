@@ -13,6 +13,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { entryAddress } from "../core/plurnk-uri.ts";
 import { Knob } from "@plurnk/plurnk-meta";
+import FileAddress from "../core/FileAddress.ts";
 
 type ManifestRow = {
     entry_id: number;
@@ -63,13 +64,13 @@ export default class EntryManifest {
     // {§scheme-catalog-aside} — the catalog shows a prose summary whole up to this many code points.
     static summaryCodePoints(): number { return Knob.integer("PLURNK_SERVICE_CATALOG_SUMMARY_CHARS", 1); }
 
-    static toPath(scheme: string, authority: string, pathname: string): string {
-        return entryAddress(scheme, authority, pathname);
+    static toPath(scheme: string, authority: string, pathname: string, projectRoot: string | null = null): string {
+        return entryAddress(scheme, authority, pathname, projectRoot);
     }
 
     // {§line-anchors}: default-channel aliases share the same canonical identity.
-    static channelPath(address: { scheme: string; authority: string; pathname: string }, channel: string, defaultChannel: string): string {
-        const base = EntryManifest.toPath(address.scheme, address.authority, address.pathname);
+    static channelPath(address: { scheme: string; authority: string; pathname: string }, channel: string, defaultChannel: string, projectRoot: string | null = null): string {
+        const base = EntryManifest.toPath(address.scheme, address.authority, address.pathname, projectRoot);
         return channel === defaultChannel ? base : `${base}#${PathSyntax.escapeTarget(channel)}`;
     }
 
@@ -88,8 +89,9 @@ export default class EntryManifest {
             (schemeFilter === undefined || row.scheme === schemeFilter)
             && (authorityFilter === undefined || row.authority === authorityFilter));
         const byEntry = new Map<string, CatalogEntryState>();
+        const projectRoot = rows.some(({ scheme }) => scheme === "file") ? await FileAddress.projectRoot(ctx) : null;
         for (const row of rows) {
-            const path = EntryManifest.toPath(row.scheme, row.authority, row.pathname);
+            const path = EntryManifest.toPath(row.scheme, row.authority, row.pathname, projectRoot);
             let entry = byEntry.get(path);
             if (entry === undefined) {
                 entry = {

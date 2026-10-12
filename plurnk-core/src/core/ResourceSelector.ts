@@ -25,22 +25,21 @@ import ByteView from "../content/byte-view.ts";
 import { contentHash } from "./content-hash.ts";
 import FileSnapshot from "./FileSnapshot.ts";
 import FileMaterialization from "./file-materialization.ts";
+import FileAddress from "./FileAddress.ts";
+import Namespace from "./namespace.ts";
 
 // Shared source acquisition for explicit resource transfers.
 export default class ResourceSelector {
     readonly #schemes: SchemeRegistry;
-    readonly #canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
     readonly #prepareDataRepresentation: PrepareDataRepresentation;
     readonly #admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
 
-    constructor({ schemes, canonicalFilePath, prepareDataRepresentation, admitRead }: {
+    constructor({ schemes, prepareDataRepresentation, admitRead }: {
         schemes: SchemeRegistry;
-        canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
         prepareDataRepresentation: PrepareDataRepresentation;
         admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     }) {
         this.#schemes = schemes;
-        this.#canonicalFilePath = canonicalFilePath;
         this.#prepareDataRepresentation = prepareDataRepresentation;
         this.#admitRead = admitRead;
     }
@@ -179,10 +178,13 @@ export default class ResourceSelector {
                 },
             );
         }
-        const coordinate = entryCoordinateOf(target, manifest.authority ?? "namespace");
+        const spelling = scheme === "file" ? FileAddress.pathname(target) : null;
+        if (spelling !== null && typeof spelling !== "string") return spelling;
+        const coordinate = spelling === null ? entryCoordinateOf(target, manifest.authority ?? "namespace") : { authority: "", pathname: spelling };
         const { authority, pathname } = coordinate;
+        const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const canonicalFilePath = scheme === "file"
-            ? await this.#canonicalFilePath(pathname, ctx.workspaceId)
+            ? Namespace.canonicalizeSpelling(pathname, projectRoot)
             : pathname;
         return {
             target,
@@ -193,6 +195,7 @@ export default class ResourceSelector {
             authority,
             pathname,
             identityPathname: canonicalFilePath ?? pathname,
+            projectRoot,
             channel,
             manifest,
         };
@@ -421,7 +424,7 @@ export default class ResourceSelector {
         }
         return { representation: read.entry, storageAddress,
             ...(read.fileRevision === undefined ? {} : { fileRevision: read.fileRevision }),
-            identity: EntryManifest.channelPath(storageAddress, selection.channel, selection.manifest.defaultChannel) };
+            identity: EntryManifest.channelPath(storageAddress, selection.channel, selection.manifest.defaultChannel, selection.projectRoot) };
     }
 
 

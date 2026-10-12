@@ -12,6 +12,7 @@ import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-s
 import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import NativeContent from "../core/NativeContent.ts";
+import FileAddress from "../core/FileAddress.ts";
 
 // Shared static-method helpers for workspace entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -437,7 +438,9 @@ export default class EntryOps {
         };
         const { authority, pathname } = coordinate;
         const selectedChannel = statement.target.fragment ?? manifest.defaultChannel;
-        const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel);
+        const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
+        const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
+        const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel, projectRoot);
         const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
@@ -445,9 +448,9 @@ export default class EntryOps {
             return failure(
                 "entry-not-found",
                 404,
-                missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)),
+                missDetail(scheme, path),
                 { content: null, mimetype: null, channel: null },
-                missExtensions(scheme, EntryManifest.toPath(scheme, authority, pathname)),
+                missExtensions(scheme, path),
             );
         }
         // {§binary-parity} — a DB entry keeps binary bytes base64 in its default channel content; when
@@ -458,7 +461,7 @@ export default class EntryOps {
             statement,
             manifest: { ...manifest, name: scheme },
             publishesLineAnchors,
-            target: EntryManifest.toPath(scheme, authority, pathname),
+            target: path,
             identity,
             representation: stored.entry,
             context: ctx,

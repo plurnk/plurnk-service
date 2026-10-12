@@ -626,7 +626,7 @@ export default class ResourceTransfers {
                     }],
                     parseIssues,
                     // {§edit-receipt-anchored-context} — the destination's READ identity
-                    EntryManifest.channelPath(storageAddress, destination.channel, destination.manifest.defaultChannel),
+                    EntryManifest.channelPath(storageAddress, destination.channel, destination.manifest.defaultChannel, destination.projectRoot),
                 ),
             );
         return MutationEffects.prependScopeNormalizations(
