@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-audio",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "description": "Audio format and duration facts for ordinary PLURNK READ and native model input.",
     "keywords": [
         "plurnk",
@@ -122,7 +122,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "music-metadata": "^12.0.0"
+        "music-metadata": "^12.1.1"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^3.0.0"

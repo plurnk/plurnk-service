@@ -1,5 +1,123 @@
 # @plurnk/plurnk-service
 
+## 3.2.0
+
+### Minor Changes
+
+- 0e495aa: Persist approval decisions before applying effects, retain their resolving
+  authority and submitted overrides independently of operation results, and expose
+  that evidence in forensic reports.
+- 0e495aa: Apply response retention to complete provider-request payloads without deleting
+  identities or accounting. Record expiry explicitly, and collect native snapshots
+  only after retained history and in-flight publication release them.
+- a2c2bf4: Resolve authored `~` and `~/…` file operands from the daemon user's home,
+  then translate them to project-relative addresses. Membership and mutation
+  authority are unchanged. Literal tilde names retain their stored identities
+  and render with `./` so displayed addresses can be reused safely.
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+- e7f2a97: The log target reader accepts four near-misses of the taught form and reads
+  each as the one target it can only mean: a `|` between complete coordinates,
+  bare or as full `log:///` addresses, as their union; a bracketed comma list in a
+  numeric slot as a set; a non-numeric literal in a numeric slot as the leaf with
+  the missing slots `*`; and `*` segments between the sequence and the leaf as
+  dropped. A sweep that matches nothing stays a bare 204; the refusal of a target
+  nothing can read shows the coordinate shape as its recovery.
+
+### Patch Changes
+
+- d8a45b0: Resolve bulk EDIT and resource KILL selectors before mutation, preserving
+  per-resource approvals, scopes, anchors and receipts. Require a single resolved
+  resource for each COPY/MOVE glob operand before changing either side. Keep
+  selected channels through fan-out and count concrete operations against
+  configured command limits.
+- 617bcd0: Keep orphan-message recovery with the worker drain that owns its admission and
+  cancellation ordering. Preserve the existing durable recovery and restart behavior.
+- 58ec287: Distinguish an unknown environment-discovery source from a known package with no
+  matching declarations, with a recovery pointing to catalog selection and ordinary
+  file reads.
+- d395298: Validate captured file revisions before native edits, transfers, and deletion;
+  serialize same-path commits and publish complete replacement files without
+  truncating the original on a failed write. Retain MOVE source revisions across
+  approval, preserve external replacements during rollback, and publish file
+  projections together with their source revisions. Existing databases retain
+  their contents and rematerialize file revisions after upgrade. Preserve original
+  I/O failures alongside resource-cleanup failures.
+  Rollback validates the published physical file rather than a subsequently
+  retargeted alias.
+- 05e38b8: Resolve encoded file URLs through native filesystem interpretation without
+  double-decoding stored names. Reads, mutations, client attachments, catalogs,
+  packets and digest addresses share the same identity. Render ambiguous filenames
+  as reusable file URLs while keeping ordinary paths project-relative.
+  Keep MOVE source approval bound to the source operand after its destination lands.
+- 42058d0: Teach separate status, finding, decision, and plan NOTEs and explicitly addressed
+  message completion. Align continuing-turn notices with the revised NOTE instruction.
+- 66fcb98: Preserve literal backslashes and escaped glob characters consistently in resource
+  selection, file-URL selectors, membership scans, inspection and SQL membership
+  checks. Use the standard glob engine instead of Node's fixed separator handling.
+- fc84b9a: Clarify ambient credential exclusion versus explicit MCP launch bindings through
+  the existing approval path. Correct reserved-environment diagnostics and reference
+  documentation without changing credential admission or adding configuration.
+- 63b0be8: The over-budget mandate row is shown once, in the packet it describes, then
+  retired from the packet projection as a no-match KILL receipt is; it stays
+  durable and readable at its coordinate, and a later packet that is over budget
+  carries its own row.
+- 3ddd59f: Clarify data-preservation boundaries, retention scope and database durability;
+  verify that response-body retirement preserves physical-request evidence and
+  accounting.
+- 7163937: Document existing failure codes omitted from the owning specifications. Runtime
+  behavior and failure identities are unchanged.
+- ea11475: Default database commits to FULL WAL synchronization through SqlRite 6.6.1.
+  Expose PLURNK_SERVICE_SQLITE_SYNCHRONOUS for explicit durability/performance choices,
+  apply it before migrations and startup writes, and diagnose invalid modes through
+  configuration checking.
+- 8f3ed44: Preserve the source type when COPY or MOVE creates a channel at an untyped
+  destination, including binary files with unknown or absent extensions. Retain
+  existing and declared channel types and recognized destination-extension
+  compatibility checks through proposal review, publication, and unchanged-source
+  reprojection.
+  Allow a dynamically typed default channel beside explicitly typed sibling channels.
+- Updated dependencies [d8a45b0]
+- Updated dependencies [f044435]
+- Updated dependencies
+- Updated dependencies [960777f]
+- Updated dependencies [f3d34f1]
+- Updated dependencies [0e495aa]
+- Updated dependencies [0e495aa]
+- Updated dependencies [05e38b8]
+- Updated dependencies [f383d7d]
+- Updated dependencies [0b7f8b1]
+- Updated dependencies [42058d0]
+- Updated dependencies [66fcb98]
+- Updated dependencies [fc84b9a]
+- Updated dependencies [f951f40]
+- Updated dependencies [7163937]
+- Updated dependencies [8f3ed44]
+- Updated dependencies [c8b3bb9]
+  - @plurnk/plurnk-meta@2.1.1
+  - @plurnk/plurnk-providers@3.0.2
+  - @plurnk/plurnk-models@3.0.1
+  - @plurnk/plurnk-mimetypes@3.0.2
+  - @plurnk/plurnk-mimetypes-application-xml@2.0.2
+  - @plurnk/plurnk-mimetypes-text-html@2.0.2
+  - @plurnk/plurnk-mimetypes-audio@2.0.2
+  - @plurnk/plurnk-a2a@3.1.1
+  - @plurnk/plurnk-parser@3.0.3
+  - @plurnk/plurnk-contracts@3.2.0
+  - @plurnk/plurnk-digest@3.2.0
+  - @plurnk/plurnk-modules@3.1.0
+  - @plurnk/plurnk-skills@3.0.1
+  - @plurnk/plurnk-mcp@3.0.1
+  - @plurnk/plurnk-schedule@3.0.1
+  - @plurnk/plurnk-execs@3.1.1
+  - @plurnk/plurnk-execs-jq@2.0.2
+  - @plurnk/plurnk-execs-sqlite@2.0.2
+  - @plurnk/plurnk-schemes@3.1.1
+
 ## 3.1.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @plurnk/plurnk-execs-jq
 
+## 2.0.2
+
+### Patch Changes
+
+- 7163937: Document existing failure codes omitted from the owning specifications. Runtime
+  behavior and failure identities are unchanged.
+
 ## 2.0.1
 
 ### Patch Changes

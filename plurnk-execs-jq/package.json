@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-jq",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter or transform JSON.",
     "keywords": [
         "plurnk",

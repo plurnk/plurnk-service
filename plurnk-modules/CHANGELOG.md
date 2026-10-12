@@ -1,5 +1,28 @@
 # @plurnk/plurnk-modules
 
+## 3.1.0
+
+### Minor Changes
+
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+
+### Patch Changes
+
+- fc84b9a: Clarify ambient credential exclusion versus explicit MCP launch bindings through
+  the existing approval path. Correct reserved-environment diagnostics and reference
+  documentation without changing credential admission or adding configuration.
+- Updated dependencies [960777f]
+- Updated dependencies [f383d7d]
+- Updated dependencies [0b7f8b1]
+- Updated dependencies [42058d0]
+- Updated dependencies [c8b3bb9]
+  - @plurnk/plurnk-contracts@3.2.0
+
 ## 3.0.0
 
 ### Major Changes

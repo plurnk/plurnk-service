@@ -1,5 +1,25 @@
 # @plurnk/plurnk-contracts
 
+## 3.2.0
+
+### Minor Changes
+
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+
+### Patch Changes
+
+- 960777f: Clarify that NOTE is a detailed persistent annotation register.
+- f383d7d: Clarify the existing Functionality mutation statuses: local creation, settlement,
+  and authorization-required are distinct from management-stream completion.
+- 42058d0: Teach separate status, finding, decision, and plan NOTEs and explicitly addressed
+  message completion. Align continuing-turn notices with the revised NOTE instruction.
+- c8b3bb9: Clarify that WAIT yields to child workers and streams, not the user.
+
 ## 3.1.0
 
 ### Minor Changes

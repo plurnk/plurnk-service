@@ -1,5 +1,15 @@
 # @plurnk/plurnk-a2a
 
+## 3.1.1
+
+### Patch Changes
+
+- Third-party dependencies pulled forward to their latest stable versions: the
+  AI SDK providers and `ai`, the MCP SDK, the OpenTelemetry packages, `express`,
+  `music-metadata`, `smol-toml`, `web-tree-sitter`, `xpath`, `zod`, and the
+  Models.dev catalog snapshot. `json-p3` stays at 2.3.1 while its newer archive
+  requires a TypeScript compiler in production installs.
+
 ## 3.1.0
 
 ### Minor Changes

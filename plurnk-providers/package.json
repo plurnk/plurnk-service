@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "3.0.1",
+    "version": "3.0.2",
     "description": "PLURNK's stable model-provider contract and AI SDK adapter.",
     "keywords": [
         "plurnk",
@@ -71,24 +71,24 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@ai-sdk/amazon-bedrock": "5.0.106",
-        "@ai-sdk/anthropic": "4.0.72",
-        "@ai-sdk/cerebras": "3.0.63",
-        "@ai-sdk/deepinfra": "3.0.63",
-        "@ai-sdk/google": "4.0.88",
-        "@ai-sdk/groq": "4.0.55",
-        "@ai-sdk/mistral": "4.0.57",
-        "@ai-sdk/openai": "4.0.84",
-        "@ai-sdk/openai-compatible": "3.0.63",
-        "@ai-sdk/togetherai": "3.0.64",
-        "@ai-sdk/xai": "5.0.15",
+        "@ai-sdk/amazon-bedrock": "5.0.113",
+        "@ai-sdk/anthropic": "4.0.78",
+        "@ai-sdk/cerebras": "3.0.67",
+        "@ai-sdk/deepinfra": "3.0.67",
+        "@ai-sdk/google": "4.0.93",
+        "@ai-sdk/groq": "4.0.59",
+        "@ai-sdk/mistral": "4.0.62",
+        "@ai-sdk/openai": "4.0.91",
+        "@ai-sdk/openai-compatible": "3.0.67",
+        "@ai-sdk/togetherai": "3.0.68",
+        "@ai-sdk/xai": "5.0.20",
         "@openrouter/ai-sdk-provider": "3.1.0",
         "@plurnk/plurnk-aliases": "^2.0.0",
-        "@plurnk/plurnk-contracts": "^3.1.0",
+        "@plurnk/plurnk-contracts": "^3.2.0",
         "@plurnk/plurnk-meta": "^2.1.0",
         "@plurnk/plurnk-models": "^3.0.0",
-        "ai": "7.0.128",
-        "zod": "^4.4.3"
+        "ai": "7.0.137",
+        "zod": "^4.6.6"
     },
     "devDependencies": {
         "esbuild": "^0.28.2"

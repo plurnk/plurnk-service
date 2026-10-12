@@ -1,5 +1,28 @@
 # @plurnk/plurnk-digest
 
+## 3.2.0
+
+### Minor Changes
+
+- 0e495aa: Persist approval decisions before applying effects, retain their resolving
+  authority and submitted overrides independently of operation results, and expose
+  that evidence in forensic reports.
+
+### Patch Changes
+
+- f3d34f1: The digest's health label counts refusals of the model's statements and leaves
+  the capacity contract's 413 rows out, so a loop that concluded under a binding
+  context budget reads CLEAN rather than DEGENERATE-WIN.
+- 0e495aa: Apply response retention to complete provider-request payloads without deleting
+  identities or accounting. Record expiry explicitly, and collect native snapshots
+  only after retained history and in-flight publication release them.
+- Updated dependencies [960777f]
+- Updated dependencies [f383d7d]
+- Updated dependencies [0b7f8b1]
+- Updated dependencies [42058d0]
+- Updated dependencies [c8b3bb9]
+  - @plurnk/plurnk-contracts@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes

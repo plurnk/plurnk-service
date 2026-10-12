@@ -1,5 +1,29 @@
 # @plurnk/plurnk-meta
 
+## 2.1.1
+
+### Patch Changes
+
+- d8a45b0: Resolve bulk EDIT and resource KILL selectors before mutation, preserving
+  per-resource approvals, scopes, anchors and receipts. Require a single resolved
+  resource for each COPY/MOVE glob operand before changing either side. Keep
+  selected channels through fan-out and count concrete operations against
+  configured command limits.
+- 05e38b8: Resolve encoded file URLs through native filesystem interpretation without
+  double-decoding stored names. Reads, mutations, client attachments, catalogs,
+  packets and digest addresses share the same identity. Render ambiguous filenames
+  as reusable file URLs while keeping ordinary paths project-relative.
+  Keep MOVE source approval bound to the source operand after its destination lands.
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+- 66fcb98: Preserve literal backslashes and escaped glob characters consistently in resource
+  selection, file-URL selectors, membership scans, inspection and SQL membership
+  checks. Use the standard glob engine instead of Node's fixed separator handling.
+
 ## 2.1.0
 
 ### Minor Changes

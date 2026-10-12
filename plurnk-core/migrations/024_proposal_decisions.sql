@@ -1,4 +1,5 @@
 -- MIGRATE: 24 proposal decisions
+-- Released in 3.2.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§proposal-decision-evidence}: authority precedes effects; results cannot replace decisions.
 CREATE TABLE proposal_decisions (
     log_entry_id INTEGER PRIMARY KEY REFERENCES log_entries(id) ON DELETE CASCADE,

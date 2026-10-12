@@ -1,5 +1,30 @@
 # @plurnk/plurnk-mcp
 
+## 3.0.1
+
+### Patch Changes
+
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+- fc84b9a: Clarify ambient credential exclusion versus explicit MCP launch bindings through
+  the existing approval path. Correct reserved-environment diagnostics and reference
+  documentation without changing credential admission or adding configuration.
+- f951f40: Report elapsed preparation time, the configured timeout, and bounded, redacted
+  SDK diagnostics and session stderr when an MCP server is unavailable. The
+  published Problem remains visible through the existing server list.
+- 7163937: Document existing failure codes omitted from the owning specifications. Runtime
+  behavior and failure identities are unchanged.
+- Updated dependencies [960777f]
+- Updated dependencies [f383d7d]
+- Updated dependencies [0b7f8b1]
+- Updated dependencies [42058d0]
+- Updated dependencies [c8b3bb9]
+  - @plurnk/plurnk-contracts@3.2.0
+
 ## 3.0.0
 
 ### Major Changes

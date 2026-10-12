@@ -1,5 +1,18 @@
 # @plurnk/plurnk-schedule
 
+## 3.0.1
+
+### Patch Changes
+
+- 0b7f8b1: Add shared named definition replacement, retaining enabledness and preserving
+  the previous publication on refusal. Use it for repeated environment EDITs
+  and explicit child environment overrides, and reject fresh skill preparation
+  failures when their definitions change. Carry attempt-local admission data
+  through preparation without changing live state; schedule replacements and
+  retries affect timers and held delivery failures only after publication.
+- 7163937: Document existing failure codes omitted from the owning specifications. Runtime
+  behavior and failure identities are unchanged.
+
 ## 3.0.0
 
 ### Major Changes

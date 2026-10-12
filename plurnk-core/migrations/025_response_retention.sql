@@ -1,4 +1,5 @@
 -- MIGRATE: 25 response retention
+-- Released in 3.2.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§retention-policy}: one logical call owns retirement of all its captured payloads.
 ALTER TABLE inference_calls ADD COLUMN payloads_retired_at TEXT;
 

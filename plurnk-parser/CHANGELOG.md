@@ -1,5 +1,21 @@
 # @plurnk/plurnk-parser
 
+## 3.0.3
+
+### Patch Changes
+
+- Third-party dependencies pulled forward to their latest stable versions: the
+  AI SDK providers and `ai`, the MCP SDK, the OpenTelemetry packages, `express`,
+  `music-metadata`, `smol-toml`, `web-tree-sitter`, `xpath`, `zod`, and the
+  Models.dev catalog snapshot. `json-p3` stays at 2.3.1 while its newer archive
+  requires a TypeScript compiler in production installs.
+- Updated dependencies [960777f]
+- Updated dependencies [f383d7d]
+- Updated dependencies [0b7f8b1]
+- Updated dependencies [42058d0]
+- Updated dependencies [c8b3bb9]
+  - @plurnk/plurnk-contracts@3.2.0
+
 ## 3.0.2
 
 ### Patch Changes

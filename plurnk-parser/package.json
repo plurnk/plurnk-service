@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-parser",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "description": "The PLURNK language parser: ANTLR grammars, generated parser, AST builder, and path decomposition implementing @plurnk/plurnk-contracts",
     "keywords": [
         "plurnk",
@@ -61,10 +61,10 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^3.1.0",
+        "@plurnk/plurnk-contracts": "^3.2.0",
         "antlr4ng": "^3.0.0",
         "json-p3": "2.3.1",
-        "xpath": "^0.0.34"
+        "xpath": "^0.0.35"
     },
     "devDependencies": {
         "@plurnk/plurnk-meta": "^2.1.0",

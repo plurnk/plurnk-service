@@ -1,4 +1,5 @@
 -- MIGRATE: 23 file revisions
+-- Released in 3.2.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§file-snapshot-revision}: stat-only baselines cannot authorize content replacement.
 -- Retain every projection; ordinary materialization supplies its complete revision.
 UPDATE entries SET synced_sig = NULL WHERE scheme = 'file';
