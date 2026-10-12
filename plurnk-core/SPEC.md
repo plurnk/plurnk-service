@@ -2768,7 +2768,10 @@ unchanged, including readable reprojection; a changed disk source is detected af
 - A cross-resource destination failure leaves the source untouched. A source
   failure after destination success is an explicit partial failure with
   `destinationWritten: true` and the destination's identity. Proposal
-  acceptance/rejection follows the same ordered rule.
+  acceptance/rejection follows the same ordered rule. Each approval uses the
+  operand whose effect is pending: its target, metadata, authority and manifest.
+  Source removal retains this binding whether the destination wrote immediately
+  or required its own approval.
 - §move-cross-scheme-move Same- and cross-scheme resources use the same
   contract; there is no global cross-scheme transaction.
 - §move-missing-source-404 A missing source is 404.

@@ -29,6 +29,7 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import { isExecution, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import type { OrchestrationProposalAttrs } from "./mutation-types.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -115,14 +116,6 @@ interface ProposalRow {
     owner_tools: string;
     owner_interactive: number;
     turn_kind: string;
-}
-
-interface OrchestrationProposalAttrs {
-    proposalTarget?: {
-        scheme: string;
-        authority: string;
-        pathname: string;
-    };
 }
 
 const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
@@ -496,18 +489,18 @@ export default class ProposalLifecycle {
     ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
-        // An execution routes to the exec scheme regardless of its runtime-owned target.
-        // All other unary ops resolve their handler from statement.target's scheme.
-        // COPY/MOVE write the destination, not the source: the
-        // accept must reach the dest scheme's applyResolution (File writes disk).
-        const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;
+        // {§move-decomposition}: once the destination is written, approval applies
+        // to the source operand, including its metadata and manifest binding.
+        const attrs = originalResult.attrs as OrchestrationProposalAttrs | undefined;
+        const operand = statement.op === "MOVE" && attrs?.moveDestinationWritten !== undefined
+            ? statement.source
+            : statement.op === "COPY" || statement.op === "MOVE" ? statement.destination : statement;
+        const routedScheme = attrs?.proposalScheme;
         const schemeName = typeof routedScheme === "string"
             ? routedScheme
             : isExecution(statement)
                 ? "exec"
-                : (statement.op === "COPY" || statement.op === "MOVE")
-                    ? schemeNameOf(statement.destination.target)
-                    : schemeNameOf(statement.target);
+                : schemeNameOf(operand.target);
         if (schemeName === null) return { resolution };
         const handler = this.#schemes.get(schemeName, workspaceId) as SchemeHandler | undefined;
         if (handler === undefined) {
@@ -541,15 +534,11 @@ export default class ProposalLifecycle {
             };
             const request = {
                 attrs: (originalResult.attrs ?? {}) as object,
-                metadata: statement.op === "COPY" || statement.op === "MOVE"
-                    ? statement.destination.metadata
-                    : statement.metadata,
+                metadata: operand.metadata,
                 body: resolution.body,
             };
-            const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
-            const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"
-                ? statement.destination.target
-                : statement.target;
+            const proposalTarget = attrs?.proposalTarget;
+            const authoredTarget = operand.target;
             // The manifest is resolved AT the target, not for the scheme name: a runtime scheme's
             // facet claims its own subtree with its own channels ({§executor-scheme-output}), and a
             // settlement that applied under the executor's manifest would publish the facet's

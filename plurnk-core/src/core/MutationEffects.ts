@@ -344,6 +344,23 @@ export default class MutationEffects {
     }
 
 
+    static moveSourceProposal(
+        result: DispatchResult,
+        destination: string,
+        destinationEffects: readonly ResourceEffect[],
+    ): DispatchResult {
+        if (result.status !== 202) throw new InvalidOperationResultError("A MOVE source proposal requires status 202.");
+        return {
+            ...result,
+            attrs: {
+                ...(result.attrs as Record<string, unknown> | undefined),
+                moveDestinationWritten: destination,
+                moveDestinationEffects: destinationEffects,
+            },
+        };
+    }
+
+
     static moveFailureAfterDestination(
         result: DispatchResult,
         destination: string,

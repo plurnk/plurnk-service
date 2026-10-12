@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type ReadStatement } from "@plurnk/plurnk-contracts";
-import type { SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { ResolvedEditStatement, SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { serverProposals } from "./_approval.ts";
 
 const read = (source: string): ReadStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -167,13 +168,16 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
     }
 });
 
-for (const op of ["COPY", "MOVE"] as const) {
-    test(`{§transfer-resource-selections}: parsed ${op} keeps each scope and metadata with its resource through dispatch`, async () => {
+for (const [op, proposed] of [["COPY", "neither"], ["MOVE", "neither"], ["MOVE", "source"], ["MOVE", "both"]] as const) {
+    test(`{§transfer-resource-selections}: parsed ${op} keeps scope and metadata with each resource (${proposed} proposed)`, async (t) => {
+        serverProposals(t, "accept");
         const db = await openMigrated();
         const env = await seedEnvelope(db, `transfer-metadata-${crypto.randomUUID()}`);
         const schemes = new SchemeRegistry();
         const reads: unknown[] = [];
         const writes: unknown[] = [];
+        const applications: unknown[] = [];
+        const pending = new Map<string, readonly ResolvedEditStatement[]>();
         schemes.register("opaque", {
             manifest: { ...manifest("opaque", true), textEditScopes: true },
             async prepareRepresentation(request) {
@@ -182,6 +186,19 @@ for (const op of ["COPY", "MOVE"] as const) {
             },
             async editBatch(statements, ctx) {
                 writes.push(...statements.map(({ target, metadata }) => ({ path: target?.raw, metadata })));
+                const path = statements[0]?.target?.raw;
+                assert.ok(path);
+                if (proposed === "both" || (proposed === "source" && path === "opaque:///source")) {
+                    pending.set(path, statements);
+                    return { status: 202, attrs: { path } };
+                }
+                return ctx.entries.operations.editBatch(statements);
+            },
+            async applyResolution(request, ctx) {
+                const path = (request.attrs as { path: string }).path;
+                const statements = pending.get(path);
+                assert.ok(statements);
+                applications.push({ path, metadata: request.metadata });
                 return ctx.entries.operations.editBatch(statements);
             },
         } satisfies SchemeHandler);
@@ -203,6 +220,10 @@ for (const op of ["COPY", "MOVE"] as const) {
             assert.deepEqual(writes, [
                 { path: "opaque:///destination", metadata: ['{"destination": "true"}'] },
                 ...(op === "MOVE" ? [{ path: "opaque:///source", metadata: ['{"source": "true"}'] }] : []),
+            ]);
+            assert.deepEqual(applications, proposed === "neither" ? [] : [
+                ...(proposed === "both" ? [{ path: "opaque:///destination", metadata: ['{"destination": "true"}'] }] : []),
+                { path: "opaque:///source", metadata: ['{"source": "true"}'] },
             ]);
             for (const [pathname, expected] of [
                 ["/source", op === "COPY" ? "first\nselected\nlast" : "first\nlast"],

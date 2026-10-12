@@ -19,6 +19,7 @@ import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
+import { assertResourceEffects } from "../../src/content/index.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -79,6 +80,7 @@ const proposeAndResolve = async (
         sequence: 1, origin: "model", onDispatch: (logId) => id.resolve(logId),
     });
     const logEntryId = await id.promise;
+    if (!ctx.engine.pendingProposalIds().includes(logEntryId)) assert.fail(`Expected a proposal, received ${JSON.stringify(await dispatchPromise)}`);
     ctx.engine.resolveProposal(logEntryId, {
         decision,
         ...(body === undefined ? {} : { body }),
@@ -477,6 +479,34 @@ test("MOVE from a file to an internal destination applies the source proposal af
         assert.equal(await fileMember(ctx, "source.md"), undefined);
     });
 });
+
+for (const destinationKind of ["file", "worker"] as const) {
+    for (const scoped of [false, true]) {
+        test(`{§move-decomposition} MOVE ${scoped ? "regional" : "whole"} file source to ${destinationKind} applies both effects`, async () => {
+            await withWorkspace(async (root, ctx) => {
+                await seedFileMember(ctx, root, "source.md", "keep\nmove\n");
+                const statement = moveStmt(
+                    localPath("source.md"),
+                    destinationKind === "file" ? localPath("destination.md") : urlPath("worker", "/destination"),
+                    scoped ? { marks: [2] } : null,
+                );
+                const result = await proposeAndResolve(ctx, statement, "accept");
+                assert.equal(result.status, 200, JSON.stringify(result));
+                assert.deepEqual(assertResourceEffects(result.effects).map(({ target, action }) => ({ target, action })), [
+                    { target: destinationKind === "file" ? "destination.md" : "worker:///destination", action: "create" },
+                    { target: "source.md", action: scoped ? "update" : "delete" },
+                ]);
+                if (scoped) assert.equal(await readFile(join(root, "source.md"), "utf8"), "keep\n");
+                else await assert.rejects(readFile(join(root, "source.md")), { code: "ENOENT" });
+                const expected = scoped ? "move\n" : "keep\nmove\n";
+                if (destinationKind === "file") assert.equal(await readFile(join(root, "destination.md"), "utf8"), expected);
+                else assert.equal((await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+                    pathname: "/destination", scheme: "worker", name: "body",
+                }))?.content, expected);
+            });
+        });
+    }
+}
 
 test("rejecting a source-side MOVE proposal reports the already-written destination without deleting the source", async () => {
     await withWorkspace(async (root, ctx) => {

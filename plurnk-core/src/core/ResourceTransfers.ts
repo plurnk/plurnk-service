@@ -223,17 +223,12 @@ export default class ResourceTransfers {
             selected.lineAnchorPrecondition,
         );
         if (sourceResult.status === 202) {
-            return {
+            return MutationEffects.moveSourceProposal({
                 ...sourceResult,
                 ...(destinationResult.scopeNormalizations === undefined
                     ? {}
                     : { scopeNormalizations: destinationResult.scopeNormalizations }),
-                attrs: {
-                    ...(sourceResult.attrs as Record<string, unknown> | undefined),
-                    moveDestinationWritten: destinationAddress,
-                    moveDestinationEffects: destinationEffects,
-                },
-            };
+            }, destinationAddress, destinationEffects);
         }
         if (sourceResult.status >= 400) {
             return MutationEffects.moveFailureAfterDestination(
@@ -975,7 +970,7 @@ export default class ResourceTransfers {
 
         const initialSourceSettlement = await this.#applyProposal(
             statement,
-            removed,
+            MutationEffects.moveSourceProposal(removed, deferred.destination, destinationEffects),
             { decision: "accept" },
             ids,
         );
