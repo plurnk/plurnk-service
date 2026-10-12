@@ -354,7 +354,7 @@ export default class EntryFind {
                 };
             }
         }
-        // SQL receives only the literal prefix and returns a safe superset. Node's
+        // SQL receives only the literal prefix and returns a safe superset. The
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
         // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}

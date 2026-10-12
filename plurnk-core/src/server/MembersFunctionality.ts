@@ -1,13 +1,13 @@
 // {§members-functionality} — file membership as one workspace Functionality family. The model, the
 // client, and the operator learn one surface ({§functionality-coordinator})
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
-// gitignore-style glob and `!glob` excludes; definitions are workspace desired state and the
+// shell-path glob and `!glob` excludes; definitions are workspace desired state and the
 // membership overlay is their projection ({§members-projection}) — the one truth every worker sees
 // ({§membership-baseline}). A model's `add` is admitted against the service ceiling
 // `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the workspace.
 import { stat } from "node:fs/promises";
-import { matchesGlob, resolve } from "node:path";
-import { Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { resolve } from "node:path";
+import { PathSyntax, Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -15,6 +15,7 @@ import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
+import PathGlob from "../core/PathGlob.ts";
 import Paths from "../Paths.ts";
 import type {
     FunctionalityCaller,
@@ -32,7 +33,6 @@ const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
 const PREFIX = "PLURNK_MEMBERS_";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
-const PATTERN_CHARACTERS = /[*?[\]{}]/u;
 const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0);
 
 type MembersProvenance = {
@@ -63,7 +63,7 @@ const DEFINITION: JsonSchema = Object.freeze({
         glob: {
             type: "string",
             minLength: 1,
-            description: "A gitignore-style pattern relative to the project root (`docs/**`, `*.md`, `../shared/*.json`). A leading `!` excludes matching members; an exclusion wins over every inclusion.",
+            description: "A shell-path glob relative to the project root (`docs/**`, `*.md`, `../shared/*.json`). A leading `!` excludes matching members; an exclusion wins over every inclusion.",
         },
         provenance: {
             type: "object",
@@ -136,12 +136,12 @@ const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution 
     const { effect, glob: pattern } = rowOf(definition);
     if (overlay === null) return { effect, pattern, matched: 0, files: [], ignored: 0 };
     if (effect === "exclude") {
-        const files = overlay.excluded.filter((path) => matchesGlob(path, pattern));
+        const files = overlay.excluded.filter((path) => PathGlob.matches(path, pattern));
         return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored: 0 };
     }
     const members = new Set(overlay.members);
     const files = (overlay.scans.get(pattern) ?? []).filter((path) => members.has(path));
-    const ignored = overlay.masked.filter((path) => matchesGlob(path, pattern)).length;
+    const ignored = overlay.masked.filter((path) => PathGlob.matches(path, pattern)).length;
     return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored };
 };
 
@@ -221,7 +221,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         if (overlay === null) {
             throw refuse("headless", 409, "The workspace has no project root, so there are no file members.", { recovery: "Open the workspace on a project root." });
         }
-        return [isExclusion(glob) || PATTERN_CHARACTERS.test(glob)
+        return [isExclusion(glob) || PathSyntax.hasGlob(glob)
             ? await this.#preview(glob, overlay, identity.workspaceId)
             : await this.#verdict(glob, overlay, identity.workspaceId)];
     }
@@ -230,7 +230,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const pattern = patternOf(glob);
         const candidate = { alias: aliasOf(glob), definition: { glob }, provenance: { kind: "preview", source: glob } };
         if (isExclusion(glob)) {
-            const excluded = overlay.members.filter((path) => matchesGlob(path, pattern));
+            const excluded = overlay.members.filter((path) => PathGlob.matches(path, pattern));
             return { ...candidate, summary: `would exclude ${count(excluded.length, "member")}${sample(excluded)}` };
         }
         const matched = await GitMembership.scanPattern(overlay.root, pattern, undefined);
@@ -255,7 +255,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
                 : definition !== undefined ? `included by \`${definition}\`` : "a creation record: plurnk wrote it";
             return { ...candidate, provenance: { kind: "member", source: key }, summary: `member — ${via}` };
         }
-        const exclusion = overlay.excludeGlobs.find((pattern) => matchesGlob(key, pattern));
+        const exclusion = overlay.excludeGlobs.find((pattern) => PathGlob.matches(key, pattern));
         if (exclusion !== undefined) {
             return { ...candidate, provenance: { kind: "excluded", source: key }, summary: `not a member — excluded by \`!${exclusion}\`` };
         }
@@ -273,7 +273,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const { alias, definition } = input as { alias?: unknown; definition?: unknown };
         const validation = Validator.validateJsonSchemaInstance(DEFINITION, definition);
         if (!validation.valid) {
-            throw refuse("definition-invalid", 400, "A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude.", {
+            throw refuse("definition-invalid", 400, "A members definition is { glob }: a shell-path pattern, `!glob` to exclude.", {
                 errors: validation.errors,
                 recovery: "Supply { \"alias\": \"<name>\", \"definition\": { \"glob\": \"<pattern>\" } }.",
             });

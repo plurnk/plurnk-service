@@ -21,7 +21,7 @@ test("terminal `**` is a complete recursive structural selector", () => {
     assert.equal(pathScopeMatches(nested, "other/a.ts"), false);
 });
 
-test("richer path patterns retain native shell-glob semantics", () => {
+test("richer path patterns retain shell-glob semantics", () => {
     const scope = pathScope("src/**/*.ts", true);
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/deep/a.ts"), true);
@@ -45,12 +45,23 @@ test("a `**` glued to a name still crosses directories: `**.go` is `**/*.go`", (
     assert.equal(pathScopeMatches(suffixed, "pkg/x.go"), false);
 });
 
-test("generic path bracket segments remain native character classes", () => {
+test("generic path bracket segments remain character classes", () => {
     const scope = pathScope("src/[ab].ts", true);
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/b.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/ab.ts"), false);
     assert.equal(pathScopeMatches(scope, "src/c.ts"), false);
+});
+
+test("{§path-glob} escaped wildcards select the literal name, not a directory neighbor", () => {
+    const scope = pathScope(String.raw`a\*.txt`, true);
+    assert.deepEqual(["a*.txt", "abc.txt", "a/b.txt"].filter((pathname) => pathScopeMatches(scope, pathname)), ["a*.txt"]);
+});
+
+test("{§path-glob} an escaped backslash stays inside its filename segment", () => {
+    const scope = pathScope(String.raw`dir\\name/*.txt`, true);
+    const paths = [String.raw`dir\name/a.txt`, "dir/name/a.txt", "dirname/a.txt"];
+    assert.deepEqual(paths.filter((pathname) => pathScopeMatches(scope, pathname)), [String.raw`dir\name/a.txt`]);
 });
 
 test("an empty declared folder root is a recursive collection", () => {

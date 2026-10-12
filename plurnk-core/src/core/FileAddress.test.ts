@@ -56,11 +56,11 @@ test("{§fs-canonical-name} rendered file addresses preserve literal names and d
 test("{§file-url} URI-encoded glob characters remain data beside authored selectors", () => {
     const target = parsePath("file:///project/dir%3F%5Ba%5D/*.txt")!;
     assert.equal(FileAddress.isPattern(target), true);
-    assert.equal(FileAddress.selector(target), "/project/dir[?][[]a[]]/*.txt");
+    assert.equal(FileAddress.selector(target), String.raw`/project/dir\?\[a\]/*.txt`);
     const scope = pathScope(FileAddress.selector(target) as string, true);
     assert.equal(pathScopeMatches(scope, "/project/dir?[a]/file.txt"), true);
     assert.equal(pathScopeMatches(scope, "/project/dirxa/file.txt"), false);
-    for (const character of ["*", "?", "[", "]", "{", "}", "(", ")"]) {
+    for (const character of ["*", "?", "[", "]", "{", "}", "(", ")", "\\"]) {
         const encoded = `%${character.charCodeAt(0).toString(16)}`;
         const pattern = FileAddress.selector(parsePath(`file:///project/a${encoded}b/*.txt`)!);
         assert.equal(typeof pattern, "string");
@@ -68,13 +68,12 @@ test("{§file-url} URI-encoded glob characters remain data beside authored selec
         assert.equal(pathScopeMatches(pathScope(pattern as string, true), "/project/axb/file.txt"), false, character);
     }
     assert.equal(FileAddress.selector(parsePath("file:///project/literal%2A.txt")!), "/project/literal*.txt");
-    const unsupported = FileAddress.selector(parsePath("file:///project/dir%5Cname/*.txt")!);
-    assert.notEqual(typeof unsupported, "string");
-    if (typeof unsupported === "string") assert.fail("a literal backslash must not become a directory separator");
-    assert.equal(unsupported.status, 400);
-    assert.match(unsupported.problem!.type, /pattern-unsupported$/u);
+    const backslash = pathScope(FileAddress.selector(parsePath("file:///project/dir%5Cname/*.txt")!) as string, true);
+    assert.equal(pathScopeMatches(backslash, String.raw`/project/dir\name/file.txt`), true);
+    assert.equal(pathScopeMatches(backslash, "/project/dir/name/file.txt"), false);
+    assert.equal(pathScopeMatches(backslash, "/project/dirname/file.txt"), false);
     const rooted = FileAddress.selector(parsePath("file:///project%5Bbase%5D/dir%3F/*.txt")!, "/project[base]");
-    assert.equal(Namespace.canonicalizeSpelling(rooted as string, "/project[base]"), "dir[?]/*.txt", "the real base never becomes glob syntax");
+    assert.equal(Namespace.canonicalizeSpelling(rooted as string, "/project[base]"), String.raw`dir\?/*.txt`, "the real base never becomes glob syntax");
     assert.equal(FileAddress.selector(parsePath("file:///project%5Cbase/*.txt")!, "/project\\base"), "/project\\base/*.txt", "literal base characters never reach the matcher");
 });
 

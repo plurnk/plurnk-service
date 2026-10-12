@@ -154,6 +154,8 @@
         "@plurnk/plurnk-schemes-http": "2.0.1",
         "@possumtech/sqlrite": "^6.6.1",
         "diff": "^9.0.0",
+        "glob": "^13.0.6",
+        "minimatch": "^10.2.6",
         "@plurnk/plurnk-digest": "3.1.0"
     },
     "devDependencies": {

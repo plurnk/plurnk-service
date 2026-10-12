@@ -18,6 +18,8 @@ names are project-relative; names that collide with path syntax use native
 `file:///work/hash%23name.txt`, and a literal `%28` as `%2528` in a file URL.
 This quoting changes neither the file nor its workspace membership. A fragment
 such as `#bytes` still selects a channel; a literal filename `#` must be encoded.
+Quoting also composes with path globs: `file:///work/dir%5Cname/*.txt`
+selects text files inside the literal `dir\name` folder, never `dir/name`.
 
 ## What a pattern selects
 

@@ -12,7 +12,7 @@ that set.
 | A file is a member because | How it got there |
 | --- | --- |
 | git tracks it | it was committed or staged (`git ls-files`), refreshed every turn |
-| a definition includes it | an enabled `members` definition — a gitignore-style glob such as `docs/**` |
+| a definition includes it | an enabled `members` definition — a shell-path glob such as `docs/**` |
 | plurnk created it | a file your accepted `EDIT`, `COPY`, or `MOVE` wrote gets an exact creation record; it is a member without any `git add` |
 
 An exclusion (`!glob`) wins over every inclusion. A model definition never

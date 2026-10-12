@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
+import PathGlob from "../core/PathGlob.ts";
 
 export type PathScope =
     | { kind: "exact"; pathname: string; candidatePrefix: string }
@@ -27,7 +28,7 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
     return { kind: "glob", pattern: pathname, candidatePrefix, shallowPrefix, recursivePrefix };
 };
 
-// {§find-scope-prefix-filter} — `**` crosses directories in every spelling. Node's matcher
+// {§find-scope-prefix-filter} — `**` crosses directories in every spelling. Shell globbing
 // reads a `**` glued to a name (`**.go`, `src/**.ts`) as a single-segment `*`; the taught
 // rule holds, so the glued form is matched as `**/*<rest>`.
 const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");
@@ -57,14 +58,14 @@ export const pathScopeMatches = (scope: PathScope, pathname: string, base?: stri
     if (scope.kind === "folder") return pathname.startsWith(scope.prefix);
     // Terminal `*` and `**` are the structural catalog selectors. They include
     // dot entries so the promised complete map cannot hide `.env.defaults` or
-    // `.github`; richer shell patterns retain Node's native dotfile behavior.
+    // `.github`; richer shell patterns retain ordinary dotfile behavior.
     if (scope.shallowPrefix !== null) {
         if (!pathname.startsWith(scope.shallowPrefix)) return false;
         const remainder = pathname.slice(scope.shallowPrefix.length);
         return remainder.length > 0 && !remainder.includes("/");
     }
     if (scope.recursivePrefix !== null) return pathname.startsWith(scope.recursivePrefix);
-    return posix.matchesGlob(pathname, crossingDoubleStar(scope.pattern));
+    return PathGlob.matches(pathname, crossingDoubleStar(scope.pattern));
 };
 
 export type PathFolderSummary = {

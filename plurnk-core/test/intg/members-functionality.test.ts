@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -74,6 +74,58 @@ const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<
 const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
+
+test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree on escaped filenames", async () => {
+    const temporary = await mkdtemp(join(tmpdir(), "plurnk-members-glob-"));
+    const root = join(temporary, String.raw`base\[1]`);
+    const intended = String.raw`dir\name/a.txt`;
+    const neighbor = "dir/name/a.txt";
+    const pattern = String.raw`dir\\name/*.txt`;
+    const names = [intended, neighbor, "dirname/a.txt", "a*.txt", "a/b.txt"];
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    try {
+        for (const name of names) {
+            await mkdir(dirname(join(root, name)), { recursive: true });
+            await writeFile(join(root, name), name);
+        }
+        const workspaceId = await insertWorkspace(db, "members-escaped");
+        await rootWorkspace(db, workspaceId, root);
+        await daemon.start();
+        const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
+            daemon.invokeModuleAction(`workspace.members.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
+        const add = (alias: string, glob: string) => invoke("add", { alias, definition: { glob } });
+        const definitions = async () => (await invoke<{ definitions: Definition[] }>("list", {})).definitions;
+        const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0]!;
+
+        const preview = await discover(String.raw`dir\\name/a.txt`);
+        assert.equal(preview.provenance.kind, "preview", "escape syntax is classified at the shared boundary");
+        assert.match(preview.summary!, /^would include 1 file/u);
+        await add("literal", pattern);
+        assert.equal(await memberOf(db, workspaceId, intended), true);
+        assert.equal(await memberOf(db, workspaceId, neighbor), false);
+        assert.deepEqual((await definitions()).find(({ alias }) => alias === "literal")?.detail?.files, [intended]);
+        assert.deepEqual(await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key: intended }), { included: 1 });
+        assert.equal(await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key: neighbor }), undefined);
+
+        await add("wildcard-name", String.raw`a\*.txt`);
+        assert.equal(await memberOf(db, workspaceId, "a*.txt"), true);
+        assert.equal(await memberOf(db, workspaceId, "a/b.txt"), false);
+        await add("neighbor", "dir/name/*.txt");
+        const exclusionPreview = await discover(`!${pattern}`);
+        assert.match(exclusionPreview.summary!, /^would exclude 1 member/u);
+        await add("no-literal", `!${pattern}`);
+        assert.equal(await memberOf(db, workspaceId, intended), false);
+        assert.equal(await memberOf(db, workspaceId, neighbor), true);
+        assert.deepEqual((await definitions()).find(({ alias }) => alias === "no-literal")?.detail?.files, [intended]);
+        assert.deepEqual(await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key: intended }), { glob: pattern });
+        assert.equal(await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key: neighbor }), undefined);
+    } finally {
+        await daemon.stop();
+        await db.close();
+        await rm(temporary, { recursive: true, force: true });
+    }
+});
 
 for (const boundary of ["startup", "workspace inspection"] as const) {
     test(`{§configuration-repair-path} ${boundary} preserves inspection of invalid members without publishing a winner`, async () => {

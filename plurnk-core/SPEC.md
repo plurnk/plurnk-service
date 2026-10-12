@@ -768,9 +768,9 @@ and never re-fetch a match.
 
 - §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
 - §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
-- §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
+- §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches ({§path-glob-matching}) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
 - §membership-reconcile-sets **Reconciliation is two set statements.** Once the desired set is composed — `(git ls-files ∪ include) − exclude`, glob evaluation and Git shell-outs being the process's own — it lands as one `INSERT … SELECT FROM json_each` with the same idempotent provenance update as a single registration, and every overlay-owned member outside it leaves in one `DELETE … WHERE pathname NOT IN (json_each) RETURNING`, its prior body riding out of the statement. A path that also left disk truth (no longer a candidate at all) becomes a divergence from that prior content; an exclusion is silent. No per-path statement, no set difference outside the database.
-- §membership-glob-in-sql **A constraint is evaluated where it lives.** `glob_match(pathname, glob)` is `node:path.matchesGlob` registered into SQLite (`src/core/glob_match.ts`, deterministic), the one matcher every overlay decision uses, so a lookup that asks the constraints table a question — which exclusion covers this key, whether a members definition includes it, which inclusion owns each untracked path — is one statement over `workspace_constraints`, never a listing filtered in the process. Transient inputs the process already holds (a `git ls-files` listing against the exclude globs) stay filtered in the process; the function exists so the database's own rows can be asked, not so process data makes a round trip.
+- §membership-glob-in-sql **A constraint is evaluated where it lives.** `glob_match(pathname, glob)` exposes {§path-glob-matching} to SQLite (`src/core/glob_match.ts`, deterministic), the same matcher every overlay decision uses, so a lookup that asks the constraints table a question — which exclusion covers this key, whether a members definition includes it, which inclusion owns each untracked path — is one statement over `workspace_constraints`, never a listing filtered in the process. Transient inputs the process already holds (a `git ls-files` listing against the exclude globs) stay filtered in the process; the function exists so the database's own rows can be asked, not so process data makes a round trip.
 
 **File ops act on the entry, not the disk; the two reconcile at gates.** A `file:///` member's body is its materialized model-readable snapshot. READ returns that channel; EDIT computes against it, not a newly read replacement. Pre-turn materialization acquires disk state; accepted write-back validates the captured revision before changing disk ({§proposal}, {§membership-edit-write-revision}).
 
@@ -1588,7 +1588,7 @@ At `project_root=/`, `/src/x.md` and `src/x.md` resolve to the same key. Without
 | Invalid URL | Invalid encoding, host-unsupported authorities or encoded separators, and NUL refuse the operation with 400. |
 | Bare input / bound key | Bare spelling retains {§path-parentheses}, not general URI decoding. Bound keys are never decoded or home-expanded again. |
 | Resource rendering | Ordinary names stay project-relative. Names that bare target syntax would reinterpret use absolute native file URLs from `project_root`; no identity or membership changes. |
-| Selectors | Encoded metacharacters are filename data, separate from authored native glob syntax. URL selector receipts preserve that distinction; generated folder links quote the literal folder before appending `/**`. A literal backslash within a URL glob refuses with 400 rather than being reinterpreted as a separator by the native matcher; exact file URLs remain valid. |
+| Selectors | Encoded metacharacters are filename data, separate from authored glob syntax ({§path-glob-matching}). URL selector receipts preserve that distinction; generated folder links quote the literal folder before appending `/**`. Literal backslashes remain within their filename segment, including beside glob syntax. |
 
 Folders and globs select members in those same filesystem coordinates. Parent-directory selectors may include in-root and outside-root members; they never scan or admit unrelated disk contents. Catalog paths and grouped subtree selectors use the reusable spelling in {§file-url}.
 
@@ -2787,7 +2787,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 - §find-line-anchors **A FIND regex anchors each line**, as READ, EDIT and KILL do ({§read-pattern}, {§edit-pattern}): `^` and `$` are a line's ends in every FIND content match — over entries, log rows, turn sources and a binary channel's bytes — so ```` ```FIND (django/urls/resolvers.py) /^from|^import/ ```` locates the same import lines a READ with that pattern shows, never a false 204.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
-- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit extension contract, never inferred from URL punctuation.
+- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a standard matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns use {§path-glob-matching}. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit extension contract, never inferred from URL punctuation.
 
   Resource-authority globs select authorities independently of the path scope.
   Matching resources retain their full addresses through pattern matching,
@@ -2873,6 +2873,23 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   therefore keeps one stable column across the complete result set. Pagination is the only FIND materialization bound; no
   hidden complete row or location collection is retained behind the public
   projection.
+
+§path-glob-matching Core's `PathGlob` owns shell-path matching and targeted disk
+traversal through the public `minimatch` and `glob` packages. Resource selection,
+membership scans, inspection and the membership SQL predicate share this dialect.
+
+| Input | Meaning |
+| --- | --- |
+| `/` | Segment separator; `*` and `?` do not cross it. |
+| `\*`, `\?`, `\[`, `\\` | Literal wildcard, bracket or backslash, after target-slot decoding ({§path-parentheses}). A backslash is never a pattern's directory separator. |
+| Braces, character classes, extglobs, `**` | Standard matcher semantics; operation catalogs additionally apply {§find-scope-prefix-filter}. |
+| Leading `#` or `!` | Filename syntax, not matcher-level comment or negation. The members family owns its leading `!` exclusion marker. |
+| Dot-prefixed entries | Require an explicit dot except in the complete structural catalogs above. |
+| Filesystem base | Literal, outside the pattern; its metacharacters and backslashes never become selector syntax. |
+
+Matching retains the host's conventional case behavior (case-insensitive on
+Windows/macOS, case-sensitive otherwise). Membership traversal remains
+pattern-bounded and admits files only; it does not become an unrestricted walk.
 
 ### §send Messaging and turn disposition
 
@@ -5784,7 +5801,7 @@ Core registers the `members` family with the coordinator ({§functionality-coord
 the model, the client, and the operator learn one surface — `list | discover | add | replace |
 enable | disable | remove`, `workspace.members.<verb>` for the client,
 ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
-MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
+MCP servers. A definition is one shell-path glob ({§path-glob-matching}), `{ glob }`, relative to the project
 root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
 Admission provenance (`service-configuration`, `client-action`, `model-proposal`)
 rides the definition to enforce {§members-model-scope}; configuration-source
@@ -6344,7 +6361,6 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | code | status | contract |
 |---|---:|---|
 | `invalid-file-url` | 400 | The native file-URL diagnostic, or `File URL path must not include NUL characters.` ({§file-url}). |
-| `pattern-unsupported` | 400 | The native glob matcher cannot match a literal backslash. Exact file URLs remain supported ({§file-url}). |
 | `edit-empty` | 400 | EDIT requires at least one statement. Recovery: Provide an EDIT statement. |
 | `edit-batch-mismatch` | 400 | The EDIT batch spans multiple resources. Recovery: Submit a separate EDIT batch for each resource. |
 | `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit-marker-required-on-existing}). Recovery: Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file. |
@@ -6436,7 +6452,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME). |
 | `query-invalid` | 400 | '*query*' names no path or pattern. Recovery: Supply a path such as `docs/guide.md` or a pattern such as `docs/**`. |
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
-| `definition-invalid` | 400 | A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude. |
+| `definition-invalid` | 400 | A members definition is { glob }: a shell-path pattern, `!glob` to exclude. |
 | `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: `git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE. |
 | `workspace-not-found` | 404 | Workspace *id* does not exist. |
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |

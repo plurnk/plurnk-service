@@ -23,8 +23,9 @@
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
-import { glob, stat } from "node:fs/promises";
-import { resolve, matchesGlob, relative, isAbsolute } from "node:path";
+import { stat } from "node:fs/promises";
+import { resolve, relative, isAbsolute } from "node:path";
+import PathGlob from "./PathGlob.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -448,7 +449,7 @@ export default class GitMembership {
         // provenance when both grantors admit a path; outside-root write authority
         // must not collapse into a read-only Git origin.
         const includedSet = new Set(included);
-        const passesExclusions = (p: string): boolean => excludeGlobs.length === 0 || !excludeGlobs.some((g) => matchesGlob(p, g));
+        const passesExclusions = (p: string): boolean => excludeGlobs.length === 0 || !excludeGlobs.some((g) => PathGlob.matches(p, g));
         const desiredGit = members.filter((p) => !includedSet.has(p) && passesExclusions(p));
         const desiredIncluded = included.filter(passesExclusions);
         const desired = [...desiredGit, ...desiredIncluded]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
@@ -503,7 +504,7 @@ export default class GitMembership {
         const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal, constraints);
         if (inputs === null) return null;
         const { root, gitMembers, included, masked, excludeGlobs, scans } = inputs;
-        const excludedBy = (p: string): boolean => excludeGlobs.some((g) => matchesGlob(p, g));
+        const excludedBy = (p: string): boolean => excludeGlobs.some((g) => PathGlob.matches(p, g));
         const candidates = [...new Set([...gitMembers, ...included])].toSorted();
         return {
             root,
@@ -565,7 +566,7 @@ export default class GitMembership {
     }
 
     // Targeted definition scan (SPEC {§membership} `include`) — enumerate disk files
-    // matching the patterns via node:fs glob (the pattern bounds the
+    // matching {§path-glob-matching} (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.
     static async #scanIncluded(
@@ -575,7 +576,7 @@ export default class GitMembership {
     ): Promise<string[]> {
         const matches = new Set<string>();
         for (const pattern of patterns) {
-            for await (const rel of glob(pattern, { cwd: root })) {
+            for await (const rel of PathGlob.iterate(pattern, root)) {
                 if (signal?.aborted) return [...matches];
                 try {
                     if ((await stat(resolve(root, rel))).isFile()) matches.add(rel);

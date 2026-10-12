@@ -1,15 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchesGlob } from "node:path";
 import globMatch, { deterministic } from "./glob_match.ts";
 
-// {§membership-glob-in-sql} — the SQL function is node:path.matchesGlob, 1/0 for SQLite, and
-// deterministic so the planner may treat it as one.
-test("glob_match is matchesGlob with a SQLite boolean", () => {
+test("{§membership-glob-in-sql} the deterministic predicate preserves escapes and segment boundaries", () => {
     assert.equal(deterministic, true);
-    for (const [pathname, glob] of [["src/a/b.ts", "src/**/*.ts"], ["docs/x.md", "*.md"], ["docs/x.md", "docs/*"], ["a.ts", "src/**"]] as const) {
-        assert.equal(globMatch(pathname, glob), matchesGlob(pathname, glob) ? 1 : 0, `${pathname} against ${glob}`);
+    for (const [pathname, glob, expected] of [
+        ["src/a/b.ts", "src/**/*.ts", 1],
+        ["docs/x.md", "*.md", 0],
+        ["docs/x.md", "docs/*", 1],
+        ["a.ts", "src/**", 0],
+        ["a*.txt", String.raw`a\*.txt`, 1],
+        ["a/b.txt", String.raw`a\*.txt`, 0],
+        [String.raw`dir\name/a.txt`, String.raw`dir\\name/*.txt`, 1],
+        ["dir/name/a.txt", String.raw`dir\\name/*.txt`, 0],
+    ] as const) {
+        assert.equal(globMatch(pathname, glob), expected, `${pathname} against ${glob}`);
     }
-    assert.equal(globMatch("src/a/b.ts", "src/**/*.ts"), 1);
-    assert.equal(globMatch("a.ts", "src/**"), 0);
 });

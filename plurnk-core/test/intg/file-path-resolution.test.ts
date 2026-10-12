@@ -59,7 +59,7 @@ test("{§fs-namei} file URLs preserve native filename identity through reads and
 test("{§file-url} encoded file operands compose across mutations, attachments, catalogs and glob reads", async (t) => {
     serverProposals(t, "accept");
     const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-file-url-ops-[base]-")));
-    const directory = "folder %28 #?[v]";
+    const directory = "folder %28 #?[v]\\name";
     const names = ["literal%28.txt", "hash#name.txt", "space name.txt", "wild*.txt", "braces{v}.txt", "slash\\name.txt", ".hidden.txt"];
     const key = (name: string): string => `${directory}/${name}`;
     const uri = (name: string): string => pathToFileURL(join(root, key(name))).href.replaceAll("*", "%2A");
@@ -96,7 +96,7 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                     assert.equal(authored.filter((row) => row.op === op && row.status_rx === 200).length, names.length, op);
                 }
                 const reads = authored.filter(({ op }) => op === "READ");
-                assert.equal(reads.length, names.length * 2 - 1, "the native glob reads every visible original and moved file once");
+                assert.equal(reads.length, names.length * 2 - 1, "the glob reads every visible original and moved file once");
                 assert.ok(reads.every(({ status_rx }) => status_rx === 200));
                 for (const name of names) {
                     assert.equal(await readFile(join(root, key(name)), "utf8"), `Revised ${name}\n`);

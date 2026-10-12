@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
+import PathGlob from "./PathGlob.ts";
 import Results, { type SchemeResultBase } from "./results.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
@@ -32,14 +33,11 @@ export default class FileAddress {
         const rootParts = projectRoot === null ? [] : resolve(projectRoot).split("/");
         let common = 0;
         while (common < rootParts.length && common < parts.length && decodeURIComponent(parts[common]!) === rootParts[common]) common++;
-        if (parts.slice(common).some((part) => /%5c/iu.test(part))) {
-            return Results.failure("scheme:file", "pattern-unsupported", 400,
-                "The native glob matcher cannot match a literal backslash.", {}, { retryable: false });
-        }
         // URI-encoded glob characters are filename data, even next to authored glob syntax.
         // The common filesystem base is removed by relativization, not matched as a glob.
         url.pathname = parts.map((part, index) => index < common ? part
-            : part.replace(/%(?:2a|3f|5b|5d|7b|7d|28|29)/giu, (encoded) => `[${encoded}]`)).join("/");
+            : part.replace(/%(?:2a|3f|5b|5c|5d|7b|7d|28|29)/giu,
+                (encoded) => encodeURIComponent(PathGlob.escape(decodeURIComponent(encoded))))).join("/");
         return fileURLToPath(url);
     }
 
