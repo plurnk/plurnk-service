@@ -137,12 +137,12 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     });
 }
 
-test("{§notifications-operation-event} tool hooks bracket real dispatch, not fan-out rows or automatic observations", { timeout: 20_000 }, async (t) => {
+for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operation-event} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-        makeMockResponse("````EDIT (worker:///one.txt)\nalpha\n````\n\n````EDIT (worker:///two.txt)\nbeta\n````\n\n````READ (worker:///*.txt)\n````\n\n````READ (worker:///missing.txt)\n````"),
+        makeMockResponse(`\`\`\`\`EDIT (worker:///one.txt)\nalpha\n\`\`\`\`\n\n\`\`\`\`EDIT (worker:///two.txt)\nbeta\n\`\`\`\`\n\n\`\`\`\`${operation} (worker:///*.txt)${operation === "EDIT" ? " <1,-1>\nupdated" : ""}\n\`\`\`\`\n\n\`\`\`\`READ (worker:///missing.txt)\n\`\`\`\``),
         makeMockResponse("````SEND [200]\nInspected both entries and the missing path.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
@@ -162,7 +162,7 @@ test("{§notifications-operation-event} tool hooks bracket real dispatch, not fa
     assert.deepEqual(tools.map(({ hook_event_name, tool_name }) => [hook_event_name, tool_name]), [
         ["PreToolUse", "EDIT"], ["PostToolUse", "EDIT"],
         ["PreToolUse", "EDIT"], ["PostToolUse", "EDIT"],
-        ["PreToolUse", "READ"], ["PostToolUse", "READ"],
+        ["PreToolUse", operation], ["PostToolUse", operation],
         ["PreToolUse", "READ"], ["PostToolUseFailure", "READ"],
         ["PreToolUse", "SEND"], ["PostToolUse", "SEND"],
     ]);
@@ -179,7 +179,7 @@ test("{§notifications-operation-event} tool hooks bracket real dispatch, not fa
         assert.deepEqual(settled.tool_response, (settled.plurnk.params as ApplicationOperationEvent).result);
     }
     assert.equal(new Set(tools.filter(({ hook_event_name }) => hook_event_name === "PreToolUse").map(({ tool_use_id }) => tool_use_id)).size, 5);
-    assert.equal((tools[5]!.tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable reads");
+    assert.equal((tools[5]!.tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable operations");
     assert.equal((tools[7]!.tool_response as { status: number }).status, 404);
     assert.equal(events.at(-1)!.hook_event_name, "Stop", "the terminal event follows all settled dispatches");
 });

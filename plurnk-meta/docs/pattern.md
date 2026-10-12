@@ -21,6 +21,12 @@ such as `#bytes` still selects a channel; a literal filename `#` must be encoded
 Quoting also composes with path globs: `file:///work/dir%5Cname/*.txt`
 selects text files inside the literal `dir\name` folder, never `dir/name`.
 
+Glob EDIT and resource KILL apply independently to every matching resource,
+not just a preview page. Scopes and patterns apply inside each resource; a
+refused target does not undo successful siblings. No matching path changes
+nothing. COPY/MOVE require one resolved resource per operand; use explicit
+source/destination pairs for multiple transfers.
+
 ## What a pattern selects
 
 | Pattern | Selection |

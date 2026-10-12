@@ -38,7 +38,7 @@ import BodyPreview from "../content/body-preview.ts";
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
-import { resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
+import { isContextReceipt, reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import WorkerControlHandler from "./WorkerControlHandler.ts";
@@ -77,14 +77,24 @@ export type DispatchContext = {
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
     onSettled?: (logEntryId: number) => void | Promise<void>;
-    // {§read-fan-out} — set on a READ dispatched on behalf of a glob: the row it writes
+    // {§bulk-resource-targeting} — set on an operation dispatched on behalf of a glob: the row it writes
     // carries this under `attrs.fanout`, so a client presents the authored statement once.
     fanout?: { readonly target: string; readonly matched: number; readonly index: number; readonly count: number };
+    remainingCommands?: number;
+    failOnOperationError?: boolean;
     // {§context-fit} — the turn's measure of the budget left for one more result; absent, a result lands whole.
     fit?: ContextFit;
 };
 
-export type DispatchResult = SchemeResult;
+export type DispatchResult = SchemeResult & {
+    commandsExecuted?: number;
+    commandsOmitted?: number;
+};
+
+type TargetSelection = { result: DispatchResult } | {
+    statements: readonly PlurnkStatement[];
+    fanout?: { target: string; matched: number };
+};
 
 export interface ResolvedClientEntryAddress {
     readonly scheme: string;
@@ -473,12 +483,9 @@ export default class Dispatcher {
         });
     }
 
-    async #dispatch(context: DispatchContext): Promise<DispatchResult> {
-        if (context.statement.op === "READ" && Dispatcher.#globTarget(context.statement.target)) {
-            return this.#fanOutRead(context, context.statement);
-        }
+    async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchResult> {
         let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
-            (ctx) => this.#dispatchOne(context, ctx));
+            (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
         const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
         if (edit !== undefined) {
             // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
@@ -520,57 +527,98 @@ export default class Dispatcher {
     }
 
     static #globTarget(target: ParsedPath | null): boolean {
-        return target !== null && PathSyntax.hasGlob(target.kind === "url" ? target.pathname : target.raw);
+        if (target === null) return false;
+        if (target.kind === "local") return PathSyntax.hasGlob(target.raw);
+        // Authority-only worker addresses name actors, not their resource trees.
+        if (target.scheme === "worker" && (target.pathname === "" || target.pathname === "/")) return false;
+        return PathSyntax.hasGlob(target.pathname) || PathSyntax.hasGlob(target.hostname ?? "");
     }
 
-    // {§read-fan-out} — a READ over a glob reads every matching path: the paths come from the
-    // ordinary FIND over the same target (unlogged; a matcher FIND when there is one, the catalog
-    // otherwise; its resource page bounds the fan-out), and each is read as an ordinary exact READ
-    // with the authored scope and matcher and its own receipt row, so every rendered line keeps its
-    // path, ordinal and anchor. No path: one 204 receipt on the authored glob.
-    async #fanOutRead(context: DispatchContext, statement: ReadStatement): Promise<DispatchResult> {
-        const survey: FindStatement = {
-            op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
-            matcher: statement.matcher, lineMarker: null, body: null, position: statement.position,
-        };
-        const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
-            (ctx) => this.#dataRun.run(schemeNameOf(statement.target), survey, ctx));
+    // {§bulk-resource-targeting} Selection and exact execution share the ordinary owners.
+    async #findTargets(survey: FindStatement, ctx: PlurnkSchemeContext): Promise<{ result: DispatchResult } | { targets: ParsedPath[]; matched: number }> {
+        const found = await this.#dataRun.run(schemeNameOf(survey.target), survey, ctx);
+        if (found.status >= 400) return { result: found };
         const paths = found.status < 300
             ? ((found.results as MatchItem[] | undefined) ?? []).flatMap((item) => Array.isArray(item) && !("items" in item[0]) ? [item[0].path] : [])
             : [];
-        if (paths.length === 0) {
-            const result = found.status >= 400 ? found : Results.assert(statement.matcher === null
-                ? { status: 204, detail: `No path matched ${statement.target!.raw}.` }
-                : { status: 204, matched: 0, matcher: statement.matcher.raw, detail: `No line under ${statement.target!.raw} matched the pattern.` });
-            const logEntryId = await this.#logWriter.writeLog({
-                statement, result, workspaceId: context.workspaceId, workerId: context.workerId, loopId: context.loopId,
-                turnId: context.turnId, sequence: context.sequence, origin: context.origin, curationPlan: null, modelCallId: null,
-            });
-            context.onDispatch?.(logEntryId);
-            await this.#notifySettled(context, logEntryId);
-            return result;
+        const matched = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
+        if (survey.lineMarker !== null && matched !== paths.length) {
+            throw new InvalidOperationResultError("Unbounded FIND did not return its complete resource selection.");
         }
-        const matchingPathCount = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
-        const results: DispatchResult[] = [];
-        for (const [index, path] of paths.entries()) {
-            const target = parsePath(path);
-            if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${path}`);
-            const fanout = { target: statement.target!.raw, matched: matchingPathCount, index, count: paths.length };
-            results.push(await this.#dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index, fanout }));
-        }
-        if (matchingPathCount > paths.length) {
-            this.#notices.push(context.workspaceId, context.workerId, context.loopId, {
-                source: "engine:dispatcher",
-                kind: "read_fanout_bounded",
-                level: "warn",
-                directive: "YOU SHOULD narrow the glob, or FIND first.",
-                message: `READ ${statement.target!.raw} matched ${matchingPathCount} paths; the first ${paths.length} were read.`,
-            });
-        }
-        return Results.assert({ ...(results.find(({ status }) => status >= 400) ?? results[results.length - 1]!), rowsWritten: results.length });
+        const targets = paths.map((path) => {
+            const selected = survey.target?.fragment == null ? path : `${path.split("#")[0]}#${survey.target.fragment}`;
+            const target = parsePath(selected);
+            if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${selected}`);
+            return target;
+        });
+        return { targets, matched };
     }
 
-    async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext): Promise<DispatchResult> {
+    async #selectTargets(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<TargetSelection | null> {
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            if (![statement.source, statement.destination].some(({ target }) => Dispatcher.#globTarget(target))) return null;
+            let resolved = statement;
+            for (const operand of ["source", "destination"] as const) {
+                const selection = statement[operand];
+                if (!Dispatcher.#globTarget(selection.target)) continue;
+                const found = await this.#findTargets({
+                    ...selection, op: "FIND", matcher: null, lineMarker: { marks: [1, -1] },
+                    aside: statement.aside, position: statement.position, body: null,
+                }, ctx);
+                if ("result" in found) return found;
+                if (found.targets.length !== 1) return { result: Dispatcher.#failure("target-cardinality", 400,
+                    `${statement.op} ${operand} matched ${found.matched} resources; expected one.`, {},
+                    { operand, matchingPathCount: found.matched, recovery: "Name one source and one destination per pair.", retryable: false }) };
+                resolved = { ...resolved, [operand]: { ...selection, target: found.targets[0]! } };
+            }
+            return { statements: [resolved] };
+        }
+        if (!(statement.op === "READ" || statement.op === "EDIT" || statement.op === "KILL")) return null;
+        if (!Dispatcher.#globTarget(statement.target) || (statement.op === "KILL" && schemeNameOf(statement.target) === "log")) return null;
+        const found = await this.#findTargets({
+            op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
+            matcher: statement.op === "READ" ? statement.matcher : null,
+            lineMarker: statement.op === "READ" ? null : { marks: [1, -1] }, body: null, position: statement.position,
+        }, ctx);
+        if ("result" in found) return found;
+        if (found.targets.length === 0) return { result: Results.assert(statement.op === "READ" && statement.matcher !== null
+            ? { status: 204, matched: 0, matcher: statement.matcher.raw, detail: `No line under ${statement.target!.raw} matched the pattern.` }
+            : { status: 204, detail: `No path matched ${statement.target!.raw}.` }) };
+        if (statement.op === "READ" && found.matched > found.targets.length) {
+            this.#notices.push(ctx.workspaceId, ctx.workerId, ctx.loopId, {
+                source: "engine:dispatcher", kind: "read_fanout_bounded", level: "warn",
+                directive: "YOU SHOULD narrow the glob, or FIND first.",
+                message: `READ ${statement.target!.raw} matched ${found.matched} paths; the first ${found.targets.length} were selected.`,
+            });
+        }
+        return { statements: found.targets.map((target) => ({ ...statement, target })), fanout: { target: statement.target!.raw, matched: found.matched } };
+    }
+
+    async #dispatchSelection(context: DispatchContext, selection: Exclude<TargetSelection, { result: DispatchResult }>): Promise<DispatchResult> {
+        const admitted = selection.statements.slice(0, context.remainingCommands);
+        const results: DispatchResult[] = [];
+        let rowsWritten = 0;
+        for (const [index, statement] of admitted.entries()) {
+            const result = await this.#dispatch({
+                ...context, statement, sequence: context.sequence + rowsWritten,
+                ...(selection.fanout === undefined ? {} : { fanout: { ...selection.fanout, index, count: admitted.length } }),
+                ...(context.fit === undefined ? {} : { fit: reserved(context.fit, admitted.length - index - 1) }),
+            }, true);
+            results.push(result);
+            rowsWritten += (result.rowsWritten as number | undefined) ?? 1;
+            if (context.failOnOperationError && result.status >= 400 && !isContextReceipt(result)) break;
+        }
+        if (results.length === 0) throw new Error("Dispatch requires an admitted operation.");
+        return { ...(results.find(({ status }) => status >= 400) ?? results.at(-1)!), rowsWritten,
+            commandsExecuted: results.length, commandsOmitted: selection.statements.length - admitted.length };
+    }
+
+    // {§bulk-resource-targeting} Dispatch accounting is core-owned, never a scheme's extension data.
+    static #singleResult(result: SchemeResult): DispatchResult {
+        return { ...result, commandsExecuted: 1, commandsOmitted: 0 };
+    }
+
+    async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved = false): Promise<DispatchResult> {
         const {
             statement,
             workspaceId,
@@ -581,7 +629,8 @@ export default class Dispatcher {
             origin,
             onDispatch,
         } = context;
-        let result: DispatchResult;
+        let result: DispatchResult | undefined;
+        let resolved: Exclude<TargetSelection, { result: DispatchResult }> | null = null;
         let curationPlan: LogCurationPlan | null = null;
         const denial = this.#checkWritable(statement, origin, workspaceId)
             ?? await this.#checkCapabilities(statement, schemeCtx)
@@ -595,7 +644,12 @@ export default class Dispatcher {
             // skips it. Logging failures (#writeLog throws) are NOT caught —
             // those are system failures.
             try {
-                if (statement.op === "EDIT") {
+                const selection = targetsResolved ? null : await this.#selectTargets(statement, schemeCtx);
+                if (selection !== null && !("result" in selection)) {
+                    resolved = selection;
+                } else if (selection !== null) {
+                    result = selection.result;
+                } else if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, loopId);
@@ -662,6 +716,10 @@ export default class Dispatcher {
                 }
             }
         }
+        // Child dispatch includes persistence and proposal settlement; their failures are
+        // internal, not exceptions from a scheme handler.
+        if (resolved !== null) return this.#dispatchSelection(context, resolved);
+        if (result === undefined) throw new Error("Operation dispatch produced neither targets nor a result.");
         result = await this.#fitResult(context, statement, result);
         // {§configuration-repair-path}: decide admission before persisting a proposed row.
         let autoAccept = false;
@@ -681,7 +739,7 @@ export default class Dispatcher {
                 }
             }
         }
-        // {§read-fan-out} — a row read on behalf of a glob names the statement it came from.
+        // {§bulk-resource-targeting} — a row on behalf of a glob names the statement it came from.
         if (context.fanout !== undefined) {
             const attrs = typeof result.attrs === "object" && result.attrs !== null ? result.attrs as Record<string, unknown> : {};
             result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
@@ -728,7 +786,7 @@ export default class Dispatcher {
                 });
                 const post = await this.#proposals.applyResolution(logEntryId, effective);
                 await this.#notifySettled(context, logEntryId);
-                return post;
+                return Dispatcher.#singleResult(post);
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
             // yields. A same-tick resolveProposal() (e.g. from a test that
@@ -772,10 +830,10 @@ export default class Dispatcher {
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             await this.#notifySettled(context, logEntryId);
-            return post;
+            return Dispatcher.#singleResult(post);
         }
         await this.#notifySettled(context, logEntryId);
-        return result;
+        return Dispatcher.#singleResult(result);
     }
 
     // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;

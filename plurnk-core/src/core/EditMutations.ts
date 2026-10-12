@@ -17,7 +17,7 @@ import PatternSelection from "./PatternSelection.ts";
 import LineMarkerOps from "../content/line-marker.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
-// {§edit-execution}: one authored EDIT owns one effect and one proposal.
+// {§edit-execution}: one resolved EDIT target owns one effect and one proposal.
 export default class EditMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;

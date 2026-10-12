@@ -141,9 +141,9 @@ export default class AdmittedTurnExecutor {
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
-        const admitted = statements.filter((statement) => TurnDisposition.is(statement)
-            || realCommands++ < maxCommands);
-        const scheduled = scheduleTurnOps(admitted);
+        let droppedCount = 0;
+        const scheduled = scheduleTurnOps(statements);
+        const executed: PlurnkStatement[] = [];
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
             worker_id: workerId,
         }))?.max_id;
@@ -153,8 +153,6 @@ export default class AdmittedTurnExecutor {
         const editSequence = scheduled.some((statement) =>
             (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
             ? new EditSequence() : undefined;
-        const droppedCount = statements.length - admitted.length;
-        const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
         let progressed = false;
@@ -226,6 +224,10 @@ export default class AdmittedTurnExecutor {
         };
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
+            if (!TurnDisposition.is(scheduledStatement) && realCommands >= maxCommands) {
+                droppedCount++;
+                continue;
+            }
             // {§metadata-ignored} — an unsupported resource option is dropped,
             // and the model gets one notice, never a refusal. SEND recipients and invocation owners
             // receive their own input whole ({§send-resource-attachments}, {§env-option}).
@@ -258,7 +260,7 @@ export default class AdmittedTurnExecutor {
                         if (!bareResults.has(statement)) {
                             const bareStatements: BareStatement[] = [];
                             for (const candidate of scheduled.slice(index)) {
-                                if (candidate.op !== "BARE") break;
+                                if (candidate.op !== "BARE" || bareStatements.length >= maxCommands - realCommands) break;
                                 bareStatements.push(candidate);
                             }
                             const batch = await this.#bareBatch.runBareBatch({
@@ -305,6 +307,8 @@ export default class AdmittedTurnExecutor {
                             origin,
                             logSelectionMaxId,
                             editSequence,
+                            remainingCommands: maxCommands - realCommands,
+                            failOnOperationError,
                             ...(fit === undefined ? {} : { fit: reserved(fit, scheduled.length - index - 1) }),
                             onDispatch,
                             onSettled,
@@ -317,7 +321,10 @@ export default class AdmittedTurnExecutor {
             );
             outcomes.push({ op: writtenOp(statement), status: result.status, problemType: result.problem?.type ?? null });
             progressed ||= isProgress(statement, result.status);
+            executed.push(statement);
             results.push(result);
+            if (!TurnDisposition.is(statement)) realCommands += result.commandsExecuted ?? 1;
+            droppedCount += result.commandsOmitted ?? 0;
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
             if (failOnOperationError && result.status >= 400 && !isContextReceipt(result)) {
                 throw new OperationFailureError(result);
@@ -346,6 +353,7 @@ export default class AdmittedTurnExecutor {
         }
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
+        const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
         const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         const emptyRecovery = emptyTurn && (!completionEligible || unresolved!.count > 0);
         if (emptyRecovery) pendingEngineErrors.push("no_operation");
@@ -366,7 +374,7 @@ export default class AdmittedTurnExecutor {
             status: turnStatus,
             outcomes,
             progressed,
-            fingerprint: emptyTurn ? StrikeRail.fingerprintEmptyTurn(source ?? "") : StrikeRail.fingerprintTurn(scheduled, results),
+            fingerprint: emptyTurn ? StrikeRail.fingerprintEmptyTurn(source ?? "") : StrikeRail.fingerprintTurn(executed, results),
             emptyTurn: emptyRecovery,
         };
     }

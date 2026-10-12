@@ -1684,7 +1684,7 @@ metadata or channels.
 
 §op-methods-op-dispatch Engine operation ownership follows the public scheme contract:
 
-- Each authored EDIT dispatches through `editBatch` with one resolved statement.
+- Each resolved EDIT target dispatches through `editBatch` with one statement.
 - A log KILL dispatches only to the core-owned log curation handler ({§log-kill-scope}); an entry scheme's `kill` method never sees a `log:///` target.
 - Other delegated operations use the corresponding lowercase `SchemeHandler` method, with standard FIND supplied for a data scheme that omits a custom implementation.
 - COPY and MOVE are engine-owned compositions over CRUD primitives ({§copy}/{§move}).
@@ -1712,10 +1712,10 @@ Registration precedes loop affinity:
 | Observation | Responses are unseen retrieval work; completion follows {§send-premature-terminate}. |
 
 - §op-synchronous **Decisive operations settle before the next operation.** The dispatcher awaits each operation and its proposal resolution. Work remains in flight only when the operation's contract deliberately creates concurrency: FORK, WORK, a stream-producing execution, and streaming READ after acquisition. Such a READ first establishes its durable subscription and returns `102`; a later operation may address that live owner. Dispatching an execution before KILL does not wait for the process to finish using a resource. KILL of a worker synchronously ends its live loops before disposition checks the pending set; physical scope cleanup remains asynchronous.
-- §edit-execution **One authored EDIT is one mutation.** Each EDIT resolves against current resource state when dispatch reaches it, owns its proposal when gated, and records its own resulting revision. No later EDIT is prepared or applied in advance. Numeric scopes address current coordinates; an earlier EDIT may change what those numbers select. Rejection applies only to that operation, not its successful siblings.
+- §edit-execution **One resolved EDIT target is one mutation.** Each EDIT resolves against current resource state when dispatch reaches it, owns its proposal when gated, and records its own resulting revision. No later EDIT is prepared or applied in advance. Numeric scopes address current coordinates; an earlier EDIT may change what those numbers select. Rejection applies only to that operation, not its successful siblings.
 - §edit-anchor-continuity **Own EDITs preserve untouched hash targets within one program.** Core carries an anchor through exact, successfully applied EDIT splices when its line survives unchanged, even if its ordinal or neighborhood changes. Scoped entry KILL uses the same deletion path. Target-line replacement or deletion invalidates that binding. Continuity is private to the admitted program and canonical resource/channel; it is not a new published anchor format. The complete normalized line content must match the expected result of the preceding recorded EDIT, otherwise retained bindings are discarded and ordinary current-state validation applies. Reviewer replacement and results without an applied EDIT receipt do not carry bindings forward. A retained binding resolves alone: a twin neighbourhood this program's own splice created elsewhere does not make the carried anchor ambiguous, and an anchor the program never bound resolves against current state. Normalization is the same line-content representation used by READ and line hashing; file-write revision checks remain independent. No approximate text matching is used. Lowered coordinates retain a current-anchor precondition at the mutation owner; ambiguous matches and concurrent changes remain collisions.
 - §anchor-offset **An anchor offset is tolerated, never taught (#749).** A line mark may carry an offset from its anchor (`@abcde+1`, `@abcde-2`), and a bare `+N` after an anchor counts from that anchor (`<@abcde,+1>`). The anchor resolves as usual and the offset is added; a result before line 1 is an invalid mark, and past the end is the ordinary range refusal. Continuity and current-anchor preconditions check the anchor's own line. `plurnk.md` keeps its two anchor forms. Numeric relative endpoints normalize under {§scope-range-recovery}; a reversed range produced by anchor resolution is never reinterpreted as a count.
-- §edit-batch **One compound operation may require atomic splices.** The scheme's `editBatch` primitive validates all supplied numeric edits against one snapshot and commits one revision or none. Core supplies one statement for an authored EDIT; same-resource MOVE can supply multiple splices as one operation. This primitive does not group separate authored operations. Its replacement, insertion, conflict, and receipt rules remain owned by the shared Slicer.
+- §edit-batch **One compound operation may require atomic splices.** The scheme's `editBatch` primitive validates all supplied numeric edits against one snapshot and commits one revision or none. Core supplies one statement per resolved EDIT target; same-resource MOVE can supply multiple splices as one operation. This primitive does not group separate targets or authored operations. Its replacement, insertion, conflict, and receipt rules remain owned by the shared Slicer.
 - §edit-batch-receipt **A refusal describes its own unapplied work.** An anchor collision lists every distinct unresolved anchor in that EDIT, including both range endpoints, in `unresolvedAnchors` (`anchor`, `kind: missing | ambiguous`, and matching `lines` when ambiguous). Missing is not proof of earlier validity or subsequent change. It carries `editCount: 1`, `applied: 0`, and recovery directing a READ for current coordinates; it makes no claim about other operations. A refused compound splice batch lists all conflicting pairs in `conflicts`, non-conflicting regions in `cleanRegions`, its first pair in `conflictingRegions`, and its own `editCount` and `applied: 0`.
 - §edit-batch-merges **Normalizations require evidence and a receipt.** An EDIT body carrying only this resource's published `L<@xxxxx>` prefixes (the number right-aligned) is stripped when those prefixes verify against current anchors or this worker's preserved READ receipts (`rendered-prefix-stripped`); otherwise it remains literal content (`rendered-prefix-unverified`). Within a single atomic splice batch, the Slicer can deduplicate identical regions/bodies, concatenate same-boundary insertions, assign a shared endpoint to the sole body reproducing that line, or relocate an inner change when its original content occurs exactly once in the outer body. An already-applied inner body can be dropped. Unevidenced overlap remains a collision. These batch resolutions never reinterpret separate authored EDITs. Applied normalizations carry their exact merge facts and a notice; receipts describe only the applied effects.
 
@@ -1726,6 +1726,33 @@ provide the underlying resource operations. Each operand independently selects
 a resource, channel, and optional text scope ({§transfer-resource-selections}).
 Source acquisition follows {§universal-read-composition}; landed mutation
 effects follow {§edit-result-copy-move-effects}.
+
+§bulk-resource-targeting **Path selectors resolve before resource operations.** Core
+uses ordinary FIND selection, without a FIND receipt, to resolve glob/extglob
+operands ({§path-glob-matching}). Resolution occurs when dispatch reaches the
+operation, not when the turn is parsed. Each selected address retains the
+authored channel; scopes and content matchers belong to the selected resource.
+
+| Operation | Selection and execution |
+|---|---|
+| READ | The ordinary FIND resource page, optionally filtered by the content matcher; each target receives an exact READ ({§read-fan-out}). |
+| EDIT, resource KILL | The complete matching path set, not the FIND preview page. Content matchers do not filter this set: each target independently validates and applies its scope, matcher and body through the ordinary mutation owner. No paths means one 204 receipt and no mutation. |
+| COPY, MOVE | Each glob operand must resolve to exactly one resource. Zero or multiple matches refuse the pair with `target-cardinality` before either side changes. Exact destinations retain ordinary creation semantics. Explicit pairs express bulk transfers; no implicit concatenation, folder mapping or positional pairing. |
+| Log KILL | The existing curation selector owns the complete operation ({§log-kill-scope}), including its snapshot and distillation. |
+
+Fan-out resolves the address set once and executes in FIND order. Each target
+has its own admission, current-state validation, proposal and durable receipt;
+successful siblings survive a later refusal. Fail-on-error stops before the
+next target ({§op-execution-order}). No cross-resource transaction is implied.
+Per-target rows carry `attrs.fanout` (`target`, the authored selector; `matched`,
+the selected resource count; zero-based `index`; `count`, the admitted target
+count). One authored operation still produces one lifecycle notification pair.
+The configured command ceiling counts each admitted concrete operation; WAIT
+remains exempt ({§operator-config-workspace-max-commands}). It never counts an
+internal survey or a distillation as another command. An entirely omitted
+statement is not surveyed just to count its possible targets.
+Dispatch returns core-owned `commandsExecuted` and `commandsOmitted` totals to
+the turn executor; scheme result extensions cannot supply these counts.
 
 ### SEND dispatch (a message to a recipient)
 
@@ -2163,7 +2190,7 @@ A `file:///` member EDIT computes against its materialized body and **proposes**
 AST: `{ op: "READ", target, body: null, signal: tags | null, lineMarker? }`.
 
 A READ is never rewritten into a FIND ({§read-find-normalization}); a path-glob
-READ is the one fan-out core performs ({§read-fan-out}).
+READ uses the common resource selector ({§bulk-resource-targeting}, {§read-fan-out}).
 
 - §read-read-content Returns channel content and mimetype.
 - §read-read-404 Returns 404 when the channel is absent.
@@ -2205,16 +2232,16 @@ READ is the one fan-out core performs ({§read-fan-out}).
   scope, matcher and aside ({§read-selection-projection}, {§read-pattern}), one
   receipt row per path in the FIND's order, so every rendered line keeps its path,
   physical ordinal and anchor and remains a coordinate source for EDIT and KILL.
-  Each such row carries `attrs.fanout` (`target`, the authored glob; `matched`, the
-  survey's matching path count; `index`; `count`), so a client presents the authored
-  statement once and folds the paths beneath it without inferring the group.
+  Rows use the shared `attrs.fanout` identity ({§bulk-resource-targeting}), so a
+  client can group the exact receipts under the authored statement.
   Without a scope each path uses {§markerless-first-page}; with a pattern
   only the matching lines, `grep -n` style. The authored statement contributes
   `rowsWritten`, the receipt count, to its turn's sequence. No path is one 204
   receipt on the authored glob (`matched: 0` when a pattern selected nothing); a
   FIND failure is that failure on the authored glob. The FIND's resource page bounds
-  the fan-out: when more paths matched than were read, one `read_fanout_bounded`
-  notice names both counts. Every dialect follows this same READ fan-out;
+  the fan-out: when more paths matched than its page selected, one
+  `read_fanout_bounded` notice names both counts. A separate command ceiling may
+  further limit dispatch ({§bulk-resource-targeting}). Every dialect follows this same READ fan-out;
   none substitutes a FIND receipt for the requested content.
 
 §read-pattern-evidence **Match regions survive line-oriented presentation.** A patterned
@@ -4064,7 +4091,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
 | `PLURNK_SERVICE_MAX_TURNS` | Operator model-call **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The durable worker-tree budget includes descendant calls, BARE, and park/resume under {§turn-cap-counts-the-tree}; non-model chronology consumes none. |
-| `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap — every compiled op dispatches. Each resolved target statement counts once, whether authored separately or in a group ({§target-group}). Overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Lifecycle operations remain exempt ({§operator-config-workspace-max-commands-floor}). Tightened per workspace via `settings.maxCommands` (min wins). |
+| `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap — every resolved op dispatches. Each concrete operation counts once, whether authored separately, in a group ({§target-group}), or selected by a glob ({§bulk-resource-targeting}). Overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Lifecycle operations remain exempt ({§operator-config-workspace-max-commands-floor}). Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | Positive ms of cumulative active execution per loop ({§loop-execution-allowance}); excludes parked/queued time. Snapshotted on first execution, retained across wakes. Exhaustion aborts in-flight work and terminates `504 loop_timeout`, including a stuck provider call. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY` | ms of recovery after the first recoverable provider failure; `0` disables reissue. Expiry parks workers with a reviewer, otherwise concludes their loop, or returns BARE's failure under {§provider-recovery}. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` | First recovery delay (ms); doubles per failure up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX` ({§provider-recovery}). |
@@ -5109,7 +5136,7 @@ adding a loop to it. LOOK text anchors resolve through the same
 
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
-| §notifications-operation-event `operation/event` | `ApplicationOperationEvent`: `{ workerId, loopId, turnId, sequence, origin, projectRoot, statement, phase, result? }` | One admitted dispatch starts before capability/proposal admission and settles after its durable receipt(s). Only the settled phase has `result`, the exact returned operation result. READ fan-out is one dispatch; BARE starts before prompt preparation and settles after ordered receipt persistence. Automatic stream observations and log writes are not dispatches. An asynchronous executor's successful dispatch does not assert process exit. An internal exception that prevents settlement has no invented result event. |
+| §notifications-operation-event `operation/event` | `ApplicationOperationEvent`: `{ workerId, loopId, turnId, sequence, origin, projectRoot, statement, phase, result? }` | One admitted dispatch starts before capability/proposal admission and settles after its durable receipt(s). Only the settled phase has `result`, the exact returned operation result. Resource fan-out is one dispatch ({§bulk-resource-targeting}); BARE starts before prompt preparation and settles after ordered receipt persistence. Automatic stream observations and log writes are not dispatches. An asynchronous executor's successful dispatch does not assert process exit. An internal exception that prevents settlement has no invented result event. |
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A non-proposed `log_entries` row is committed, or a proposed row reaches terminal settlement under {§proposal-proposed-hidden}. Delivery completes before a later event may terminate the owning Loop. |
 | §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; the two curation facts and two physical-context facts follow {§tokenomics-client-gauge}; `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§attribution}), separate from accounting. Worker and loop are an inseparable owning coordinate. |
 | §notifications-loop-packet `loop/packet`                     | `{ workerId, loopId, packetCount }` | One provider packet becomes durable. `packetCount` is the exact count of packet-bearing turns in that Loop; packetless producer turns and physical provider retries never contribute. |
@@ -5666,7 +5693,7 @@ retain distinct contracts and lifetimes.
 | `provider_retry` | a provider stream that failed after output began and was answered by a complete retry; `level: warn` | none | none |
 | `provider_unavailable` | engine provider — a provider failure retried within its recovery budget | none | none |
 | `path_normalized` | file scheme — a path resolved to its canonical spelling; `level: warn` | YOU SHOULD address the resolved path. | none |
-| `read_fanout_bounded` | engine dispatcher — a READ whose glob matched more paths than it read; `level: warn` | YOU SHOULD narrow the glob, or FIND first. | none |
+| `read_fanout_bounded` | engine dispatcher — a READ whose glob matched more paths than its resource page selected; `level: warn` | YOU SHOULD narrow the glob, or FIND first. | none |
 | `parse_issues_unavailable` | engine mimetype — parser recovery evidence unavailable for a mimetype; `level: warn` | none | none |
 | `metadata_ignored` | engine dispatcher — `[metadata]` on an operation whose scheme takes none, run without it; `level: warn` | YOU SHOULD NOT write [metadata] on an operation that takes none. | none |
 | `scope_normalized` | engine slicer — a scope normalized to its canonical form; `level: warn` | YOU SHOULD write the normalized scope. | none |
@@ -6287,6 +6314,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | code | status | contract |
 |---|---:|---|
 | `target-required` | 400 | *OP* requires a target path. Recovery: Write the target in parentheses on the opening fence line: `OP (path)`. |
+| `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
 | `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: ({§unregistered-scheme-recovery}) `Registered schemes: *names*.` |
 | `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept the [metadata] modifier. |
 | `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
