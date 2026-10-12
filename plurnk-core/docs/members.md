@@ -73,11 +73,11 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 - **Outside the project root** (`../notes.md`, or an absolute path beyond the
   root): no model definition reaches it; only a members definition under the
-  operator's namespace scope admits it. `~` is not substituted: paths are
-  project-relative, so `~/notes.md` names a directory called `~` in the
-  project, and an absolute path names the host location. A command runs on the
-  host from the project root, where `~` and absolute paths keep their host
-  meaning, and its output is a stream the worker reads.
+  operator's namespace scope admits it. File operands beginning with `~/`
+  resolve from the daemon user's home; `./~/` names a literal project
+  directory. Members globs remain project-relative, not home shorthand.
+  A command runs on the host from the project root, and its output is a stream
+  the worker reads.
 
 ## Files you create
 

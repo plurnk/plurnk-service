@@ -4,7 +4,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { authorityParts, entryCoordinateOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { authorityParts, entryAddress, entryCoordinateOf, foldAuthorityIntoPath, missExtensions, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+
+test("{§fs-home} file address renderers protect literal home-like names", () => {
+    for (const [key, expected] of [["~", "./~"], ["~/x.md", "./~/x.md"], ["~/a(b).md", "./~/a%28b%29.md"], ["~someone/x", "~someone/x"], ["src/~/x", "src/~/x"]] as const) {
+        assert.equal(entryAddress("file", "", key), expected);
+        assert.equal(renderTarget({ scheme: null, pathname: key }), expected);
+        assert.equal(missExtensions("file", entryAddress("file", "", key)).target, expected);
+    }
+    assert.equal(entryAddress("worker", "alice", "/~/x"), "worker://alice/~/x", "non-file paths are untouched");
+    const escaped = entryAddress("file", "", "~/a\\b");
+    assert.equal(missExtensions("file", escaped).target, escaped, "a rendered address is not escaped twice");
+});
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");

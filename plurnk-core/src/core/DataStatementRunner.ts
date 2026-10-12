@@ -14,7 +14,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import Results from "./results.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
-import { type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
+import { type BoundEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
@@ -82,13 +82,12 @@ export default class DataStatementRunner {
 
     // {§membership-read-refusal} — a data scheme that can tell a plain miss from a refused one
     // (file: exists on disk, not a member) speaks first.
-    async #missRefusal(handler: unknown, target: ParsedPath, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
+    async #missRefusal(handler: unknown, address: BoundEntryAddress | null, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
         const describe = (handler as {
             missRefusal?: (pathname: string, ctx: PlurnkSchemeContext, fields: Record<string, null>) => Promise<DispatchResult | null>;
         }).missRefusal;
-        if (typeof describe !== "function") return null;
-        const pathname = target.kind === "url" ? target.pathname : target.raw;
-        return describe.call(handler, pathname, ctx, { content: null, mimetype: null, channel: null });
+        if (typeof describe !== "function" || address === null) return null;
+        return describe.call(handler, address.pathname, ctx, { content: null, mimetype: null, channel: null });
     }
 
     #entryNotFound(schemeName: string, target: ParsedPath, op: string): DispatchResult {
@@ -287,8 +286,6 @@ export default class DataStatementRunner {
         if (prepared.result !== null) return prepared.result;
         const resolved = prepared.address;
         if (statement.target !== null && resolved === null) {
-            const refusal = await this.#missRefusal(handler, statement.target, ctx);
-            if (refusal !== null) return refusal;
             return this.#entryNotFound(schemeName, statement.target, "READ");
         }
         const storageScheme = resolved?.scheme ?? manifest.storedScheme ?? addressedScheme ?? schemeName;
@@ -309,7 +306,7 @@ export default class DataStatementRunner {
                 : (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
         ));
         if (projected.status !== 404 || statement.target === null) return projected;
-        return await this.#missRefusal(handler, statement.target, ctx) ?? projected;
+        return await this.#missRefusal(handler, resolved, ctx) ?? projected;
     }
 
     // FIND on a data scheme: an exact target is one entry's own search; a glob, a collection, or

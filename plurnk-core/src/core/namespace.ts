@@ -1,8 +1,22 @@
 // {§fs-namei} {§fs-canonical-name} Lexical resolution only; membership and physical
 // symlink checks belong to the file owner.
 import { posix } from "node:path";
+import { homedir } from "node:os";
 
 export default class Namespace {
+    static isHomeRelative(spelling: string): boolean {
+        return spelling === "~" || spelling.startsWith("~/");
+    }
+
+    // {§fs-home} Call only for authored input, never for a bound entry key.
+    static expandHome(spelling: string, home: string = homedir()): string {
+        return Namespace.isHomeRelative(spelling) ? `${home}${spelling.slice(1)}` : spelling;
+    }
+
+    static literalSpelling(key: string): string {
+        return Namespace.isHomeRelative(key) ? `./${key}` : key;
+    }
+
     // Git reports repository-relative paths; storage is workspace-relative.
     static fromRepositoryPath(repositoryPath: string, workspaceRoot: string, repositoryRoot: string): string {
         if (repositoryPath.length === 0 || repositoryPath.startsWith("/") || repositoryPath.includes("\0")) {
@@ -28,11 +42,11 @@ export default class Namespace {
     }
 
     // {§fs-namei} Only the project directory becomes the empty collection.
-    static canonicalizeSpelling(raw: string, root: string | null): string | null {
-        const key = Namespace.#relative(raw, root);
+    static canonicalizeSpelling(raw: string, root: string | null, home: string = homedir()): string | null {
+        const key = Namespace.#relative(Namespace.expandHome(raw, home), root);
         if (key === null || key.length === 0) return key;
         const last = posix.basename(raw);
-        const folder = raw.endsWith("/") || last === "." || last === ".." || posix.basename(key) === "..";
+        const folder = raw === "~" || raw.endsWith("/") || last === "." || last === ".." || posix.basename(key) === "..";
         return folder ? `${key}/` : key;
     }
 

@@ -1,19 +1,23 @@
 // {§fs-canonical-name} {§fs-answer-in-canon} — accepted spellings converge on one
-// stored git pathspec; engine-authored addresses render that same canonical form.
+// stored Git-relative key; rendered addresses resolve back to that identity.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
 import type { FindStatement, ReadStatement, LineMarker, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
+import GitMembership from "../../src/core/git-membership.ts";
+import SearchIndex from "../../src/schemes/_search-index.ts";
+import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
+import { resourcePaths } from "./_find.ts";
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
@@ -22,15 +26,82 @@ const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSch
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
-const setup = async () => {
+const setup = async (databasePath?: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
-    const db = await openMigrated();
+    const db = await openMigrated(databasePath);
     const workspaceId = await insertWorkspace(db, `canon-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
     const workerId = await insertWorker(db, workspaceId);
     const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
     return { root, db, workspaceId, ctx };
 };
+
+for (const glob of ["**", "~/**"]) test(`{§fs-home} literal membership glob ${glob} composes with discovery, FTS and exclusion`, async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    try {
+        await mkdir(join(root, "~"));
+        await writeFile(join(root, "~/a.md"), "alpha\n");
+        await writeFile(join(root, "~/b.md"), "beta\n");
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob, source: "members" });
+        await GitMembership.indexGitMembership(ctx);
+        const file = new File();
+        const find = (pathname: string): FindStatement => ({ ...readStmt(pathname), op: "FIND", lineMarker: null });
+        const catalog = await file.find(find("*"), ctx);
+        assert.equal(catalog.status, 200);
+        assert.ok(JSON.stringify(catalog.results).includes('"path":"./~/**"'), "folder selectors are reusable literal addresses");
+        for (const target of ["./~", "./~/", "./~/**", "**"]) {
+            const found = await file.find(find(target), ctx);
+            assert.equal(found.status, 200, target);
+            assert.deepEqual(resourcePaths(found).sort(), ["./~/a.md", "./~/b.md"]);
+            for (const path of resourcePaths(found)) {
+                const read = await readFileScheme(readStmt(path), ctx);
+                assert.equal(read.status, 200, path);
+                assert.equal(read.content, path.endsWith("a.md") ? "alpha\n" : "beta\n");
+            }
+        }
+        const directory = await readFileScheme(readStmt("./~"), ctx);
+        assert.equal(directory.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-is-directory");
+        assert.equal(directory.problem?.target, "./~");
+        assert.equal(directory.problem?.recovery, "`FIND (./~/)` lists its files.");
+        await SearchIndex.maintain(ctx);
+        const searched = await file.find({ ...find("./~/**"), matcher: { dialect: "fts", raw: "~alpha" } }, ctx);
+        assert.equal(searched.status, 200);
+        assert.deepEqual(resourcePaths(searched), ["./~/a.md"], "the pattern-slot tilde remains FTS");
+
+        await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "exclude", glob: "~/b.md", source: "members" });
+        await GitMembership.indexGitMembership(ctx);
+        assert.deepEqual(resourcePaths(await file.find(find("**"), ctx)), ["./~/a.md"]);
+        assert.equal(await readFile(join(root, "~/b.md"), "utf8"), "beta\n", "exclusion changes membership, not disk");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+for (const key of ["~", "~/note.md"]) test(`{§fs-home} retained ${key} identity and pending proposal survive reopening unchanged`, async () => {
+    const databasePath = join(await testArtifactDirectory("core"), `home-identity-${crypto.randomUUID()}.db`);
+    const { root, db, workspaceId, ctx } = await setup(databasePath);
+    try {
+        await mkdir(dirname(join(root, key)), { recursive: true });
+        await writeFile(join(root, key), "original\n");
+        const seeded = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: workspaceId, scheme: "file", authority: "", pathname: key });
+        assert.ok(seeded);
+        await MembershipMaterialization.materializeMember(key, root, ctx, new Map());
+        const file = new File();
+        const proposal = await file.edit(editStmt(`./${key}`, "revised\n", fullReplace), ctx);
+        assert.equal(proposal.status, 202);
+        assert.equal((proposal.attrs as { path: string }).path, key, "proposal storage retains its bound literal key");
+        await db.close();
+        const reopened = await openMigrated(databasePath);
+        try {
+            const restored = { ...ctx, db: reopened };
+            assert.equal((await file.applyResolution({ attrs: proposal.attrs as never }, restored)).status, 200);
+            const read = await readFileScheme(readStmt(`./${key}`), restored);
+            assert.equal(read.status, 200);
+            assert.equal(read.content, "revised\n");
+            const retained = await reopened.crud_get_member_sig.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: key });
+            assert.equal(retained?.id, seeded.id);
+            assert.deepEqual(await reopened.test_file_pathnames.all({ workspace_id: workspaceId }), [{ pathname: key }]);
+        } finally { await reopened.close(); }
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
 
 test("{§fs-canonical-name}: every spelling of one member resolves to the same row", async () => {
     const { root, db, workspaceId, ctx } = await setup();
@@ -119,7 +190,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
 
 test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
     const { root, db, workspaceId, ctx } = await setup();
-    const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
+    const outside = await mkdtemp(join(homedir(), "plurnk-mount-"));
     try {
         const file = new File();
 
@@ -151,25 +222,26 @@ test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical ro
         // Outside members: pick-granted rw, Git-only ro. Register both grantor shapes.
         await writeFile(join(outside, "client.md"), "client-granted\n");
         await writeFile(join(outside, "gitted.md"), "git-included\n");
-        const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
-        const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
+        const mountKeyClient = relative(root, join(outside, "client.md"));
+        const mountKeyGit = relative(root, join(outside, "gitted.md"));
+        const homePath = (name: string): string => `~/${relative(homedir(), join(outside, name))}`;
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: mountKeyClient, source: "members" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
         await MembershipMaterialization.materializeMember(mountKeyClient, root, ctx, new Map());
         await MembershipMaterialization.materializeMember(mountKeyGit, root, ctx, new Map());
-        for (const pathname of [mountKeyClient, join(outside, "client.md")]) {
+        for (const pathname of [mountKeyClient, join(outside, "client.md"), homePath("client.md")]) {
             const rw = await file.edit(editStmt(pathname, "revised\n", fullReplace), ctx);
             assert.equal(rw.status, 202, "relative and absolute spellings preserve the outside member's write grant");
             assert.equal((rw.attrs as { path: string }).path, mountKeyClient);
         }
-        for (const pathname of [mountKeyGit, join(outside, "gitted.md")]) {
+        for (const pathname of [mountKeyGit, join(outside, "gitted.md"), homePath("gitted.md")]) {
             const ro = await file.edit(editStmt(pathname, "revised\n"), ctx);
             assert.equal(ro.status, 403, "absolute spelling cannot expand a Git-only outside member's authority");
         }
 
         // Default scope is root, so an absent outside path is refused.
-        for (const pathname of [`../${outside.split("/").at(-1)}/new.md`, join(outside, "new.md")]) {
+        for (const pathname of [relative(root, join(outside, "new.md")), join(outside, "new.md"), homePath("new.md")]) {
             const mint = await file.edit(editStmt(pathname, "x\n"), ctx);
             assert.equal(mint.status, 403, "root scope cannot mint an outside member");
         }

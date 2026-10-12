@@ -12,7 +12,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { AppliedProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryAddress, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import WorkerName from "./WorkerName.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
@@ -444,19 +444,19 @@ export default class Dispatcher {
         const targets = statement.op === "COPY" || statement.op === "MOVE"
             ? [statement.source.target, statement.destination.target]
             : [statement.target];
-        const absolute = targets.flatMap((target) => target === null || schemeNameOf(target) !== "file" ? []
+        const normalized = targets.flatMap((target) => target === null || schemeNameOf(target) !== "file" ? []
             : [PathSyntax.decodeParens(target.kind === "url" ? target.pathname : target.raw)])
-            .filter((pathname) => pathname.startsWith("/"));
-        if (absolute.length === 0) return;
+            .filter((pathname) => pathname.startsWith("/") || Namespace.isHomeRelative(pathname));
+        if (normalized.length === 0) return;
         const root = await this.#workspaceRoot(workspaceId);
         if (root === null || root === "/") return;
-        for (const pathname of absolute) {
+        for (const pathname of normalized) {
             const key = Namespace.canonicalizeSpelling(pathname, root);
             if (key === null) continue;
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "scheme:file", kind: "path_normalized", level: "warn",
                 directive: "YOU SHOULD address the resolved path.",
-                message: `Path resolved to '${key || "."}'.`,
+                message: `Path resolved to '${entryAddress("file", "", key) || "."}'.`,
             });
         }
     }

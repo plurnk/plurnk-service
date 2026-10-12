@@ -5,8 +5,8 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -20,7 +20,7 @@ import { fixtureExecutors } from "./_mock.ts";
 import { executionAddress, quiesceExecs, testExecutors } from "./_execs.ts";
 
 const execFileP = promisify(execFile);
-type Problem = { type?: string; detail?: string; recovery?: string };
+type Problem = { type?: string; detail?: string; recovery?: string; target?: string };
 type Row = { status_rx: number; rx: string };
 
 const runtime = async (t: TestContext) => {
@@ -87,17 +87,23 @@ test("{§membership-read-refusal} a key beyond the root is told it is outside th
     }
 });
 
-test("{§membership-read-refusal} a miss per path shape: `~` is a plain segment, an absolute path its host location (#1082)", async (t) => {
+test("{§fs-home} {§membership-read-refusal} home, literal and absolute misses retain the resolved identity and membership boundary", async (t) => {
     const { dispatch, root } = await runtime(t);
-    const admission = "An absolute path names its host location; outside the project root only a members definition under the operator's namespace scope admits it.";
-    // `~` is not the home directory ({§fs-namei}): the key is the spelling, and the recovery says what
-    // was done with it, presuming nothing about what the author meant.
-    const tilde = await dispatch("````READ (~/plurnk-vm.md)````");
-    assert.equal(tilde.status, 404);
-    assert.equal(tilde.problem.detail, "No member of this workspace is at '~/plurnk-vm.md'.", "the key is the spelling: `~` resolved as a plain segment");
-    assert.equal(tilde.problem.recovery, `'~' is not substituted: paths are project-relative, so '~/plurnk-vm.md' names a file under a directory named '~' in the project root. ${admission}`);
-    assert.equal((await dispatch("````READ (~)````")).problem.recovery, `'~' is not substituted: paths are project-relative, so '~' names a file in the project root. ${admission}`, "a bare `~` is a file name");
-    assert.equal((await dispatch("````FIND (~someone/notes.md)````")).problem.recovery, `'~someone' is not substituted: paths are project-relative, so '~someone/notes.md' names a file under a directory named '~someone' in the project root. ${admission}`, "a `~user` segment is quoted as spelled, on every exact-path miss");
+    const homeKey = relative(root, homedir());
+    for (const [spelling, key] of [["~/plurnk-missing.md", `${homeKey}/plurnk-missing.md`], ["~", homeKey], ["~/", homeKey]]) {
+        const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
+        assert.equal(miss.status, 404, spelling);
+        assert.equal(miss.problem.detail, `No member of this workspace is at '${key}'.`);
+        assert.equal(miss.problem.target, key);
+        assert.equal(miss.problem.recovery, `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
+    }
+    for (const [spelling, key] of [["./~/missing.md", "~/missing.md"], ["./~", "~"], ["~someone/notes.md", "~someone/notes.md"]]) {
+        const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
+        assert.equal(miss.status, 404, spelling);
+        assert.equal(miss.problem.detail, `No member of this workspace is at '${key}'.`);
+        assert.equal(miss.problem.target, spelling, "the literal member address can be reused");
+        assert.equal(miss.problem.recovery, FILE_MISS_RECOVERY);
+    }
     // An absolute path beyond the root is its `../` key and carries the outside-root recovery.
     const outsideName = `plurnk-outside-${crypto.randomUUID()}.md`;
     const outside = await dispatch(`\`\`\`\`READ (${join(root, "..", outsideName)})\`\`\`\``);

@@ -4,6 +4,7 @@
 
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { EntryCoordinates, NetworkAddress, type EntryCoordinate } from "@plurnk/plurnk-schemes";
+import Namespace from "./namespace.ts";
 
 export interface RenderTargetParts {
     readonly scheme: string | null | undefined;
@@ -78,32 +79,23 @@ export function missDetail(scheme: string | null, target: string): string {
 // creation and admission stand as alternatives, each valid whatever the address was for.
 export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.";
 
-// {§fs-canonical-name} — an entry's model-facing address: a file member is its root-relative key,
-// every other scheme its rendered URI.
+// {§fs-canonical-name} — a file member renders its literal key as a reusable path;
+// every other scheme renders its URI.
 export function entryAddress(scheme: string, authority: string, pathname: string): string {
-    if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));
+    if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(Namespace.literalSpelling(pathname)));
     return renderAddress({ scheme, authority, pathname });
 }
 
-const OUTSIDE_ROOT_ADMISSION = "outside the project root only a members definition under the operator's namespace scope admits it.";
-
 // {§membership-read-refusal} — a key beyond the root (`../tmp/x`) is past every door the miss recovery
-// names under the default scopes; the sentence holds under every members scope (#1005). A first
-// segment beginning with `~` is a plain segment ({§fs-namei}), never the home directory: its miss says
-// what was done with the spelling and shows the form that names a host location, presuming nothing
-// about what the author meant ({§diagnostic-observation}, #1082).
+// names under the default scopes; the sentence holds under every members scope.
 export function fileMissRecovery(key: string): string {
     if (key.startsWith("../")) {
         return `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`;
     }
-    const tilde = /^(~[^/]*)(\/|$)/u.exec(key);
-    if (tilde === null) return FILE_MISS_RECOVERY;
-    const [, segment, slash] = tilde;
-    const names = slash === "" ? `'${key}' names a file in the project root` : `'${key}' names a file under a directory named '${segment}' in the project root`;
-    return `'${segment}' is not substituted: paths are project-relative, so ${names}. An absolute path names its host location; ${OUTSIDE_ROOT_ADMISSION}`;
+    return FILE_MISS_RECOVERY;
 }
 
-// The extensions every miss carries: its target, and for a file the recovery above.
+// The extensions every miss carries: its rendered target, and for a file the recovery above.
 export function missExtensions(scheme: string | null, target: string): { readonly target: string; readonly recovery?: string } {
     return scheme === "file" ? { target, recovery: fileMissRecovery(target) } : { target };
 }
@@ -116,7 +108,7 @@ export function renderTarget(target: RenderTargetParts): string | null {
     const scheme = target.scheme ?? null;
     let address: string;
     if (scheme === null) {
-        address = PathSyntax.escapeTarget(PathSyntax.encodeParens(target.pathname.replace(/^\//, "")));
+        address = entryAddress("file", "", target.pathname.replace(/^\//, ""));
     } else if (hostname !== null && hostname.length > 0) {
         const port = target.port === null || target.port === undefined ? "" : `:${target.port}`;
         address = PathSyntax.escapeTarget(`${scheme}://${hostname}${port}${PathSyntax.encodeParens(target.pathname)}`);

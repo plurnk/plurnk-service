@@ -4,6 +4,47 @@ import Namespace from "./namespace.ts";
 
 const ROOT = "/home/bob/project";
 
+test("{§fs-home} authored home paths resolve once before project-relative translation", () => {
+    const home = "/home/bob";
+    const cases: [string, string | null, string | null][] = [
+        ["~/x.md", ROOT, "../x.md"],
+        ["~/x.md", "/work/project", "../../home/bob/x.md"],
+        ["~/x.md", home, "x.md"],
+        ["~/x.md", "/", "home/bob/x.md"],
+        ["~", ROOT, "../"],
+        ["~", home, ""],
+        ["~/", ROOT, "../"],
+        ["~//x.md", ROOT, "../x.md"],
+        ["~/project/../x.md", ROOT, "../x.md"],
+        ["~/project/*.md", ROOT, "*.md"],
+        ["~", null, null],
+        ["~/x.md", null, null],
+        ["./~/x.md", ROOT, "~/x.md"],
+        ["./~/x.md", null, "~/x.md"],
+        ["a/../~/x.md", ROOT, "~/x.md"],
+        ["~someone/x.md", ROOT, "~someone/x.md"],
+        ["~someone/x.md", null, "~someone/x.md"],
+        ["./~", ROOT, "~"],
+        ["~/bad\0name", ROOT, null],
+    ];
+    for (const [spelling, root, expected] of cases) {
+        assert.equal(Namespace.canonicalizeSpelling(spelling, root, home), expected, `${root}: ${spelling}`);
+    }
+});
+
+test("{§fs-home} literal keys stay unchanged and displayed addresses round-trip", () => {
+    for (const root of [ROOT, "/", null]) {
+        for (const key of ["~", "~/x.md", "~/nested/~", "~someone/x.md", "src/~/x.md", "plain.md"]) {
+            assert.equal(Namespace.canonicalize(key, root), key);
+            assert.equal(Namespace.isCanonical(key, root), true);
+            const spelling = Namespace.literalSpelling(key);
+            assert.equal(spelling, key === "~" || key.startsWith("~/") ? `./${key}` : key);
+            assert.equal(Namespace.canonicalizeSpelling(spelling, root, "/other/home"), key);
+        }
+    }
+    assert.equal(Namespace.fromRepositoryPath("project/~/x.md", "/repo/project", "/repo"), "~/x.md");
+});
+
 test("{§fs-namei} filesystem spellings resolve to one project-relative file key", () => {
     const cases: Array<[string, string | null]> = [
         ["example.md", "example.md"],

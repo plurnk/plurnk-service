@@ -1,10 +1,8 @@
 ---
-"@plurnk/plurnk-service": patch
+"@plurnk/plurnk-service": minor
 ---
 
-A file miss on a spelling that begins with `~` says what was done with it: `~`
-is not substituted, paths are project-relative, so `~/x` names a file under a
-directory named `~` in the project root; its recovery shows that an absolute
-path names its host location and that outside the project root only a members
-definition under the operator's namespace scope admits it. The members page
-teaches the outside-root case.
+Resolve authored `~` and `~/…` file operands from the daemon user's home,
+then translate them to project-relative addresses. Membership and mutation
+authority are unchanged. Literal tilde names retain their stored identities
+and render with `./` so displayed addresses can be reused safely.

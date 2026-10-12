@@ -1,7 +1,7 @@
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
-import { fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
+import { entryAddress, fileMissRecovery, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import { relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -225,7 +225,7 @@ export default class File extends CoreSchemeAdapterBase {
                 : missDetail("file", key),
             fields,
             {
-                target: key,
+                target: entryAddress("file", "", key),
                 recovery: occupied
                     ? ignored
                         ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
@@ -248,13 +248,14 @@ export default class File extends CoreSchemeAdapterBase {
     // {§file-directory-target} — a directory inside the root is named as one, never as a missing or non-member
     // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
     static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL"): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
-        const listing = `\`FIND (${key}/)\` lists its files.`;
+        const target = entryAddress("file", "", key);
+        const listing = `\`FIND (${target}/)\` lists its files.`;
         const { detail, recovery } = {
             READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: listing },
             EDIT: { detail: `'${key}' is a directory, not a file; EDIT writes one file.`, recovery: undefined },
             KILL: { detail: `'${key}' is a directory, not a file; KILL removes one file.`, recovery: listing },
         }[op];
-        return { code: "path-is-directory", detail, extensions: { target: key, ...(recovery === undefined ? {} : { recovery }), retryable: false } };
+        return { code: "path-is-directory", detail, extensions: { target, ...(recovery === undefined ? {} : { recovery }), retryable: false } };
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -445,7 +446,7 @@ export default class File extends CoreSchemeAdapterBase {
             );
         }
         const pathname = PathSyntax.decodeParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // {§path-parentheses}
-        const target = await this.#resolveWriteTarget(pathname, core);
+        const target = await this.#resolveWriteTarget(Namespace.expandHome(pathname), core);
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
@@ -463,7 +464,7 @@ export default class File extends CoreSchemeAdapterBase {
                 );
             }
             const candidatePathname = PathSyntax.decodeParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
-            const candidateTarget = await this.#resolveWriteTarget(candidatePathname, core);
+            const candidateTarget = await this.#resolveWriteTarget(Namespace.expandHome(candidatePathname), core);
             if (!candidateTarget.ok || candidateTarget.rel !== rel) {
                 return failure(
                     "edit-batch-mismatch",
@@ -842,13 +843,13 @@ export default class File extends CoreSchemeAdapterBase {
             ) as DeleteEntryResult;
         }
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", pathname)) as DeleteEntryResult;
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname))) as DeleteEntryResult;
         const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL");
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
         }
-        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", rel)) as DeleteEntryResult;
+        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", entryAddress("file", "", rel))) as DeleteEntryResult;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel) as DeleteEntryResult;
         const baseline = FileSnapshot.decode(member.synced_sig);
