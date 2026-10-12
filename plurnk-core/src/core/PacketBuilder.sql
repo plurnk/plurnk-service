@@ -156,6 +156,14 @@ WHERE le.worker_id = $worker_id
           )
       )
   )
+  -- {§context-over-budget-row} — the mandate is a fact about one packet: shown in the packet it
+  -- describes, then retired from the projection like a no-match receipt, durable and readable at
+  -- its coordinate; a later packet that is over mints its own (#1097).
+  AND NOT (
+      COALESCE(le.source, '') = 'context'
+      AND le.status_rx = 413
+      AND le.turn_id <> COALESCE($turn_id, -1)
+  )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and
   -- READ-able; failures remain visible ({§operation-result-uniform-error-channel}).

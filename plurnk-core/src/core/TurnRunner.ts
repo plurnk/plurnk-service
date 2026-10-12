@@ -1139,7 +1139,8 @@ export default class TurnRunner {
     }
 
     // {§context-over-budget-row} — one `_plurnk` error row at the head of the turn's own rows, then the
-    // packet as it renders with it; the row recurs on every packet that is over.
+    // packet as it renders with it. The row is shown in this packet alone and retired from later ones
+    // by the packet query (#1097); a later packet that is over mints its own.
     async #noteOverBudget(args: TurnArgs, request: TurnRequest): Promise<TurnRequest> {
         const { workerId, loopId, onDispatch, onSettled } = args;
         const minted = await this.#problems.record({

@@ -242,7 +242,11 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         assert.equal(rows[0]!.origin, "_plurnk");
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
-        assert.equal(logEntries(next).filter((row) => String(row.logPath).endsWith("/error")).length, 2, "the row recurs on every packet that is over");
+        const nextRows = logEntries(next).filter((row) => String(row.logPath).endsWith("/error"));
+        assert.equal(nextRows.length, 1, "shown once: the earlier mandate has retired from the projection; a packet that is still over carries its own (#1097)");
+        assert.notEqual(nextRows[0]!.logPath, rows[0]!.logPath, "the row in the next packet is that packet's own");
+        const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; active: number }>({ turn_id: second.turnId });
+        assert.ok(minted.some(({ op, status_rx, active }) => op === "error" && status_rx === 413 && active === 1), "the retired mandate stays durable and active at its coordinate; only the packet projection drops it");
         const after = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
         for (const row of before as Array<{ id: number }>) assert.deepEqual(after.find(({ id }) => id === row.id), row, "authored state cannot be removed or folded to manufacture a fit");
         const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
