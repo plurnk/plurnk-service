@@ -280,12 +280,12 @@ test("{§module-action-registration} Daemon: module actions register once during
         }]);
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.skills.")),
-            ["workspace.skills.add", "workspace.skills.disable", "workspace.skills.discover", "workspace.skills.enable", "workspace.skills.list", "workspace.skills.remove"],
+            ["workspace.skills.add", "workspace.skills.disable", "workspace.skills.discover", "workspace.skills.enable", "workspace.skills.list", "workspace.skills.remove", "workspace.skills.replace"],
         );
         for (const scope of ["worker", "workspace"]) {
             assert.deepEqual(
                 daemon.listModuleActions().filter(({ name }) => name.startsWith(`${scope}.env.`)).map(({ name, scope }) => ({ name, scope })),
-                ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => ({ name: `${scope}.env.${verb}`, scope })),
+                ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => ({ name: `${scope}.env.${verb}`, scope })),
             );
         }
         assert.deepEqual(

@@ -62,7 +62,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     try {
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.a2a.")),
-            ["workspace.a2a.add", "workspace.a2a.disable", "workspace.a2a.discover", "workspace.a2a.enable", "workspace.a2a.list", "workspace.a2a.remove"],
+            ["workspace.a2a.add", "workspace.a2a.disable", "workspace.a2a.discover", "workspace.a2a.enable", "workspace.a2a.list", "workspace.a2a.remove", "workspace.a2a.replace"],
         );
         // The environment baseline: researcher enabled by default, scribe available but disabled.
         assert.deepEqual(await states(), ["researcher:service:dormant", "scribe:service:disabled"]);

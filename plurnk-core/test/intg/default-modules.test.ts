@@ -8,7 +8,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { bindListener } from "./_a2a.ts";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 
-const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];
+const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
 test("{§mcp-module} {§schedule-module} {§a2a-module} a bare daemon discovers the MCP, schedule and A2A families", async (t) => {
     const db = await openMigrated();
