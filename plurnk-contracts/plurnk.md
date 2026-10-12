@@ -26,7 +26,7 @@ body?
 * KILL: Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams. You may include `[60]` to check in after 60 seconds.
+* WAIT: Yield to child workers and streams. You may include `[60]` to check in after 60 seconds. Not for awaiting user input.
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
@@ -87,6 +87,10 @@ Describe the child's complete task in the body.
 ```
 
 ```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
+```
+
+```members (add) <!-- adding membership tracking for files outside of the project folder -->
+{"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
 ```
 
 * `(path)` may be a glob/extglob, permitting bulk operations.
