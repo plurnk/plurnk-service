@@ -779,14 +779,14 @@ export default class Dispatcher {
                     statement,
                     result,
                     { decision: "accept" },
-                    { workspaceId, workerId, loopId, turnId, resources: schemeCtx.resources },
+                    { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources },
                 );
                 const effective = await this.#resourceMutations.settleProposal({
                     statement,
                     result,
                     settlement: initialSettlement,
                     ctx: schemeCtx,
-                    ids: { workspaceId, workerId, loopId, turnId },
+                    ids: { workspaceId, workerId, loopId, turnId, logEntryId },
                 });
                 const post = await this.#proposals.applyResolution(logEntryId, effective);
                 await this.#notifySettled(context, logEntryId);
@@ -823,14 +823,14 @@ export default class Dispatcher {
                 statement,
                 result,
                 resolution,
-                { workspaceId, workerId, loopId, turnId, resources: schemeCtx.resources },
+                { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources },
             );
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,
                 settlement: initialSettlement,
                 ctx: schemeCtx,
-                ids: { workspaceId, workerId, loopId, turnId },
+                ids: { workspaceId, workerId, loopId, turnId, logEntryId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             await this.#notifySettled(context, logEntryId);

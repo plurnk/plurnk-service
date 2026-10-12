@@ -30,6 +30,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly turnId: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
+    readonly logEntryId: number | undefined;
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
     readonly notify: NotifyCaps;
@@ -51,6 +52,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.turnId = ctx.turnId;
         this.writer = ctx.writer;
         this.signal = ctx.signal;
+        this.logEntryId = ctx.logEntryId;
         this.#editPrecondition = options.editPrecondition ?? null;
         this.#fileRevision = ctx.fileRevision;
         const authority = options.authority ?? "";

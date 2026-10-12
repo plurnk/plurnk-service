@@ -2389,6 +2389,16 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 
 An emission row's body is not in its record ({§emission-row}); its eligible program follows it as a separate assistant message ({§emission-history}). Patterns retain their literal spelling; a pattern containing a line break is JSON-quoted to keep the H3 on one physical line. Receipts are descriptive records, not reconstructed operation headings. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
+§log-mutation-patch **A settled file mutation's row keeps what it did.** When an accepted EDIT,
+COPY, MOVE or KILL writes or removes a text member, the file scheme appends the unified diff of
+that write, `current` to `proposed`, to the operation row it is settling (`log_entries.patch`); a
+row that settles several writes keeps them in application order. The row serves it as its `patch`
+channel, `log:///<loop>/<turn>/<item>/<OP>#patch`, `text/x-diff`, for the life of the row: a fork
+copies it with the row, and it never enters a receipt or a packet unasked. Nothing is kept for a
+byte write, a member past the materialization bound, or a row settled before this version, and
+nothing is reconstructed for them: such a row has no `patch` channel, and whatever reads one, a
+rollback included, fails by name rather than inventing one.
+
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
 | Spelling | Meaning | Where |

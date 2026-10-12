@@ -484,6 +484,9 @@ export default class ProposalLifecycle {
         // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
         ids: {
             workspaceId: number; workerId: number; loopId: number; turnId: number;
+            // {§log-mutation-patch} — the operation row this application settles, so a scheme can keep
+            // what it did on that row.
+            logEntryId?: number;
             resources?: PlurnkSchemeContext["resources"];
         },
     ): Promise<ProposalSettlement> {
@@ -518,6 +521,7 @@ export default class ProposalLifecycle {
             // operation's artifact visible in the next packet's index.
             const applyCtx: PlurnkSchemeContext = {
                 db: this.#db, workspaceId, workerId, loopId, turnId,
+                ...(ids.logEntryId === undefined ? {} : { logEntryId: ids.logEntryId }),
                 writer: "model", signal: this.#loopSignal(loopId),
                 streamEventNotify: this.#notify.streamEventNotify,
                 wakeWorkerNotify: this.#notify.wakeWorkerNotify,

@@ -230,7 +230,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     static manifest: SchemeManifest = {
         name: "log",
         authority: "resource",
-        channels: {},
+        // {§log-mutation-patch} — a settled file mutation's row offers its diff; other rows offer no channel.
+        channels: { patch: "text/x-diff" },
         defaultChannel: "",
         category: "logging",
         writableBy: ["_plurnk", "model"],
@@ -310,6 +311,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetype_rx: string;
             attrs: string;
             folded: string;
+            patch: string | null;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined || !LogEntryProjection.accepts(coord.op, row)) {
@@ -350,6 +352,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         mimetype: underlyingMimetype,
                         state: "static",
                     },
+                    // {§log-mutation-patch} — a settled file mutation's diff, addressable as `#patch`.
+                    ...(row.patch === null ? {} : { patch: { content: row.patch, mimetype: "text/x-diff", state: "static" as const } }),
                 },
                 // {§log-channel-miss-names-stream} (#502) — an execution item's stream link rides as
                 // representation data so the projector's channel miss can name the address the

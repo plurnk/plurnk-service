@@ -607,7 +607,7 @@ export default class File extends CoreSchemeAdapterBase {
     async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
         const { attrs, body } = args;
-        if (typeof attrs.deletePath === "string") return this.#applyDelete(attrs.deletePath, attrs.baseSig ?? null, core);
+        if (typeof attrs.deletePath === "string") return this.#applyDelete(attrs.deletePath, attrs.baseSig ?? null, typeof attrs.mimetype === "string" ? attrs.mimetype : null, core);
         const canonical = attrs.canonical;
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
@@ -789,6 +789,11 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 ) as ApplyResult;
             }
+            // {§log-mutation-patch} — what this write did to the text, current to proposed, kept on the
+            // operation row being settled; a byte write keeps no patch.
+            if (core.logEntryId !== undefined && patchedBytes === undefined && typeof original === "string") {
+                await core.db.log_append_patch.run({ id: core.logEntryId, patch: createPatch(relPath, original, patched, "current", "proposed") });
+            }
             if (receipt === undefined) return { status: 200 };
             return {
                 status: 200,
@@ -798,14 +803,18 @@ export default class File extends CoreSchemeAdapterBase {
         });
     }
 
-    async #applyDelete(pathname: string, baseSig: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
+    async #applyDelete(pathname: string, baseSig: string | null, mimetype: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
         const baseline = FileSnapshot.decode(baseSig);
         if (baseline === null || baseline.hash === null) return EditCollision.result(pathname) as ApplyResult;
         const root = await FileAddress.projectRoot(core);
         if (root === null) throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
         const requested = join(root, pathname);
         return FileSnapshot.serialize(baseline.canonical, async () => {
-            const current = await FileSnapshot.acquire(requested, null);
+            // {§log-mutation-patch} — a text member's bytes, within the materialization bound, before they
+            // go; a binary or oversized member leaves no patch.
+            const textual = mimetype !== null && core.mimetypes !== undefined && !(await MimetypeBinary.isBinaryMimetype(mimetype, core.mimetypes));
+            const bounded = textual ? await FileSnapshot.acquire(requested, FileMaterialization.maximumBytes()) : null;
+            const current = bounded ?? await FileSnapshot.acquire(requested, null);
             if (current === null || !FileSnapshot.matches(baseline, current.revision)) return EditCollision.result(pathname) as ApplyResult;
             let deleted = false;
             try {
@@ -813,6 +822,9 @@ export default class File extends CoreSchemeAdapterBase {
                 deleted = true;
                 await EntryCrud.deleteEntry({ authority: "", pathname }, core, "file");
                 await GitMembership.removeCreationRecord(core.db, core.workspaceId, pathname);
+                if (core.logEntryId !== undefined && bounded?.bytes != null) {
+                    await core.db.log_append_patch.run({ id: core.logEntryId, patch: createPatch(pathname, bounded.bytes.toString("utf8"), "", "current", "proposed") });
+                }
                 return { status: 200 };
             } catch (cause) {
                 return Results.failure("scheme:file", "delete-failed", 500,
@@ -842,7 +854,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname, root))) as DeleteEntryResult;
-        const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
+        const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; mimetype: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL", root);
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
@@ -857,7 +869,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (baseline.hash === null && (acquired === null || !FileSnapshot.matches(baseline, acquired.revision))) {
             return EditCollision.result(rel) as DeleteEntryResult;
         }
-        return { status: 202, attrs: { deletePath: rel, baseSig: acquired === null ? member.synced_sig : JSON.stringify(acquired.revision) } };
+        return { status: 202, attrs: { deletePath: rel, baseSig: acquired === null ? member.synced_sig : JSON.stringify(acquired.revision), mimetype: member.mimetype } };
     }
 
     async deleteChannel(

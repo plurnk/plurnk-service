@@ -261,6 +261,9 @@ export interface SchemeAddressCtx {
     // Loop-scoped abort. Streaming schemes await the composed signal from
     // `subscriptions.open` instead, which subsumes this.
     readonly signal: AbortSignal | undefined;
+    // The operation row an accepted application settles, so a scheme can keep what it did on that
+    // row ({§log-mutation-patch}); absent outside proposal application.
+    readonly logEntryId?: number;
 }
 
 export interface SchemeCtx extends SchemeAddressCtx {

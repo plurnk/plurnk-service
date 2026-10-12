@@ -35,6 +35,9 @@ export interface PlurnkSchemeContext {
     readonly replyToMessage?: MessageCaps["reply"];
     readonly loopId: number;
     readonly turnId: number;
+    // {§log-mutation-patch} — the operation row an accepted application settles; a scheme keeps what
+    // it did (its diff) on that row. Absent outside proposal application.
+    readonly logEntryId?: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
     // {§file-delete-revision}: a selected file revision survives composed mutations and approval.

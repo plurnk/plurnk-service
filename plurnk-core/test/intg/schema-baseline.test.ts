@@ -142,7 +142,8 @@ test("{§db-migrations} {§message-completion}: upgrades preserve resolved messa
     const after = new DatabaseSync(path);
     try {
         after.exec("PRAGMA foreign_keys = ON");
-        assert.deepEqual(after.prepare("SELECT * FROM log_entries ORDER BY id").all(), evidence!);
+        // {§log-mutation-patch} — the upgrade adds the patch column; a released row holds nothing in it.
+        assert.deepEqual(after.prepare("SELECT * FROM log_entries ORDER BY id").all().map((row) => ({ ...row })), evidence!.map((row) => ({ ...(row as object), patch: null })));
         assert.deepEqual(after.prepare("SELECT * FROM message_completions ORDER BY message_id").all().map((row) => ({ ...row })), [
             { message_id: 1, response_id: 1, status: 200 }, { message_id: 2, response_id: 2, status: 200 },
         ]);
@@ -297,6 +298,30 @@ test("{§db-migrations} {§functionality-addressing}: upgrading names each membe
             "a workspace definition is keyed by its glob, with its enabledness and provenance");
         assert.deepEqual(await read(1, "other"), aliased, "another family's state is untouched");
         assert.equal(await read(2, "@plurnk/plurnk-core/members"), undefined, "a state that held only an alias-keyed override persists nothing");
+    } finally { await db.close(); }
+});
+
+test("{§db-migrations} {§log-mutation-patch}: upgrading gives every settled row a patch column holding nothing, through the active view", async (t) => {
+    const path = await released(V3_2_0);
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'patchUpgrade');
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'editor');
+            INSERT INTO loops (id, worker_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Edit', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+                VALUES (1, 1, 1, 1, 1, 'model', 'EDIT', '{"body":{"raw":"TWO"}}', 'application/json', '{"status":200}', 'application/json', 200);
+            INSERT INTO log_entry_projections (log_entry_id, active) VALUES (1, 1);
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        const row = await db.log_read_by_coordinate.get<{ patch: string | null; status_rx: number }>({ worker_id: 1, loop_seq: 1, turn_seq: 1, sequence: 1 });
+        assert.deepEqual({ status_rx: row?.status_rx, patch: row?.patch }, { status_rx: 200, patch: null }, "a row settled before this version keeps no invented diff, and the active view serves the column");
     } finally { await db.close(); }
 });
 
@@ -565,7 +590,7 @@ test("{§db-migrations} {§proposal-decision-evidence} {§retention-policy}: upg
     const after = new DatabaseSync(path, { readOnly: true });
     try {
         assert.deepEqual(after.prepare("SELECT * FROM provider_requests").get(), request);
-        assert.deepEqual(after.prepare("SELECT * FROM log_entries").get(), operation);
+        assert.deepEqual({ ...after.prepare("SELECT * FROM log_entries").get() }, { ...(operation as object), patch: null });
         assert.deepEqual(after.prepare("SELECT * FROM proposal_decisions").all(), [], "an old successful result is not evidence of who approved it");
         assert.equal(after.prepare("SELECT payloads_retired_at FROM inference_calls").get()!.payloads_retired_at, null);
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);

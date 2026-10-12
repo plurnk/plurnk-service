@@ -80,11 +80,11 @@ BEGIN
     INSERT INTO log_entries (
         worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history,
         op, signal, scheme, username, password, hostname, port, pathname, query, fragment,
-        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded
+        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded, patch
     )
     SELECT NEW.id, nl.id, nt.id, e.sequence, e.at, e.origin, e.source, e.ambient_event_id, 1,
            e.op, e.signal, e.scheme, e.username, e.password, e.hostname, e.port, e.pathname, e.query, e.fragment,
-           e.lineMarker, e.tx, e.mimetype_tx, e.rx, e.mimetype_rx, e.status_rx, e.weight, e.state, e.outcome, e.attrs, e.initial_folded
+           e.lineMarker, e.tx, e.mimetype_tx, e.rx, e.mimetype_rx, e.status_rx, e.weight, e.state, e.outcome, e.attrs, e.initial_folded, e.patch
     FROM log_entries e
     JOIN turns ot ON ot.id = e.turn_id
     JOIN loops ol ON ol.id = e.loop_id

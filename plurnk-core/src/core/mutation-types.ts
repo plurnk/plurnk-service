@@ -97,4 +97,6 @@ export type ProposalIds = {
     workerId: number;
     loopId: number;
     turnId: number;
+    // {§log-mutation-patch} — the operation row being settled, for the facts a scheme keeps on it.
+    logEntryId?: number;
 };

@@ -3,11 +3,18 @@
 
 -- PREP: log_read_by_coordinate
 SELECT le.id, le.origin, le.op, le.scheme, le.pathname, le.status_rx, le.folded,
-       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
+       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs, le.patch
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+
+-- PREP: log_append_patch
+-- {§log-mutation-patch}: a file mutation appends the unified diff it made to the operation row it
+-- settles; a row that settles several writes keeps them in application order.
+UPDATE log_entries
+   SET patch = CASE WHEN patch IS NULL THEN $patch ELSE patch || char(10) || $patch END
+ WHERE id = $id;
 
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete active log:/// coordinate within the worker.

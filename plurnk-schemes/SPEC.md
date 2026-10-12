@@ -556,7 +556,7 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus capability namespaces:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-mutation-patch}) plus capability namespaces:
 
 §scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 
