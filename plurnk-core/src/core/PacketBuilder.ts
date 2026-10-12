@@ -394,17 +394,13 @@ export default class PacketBuilder {
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
-            // {§context-pressure-notice} — the pressure notice follows whatever the notices section holds.
-            const noticesSection = drafts.find((section) => section.name === "notices");
-            const withReadout = (gauge: string, notice: Notice | null): typeof drafts => drafts.map((section) => {
-                if (section === budgetSection) return { ...section, content: gauge };
-                if (section !== noticesSection || notice === null) return section;
-                return { ...section, content: [section.content, PacketWire.renderNotices([notice])].filter((part) => part.length > 0).join("\n") };
-            });
-            const readout = BudgetReadout.resolve(budgetSection.content, (gauge, notice) =>
-                PacketWire.packetToWireMessages({ sections: withReadout(gauge, notice) })
+            // {§context-gauge} — the gauge is measured with the whole packet it sits in.
+            const withReadout = (gauge: string): typeof drafts => drafts.map((section) =>
+                section === budgetSection ? { ...section, content: gauge } : section);
+            const readout = BudgetReadout.resolve(budgetSection.content, (gauge) =>
+                PacketWire.packetToWireMessages({ sections: withReadout(gauge) })
                     .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight), curationTargets);
-            drafts = withReadout(readout.gauge, readout.notice);
+            drafts = withReadout(readout.gauge);
         }
         // {§packet-items}: unchanged log segments retain their content-addressed records.
         const sections = drafts.map((section): StoredPacketSection => ({

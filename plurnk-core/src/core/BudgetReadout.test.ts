@@ -1,42 +1,64 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Notice } from "@plurnk/plurnk-contracts";
 import BudgetReadout from "./BudgetReadout.ts";
 import { contentWeight } from "./content-weight.ts";
-import PacketWire from "./packet-wire.ts";
 
-interface Gauge { tokens: number; budget?: number; largest?: Array<{ path: string; tokens: number }> }
+interface Gauge { tokens: number; budget?: number; percent?: number; largest?: Array<{ path: string; tokens: number }> }
 
 const resolve = (
     budget: number | null,
     baseWeight: number,
     largest: ReadonlyArray<{ path: string; tokens: number }> = [],
-): { content: string; usage: number; gauge: Gauge; notice: Notice | null } => {
+): { content: string; usage: number; gauge: Gauge } => {
     const prefix = "x".repeat(baseWeight * 2);
-    const measure = (content: string, notice: Notice | null): number =>
-        contentWeight(prefix + content + (notice === null ? "" : PacketWire.renderNotices([notice])));
-    const { gauge: content, notice } = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, largest);
-    return { content, usage: measure(content, notice), gauge: JSON.parse(content) as Gauge, notice };
+    const measure = (content: string): number => contentWeight(prefix + content);
+    const { gauge: content } = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, largest);
+    return { content, usage: measure(content), gauge: JSON.parse(content) as Gauge };
 };
 
-test("{§context-gauge} below pressure the gauge names only its exact render-weight and budget", () => {
+const share = (gauge: Gauge): number => Math.floor(gauge.tokens * 100 / gauge.budget!);
+
+test("{§context-gauge} below pressure the gauge names its exact render-weight, its budget and its share", () => {
     const { content, usage, gauge } = resolve(100_000, 100);
     assert.equal(content.split("\n").length, 1, "one JSON line and nothing beneath it");
-    assert.deepEqual(gauge, { tokens: usage, budget: 100_000 });
-    assert.deepEqual(Object.keys(gauge), ["tokens", "budget"]);
+    assert.deepEqual(gauge, { tokens: usage, budget: 100_000, percent: share(gauge) });
+    assert.deepEqual(Object.keys(gauge), ["tokens", "budget", "percent"], "the share sits after the totals");
 });
 
-test("{§context-gauge} inventory appears strictly above pressure, never with a warning or mandate", () => {
+test("{§context-gauge} the percent is the gauge's own final tokens over its budget, on every packet with a budget", () => {
+    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
+    for (const base of [0, 700, 801, 950, 1_100]) {
+        const { usage, gauge } = resolve(1_000, base, items);
+        assert.equal(gauge.tokens, usage);
+        assert.equal(gauge.percent, share(gauge), `at ${base} of 1000 the share is the final figures' own`);
+        assert.equal(Object.keys(gauge)[2], "percent", "after tokens and budget, before any inventory");
+    }
+    const over = resolve(1_000, 1_100, items);
+    assert.ok(over.gauge.percent! > 100, "over budget the share says so, and nothing else does");
+});
+
+test("{§context-gauge} inventory appears strictly above pressure, after the share, never with a warning or mandate", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
     for (const base of [0, 700, 950]) {
         const { content, usage, gauge } = resolve(1_000, base, items);
         assert.doesNotMatch(content, /WARNING|MUST/u, `at ${base} of 1000 the gauge carries no mandate`);
         assert.equal(gauge.tokens, usage);
         assert.deepEqual(gauge.largest, base > 800 ? items : undefined);
+        assert.deepEqual(Object.keys(gauge), base > 800 ? ["tokens", "budget", "percent", "largest"] : ["tokens", "budget", "percent"]);
     }
     const over = resolve(9, 62);
     assert.ok(over.gauge.tokens > 9, "an over-budget packet reports its tokens honestly");
     assert.doesNotMatch(over.content, /WARNING|MUST/u);
+});
+
+test("{§context-gauge} the share converges when its own width moves the packet across a digit boundary", () => {
+    // A base that lands the gauge within a token of 10% of its budget: the share's own digit count
+    // (one or two) is part of the weight it describes, and the final figures agree with each other.
+    for (const [budget, base] of [[1_000, 50], [1_000, 48], [100, 40], [250, 110]] as const) {
+        const { usage, gauge } = resolve(budget, base);
+        assert.equal(gauge.tokens, usage, `at ${base} under ${budget} the displayed total is the exact render-weight`);
+        assert.equal(gauge.percent, share(gauge), `at ${base} under ${budget} the share is the final figures' own`);
+    }
 });
 
 test("{§context-gauge} threshold eligibility excludes the inventory's own weight", () => {
@@ -47,6 +69,7 @@ test("{§context-gauge} threshold eligibility excludes the inventory's own weigh
         const gauge = JSON.parse(content) as Gauge;
         assert.deepEqual(gauge.largest, expected, `a base packet of ${weight} determines eligibility`);
         assert.equal(gauge.tokens, measure(content), "final tokens include the inventory when present");
+        assert.equal(gauge.percent, share(gauge), "and so does the share");
     }
 });
 
@@ -75,6 +98,7 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
             const { usage, gauge } = resolve(specimen.budget, specimen.baseWeight);
             assert.equal(gauge.tokens, usage, "the displayed total is the exact render-weight");
             assert.equal(gauge.budget, specimen.budget);
+            if (specimen.budget > 0) assert.equal(gauge.percent, share(gauge), "the share follows the total it sits beside");
         });
     }
 });
@@ -89,7 +113,7 @@ test("{§context-gauge} largest: ranked by tokens then path and bounded by PLURN
         { path: "log:///1/1/1/READ", tokens: 110 },
     ];
     const { content, usage, gauge } = resolve(1_500, 1_250, items);
-    assert.match(content, /^\{"tokens":\s*\d+,"budget":1500,"largest":\[/u, "one JSON payload with the inventory folded in");
+    assert.match(content, /^\{"tokens":\s*\d+,"budget":1500,"percent":\s*\d+,"largest":\[/u, "one JSON payload with the inventory folded in after the share");
     assert.deepEqual(gauge.largest, [
         { path: "log:///1/1/1/READ", tokens: 110 },
         { path: "log:///1/1/2/READ", tokens: 110 },
@@ -118,6 +142,7 @@ test("{§context-gauge} the complete configured inventory remains visible over b
     const zero = resolve(0, 0, [narrow]);
     assert.ok(zero.usage > 0, "the packet exceeds a known zero budget");
     assert.deepEqual(zero.gauge.largest, [narrow], "zero capacity is pressure, not an unknown budget");
+    assert.equal(zero.gauge.percent, undefined, "a zero room has no share to state");
 });
 
 test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge carries tokens alone", () => {
@@ -126,12 +151,17 @@ test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge car
     assert.deepEqual(Object.keys(gauge), ["tokens"]);
     assert.equal(gauge.tokens, usage);
     assert.equal(gauge.largest, undefined);
+    assert.equal(gauge.percent, undefined, "no room, no share");
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
     assert.throws(
         () => BudgetReadout.resolve('{"budget":100}', () => 10),
         /must contain \{\{tokens\}\} exactly once/,
+    );
+    assert.throws(
+        () => BudgetReadout.resolve('{"tokens":{{tokens}},"percent":{{percent}}}', () => 10),
+        /may contain \{\{percent\}\} once, after a positive budget/,
     );
     assert.throws(
         () => BudgetReadout.resolve(BudgetReadout.draft(100), () => Number.NaN),
@@ -142,10 +172,11 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
 
 test("{§output-allowance-notice} (#826) the readout carries curation state alone", () => {
     const drafted = BudgetReadout.draft(1000);
-    assert.match(drafted, /"budget":1000\}$/);
-    assert.deepEqual(Object.keys(JSON.parse(BudgetReadout.resolve(drafted, (candidate) => candidate.length).gauge)), ["tokens", "budget"],
+    assert.match(drafted, /"budget":1000,"percent":\{\{percent\}\}\}$/);
+    assert.deepEqual(Object.keys(JSON.parse(BudgetReadout.resolve(drafted, (candidate) => candidate.length).gauge)), ["tokens", "budget", "percent"],
         "the readout's facts are exactly its curation state");
     assert.equal(BudgetReadout.draft(null), '{"tokens":{{tokens}}}');
+    assert.equal(BudgetReadout.draft(0), '{"tokens":{{tokens}},"budget":0}');
 });
 
 test("{§tokenomics-calibrated-readout} a converted budget changes the room without changing cost units", () => {
@@ -155,65 +186,7 @@ test("{§tokenomics-calibrated-readout} a converted budget changes the room with
     for (const budget of [100, 200]) {
         const rendered = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, items).gauge;
         const usage = measure(rendered);
-        assert.match(rendered, new RegExp(`"tokens":\\s*${usage},"budget":${budget}`, "u"), `the displayed figure retains the measured curation units; got: ${rendered}`);
+        assert.match(rendered, new RegExp(`"tokens":\\s*${usage},"budget":${budget},"percent":\\s*${Math.floor(usage * 100 / budget)}`, "u"), `the displayed figures retain the measured curation units; got: ${rendered}`);
         assert.doesNotMatch(rendered, /MUST/u);
-    }
-});
-
-const SHARE = /^Context is at (\d+)% of budget\.$/u;
-
-test("{§context-pressure-notice} a pressured packet within its budget carries one notice whose share is the gauge's own", () => {
-    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
-    for (const base of [801, 850, 900]) {
-        const { usage, gauge, notice } = resolve(1_000, base, items);
-        assert.ok(notice !== null, `a packet of ${base} under a 1000 budget is under pressure`);
-        assert.deepEqual({ source: notice.source, kind: notice.kind, level: notice.level, directive: notice.directive },
-            { source: "engine:context", kind: "budget_pressure", level: "warn", directive: "YOU MUST NOT exceed budget." });
-        const share = SHARE.exec(notice.message ?? "")?.[1];
-        assert.equal(Number(share), Math.floor(gauge.tokens * 100 / 1_000), "the share is the gauge's final tokens over its budget, the notice included");
-        assert.equal(gauge.tokens, usage);
-        assert.deepEqual(gauge.largest, items, "the notice arrives with the inventory");
-    }
-});
-
-test("{§context-pressure-notice} no notice below pressure, without a budget, or over budget", () => {
-    assert.equal(resolve(1_000, 700).notice, null, "below pressure");
-    assert.equal(resolve(null, 100_000).notice, null, "an unknown budget");
-    const over = resolve(1_000, 1_100, [{ path: "log:///1/1/1/READ", tokens: 110 }]);
-    assert.ok(over.gauge.tokens > 1_000);
-    assert.equal(over.notice, null, "over budget the row is the mandate ({§context-over-budget-row})");
-    assert.equal(resolve(0, 0).notice, null, "a zero budget is over budget, never a share");
-});
-
-test("{§context-pressure-notice} a packet the notice would carry over its budget carries none", () => {
-    const measure = (_gauge: string, notice: Notice | null): number => 990 + (notice === null ? 0 : 20);
-    const readout = BudgetReadout.resolve(BudgetReadout.draft(1_000), measure);
-    assert.equal(readout.notice, null);
-    assert.deepEqual(JSON.parse(readout.gauge), { tokens: 990, budget: 1_000, largest: [] }, "the gauge still shows the pressure");
-});
-
-test("{§context-pressure-notice} the configured pressure threshold governs the notice", () => {
-    const prior = process.env.PLURNK_SERVICE_BUDGET_PRESSURE;
-    try {
-        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "60%";
-        assert.equal(resolve(1_000, 500).notice, null);
-        assert.notEqual(resolve(1_000, 700).notice, null);
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_BUDGET_PRESSURE; else process.env.PLURNK_SERVICE_BUDGET_PRESSURE = prior;
-    }
-});
-
-test("{§context-pressure-notice} the share converges when the notice's own weight moves it", () => {
-    const prior = process.env.PLURNK_SERVICE_BUDGET_PRESSURE;
-    try {
-        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "5%";
-        const measure = (_gauge: string, notice: Notice | null): number => 95 + (notice?.message?.length ?? 0);
-        const readout = BudgetReadout.resolve(BudgetReadout.draft(1_000), measure);
-        const tokens = (JSON.parse(readout.gauge) as Gauge).tokens;
-        assert.equal(tokens, measure(readout.gauge, readout.notice));
-        assert.equal(Number(SHARE.exec(readout.notice?.message ?? "")?.[1]), Math.floor(tokens * 100 / 1_000),
-            "a share that crosses a digit boundary still equals the final count's");
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_BUDGET_PRESSURE; else process.env.PLURNK_SERVICE_BUDGET_PRESSURE = prior;
     }
 });

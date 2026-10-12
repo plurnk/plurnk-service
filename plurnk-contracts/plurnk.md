@@ -26,7 +26,7 @@ body?
 * KILL: Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams (not the user). You may include `[60]` to check in after 60 seconds.
+* WAIT: Yield to child workers and streams. You may include `[60]` to check in after 60 seconds.
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
@@ -146,9 +146,6 @@ Nesting can be resolved with increased outer fences.
 > YOU SHOULD address lines by `<@hash>` or `<@start,@end>` to protect against stale targets.
 
 ## Context Curation
-
-> [!WARNING]
-> YOU MUST NOT exceed budget.
 
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
 ```

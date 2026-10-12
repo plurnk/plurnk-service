@@ -106,12 +106,13 @@ test("{§context-gauge} below pressure the gauge carries populated tokens and bu
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        const state = JSON.parse(budget) as { tokens: number; budget: number };
-        assert.deepEqual(Object.keys(state), ["tokens", "budget"], `below pressure the gauge omits the inventory; got: ${budget}`);
+        const state = JSON.parse(budget) as { tokens: number; budget: number; percent: number };
+        assert.deepEqual(Object.keys(state), ["tokens", "budget", "percent"], `below pressure the gauge omits the inventory; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing gauge is one JSON line");
         const usage = state.tokens; const ceiling = state.budget;
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
         assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
+        assert.equal(state.percent, Math.floor(usage * 100 / ceiling), "the share is the gauge's own figures");
         assert.ok(usage < ceiling * 0.8, "the admitted packet stays below pressure");
     } finally { await db.close(); }
 });

@@ -147,13 +147,12 @@ test("{§context-gauge} below pressure the model-facing gauge omits its largest 
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        const gauge = JSON.parse(budget) as { tokens: number; budget: number };
+        const gauge = JSON.parse(budget) as { tokens: number; budget: number; percent: number };
         assert.ok(gauge.tokens < gauge.budget * 0.8, "this composed packet remains below pressure");
-        assert.deepEqual(Object.keys(gauge), ["tokens", "budget"], "no curation inventory is needed below pressure");
+        assert.deepEqual(Object.keys(gauge), ["tokens", "budget", "percent"], "no curation inventory is needed below pressure");
+        assert.equal(gauge.percent, Math.floor(gauge.tokens * 100 / gauge.budget), "the share is the gauge's own figures, on every packet");
         assert.equal(budget.split("\n").length, 1, "one JSON line — no warning or mandate follows the object");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
-        assert.doesNotMatch(packetSection((await packetOf(db, t2.turnId)).packet, "notices"), /budget_pressure/u,
-            "{§context-pressure-notice}: no notice below pressure");
     } finally { await db.close(); }
 });
 
@@ -174,7 +173,9 @@ test("{§context-gauge}: a composed packet's largest inventory points to its dom
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; budget: number; largest: Array<{ path: string; tokens: number }> };
+        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; budget: number; percent: number; largest: Array<{ path: string; tokens: number }> };
+        assert.deepEqual(Object.keys(object), ["tokens", "budget", "percent", "largest"], "the share sits after the totals; the inventory follows it");
+        assert.equal(object.percent, Math.floor(object.tokens * 100 / object.budget), "the pressured packet's share is the gauge's own, inventory included");
         const inventory = object.largest;
         assert.ok(inventory.length > 0, "the pressure inventory rides inside the JSON object");
         const [largest] = inventory;
@@ -184,9 +185,5 @@ test("{§context-gauge}: a composed packet's largest inventory points to its dom
         assert.equal(largest.tokens, advised?.tokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
         assert.equal(object.tokens, stored.weight, "conditional advice participates in exact packet accounting");
-        const share = /^> YOU MUST NOT exceed budget\. Context is at (\d+)% of budget\. \[budget_pressure\]$/mu
-            .exec(packetSection(stored.packet, "notices"))?.[1];
-        assert.equal(Number(share), Math.floor(object.tokens * 100 / object.budget),
-            "{§context-pressure-notice} {§pinned-wording-core}: the pressured packet states the gauge's own share");
     } finally { await db.close(); }
 });
