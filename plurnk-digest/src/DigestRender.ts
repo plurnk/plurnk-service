@@ -236,6 +236,17 @@ export default class DigestRender {
             && rx.problem.type.startsWith("https://problems.plurnk.xyz/executor/");
     }
 
+    // {§digest-capacity-evidence} (#1096) — a 413 is the capacity contract working: a result that did
+    // not fit, the over-budget mandate, a limit met. It renders like any row and never counts as an
+    // error, an error item or in the errs badge; a loop that concluded under a binding budget is CLEAN.
+    static #isCapacityEvidence(le: LogRow): boolean {
+        return le.status_rx === 413;
+    }
+
+    static #countsAsError(le: LogRow): boolean {
+        return le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le) && !DigestRender.#isCapacityEvidence(le);
+    }
+
     // {§digest-storage} — size, free pages, vacuum mode and the largest tables, one line.
     static #storageLine(storage: DigestModel["storage"]): string {
         const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -420,8 +431,8 @@ export default class DigestRender {
         let errorItems = 0;
         for (const t of m.turnsByLoop.get(loop.id) ?? []) {
             for (const le of m.logEntriesByTurn.get(t.id) ?? []) {
-                if (le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le)) errors += 1;
-                if (le.op === "error") errorItems += 1;
+                if (DigestRender.#countsAsError(le)) errors += 1;
+                if (le.op === "error" && !DigestRender.#isCapacityEvidence(le)) errorItems += 1;
             }
         }
         const s = loop.status;
@@ -450,7 +461,7 @@ export default class DigestRender {
         // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
         const outside = turn.outside === null ? "" : ` outside=${m.evidence.textWeight(turn.outside)} tok`;
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
-            .filter((le) => le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le)).length;
+            .filter((le) => DigestRender.#countsAsError(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
         const attempts = m.attemptsByTurn.get(turn.id) ?? [];
         const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;

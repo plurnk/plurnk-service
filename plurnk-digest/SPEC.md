@@ -149,6 +149,13 @@ over red test runs is CLEAN, not DEGENERATE-WIN. This is the digest mirror of th
 strike rail's exemption ({§engine-rails}, #425 F1): structural violations count,
 executor evidence never does.
 
+§digest-capacity-evidence **A 413 is the contract working, not a defect.** The
+capacity contract's rows, a result that did not fit ({§context-fit}), the
+over-budget mandate ({§context-over-budget-row}) and any other 413, render like
+any row but never count toward a loop's error total, its error-item count, its
+health verdict, or the per-turn `errs=` badge: a loop that concluded green under
+a binding budget is CLEAN. Refusals of the model's own statements still count.
+
 §digest-requiem **A requiem is an out-of-band forensic interview, not a worker
 turn.** It cannot execute operations or alter the audited history.
 
