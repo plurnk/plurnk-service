@@ -27,8 +27,12 @@ const cleanup = async (): Promise<void> => {
 try {
     const candidates = await Promise.all([contractsDir, parserDir].map(async (cwd) => {
         const manifest = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
-        const { stdout } = await run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", tempDir], { cwd, env: cleanEnv });
-        const tarball = join(tempDir, JSON.parse(stdout)[0].filename);
+        // `--silent` prints the one archive's filename and nothing else, the same on every npm; the JSON
+        // envelope changed shape in npm 12 and belongs to the root release scripts' normalizer.
+        const { stdout } = await run("npm", ["pack", "--silent", "--ignore-scripts", "--pack-destination", tempDir], { cwd, env: cleanEnv });
+        const tarballName = stdout.trim().split("\n").at(-1) ?? "";
+        if (!tarballName.endsWith(".tgz")) throw new Error(`npm pack printed no archive name: ${JSON.stringify(stdout)}`);
+        const tarball = join(tempDir, tarballName);
         process.stdout.write(`[smoke] candidate: ${manifest.name}@${manifest.version}\n`);
         return { name: manifest.name as string, version: manifest.version as string, tarball };
     }));
