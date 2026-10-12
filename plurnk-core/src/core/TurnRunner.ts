@@ -225,9 +225,10 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
 // ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§worker-initialization-entry} — the one NOTE that leads the initialization surveys.
+// {§worker-initialization-entry} — the one NOTE that leads the initialization surveys, labelled as the
+// card's own first NOTE example is.
 const INITIALIZATION_NOTE: NoteStatement = {
-    op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
+    op: "NOTE", aside: "summary", metadata: null, target: null, lineMarker: null,
     body: "Surveyed tooling, documentation, extended context, and project root.", position: UNKNOWN_POSITION,
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.

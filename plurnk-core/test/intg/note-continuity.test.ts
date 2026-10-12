@@ -77,8 +77,8 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE leads the 
         assert.ok(rows.slice(1).length > 0 && rows.slice(1).every(({ op }) => op === "FIND" || op === "READ"), "the surveys follow it");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const program = sources.find((row) => row.turn_id === initialization && row.kind === "ops")?.content ?? "";
-        assert.match(program, /^`{3,}NOTE\nSurveyed tooling, documentation, extended context, and project root\.\n`{3,}\n/u,
-            "the recorded ops:// program begins with the NOTE");
+        assert.match(program, /^`{3,}NOTE <!-- summary -->\nSurveyed tooling, documentation, extended context, and project root\.\n`{3,}\n/u,
+            "the recorded ops:// program begins with the NOTE, labelled as the card's first NOTE example is");
     } finally {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = previous;
         await db.close();

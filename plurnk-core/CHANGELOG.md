@@ -32,6 +32,8 @@
 
 - The `continued_without_note` directive quotes the card's revised per-turn rule, "YOU
   MUST record at least one NOTE along with other operations."
+- The initialization NOTE that leads a worker's first program carries the card's `summary`
+  aside, so the first NOTE a model sees is written the way the card's first example is.
 - d8a45b0: Resolve bulk EDIT and resource KILL selectors before mutation, preserving
   per-resource approvals, scopes, anchors and receipts. Require a single resolved
   resource for each COPY/MOVE glob operand before changing either side. Keep
