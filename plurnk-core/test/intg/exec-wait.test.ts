@@ -141,7 +141,9 @@ test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the 
 
 test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle before waiting and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
+    // The cap is far above anything the turn's own work costs on a loaded host, so the elapsed bound below
+    // separates "ended when the stream settled" from "waited for the cap" by seconds, not milliseconds.
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "10000";
     let startedAt = 0;
     const fixture = await wire(async () => {
         startedAt = Date.now();
@@ -161,7 +163,7 @@ test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle 
             { op: fixture.tag, status: 200, problemType: null },
             { op: "WAIT", status: 102, problemType: null },
         ]);
-        assert.ok(Date.now() - startedAt < 500, "settlement ends when the stream settles, not at the full cap");
+        assert.ok(Date.now() - startedAt < 5_000, "settlement ends when the stream settles, not at the full 10 s cap");
     } finally {
         await idle(fixture.schemes);
         await fixture.db.close();

@@ -10,6 +10,7 @@ import type { Executor } from "@plurnk/plurnk-execs";
 import type Exec from "../../src/schemes/Exec.ts";
 import Common from "@plurnk/plurnk-execs-common";
 import { executionAddress } from "./_execs.ts";
+import { HARNESS_WAIT_MS } from "./_rpc.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
@@ -204,7 +205,16 @@ test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the 
     try {
         const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
-        const sent = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
+        // {§exec-input}: a SEND that lands while the launch is still starting is refused 409 at once and never
+        // waited on; the receiver opens when the real process has spawned, so the witness sends until it is open.
+        const address = await executionAddress(f.db, f.turnId, 1);
+        const deadline = Date.now() + HARNESS_WAIT_MS;
+        let sent = await f.dispatch(`\`\`\`\`SEND (${address}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
+        while (sent.status === 409) {
+            assert.ok(Date.now() < deadline, "the input receiver never opened");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            sent = await f.dispatch(`\`\`\`\`SEND (${address}) [{"eof": true}]\nexact α\n\n\`\`\`\``);
+        }
         assert.equal(sent.status, 200);
         assert.equal(sent.bytesAccepted, Buffer.byteLength("exact α\n"));
         assert.equal(sent.inputClosed, true);

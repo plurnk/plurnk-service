@@ -16,6 +16,7 @@ class Flaky extends Mock {
     failures: number;
     calls = 0;
     readonly requests: string[] = [];
+    readonly at: number[] = [];
     constructor(failures: number, signals: readonly number[]) {
         super({
             contextWindow: viableWindow() * 4,
@@ -27,6 +28,7 @@ class Flaky extends Mock {
     }
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         this.calls += 1;
+        this.at.push(Date.now());
         this.requests.push(JSON.stringify(args[0].messages));
         if (this.failures <= 0) return super.generate(...args);
         this.failures -= 1;
@@ -155,7 +157,8 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
 test("{§provider-recovery} the panel's ceiling bounds the doubling delay", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A one-second first delay would wait 1 + 2 + 4 + 8 seconds across four failures; a 5 ms ceiling
-    // bounds every one of them, so the turn recovers in well under the first uncapped delay.
+    // bounds every one of them, so no gap between one call and the next reaches even the first
+    // uncapped delay. The gaps are the subject; the daemon's own start and teardown are not timed.
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX: "5" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
@@ -166,12 +169,12 @@ test("{§provider-recovery} the panel's ceiling bounds the doubling delay", asyn
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const began = Date.now();
             await daemon.runLoop({ workspaceId, workerId, prompt: "hello" });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200);
             assert.equal(provider.calls, 6, "four failed calls, the recovered response, and one new model turn");
-            assert.ok(Date.now() - began < 1000, `four capped delays took ${Date.now() - began}ms`);
+            const gaps = provider.at.slice(1, 5).map((at, index) => at - provider.at[index]!);
+            assert.ok(gaps.every((gap) => gap < 1000), `every capped retry gap stays under the first uncapped delay; gaps ${gaps.join(", ")}ms`);
         } finally {
             await daemon.stop();
             await db.close();

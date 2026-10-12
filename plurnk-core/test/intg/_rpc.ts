@@ -74,10 +74,17 @@ export const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 // duration.
 export class WaitTimeoutError extends Error {}
 
+// The harness waits are liveness bounds, not assertions: a test asserts what happens and in what order,
+// and a hang surfaces as a named timeout. The default therefore sits under the runner's per-test bound
+// (30 s in test:intg) with room for teardown, so a loaded machine, a campaign on the same host, or a
+// slower one never turns an ordering witness into a timing one. A test whose subject is a deadline
+// passes its own, and starts that clock after the precondition it races.
+export const HARNESS_WAIT_MS = 20_000;
+
 export const waitFor = async <T>(
     getter: () => T[],
     predicate: (items: T[]) => boolean,
-    { timeoutMs = 4000, intervalMs = 20, signal }: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal } = {},
+    { timeoutMs = HARNESS_WAIT_MS, intervalMs = 20, signal }: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal } = {},
 ): Promise<T[]> => {
     const start = Date.now();
     for (;;) {
@@ -98,7 +105,7 @@ export const waitFor = async <T>(
 export const waitForDb = async <T>(
     getter: () => Promise<T>,
     predicate: (value: T) => boolean,
-    { timeoutMs = 5000, intervalMs = 20 }: { timeoutMs?: number; intervalMs?: number } = {},
+    { timeoutMs = HARNESS_WAIT_MS, intervalMs = 20 }: { timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<T> => {
     const start = Date.now();
     for (;;) {
@@ -119,7 +126,7 @@ export const waitForDb = async <T>(
 // loopId and the `accepted` status, for callers that assert the 100).
 export const runLoopToTerminal = async (
     ws: SeamSocket, id: number, params: object,
-    { timeoutMs = 8000, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
+    { timeoutMs = HARNESS_WAIT_MS, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<{
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
     result: OperationResult;

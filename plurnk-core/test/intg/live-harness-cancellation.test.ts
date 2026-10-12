@@ -67,7 +67,9 @@ test("{§methods-loop-cancel}: the live harness preserves caller cancellation an
             await rpcCall(ws, 1, "workspace.create", { name: "live-harness-cancel" });
             const controller = new AbortController();
             const reason = new Error("outer specimen cancelled");
-            const running = liveLoop({ db, ws }, 2, { prompt: "wait" }, { timeoutMs: 1000, signal: controller.signal });
+            // The subject is the abort, not the deadline: the deadline only has to outlast the loop reaching
+            // inference on a loaded host, so the abort is always what ends the specimen.
+            const running = liveLoop({ db, ws }, 2, { prompt: "wait" }, { timeoutMs: 20_000, signal: controller.signal });
             const rejected = assert.rejects(running, (error) => error === reason);
             await entered.promise;
             controller.abort(reason);
