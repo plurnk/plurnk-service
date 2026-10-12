@@ -566,7 +566,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
 | `KILL`    | existing literal name  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. An existing name returns 409 whose receipt names the working forms — `SEND (worker://<name>)` with the task as the body to give the live worker more work, or a name no worker holds for another; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
+- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. A WORK whose name a worker already holds is the voice door ({§worker-scheme-irc}): its body is delivered to that worker as a message, nothing is created, the receipt names the worker and `delivered: message`, and an `env` option is refused by name since a message takes none. A FORK whose name a worker holds is `409 worker-name-conflict` whose recovery names the working forms, WORK or `SEND (worker://<name>)` to message the live worker, or a name no worker holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
 - §worker-spawn-prompt-resource **The spawn slot is overloaded by scheme.** A `worker://` path is
   the child's address and keeps the address rules ({§worker-control-addressing}). A path of any
   other scheme is the child's prompt resource: it is read whole (`<1,-1>`) under the caller's read capabilities, composed with
@@ -6342,8 +6342,8 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `resource-scheme-required` | 400 | Resource selection requires an address. |
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
-| `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. |
-| `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. |
+| `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. A WORK to a held name with env: WORK to the existing worker '*name*' carries env; a message takes none. |
+| `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: WORK or SEND (worker://*name*) delivers a message to the live worker; FORK with a name no worker holds. ({§worker-scheme-spawn}) |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |

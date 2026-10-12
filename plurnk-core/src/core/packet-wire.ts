@@ -780,6 +780,8 @@ export default class PacketWire {
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
             && typeof (e.attrs as { worker?: unknown }).worker === "string") {
             meta.worker = (e.attrs as { worker: string }).worker;
+            // {§worker-scheme-spawn} — a WORK that reached a worker the name already held says so.
+            if ((e.attrs as { delivered?: unknown }).delivered === "message") meta.delivered = "message";
         }
         // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
         if (op === "WAIT" && e.attrs !== null && typeof e.attrs === "object" && "waiting" in e.attrs) {

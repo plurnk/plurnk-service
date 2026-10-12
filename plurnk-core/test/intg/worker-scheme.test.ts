@@ -183,15 +183,25 @@ test("{§worker-scheme-spawn}: concurrent WORK and FORK cannot claim the same li
     const workerId = await insertWorker(db, workspaceId, null, "parent");
     const loopId = await insertLoop(db, workerId, 1);
     const turnId = await insertTurn(db, loopId, 1);
-    const results = await Promise.all([spawnedWorker("child", "fresh"), forkWorker("child", "branch")].map((statement, index) =>
+    const [work, fork] = await Promise.all([spawnedWorker("child", "fresh"), forkWorker("child", "branch")].map((statement, index) =>
         engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "model" })));
-    assert.deepEqual(results.map(({ status }) => status).toSorted(), [200, 409]);
-    const failure = results.find(({ status }) => status === 409)!;
-    assert.match(failure.problem!.type, /worker-name-conflict$/);
-    assert.equal(failure.problem!.worker, "child");
-    assert.equal(calls.length, 1, "only the successful claim starts a child");
+    // One claim wins the name. A FORK that lost is 409; a WORK that lost finds the name held and delivers its
+    // body to that worker as a message. Either way one worker holds the name and every delivery reached it.
     const child = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "child" });
-    assert.equal(child?.id, calls[0].workerId);
+    assert.ok(child, "exactly one worker holds the name");
+    assert.equal(work!.status, 200, "WORK either created the child or messaged it");
+    if (fork!.status === 409) {
+        assert.match(fork!.problem!.type, /worker-name-conflict$/);
+        assert.equal(fork!.problem!.worker, "child");
+        assert.match(String(fork!.problem!.recovery), /WORK or SEND \(worker:\/\/child\)/u, "the receipt names the working forms");
+        assert.equal(calls.length, 1, "the one claim started the child");
+        assert.equal(calls[0]!.spawn, true);
+    } else {
+        assert.equal(fork!.status, 200);
+        assert.equal(calls.length, 2, "the branch started the child and the WORK messaged it");
+        assert.ok(calls.some((call) => call.spawn !== true && call.prompt === "fresh"), "the WORK's body reached the held name as a message");
+    }
+    assert.ok(calls.every((call) => call.workerId === child!.id), "every delivery reached the one worker");
 });
 
 for (const origin of ["model", "client", "_plurnk"] as const) {
@@ -445,7 +455,7 @@ test("{§worker-control-addressing}: all Worker names are literal; tilde is not 
     } finally { await db.close(); }
 });
 
-test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
+test("{§worker-scheme-spawn}: WORK naming a RUNNING sister delivers its body to her as a message, never a raw UNIQUE 500", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -462,14 +472,16 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
             statement: spawnedWorker("worker", "do it again"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
-        assert.match(result.problem?.detail ?? "", /already exists in this workspace/, "the message names the live worker");
-        assert.equal(result.problem?.recovery, undefined, "{§diagnostic-observation}: the conflict is said, and no intent is guessed");
-        assert.equal(calls.length, 0, "no inject on a refused spawn");
+        assert.equal(result.status, 200, "the held name is the voice door");
+        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" }, "the receipt says what happened");
+        assert.equal(calls.length, 1, "one delivery");
+        assert.equal(calls[0]!.workerId, sister, "to the running sister");
+        assert.equal(calls[0]!.prompt, "do it again", "her message is the WORK's body");
+        assert.notEqual(calls[0]!.spawn, true, "a message, not a spawn");
     } finally { await db.close(); }
 });
 
-test("WORK-spawning a name held by a PARKED sister is refused 409", async () => {
+test("{§worker-scheme-spawn}: WORK naming a PARKED sister delivers its body to her as a message", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -490,9 +502,11 @@ test("WORK-spawning a name held by a PARKED sister is refused 409", async () => 
             statement: spawnedWorker("worker", "do it again"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 409, "a parked worker remains live and keeps its name");
-        assert.match(result.problem?.detail ?? "", /already exists in this workspace/);
-        assert.equal(calls.length, 0, "a parked name collision never reaches injection");
+        assert.equal(result.status, 200, "a parked worker keeps its name and takes the message");
+        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" });
+        assert.equal(calls.length, 1, "the message reached injection once");
+        assert.equal(calls[0]!.workerId, sister);
+        assert.notEqual(calls[0]!.spawn, true, "a message, not a spawn");
     } finally { await db.close(); }
 });
 
@@ -589,12 +603,16 @@ test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch i
         const retained = await insertWorker(db, workspaceId, null, "worker");
         const completed = await insertLoop(db, retained, 1, "done");
         await db.test_set_loop_status.run({ id: completed, status: 200, terminal_result: JSON.stringify({ status: 200 }) });
-        for (const [index, statement] of [spawnedWorker("worker", "fresh work"), forkWorker("worker", "branch")].entries()) {
-            const result = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "model" });
-            assert.equal(result.status, 409);
-            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-conflict");
-        }
-        assert.equal(calls.length, 0);
+        // The retained name is still that worker's: WORK reaches it as a message, FORK cannot branch into it.
+        const work = await engine.dispatch({ statement: spawnedWorker("worker", "fresh work"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(work.status, 200, "WORK to the completed worker is its next message");
+        assert.deepEqual((work as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" });
+        const fork = await engine.dispatch({ statement: forkWorker("worker", "branch"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(fork.status, 409);
+        assert.equal(fork.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-conflict");
+        assert.match(String(fork.problem?.recovery), /WORK or SEND \(worker:\/\/worker\)/u);
+        assert.equal(calls.length, 1, "one message, no spawn");
+        assert.equal(calls[0]!.workerId, retained, "delivered to the retained worker");
         assert.equal((await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" }))?.id, retained);
     } finally { await db.close(); }
 });

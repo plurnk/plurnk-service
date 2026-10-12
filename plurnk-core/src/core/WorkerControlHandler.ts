@@ -77,19 +77,35 @@ export default class WorkerControlHandler {
             return cause.result;
         }
 
+        // {§worker-scheme-spawn} — WORK to a name a worker holds is the voice door ({§worker-scheme-irc}):
+        // the body is that worker's message and nothing is created.
+        if (statement.op === "WORK" && name !== undefined) {
+            const held = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+            if (held !== undefined) return this.#message(ctx, name, held.id, prompt, environment);
+        }
 
         let workerId: number;
         try {
             workerId = await this.#createWorker(statement, ctx, name);
         } catch (error) {
             if (!(error instanceof WorkerNameConflictError)) throw error;
-            // {§worker-scheme-spawn}: a live name is addressed, not re-spawned.
+            if (statement.op === "WORK") {
+                // The name was claimed between the lookup and the claim: it is held now, so the body is its message.
+                const held = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: error.workerName });
+                if (held !== undefined) return this.#message(ctx, error.workerName, held.id, prompt, environment);
+            }
+            // {§worker-scheme-spawn}: a branch needs a name no worker holds; the live worker is addressed, not re-spawned.
             return this.#failure(
                 "worker-name-conflict",
                 409,
                 error.message,
                 {},
-                { worker: error.workerName, retryable: false },
+                {
+                    operation: statement.op,
+                    worker: error.workerName,
+                    recovery: `WORK or SEND (worker://${error.workerName}) delivers a message to the live worker; FORK with a name no worker holds.`,
+                    retryable: false,
+                },
             );
         }
         const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
@@ -103,6 +119,30 @@ export default class WorkerControlHandler {
             ...(Object.keys(environment).length === 0 ? {} : { environment }),
         });
         return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name) } };
+    }
+
+    // {§worker-scheme-irc} — the message takes the receiver as it is: its environment is its own, so the
+    // env slot, a spawn's, is refused by name before anything is delivered.
+    async #message(
+        ctx: PlurnkSchemeContext,
+        name: string,
+        workerId: number,
+        prompt: string,
+        environment: Readonly<Record<string, string>>,
+    ): Promise<DispatchResult> {
+        if (Object.keys(environment).length > 0) {
+            return this.#failure("metadata-unsupported", 400, `WORK to the existing worker '${name}' carries env; a message takes none.`, {}, {
+                operation: "WORK", worker: name, field: "env", retryable: false,
+            });
+        }
+        if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");
+        await ctx.injectWorker({
+            workspaceId: ctx.workspaceId,
+            workerId,
+            sourceLoopId: ctx.loopId,
+            prompt,
+        });
+        return { status: 200, body: name, attrs: { worker: WorkerControlAddress.render(name), delivered: "message" } };
     }
 
     async #createWorker(
