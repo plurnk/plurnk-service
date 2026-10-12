@@ -870,3 +870,18 @@ ORDER BY le.id;
 
 -- PREP: test_turn_sources_by_turn
 SELECT kind, content FROM turn_sources WHERE turn_id = $turn_id ORDER BY kind;
+
+-- PREP: test_open_message_from
+-- {§worker-obligations}: the newest message a named worker sent in a workspace that has no completion yet.
+SELECT m.path FROM message_sources m
+WHERE m.workspace_id = $workspace_id AND m.source = $source
+  AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
+ORDER BY m.id DESC LIMIT 1;
+
+-- PREP: test_message_completions_from
+-- {§message-completion}: the completions of a named worker's messages, with who authored each completing row.
+SELECT c.status, le.origin FROM message_completions c
+JOIN message_sources m ON m.id = c.message_id
+JOIN log_entries le ON le.id = c.response_id
+WHERE m.workspace_id = $workspace_id AND m.source = $source
+ORDER BY c.message_id ASC;

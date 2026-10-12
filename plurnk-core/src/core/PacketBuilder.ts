@@ -269,6 +269,9 @@ export default class PacketBuilder {
         }));
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
+        // {§worker-obligations} — the messages this worker sent that await completion, the third thing it holds.
+        const sentMessages = (await this.#db.engine_sent_messages_open.all<{ path: string; status: number }>({ worker_id: workerId }))
+            .map((r) => ({ status: r.status, path: r.path }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
         // streams and space ({§worker-read-scope}, #394). The parent rides the `## Worker` identity
         // block; a root worker states `"parent": null` rather than omitting it.
@@ -376,7 +379,7 @@ export default class PacketBuilder {
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word. Terse pointers (the path is the actionable address the model READs,
             // SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams) },
+            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams, sentMessages) },
             // The open arrivals this turn owes, as pointers; bodies arrive through their inbound SEND rows
             // ({§message-arrival}).
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },

@@ -169,8 +169,9 @@ SELECT 'ops://' || w.name || '/' || l.sequence AS resource
 FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;
 
 -- PREP: loop_live_obligations
--- {§worker-obligations}: the live work a loop is held on — its worker's open streams and live children.
-SELECT streams, workers FROM loop_obligations WHERE loop_id = $loop_id;
+-- {§worker-obligations}: the live work a loop is held on — its worker's open streams, live children, and the
+-- messages it sent to other workers that await completion.
+SELECT streams, workers, messages FROM loop_obligations WHERE loop_id = $loop_id;
 
 -- PREP: lifecycle_tree_budget
 -- {§turn-cap-counts-the-tree} — the budget of the worker tree a loop belongs to. The owner is

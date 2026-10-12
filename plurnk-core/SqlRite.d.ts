@@ -176,6 +176,7 @@ export class SqlRiteSync {
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
 	drain_message_recipient: SqlRiteSyncPreparedStatements;
+	drain_abandoned_messages: SqlRiteSyncPreparedStatements;
 	drain_message_source: SqlRiteSyncPreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
@@ -275,6 +276,7 @@ export class SqlRiteSync {
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
 	native_content_retain: SqlRiteSyncPreparedStatements;
 	native_content_read: SqlRiteSyncPreparedStatements;
+	engine_sent_messages_open: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_parent_worker: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
@@ -475,6 +477,7 @@ export default class SqlRite {
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
 	drain_message_recipient: SqlRitePreparedStatements;
+	drain_abandoned_messages: SqlRitePreparedStatements;
 	drain_message_source: SqlRitePreparedStatements;
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
@@ -574,6 +577,7 @@ export default class SqlRite {
 	engine_fail_model_call: SqlRitePreparedStatements;
 	native_content_retain: SqlRitePreparedStatements;
 	native_content_read: SqlRitePreparedStatements;
+	engine_sent_messages_open: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_parent_worker: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;

@@ -25,6 +25,7 @@ import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
+import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
@@ -344,6 +345,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             } });
         this.#drains = new DrainSupervisor({
             db,
+            // {§message-abandonment} — the daemon answers, 499, what an ended loop left unanswered.
+            completeAbandonedMessages: (workspaceId, workerId, loopId, status) =>
+                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, workerId, loopId, status),
             lifecycle: this.#lifecycle,
             injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress),
             assertInjectionCompatibility: async ({

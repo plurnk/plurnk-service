@@ -52,6 +52,15 @@ WHERE worker_id = $worker_id
 ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
+-- PREP: drain_abandoned_messages
+-- {§message-abandonment}: the messages other workers sent that this ended loop still holds without a completion.
+SELECT m.path
+FROM message_sources m
+WHERE m.loop_id = $loop_id
+  AND m.source LIKE 'worker://%'
+  AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
+ORDER BY m.ordinal ASC;
+
 -- PREP: drain_message_source
 SELECT l.worker_id, w.workspace_id, l.status
 FROM loops l JOIN workers w ON w.id = l.worker_id

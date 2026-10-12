@@ -14,7 +14,7 @@ export interface PacketBoundaries {
 }
 
 export interface CompletionEvidence {
-    pending: Array<"streams" | "workers" | "receipts" | "failed-stream-results" | "worker-results">;
+    pending: Array<"streams" | "workers" | "messages" | "receipts" | "failed-stream-results" | "worker-results">;
     receipts: string[];
 }
 
@@ -86,15 +86,17 @@ export default class TurnDispositionHandler {
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if ((recovery || !completionAllowed) && !wait) return { status: 102 };
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
-        const live = pending.some((kind) => kind === "streams" || kind === "workers");
+        // {§worker-obligations} — the three held kinds; everything else pending is a result owed next packet.
+        const held = (kind: string): boolean => kind === "streams" || kind === "workers" || kind === "messages";
+        const live = pending.some(held);
         if (live && wait) {
-            // The obligation itself is the waker: a concluding stream or child requeues this loop.
+            // The obligation itself is the waker: a concluding stream or child, or a completed message, requeues this loop.
             return { status: 202 };
         }
         if (recovery || !completionAllowed) return { status: 102 };
         const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         if (unresolved!.count > 0) return { status: 102 };
-        if (pending.some((kind) => kind !== "streams" && kind !== "workers")) return {
+        if (pending.some((kind) => !held(kind))) return {
             status: 102, detail: "All Open Messages resolved. Review new results; emit no OPs if finished.",
         };
         if (live) return { status: 202 };

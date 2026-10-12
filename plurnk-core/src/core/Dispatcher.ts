@@ -1554,10 +1554,11 @@ export default class Dispatcher {
     async #pendingSet(workerId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
         // {§worker-obligations} — all held work shares one durable projection.
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ loop_id: loopId });
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
         if (held === undefined) throw new Error(`loop ${loopId} does not exist`);
         if (held.streams === 1) pending.push("streams");
         if (held.workers === 1) pending.push("workers");
+        if (held.messages === 1) pending.push("messages");
         const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
         const receipts = [...new Set(boundaries.operations
             .filter(({ op }) => op !== "KILL")
@@ -1594,8 +1595,8 @@ export default class Dispatcher {
 
     // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.
     async hasLiveWork(loopId: number): Promise<boolean> {
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ loop_id: loopId });
-        return held !== undefined && (held.streams === 1 || held.workers === 1);
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
+        return held !== undefined && (held.streams === 1 || held.workers === 1 || held.messages === 1);
     }
 
     async #runLogCuration(

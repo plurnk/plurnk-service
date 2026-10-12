@@ -96,6 +96,8 @@ type InjectPrompt = (
     messageAddress?: string,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
+// {§message-abandonment} — completes, 499, the messages other workers sent that an ended loop left unanswered.
+type CompleteAbandonedMessages = (workspaceId: number, workerId: number, loopId: number, status: number) => Promise<unknown>;
 type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 
 // Owns the worker-local queue consumer and every process-local edge that may
@@ -115,6 +117,7 @@ export default class DrainSupervisor {
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
     readonly #emit: EmitEvent;
+    readonly #completeAbandonedMessages: CompleteAbandonedMessages;
 
     // The handle is the drain identity. Start/exit compare by reference so an
     // exiting drain cannot clobber a successor that raced in.
@@ -146,6 +149,7 @@ export default class DrainSupervisor {
         readSystemPrompt,
         emitLogEntry,
         emit,
+        completeAbandonedMessages,
     }: {
         db: Db;
         lifecycle: LoopLifecycle;
@@ -160,7 +164,9 @@ export default class DrainSupervisor {
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
         emit: EmitEvent;
+        completeAbandonedMessages?: CompleteAbandonedMessages;
     }) {
+        this.#completeAbandonedMessages = completeAbandonedMessages ?? (async () => {});
         this.#db = db;
         this.#lifecycle = lifecycle;
         this.#injectPrompt = injectPrompt;
@@ -457,6 +463,7 @@ export default class DrainSupervisor {
                     // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
                     // never silently dropped ({§message-loop-containment}).
                     await this.reconcileOrphanedMessages(workerId, loopRow.id);
+                    await this.#abandonUnanswered(workspaceId, workerId, loopRow.id, result.result.status);
                     currentLoopId = null;
                 }
             } catch (err) {
@@ -508,6 +515,7 @@ export default class DrainSupervisor {
                                 usage,
                                 attributions,
                             });
+                            await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, cancelled.status);
                         }
                     }
                     if (!firstSettled) {
@@ -582,6 +590,7 @@ export default class DrainSupervisor {
                             usage,
                             attributions,
                         });
+                        await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, settled.status);
                     }
                     if (!firstSettled) {
                         firstSettled = true;
@@ -746,6 +755,17 @@ export default class DrainSupervisor {
                 usage,
                 attributions,
             });
+            await this.#abandonUnanswered(row.workspace_id, targetWorkerId, loopId, result.status);
+        }
+    }
+
+    // {§message-abandonment} — after a loop's end is durable and published, whatever it left unanswered is
+    // answered for it. A failure here is logged, never a second failure of the loop that already ended.
+    async #abandonUnanswered(workspaceId: number, workerId: number, loopId: number, status: number): Promise<void> {
+        try {
+            await this.#completeAbandonedMessages(workspaceId, workerId, loopId, status);
+        } catch (cause) {
+            console.error(`message abandonment for loop ${loopId} (status ${status}) failed:`, cause);
         }
     }
 

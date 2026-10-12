@@ -557,7 +557,7 @@ test("the live things a worker holds — child workers — surface as terse poin
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
-        assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
         assert.equal(packet.sections.find((section) => section.name === "delegation")?.header, "Delegation", "the section carries the teaching's word");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("delegation"), "{§child-orientation}: delegation rides the status clump");
@@ -576,7 +576,7 @@ test("no live children or streams → Delegation states both as empty", async ()
         // {§packet-empty-sections} — Delegation states emptiness as `[]` for both lists: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "delegation"), '{"workers":[],\n"streams":[]}', "no live children and no open streams → both lists state []");
+        assert.equal(packetSection(packet, "delegation"), '{"workers":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
     } finally { await db.close(); }
 });
 

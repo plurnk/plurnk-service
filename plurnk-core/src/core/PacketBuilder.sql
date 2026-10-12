@@ -1,5 +1,19 @@
 -- PacketBuilder: the request packet's sections, read from the durable log and worker tree.
 
+-- PREP: engine_sent_messages_open
+-- {§child-orientation} {§worker-obligations}: the messages this worker sent to other workers that await
+-- completion, as `{status, path}` pointers beside its live children: the recipient loop's status, 100 queued,
+-- 102 processing, 202 parked. A completed message, or one whose recipient loop ended, is no longer held.
+SELECT m.path, l.status
+FROM message_sources m
+JOIN loops l ON l.id = m.loop_id
+JOIN workers w ON w.id = $worker_id
+WHERE m.workspace_id = w.workspace_id
+  AND m.source = 'worker://' || w.name
+  AND l.status IN (100, 102, 202)
+  AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
+ORDER BY m.id ASC;
+
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — any loop non-terminal (100 pending / 102 processing / 202 parked).
 -- Powers the Delegation workers list ({§child-orientation}): terse `* <status> worker://<name>`

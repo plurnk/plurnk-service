@@ -620,9 +620,10 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
   turn the packet's status clump surfaces the live things this worker currently
   holds under the teaching's own word for handing work out: `## Delegation` is
-  one JSON object, `{"workers": [...], "streams": [...]}`, its unconcluded child
-  workers and its open streams as `{status, path}` pointers (the same shape as
-  the errors section). Body-suppressed child activity is durable
+  one JSON object, `{"workers": [...], "streams": [...], "messages": [...]}`, its
+  unconcluded child workers, its open streams and the messages it sent that await
+  completion ({§worker-obligations}) as `{status, path}` pointers (the same shape as
+  the errors section); a message pointer carries the recipient loop's status. Body-suppressed child activity is durable
   history; this section is the current inventory that keeps an active obligation
   visible even when no new activity arrived. Each open stream pointer carries
   elapsed runtime, output inactivity, and its channels' sizes and growth since
@@ -2979,10 +2980,22 @@ When all messages are resolved but new results require another packet, the engin
 reports only: `All Open Messages resolved. Review new results; emit no OPs if finished.`
 The notice creates no state and does not demand another final reply.
 
-§worker-obligations A worker holds its unresolved children and open non-detached
-streams (`worker_obligations`); `loop_obligations` names them per loop. The
-packet's Delegation list, WAIT, completion and drain wake settlement use that
-same durable liveness.
+§worker-obligations A worker holds its unresolved children, its open non-detached
+streams, and the messages it sent to other workers that await completion while the
+recipient's loop is live (`worker_obligations`); `loop_obligations` names them per
+loop. The packet's Delegation list, WAIT, completion and drain wake settlement use
+that same durable liveness: a worker that messaged another worker parks on an
+authored WAIT until the completion arrives ({§message-completion}), and with no WAIT
+joins that work with the bounded park rather than concluding idle.
+
+§message-abandonment **An ended loop answers what it left open.** When a loop ends,
+every message another worker sent it that has no completion is completed `499` by the
+daemon: one `_plurnk` SEND to the message's address in a maintenance turn of the
+recipient, "Loop *N* ended with status *S*; this message was not answered.",
+delivered to the sender like any reply ({§message-reply-delivery}). A message the
+ending loop had not yet published is re-homed first ({§message-loop-containment}) and
+is not abandoned. The sender's hold ends with the recipient's loop either way; the
+completion is what wakes it and tells it.
 
 §wait-obligation-matrix **End-of-program resolution.** Execute all admitted operations and settle optimistic work before applying this table. WAIT is an optional yield, not an end-of-program delimiter.
 

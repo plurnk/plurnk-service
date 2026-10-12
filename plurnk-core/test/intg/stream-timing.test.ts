@@ -40,6 +40,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
                 status: "active", path: "sh:///1234abcd",
                 detail: "elapsed 125s; output unchanged 125s; stdout 0 lines (+0 bytes)",
             }],
+            messages: [],
         });
         await packets.recordObservations(first);
         const second = await build();
@@ -49,7 +50,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         const terminal = await build();
         assert.deepEqual(JSON.parse(terminal.sections.find(({ name }) => name === "delegation")!.content),
-            { workers: [], streams: [] }, "closed streams leave the active inventory");
+            { workers: [], streams: [], messages: [] }, "closed streams leave the active inventory");
     } finally { await db.close(); }
 });
 
