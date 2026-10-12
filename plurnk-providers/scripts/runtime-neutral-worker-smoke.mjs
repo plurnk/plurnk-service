@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { exerciseRuntimeNeutralWorker } from "./runtime-neutral-worker-control.mjs";
+import { packRecords } from "../../scripts/npm-json.mjs";
 
 const run = promisify(execFile);
 const cleanEnv = Object.fromEntries(
@@ -21,7 +22,7 @@ try {
         ["pack", "--json", "--silent", "--ignore-scripts"],
         { cwd: packageDir, env: cleanEnv },
     );
-    const [{ filename }] = JSON.parse(stdout);
+    const [{ filename }] = packRecords(stdout);
     tarballPath = join(packageDir, filename);
     await writeFile(join(consumerDir, "package.json"), `${JSON.stringify({
         name: "plurnk-provider-worker-control",

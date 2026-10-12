@@ -27,8 +27,11 @@ try {
     // The caller built the candidate before smoke. Re-running prepack here would
     // rebuild the same artifact inside its own verification and compound the
     // generator's lifecycle cost.
-    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent", "--ignore-scripts"], { cwd: contractsDir, env: cleanEnv });
-    const tarballName = JSON.parse(packOut)[0].filename;
+    // `--silent` prints the one archive's filename and nothing else, the same on every npm; the JSON
+    // envelope changed shape in npm 12 and belongs to the root release scripts' normalizer.
+    const { stdout: packOut } = await run("npm", ["pack", "--silent", "--ignore-scripts"], { cwd: contractsDir, env: cleanEnv });
+    const tarballName = packOut.trim().split("\n").at(-1) ?? "";
+    if (!tarballName.endsWith(".tgz")) throw new Error(`npm pack printed no archive name: ${JSON.stringify(packOut)}`);
     tarballPath = join(contractsDir, tarballName);
     process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
 
