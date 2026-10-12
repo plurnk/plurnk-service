@@ -238,7 +238,7 @@ const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation."
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST record a summary NOTE and emit at least one other operation per turn.",
+    note: "YOU MUST record at least one NOTE along with other operations.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",

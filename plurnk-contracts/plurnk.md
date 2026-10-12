@@ -1,10 +1,10 @@
-# Plurnk Annotated Operation Protocol
+# Plurnk Operation Protocol
 
 > [!IMPORTANT]
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST record a summary NOTE and emit at least one other operation per turn.
+> YOU MUST record at least one NOTE along with other operations.
 
 > [!TIP]
 > All operations (except NOTE) are converted into log items.
@@ -27,12 +27,12 @@ body?
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
 * WAIT: Yield to child workers and streams (not the user). You may include `[60]` to check in after 60 seconds.
-* SEND: Message endpoints, workers, or respond to Open Messages.
+* SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
 
 ```NOTE <!-- summary -->
-Configuration load-order bug identified; fix and regression test pending.
+Configuration exampleLoader.py load-order bug identified; fix and regression test pending.
 ```
 
 ```NOTE <!-- finding -->
@@ -47,19 +47,19 @@ Move configuration reading in exampleLoader.py into exampleInit() so it uses the
 Edit exampleLoader.py, then rerun exampleTest.py.
 ```
 
-```SEND (message://abcd1234/zyxw9876) <!-- example that does not close the Open Message -->
-This is an example of a continuing turn progress update response.
+```SEND
+This is an example of a continuing progress update response.
 ```
 
-```SEND (message://abcd1234/efgh3456) [200]
-This is an example of the final deliverable response.
+```SEND [200]
+This is an example of a final deliverable response.
 ```
-
-> [!CAUTION]
-> The loop continues until each Open Message has a [200] or [499] reply, operation results have been observed, and work held by the loop has settled.
 
 > [!TIP]
-> Use `[499]` to cancel an Open Message.
+> YOU SHOULD include the Open Message's (path) to complete `[200]` or cancel `[499]` specific Open Messages.
+
+> [!CAUTION]
+> The loop continues until every Open Message has a `[200]` or `[499]` reply, operation results have been observed, and work held by the loop has settled.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 

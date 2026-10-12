@@ -19,7 +19,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
 // {§notice-callout} {§pinned-wording-core}: the exact callouts these witnesses expect.
-const CONTINUED = "> [!WARNING]\n> YOU MUST record a summary NOTE and emit at least one other operation per turn. The turn continued without a NOTE. [continued_without_note]";
+const CONTINUED = "> [!WARNING]\n> YOU MUST record at least one NOTE along with other operations. The turn continued without a NOTE. [continued_without_note]";
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 const scope = (requested: string, canonical: string): string =>
     `> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <${requested}> was normalized to <${canonical}>. [scope_normalized]`;

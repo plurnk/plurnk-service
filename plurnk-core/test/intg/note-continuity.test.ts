@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-const NOTICE = "> [!WARNING]\n> YOU MUST record a summary NOTE and emit at least one other operation per turn. The turn continued without a NOTE. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST record at least one NOTE along with other operations. The turn continued without a NOTE. [continued_without_note]";
 const INITIALIZATION_NOTE = "Surveyed tooling, documentation, extended context, and project root.";
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;

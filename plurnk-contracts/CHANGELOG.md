@@ -13,6 +13,10 @@
 
 ### Patch Changes
 
+- The card is titled "Plurnk Operation Protocol"; its per-turn rule asks for at least one
+  NOTE along with other operations; SEND teaches the pathless reply, which addresses the
+  oldest Open Message, and the path for completing (`[200]`) or cancelling (`[499]`) a
+  specific one.
 - 960777f: Clarify that NOTE is a detailed persistent annotation register.
 - f383d7d: Clarify the existing Functionality mutation statuses: local creation, settlement,
   and authorization-required are distinct from management-stream completion.
