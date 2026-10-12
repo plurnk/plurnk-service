@@ -2,9 +2,10 @@
 "@plurnk/plurnk-service": minor
 ---
 
-A KILL target may list journal targets with `|` between complete coordinates,
-prefixes or globs, written bare or as full `log:///` addresses, and the
-operation applies to their union; the card still teaches the brace set. A sweep
-that matches nothing says what it read, and a malformed log target's recovery
-shows the coordinate shape: `log:///<loop>/<turn>/<sequence>` with an optional
-`/<op>` leaf, where `*`, `**`, `[1-7]` or `{a,b}` may stand in any segment.
+The log target reader accepts four near-misses of the taught form and reads
+each as the one target it can only mean: a `|` between complete coordinates,
+bare or as full `log:///` addresses, as their union; a bracketed comma list in a
+numeric slot as a set; a non-numeric literal in a numeric slot as the leaf with
+the missing slots `*`; and `*` segments between the sequence and the leaf as
+dropped. A sweep that matches nothing stays a bare 204; the refusal of a target
+nothing can read shows the coordinate shape as its recovery.

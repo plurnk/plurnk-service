@@ -431,7 +431,7 @@ test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an er
 
 const SHAPE = /A log target is `log:\/\/\/<loop>\/<turn>\/<sequence>` with an optional `\/<op>` leaf; a shorter path is a prefix, and `\*`, `\*\*`, `\[1-7\]` or `\{a,b\}` may stand in any segment\./u;
 
-test("{§log-target-list} a `|` between KILL targets lists them, bare or as full addresses, and one bad piece refuses the whole", async () => {
+test("{§log-target-tolerances} a `|` between KILL targets lists them, bare or as full addresses, and one bad piece refuses the whole", async () => {
     const context = await setup();
     const { db } = context;
     try {
@@ -452,20 +452,39 @@ test("{§log-target-list} a `|` between KILL targets lists them, bare or as full
     } finally { await db.close(); }
 });
 
-test("{§log-target-shape} a sweep that matched nothing and a malformed target both show the coordinate shape", async () => {
+test("{§log-target-tolerances} the three near-miss shapes read exactly as the target they can only mean", async () => {
+    const near = await setup();
+    const canon = await setup();
+    try {
+        for (const context of [near, canon]) for (const [sequence, body] of [[2, "two\n"], [3, "three\n"], [4, "four\n"], [5, "five\n"]] as const) await seedRead(context, sequence, body);
+        const pairs = [
+            ["/1/1/2/*/READ", "/1/1/2/READ", "a `*` between the sequence and the leaf is dropped"],
+            ["/1/1/[3,4]", "/1/1/{3,4}", "a bracketed comma list in a numeric slot is a set"],
+            ["/1/READ", "/1/*/*/READ", "a leaf after one numeric slot fills the missing slots with `*`"],
+        ] as const;
+        for (const [written, canonical, why] of pairs) {
+            const read = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(near));
+            const meant = await new Log().kill(killStmt(urlPath("log", canonical), null), ctxOf(canon));
+            assert.equal(meant.status, 200, `${canonical}: the canonical form selects rows`);
+            assert.equal(read.status, meant.status, `${written}: ${why}`);
+            assert.equal(read.matched, meant.matched, `${written} selects exactly what ${canonical} selects`);
+        }
+    } finally { await near.db.close(); await canon.db.close(); }
+});
+
+test("{§log-target-shape} a sweep of nothing stays bare, and only a target nothing can read shows the coordinate shape", async () => {
     const context = await setup();
     const { db } = context;
     try {
-        for (const written of ["/1/1/1/*/READ", "/1/*/READ", "/1/[19,24]/**/sh", "/9/9/*"]) {
-            const r = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(context));
-            assert.equal(r.status, 204, `${written}: a well-formed selection of nothing stays the no-op success`);
-            assert.equal(r.matched, 0);
-            assert.match(String(r.detail), new RegExp(`^No log row matches 'log://${written.replace(/[*[\]]/gu, "\\$&")}'\\. `, "u"), `${written}: the detail says what it read`);
-            assert.match(String(r.detail), SHAPE, `${written}: and the shape`);
+        const bare = await new Log().kill(killStmt(urlPath("log", "/9/9/*"), null), ctxOf(context));
+        assert.equal(bare.status, 204);
+        assert.equal(bare.matched, 0);
+        assert.equal(JSON.stringify(bare), '{"status":204,"matched":0}', "no text rides the packet for a sweep that matched nothing");
+        for (const written of ["/garbage", "/1/READ/2"]) {
+            const malformed = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(context));
+            assert.equal(malformed.status, 400, `${written}: nothing can read it`);
+            assert.match(JSON.stringify(malformed), SHAPE, `${written}: the refusal shows the shape`);
         }
-        const malformed = await new Log().kill(killStmt(urlPath("log", "/garbage"), WHOLE), ctxOf(context));
-        assert.equal(malformed.status, 400);
-        assert.match(JSON.stringify(malformed), SHAPE, "a malformed target's recovery is the shape");
     } finally { await db.close(); }
 });
 

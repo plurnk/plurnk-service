@@ -79,15 +79,41 @@ const numericCoordinateIntervalsValid = (pathname: string): boolean => pathname.
     return interval === null || BigInt(interval[1]!) <= BigInt(interval[2]!);
 });
 
-// {§log-target-shape} — the working form a log miss or a malformed log target shows; it names the
-// shape and presumes nothing about what the author meant ({§diagnostic-observation}).
+// {§log-target-shape} — the working form the refusal of a target nothing can read shows; it names the
+// shape and presumes nothing about what the author meant ({§diagnostic-observation}). A sweep that
+// matches nothing stays the bare 204 ({§log-curation-folder-idiom}): no text rides the packet for it.
 const LOG_TARGET_SHAPE = "A log target is `log:///<loop>/<turn>/<sequence>` with an optional `/<op>` leaf; a shorter path is a prefix, and `*`, `**`, `[1-7]` or `{a,b}` may stand in any segment.";
 
-// {§log-target-list} — a `|` between KILL targets lists them; each piece may be written bare or as a
-// full `log:///` address. The card teaches the brace set; the list is tolerated, never taught.
+// {§log-target-tolerances} — a `|` between KILL targets lists them; each piece may be written bare or
+// as a full `log:///` address. The card teaches the brace set; the list is tolerated, never taught.
 const splitLogTargets = (pathname: string): string[] | null => pathname.includes("|")
     ? pathname.split("|").map((piece) => piece.replace(/^log:\/\/\//u, "").replace(/^\//u, ""))
     : null;
+
+// {§log-target-tolerances} — the near-miss shapes the target reader accepts, each read as the one
+// target it can only have meant, so that a miss by shape costs no turn and no text: a bracketed comma
+// list in a numeric slot is a set; a non-numeric literal in a numeric slot, after at least one
+// numeric slot, is the leaf with the missing slots `*`; `*` segments between the sequence and the
+// leaf select nothing a coordinate could hold and are dropped. Idempotent; the folder idiom and
+// everything numeric pass through untouched.
+const NUMERIC_SLOT = /^(?:\d+|\*|\*\*|\[\d+-\d+\]|\{[\d,]+\})$/u;
+const BRACKET_LIST = /^\[(\d+(?:,\d+)+)\]$/u;
+const normalizeLogTarget = (pathname: string): string => {
+    if (pathname === "" || pathname.endsWith("/")) return pathname;
+    const segments = pathname.split("/");
+    for (let slot = 0; slot < Math.min(3, segments.length); slot++) {
+        const list = BRACKET_LIST.exec(segments[slot]!);
+        if (list !== null) segments[slot] = `{${list[1]}}`;
+    }
+    const leafAt = segments.findIndex((segment, slot) => slot < 3 && !NUMERIC_SLOT.test(segment));
+    if (leafAt >= 1 && leafAt === segments.length - 1) {
+        const leaf = segments.pop()!;
+        while (segments.length < 3) segments.push("*");
+        segments.push(leaf);
+    }
+    while (segments.length > 4 && segments[3] === "*") segments.splice(3, 1);
+    return segments.join("/");
+};
 
 // A log target pathname → the coordinate GLOB it scopes ({§log-coordinate-hierarchy}): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
@@ -384,7 +410,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = statement.target === null
             ? ""
             : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-        const glob = coordinateGlob(pathname);
+        const glob = coordinateGlob(normalizeLogTarget(pathname));
         if (glob === null) {
             return empty(
                 400,
@@ -642,9 +668,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
     }
 
-    // {§log-target-list} — a `|` list is the union of its pieces: one unreadable piece refuses the
-    // whole target and names the piece; an empty union is the exact miss's 404 when every piece is
-    // an exact coordinate, otherwise the sweep's 204 ({§log-curation-folder-idiom}).
+    // {§log-target-tolerances} — a `|` list is the union of its pieces: one unreadable piece refuses
+    // the whole target and names the piece; an empty union is the exact miss's 404 when every piece
+    // is an exact coordinate, otherwise the sweep's 204 ({§log-curation-folder-idiom}).
     async #resolveIds(
         pathname: string,
         ctx: PlurnkSchemeContext,
@@ -668,7 +694,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         maxLogEntryId: number | null,
     ): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
-        const coord = parseCoordinate(pathname);
+        const target = normalizeLogTarget(pathname);
+        const coord = parseCoordinate(target);
         if (coord !== null) {
             const id = await this.#resolveExactId(coord, ctx, maxLogEntryId);
             return id === null
@@ -676,7 +703,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 : { status: 200, ids: [id] };
         }
         // {§log-coordinate-hierarchy} — one resolution for every consumer (curation here, find below).
-        const glob = coordinateGlob(pathname);
+        const glob = coordinateGlob(target);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
         const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({
@@ -719,7 +746,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 throw new Error("A successful broad log matcher selection returned no resource paths");
             }
             const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-            const glob = coordinateGlob(pathname);
+            const glob = coordinateGlob(normalizeLogTarget(pathname));
             if (glob === null) throw new Error(`Log matcher selected malformed target ${JSON.stringify(pathname)}`);
             const scope = pathScope(glob, false);
             if (scope.kind !== "exact") {
@@ -948,10 +975,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
-        // {§log-target-shape} — the sweep's 204 says what it read and the working form.
-        if (selected.status === 204) {
-            return { result: Results.assert({ status: 204, matched: 0, detail: `No log row matches '${statement.target.raw}'. ${LOG_TARGET_SHAPE}` }) as OpenFoldResult, plan: null };
-        }
+        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.status !== 200) {
             const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
             const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
@@ -990,14 +1014,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const selected: { status: number; ids: number[]; error?: string; problem?: ProblemDetails } = statement.matcher === null
             ? await this.#resolveIds(pathname, ctx, maxLogEntryId)
             : await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
-        // {§log-target-shape} — a sweep's 204 says what it read and the working form; a pattern
-        // selection that matched nothing stays the bare no-op, since the pattern did the selecting.
-        if (selected.status === 204) {
-            const detail = statement.matcher === null && statement.target !== null
-                ? { detail: `No log row matches '${statement.target.raw}'. ${LOG_TARGET_SHAPE}` }
-                : {};
-            return { result: Results.assert({ status: 204, matched: 0, ...detail }) as OpenFoldResult, plan: null };
-        }
+        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.problem !== undefined) {
             return { result: Results.assert({ status: selected.status, problem: selected.problem }) as OpenFoldResult, plan: null };
         }
