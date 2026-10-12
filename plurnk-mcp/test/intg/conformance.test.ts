@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { glob, mkdtemp, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+// The referee's `conformance` bin, wherever npm placed the package; its placement in the tree is npm's.
+const REFEREE = path.join(path.dirname(createRequire(import.meta.url).resolve("@modelcontextprotocol/conformance/package.json")), "dist/index.js");
 
 const run = (
     command: string,
@@ -62,7 +66,7 @@ test(name, {
     t.after(() => rm(output, { recursive: true, force: true }));
 
     const result = await run(process.execPath, [
-        "node_modules/@modelcontextprotocol/conformance/dist/index.js",
+        REFEREE,
         "client",
         "--command",
         `${process.execPath} --conditions=plurnk-dev --env-file=plurnk-mcp/.env.defaults plurnk-mcp/test/conformance-client.ts`,
