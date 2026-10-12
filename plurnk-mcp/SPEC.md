@@ -194,6 +194,18 @@ case-insensitively, and body/header disagreement fails instead of guessing.
 For `tasks/get`, `tasks/update`, and `tasks/cancel`, `Mcp-Name` is the encoded
 `taskId` required by the Tasks extension.
 
+§mcp-header-declarations **A tool with an invalid `x-mcp-header` declaration is never called.** Before
+either request leg of a tool call, Tasks or direct, the tool's `inputSchema` is scanned for
+`x-mcp-header` declarations: each sits on a property reached through `properties` alone, never under
+`items`, `additionalProperties`, a combinator, a conditional, `$defs` or a `$ref` target; names a
+non-empty RFC 9110 token that is unique case-insensitively; and types `string`, `integer` or `boolean`,
+never `number` (SEP-2243). The definition the caller supplies is the one scanned; otherwise the server's
+listing supplies it, and a Tasks call whose listing lacks the tool fails as unlisted. A definition that
+breaks any of these refuses the call with `tool-header-invalid` ({§problems-mcp}) naming the tool and
+the declaration, and no request is sent. A direct call never waits on a failed listing
+({§mcp-catalog-deadline}): with no definition at hand there is nothing to scan and no routing header to
+derive, so it proceeds as a plain `tools/call`.
+
 ## §mcp-errors Error allocation
 
 | Condition | Code and boundary |
@@ -850,15 +862,19 @@ target is an internal contract violation rather than a conservative guess.
 ## §mcp-conformance Conformance authority
 
 Protocol conformance runs through official
-`@modelcontextprotocol/conformance@0.2.0-alpha.11`, whose immutable
-`2026-07-28` requirement manifest freezes the release-time alpha.10 scenario
-set. Its required client leg must pass; `not_scored` probes remain visible
-without changing that verdict. The adopted `auth/client-credentials-basic`
-extension runs as a separate named gate requiring successful grant and bearer
-checks; an empty or skipped report never passes. Extension scenarios have no
-dated-spec filter and do not alter the core pass rate. The JWT arm remains
-excluded under {§oauth-client-credentials}. Atlas and third-party
-stdio/Streamable HTTP servers are composition evidence only.
+`@modelcontextprotocol/conformance@0.2.0-alpha.12`, whose immutable
+`2026-07-28` requirement manifest names the thirty-nine client scenarios of
+that revision, the SEP-2243 `http-invalid-tool-headers` scenario among them
+({§mcp-header-declarations}). Its required client leg must pass; `not_scored`
+probes remain visible without changing that verdict. The adopted
+`auth/client-credentials-basic` extension runs as a separate named gate
+requiring successful grant and bearer checks; an empty or skipped report never
+passes. Extension scenarios have no dated-spec filter and do not alter the core
+pass rate. The `auth/client-credentials-jwt`, `auth/enterprise-managed-authorization`,
+`auth/dpop`, `auth/dpop-nonce` and `auth/wif-jwt-bearer` extensions are not
+adopted and stay `not_scored`; the JWT arm remains excluded under
+{§oauth-client-credentials}. Atlas and third-party stdio/Streamable HTTP
+servers are composition evidence only.
 
 §problems-mcp **MCP Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 
@@ -887,3 +903,4 @@ stdio/Streamable HTTP servers are composition evidence only.
 | `server-unavailable` | 502 | Configured MCP server '*name*' is unavailable. |
 | `resource-part-not-found` | 404 | The resource response does not contain the requested part. |
 | `server-redirected` | 502 | MCP endpoint *url* redirected to *location*; plurnk follows no redirect, so the server's url must be the endpoint itself ({§mcp-redirect-refused}). |
+| `tool-header-invalid` | 502 | MCP tool '*name*' declares an invalid x-mcp-header; the tool was not called ({§mcp-header-declarations}). The declaration read is the `declaration` field. |

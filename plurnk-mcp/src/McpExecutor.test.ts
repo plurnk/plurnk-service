@@ -11,6 +11,7 @@ import { ERROR_DETAIL_LIMIT, type ExecArgs } from "@plurnk/plurnk-execs";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody, type ToolResultShape } from "./McpExecutor.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
+import { HeaderDeclarationError } from "./protocolHeaders.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
@@ -340,6 +341,37 @@ test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends au
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-call-failed");
     assert.equal(result.problem?.retryable, false, "the remote tool may already have applied its effect");
+});
+
+test("{§mcp-header-declarations} a refused declaration is the tool-header-invalid Problem naming the tool and the declaration", async () => {
+    const declaration = "score: x-mcp-header 'Score' on type number; permitted on string, integer and boolean";
+    const connection = {
+        async catalog() {
+            return {
+                protocolVersion: "2026-07-28",
+                server: { name: "headers", version: "1" },
+                capabilities: {},
+                tools: [{ name: "invalid_number_header", inputSchema: { type: "object" } }],
+                resources: [],
+                resourceTemplates: [],
+                prompts: [],
+                unsupportedLists: [],
+            };
+        },
+        async callTool() {
+            throw new HeaderDeclarationError("invalid_number_header", declaration);
+        },
+    } as unknown as ServerConnection;
+    const executor = new McpExecutor({ runtime: "headers", glyph: "🔌" }, connection, retainWorkspace);
+    await executor.requireAvailable();
+    const result = await executor.run(harness({ runtime: "headers", target: "invalid_number_header", body: "{}" }).args);
+
+    assert.equal(result.status, 502);
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-header-invalid");
+    assert.equal(result.problem?.detail, "MCP tool 'invalid_number_header' declares an invalid x-mcp-header; the tool was not called."); // {§problems-mcp}
+    assert.equal(result.problem?.tool, "invalid_number_header");
+    assert.equal(result.problem?.declaration, declaration, "the declaration read is a field, not prose");
+    assert.equal(result.problem?.retryable, false);
 });
 
 test("MCP executor keeps elicitation on its generic client interaction sink", async () => {

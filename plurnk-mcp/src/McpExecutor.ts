@@ -19,6 +19,7 @@ import type {
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import type { ContentBlock, Progress, Tool } from "@modelcontextprotocol/client";
 import { resourcePath } from "./McpResources.ts";
+import { HeaderDeclarationError } from "./protocolHeaders.ts";
 import ContentProjection from "./ContentProjection.ts";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
@@ -389,6 +390,15 @@ export default class McpExecutor extends BaseExecutor {
             const page = pageReceipt(args, tool, body);
             return { status: 200, ...(page === null ? {} : { page }) };
         } catch (error) {
+            if (error instanceof HeaderDeclarationError) {
+                // {§mcp-header-declarations} — refused before any request leg; the declaration is a field.
+                return fail(
+                    "tool-header-invalid",
+                    502,
+                    `MCP tool '${target}' declares an invalid x-mcp-header; the tool was not called.`,
+                    { tool: target, declaration: error.declaration, retryable: false },
+                );
+            }
             return fail(
                 signal.aborted ? "cancelled" : "tool-call-failed",
                 signal.aborted ? 499 : 502,

@@ -4,4 +4,4 @@ export const MCP_TASKS_EXTENSION_ID = "io.modelcontextprotocol/tasks";
 export const MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID = "io.modelcontextprotocol/oauth-client-credentials";
 export const MCP_TASKS_SPECIFICATION_COMMIT = "2c1425d9a288b9b1f489430fe1e00bb392b47e48";
 export const MCP_CLIENT_VERSION = "2.3.1";
-export const MCP_CONFORMANCE_VERSION = "0.2.0-alpha.11";
+export const MCP_CONFORMANCE_VERSION = "0.2.0-alpha.12";

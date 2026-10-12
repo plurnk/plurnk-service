@@ -55,7 +55,7 @@ import {
 } from "./inputRequired.ts";
 import InteractiveOAuthProvider from "./oauth.ts";
 import ExtensionChannel from "./extensionChannel.ts";
-import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
+import { assertHeaderDeclarations, mcpRoutingHeaderValue } from "./protocolHeaders.ts";
 import {
     MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
@@ -806,11 +806,16 @@ export default class ServerConnection {
     ): Promise<CallToolResult> {
         return this.#request(async ({ client, subscriptions, extensions }, signal) => {
             const timeout = requestTimeoutMs(this.#environ);
+            // {§mcp-header-declarations} — the definition is scanned before either leg; an invalid declaration
+            // refuses the call here and nothing reaches the transport.
+            const listed = async (): Promise<Tool | undefined> => (await this.tools(signal))
+                .find((candidate) => candidate.name === name);
             if (serverSupportsTasks(serverCapabilities(client))) {
-                const tool = toolDefinition ?? (await this.tools(signal)).find((candidate) => candidate.name === name);
+                const tool = toolDefinition ?? await listed();
                 if (tool === undefined) {
                     throw new Error(`MCP server '${this.#definition.name}' did not list tool '${name}'.`);
                 }
+                assertHeaderDeclarations(tool);
                 return callToolWithTasks({
                     server: this.#definition.name,
                     name,
@@ -824,6 +829,13 @@ export default class ServerConnection {
                     subscriptions,
                 });
             }
+            // The direct leg never waits on a failed listing ({§mcp-catalog-deadline}): a definition at hand is
+            // scanned, and a call with none to scan proceeds as it always has, with no routing headers.
+            const tool = toolDefinition ?? await listed().catch(() => {
+                signal.throwIfAborted();
+                return undefined;
+            });
+            if (tool !== undefined) assertHeaderDeclarations(tool);
             return runInputRequiredRequest<CallToolResult>({
                 server: this.#definition.name,
                 operation: "tools/call",
@@ -834,10 +846,7 @@ export default class ServerConnection {
                 timeout,
                 requestLeg: (params, options) => client.callTool(
                     params as CallToolRequest["params"],
-                    {
-                        ...options,
-                        ...(toolDefinition === undefined ? {} : { toolDefinition }),
-                    },
+                    { ...options, ...(tool === undefined ? {} : { toolDefinition: tool }) },
                 ) as Promise<CallToolResult | InputRequiredResult>,
             });
         }, signal);
