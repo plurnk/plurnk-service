@@ -534,7 +534,7 @@ export default class Engine {
             "op.dispatch",
             { op: context.statement.op },
             async (span) => {
-                const result = await this.#dispatcher.dispatch(context);
+                const { result } = await this.#dispatcher.dispatch(context);
                 span.setAttribute("status", result.status);
                 return result;
             },

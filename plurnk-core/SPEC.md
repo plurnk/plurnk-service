@@ -1752,7 +1752,8 @@ remains exempt ({§operator-config-workspace-max-commands}). It never counts an
 internal survey or a distillation as another command. An entirely omitted
 statement is not surveyed just to count its possible targets.
 Dispatch returns core-owned `commandsExecuted` and `commandsOmitted` totals to
-the turn executor; scheme result extensions cannot supply these counts.
+the turn executor outside operation results, receipts and lifecycle events;
+scheme result extensions cannot supply these counts.
 
 ### SEND dispatch (a message to a recipient)
 

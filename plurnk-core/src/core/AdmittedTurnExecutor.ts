@@ -248,11 +248,13 @@ export default class AdmittedTurnExecutor {
                 }
             }
             if (scheduledStatement === finalOp) await settleTurn();
-            const result = await observed(
+            const { result, commandsExecuted, commandsOmitted } = await observed(
                 "op.dispatch",
                 { op: writtenOp(statement) },
                 async (span) => {
                     let dispatchResult: DispatchResult;
+                    let commandsExecuted = 1;
+                    let commandsOmitted = 0;
                     if (statement.op === "BARE") {
                         if (bare === undefined) {
                             throw new Error(`${origin} turnOps cannot execute BARE without provider acquisition context`);
@@ -297,7 +299,7 @@ export default class AdmittedTurnExecutor {
                             onSettled,
                         }, bareResult.result, bareResult.modelCallId);
                     } else {
-                        dispatchResult = await this.#dispatcher.dispatch({
+                        const execution = await this.#dispatcher.dispatch({
                             statement,
                             workspaceId,
                             workerId,
@@ -313,18 +315,19 @@ export default class AdmittedTurnExecutor {
                             onDispatch,
                             onSettled,
                         });
+                        ({ result: dispatchResult, commandsExecuted, commandsOmitted } = execution);
                     }
                     span.setAttribute("status", dispatchResult.status);
                     recordCounter(OPS_DISPATCHED, { op: writtenOp(statement), status: dispatchResult.status });
-                    return dispatchResult;
+                    return { result: dispatchResult, commandsExecuted, commandsOmitted };
                 },
             );
             outcomes.push({ op: writtenOp(statement), status: result.status, problemType: result.problem?.type ?? null });
             progressed ||= isProgress(statement, result.status);
             executed.push(statement);
             results.push(result);
-            if (!TurnDisposition.is(statement)) realCommands += result.commandsExecuted ?? 1;
-            droppedCount += result.commandsOmitted ?? 0;
+            if (!TurnDisposition.is(statement)) realCommands += commandsExecuted;
+            droppedCount += commandsOmitted;
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
             if (failOnOperationError && result.status >= 400 && !isContextReceipt(result)) {
                 throw new OperationFailureError(result);

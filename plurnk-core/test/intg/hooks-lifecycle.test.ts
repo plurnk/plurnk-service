@@ -177,6 +177,8 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
         assert.equal((start.plurnk.params as ApplicationOperationEvent).phase, "started");
         assert.equal((settled.plurnk.params as ApplicationOperationEvent).phase, "settled");
         assert.deepEqual(settled.tool_response, (settled.plurnk.params as ApplicationOperationEvent).result);
+        assert.equal(Object.hasOwn(settled.tool_response!, "commandsExecuted"), false, "internal dispatch counts do not enter hook payloads");
+        assert.equal(Object.hasOwn(settled.tool_response!, "commandsOmitted"), false);
     }
     assert.equal(new Set(tools.filter(({ hook_event_name }) => hook_event_name === "PreToolUse").map(({ tool_use_id }) => tool_use_id)).size, 5);
     assert.equal((tools[5]!.tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable operations");

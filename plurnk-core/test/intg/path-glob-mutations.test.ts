@@ -119,10 +119,16 @@ for (const op of ["EDIT", "KILL"] as const) {
         const result = await dispatch(statement);
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(result.rowsWritten, 2);
+        assert.equal(Object.hasOwn(result, "commandsExecuted"), false, "dispatch accounting is not an operation result");
+        assert.equal(Object.hasOwn(result, "commandsOmitted"), false);
         assert.equal(await content("/a.txt"), `${op === "EDIT" ? "bar" : ""} one\nfoo two`);
         assert.equal(await content("/b.txt"), `${op === "EDIT" ? "bar" : ""} three\nfoo four`);
         assert.equal(await content("/other.md"), "foo five");
         assert.deepEqual((await rows()).map(({ op, pathname, status_rx }) => [op, pathname, status_rx]), [[op, "/a.txt", 200], [op, "/b.txt", 200]]);
+        for (const { rx } of await rows()) {
+            assert.equal(Object.hasOwn(JSON.parse(rx), "commandsExecuted"), false, "receipts retain only operation results");
+            assert.equal(Object.hasOwn(JSON.parse(rx), "commandsOmitted"), false);
+        }
     });
 
     test(`{§bulk-resource-targeting} empty ${op} selection is a single no-effect receipt`, async (t) => {

@@ -86,10 +86,13 @@ export type DispatchContext = {
     fit?: ContextFit;
 };
 
-export type DispatchResult = SchemeResult & {
-    commandsExecuted?: number;
-    commandsOmitted?: number;
-};
+export type DispatchResult = SchemeResult;
+
+interface DispatchExecution {
+    result: DispatchResult;
+    commandsExecuted: number;
+    commandsOmitted: number;
+}
 
 type TargetSelection = { result: DispatchResult } | {
     statements: readonly PlurnkStatement[];
@@ -436,12 +439,12 @@ export default class Dispatcher {
         return edit;
     }
 
-    async dispatch(context: DispatchContext): Promise<DispatchResult> {
+    async dispatch(context: DispatchContext): Promise<DispatchExecution> {
         await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
-        const result = await this.#dispatch(context);
-        await this.#operationEvent(context, "settled", result);
-        return result;
+        const execution = await this.#dispatch(context);
+        await this.#operationEvent(context, "settled", execution.result);
+        return execution;
     }
 
     // {§file-path-normalization} Authored operands, once, before internal fan-out.
@@ -483,9 +486,10 @@ export default class Dispatcher {
         });
     }
 
-    async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchResult> {
-        let result = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
+    async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchExecution> {
+        const execution = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
+        let { result } = execution;
         const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
         if (edit !== undefined) {
             // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
@@ -506,7 +510,7 @@ export default class Dispatcher {
             await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
             result = Results.assert({ ...result, rowsWritten: ((result.rowsWritten as number | undefined) ?? 1) + 1 });
         }
-        return result;
+        return { ...execution, result };
     }
 
     // {§matcher-refusal} — a matcher the parser could not read refuses its one operation with the parser's
@@ -594,12 +598,12 @@ export default class Dispatcher {
         return { statements: found.targets.map((target) => ({ ...statement, target })), fanout: { target: statement.target!.raw, matched: found.matched } };
     }
 
-    async #dispatchSelection(context: DispatchContext, selection: Exclude<TargetSelection, { result: DispatchResult }>): Promise<DispatchResult> {
+    async #dispatchSelection(context: DispatchContext, selection: Exclude<TargetSelection, { result: DispatchResult }>): Promise<DispatchExecution> {
         const admitted = selection.statements.slice(0, context.remainingCommands);
         const results: DispatchResult[] = [];
         let rowsWritten = 0;
         for (const [index, statement] of admitted.entries()) {
-            const result = await this.#dispatch({
+            const { result } = await this.#dispatch({
                 ...context, statement, sequence: context.sequence + rowsWritten,
                 ...(selection.fanout === undefined ? {} : { fanout: { ...selection.fanout, index, count: admitted.length } }),
                 ...(context.fit === undefined ? {} : { fit: reserved(context.fit, admitted.length - index - 1) }),
@@ -609,16 +613,16 @@ export default class Dispatcher {
             if (context.failOnOperationError && result.status >= 400 && !isContextReceipt(result)) break;
         }
         if (results.length === 0) throw new Error("Dispatch requires an admitted operation.");
-        return { ...(results.find(({ status }) => status >= 400) ?? results.at(-1)!), rowsWritten,
+        return { result: { ...(results.find(({ status }) => status >= 400) ?? results.at(-1)!), rowsWritten },
             commandsExecuted: results.length, commandsOmitted: selection.statements.length - admitted.length };
     }
 
     // {§bulk-resource-targeting} Dispatch accounting is core-owned, never a scheme's extension data.
-    static #singleResult(result: SchemeResult): DispatchResult {
-        return { ...result, commandsExecuted: 1, commandsOmitted: 0 };
+    static #singleExecution(result: SchemeResult): DispatchExecution {
+        return { result, commandsExecuted: 1, commandsOmitted: 0 };
     }
 
-    async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved = false): Promise<DispatchResult> {
+    async #dispatchOne(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved = false): Promise<DispatchExecution> {
         const {
             statement,
             workspaceId,
@@ -786,7 +790,7 @@ export default class Dispatcher {
                 });
                 const post = await this.#proposals.applyResolution(logEntryId, effective);
                 await this.#notifySettled(context, logEntryId);
-                return Dispatcher.#singleResult(post);
+                return Dispatcher.#singleExecution(post);
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
             // yields. A same-tick resolveProposal() (e.g. from a test that
@@ -830,10 +834,10 @@ export default class Dispatcher {
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             await this.#notifySettled(context, logEntryId);
-            return Dispatcher.#singleResult(post);
+            return Dispatcher.#singleExecution(post);
         }
         await this.#notifySettled(context, logEntryId);
-        return Dispatcher.#singleResult(result);
+        return Dispatcher.#singleExecution(result);
     }
 
     // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;
