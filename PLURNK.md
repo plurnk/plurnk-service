@@ -448,17 +448,12 @@ programs, not a chat the model talks into.
 Plurnk is a working instance of that argument. It runs today against hosted and local models, alongside
 the tools, skills and agents people already use.
 
-### What it costs today
+### Measuring the bet
 
-The bet has a price, and it is measured rather than argued. On SWE-bench Lite, thirty tasks with three
-attempts each, a small reasoning model at low effort passes as often through Plurnk as through a
-tool-calling harness on the same tasks (62 of 90 each) and spends 1.45 times as much. The difference is
-one mechanism. A tool-calling harness hands the provider the model's own chain of thought back on every
-request, so the model continues where it left off; a text protocol cannot, so the model re-derives
-after any turn that recorded a decision without acting on it. Replaying its reasoning to it as text
-does not recover the difference. The journal records every request and packet, so the number is
-reproducible from the evaluations repository, and whatever closes the gap will be measured the same
-way.
+A richer machine need not carry a heavier harness tax. Model-directed selection and memory offer a
+path to broader capabilities at costs competitive with minimal harnesses. That is a measurable bet:
+[plurnk-bench](https://github.com/plurnk/plurnk-bench) provides reproducible evaluations of task success,
+cost and context use across models and harnesses.
 
 It also opens questions that a chat loop cannot pose:
 
