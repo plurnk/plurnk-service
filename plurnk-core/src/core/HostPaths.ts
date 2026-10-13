@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
 type HostPathsOptions = {
     readonly env?: NodeJS.ProcessEnv;
@@ -133,6 +133,16 @@ export default class HostPaths {
     // {§agent-plugins-hosting} — one plugin's PLUGIN_DATA, kept across its updates.
     pluginDataDir(pluginName: string, canonicalRoot: string): string {
         return join(this.dataDir, "plugins", pluginName, createHash("sha256").update(canonicalRoot).digest("hex"));
+    }
+
+    // The inverse of expandUserPath for a path at or beneath the home: `~` for the home itself,
+    // `~/<rest>` beneath it, any other path unchanged. {§workspace-name} names a world after its
+    // project root this way.
+    abbreviateUserPath(path: string): string {
+        const absolute = resolve(path);
+        if (absolute === this.home) return "~";
+        const prefix = this.home.endsWith(sep) ? this.home : `${this.home}${sep}`;
+        return absolute.startsWith(prefix) ? `~${sep}${absolute.slice(prefix.length)}` : absolute;
     }
 
     expandUserPath(value: string): string {

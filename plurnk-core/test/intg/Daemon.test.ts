@@ -6,6 +6,10 @@ import { makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
+import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
@@ -782,6 +786,59 @@ test("workspace.create with no name auto-generates a unique name", async () => {
             const result = response.result as { id: number; name: string };
             assert.match(result.name, /^[0-9A-Za-z]{5}$/, "{§workspace-auto-name}: five anchor-alphabet characters, no prefix");
         } finally { ws.close(); }
+    });
+});
+
+test("{§workspace-name} workspace.create with a project root and no name is named after the root and selects that world next time", async () => {
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const home = new HostPaths().home;
+        const inside = await mkdtemp(join(home, "project-"));
+        const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
+        const ws = await connect(addr);
+        try {
+            const first = (await rpcCall(ws, 1, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
+            assert.equal(first.name, `~/${basename(inside)}`, "the root's path with the daemon's home abbreviated to ~");
+            const again = (await rpcCall(ws, 2, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
+            assert.equal(again.id, first.id, "a second default launch on the same project selects the same world");
+            const [pair] = await Promise.all([
+                daemon.createWorkspace({ projectRoot: inside }),
+                daemon.createWorkspace({ projectRoot: inside }),
+            ].map((p) => p.then(({ workspaceId }) => workspaceId)));
+            assert.equal(pair, first.id, "a concurrent pair resolves to the one world");
+            assert.equal((await daemon.listWorkspaces()).filter(({ name }) => name === first.name).length, 1, "no second world of that name");
+            const far = (await rpcCall(ws, 3, "workspace.create", { projectRoot: outside })).result as { name: string };
+            assert.equal(far.name, outside, "outside the home the name is the absolute path");
+            await assert.rejects(daemon.createWorkspace({ name: first.name, projectRoot: inside }), (error: unknown) =>
+                error instanceof OperationFailureError && /name-conflict$/u.test(error.result.problem?.type ?? ""), "an explicit name that exists is a conflict, never a selection");
+            // The default is a convention, not a mapping: a renamed world is not re-selected by its old default.
+            await daemon.renameWorkspace(first.id, "renamed-world");
+            const fresh = (await rpcCall(ws, 4, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
+            assert.notEqual(fresh.id, first.id);
+            assert.equal(fresh.name, first.name);
+        } finally {
+            ws.close();
+            await rm(inside, { recursive: true, force: true });
+            await rm(outside, { recursive: true, force: true });
+        }
+    });
+});
+
+test("{§workspace-name} a folderless world is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const headless = await daemon.createWorkspace({ name: "headless" });
+        assert.equal(headless.projectRoot, null);
+        const other = await daemon.createWorkspace({ name: "other" });
+        const listed = (await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId);
+        assert.equal(listed?.project_root, null, "listed without a folder");
+        await assert.rejects(daemon.renameWorkspace(headless.workspaceId, "other"), (error: unknown) =>
+            error instanceof OperationFailureError && /name-conflict$/u.test(error.result.problem?.type ?? ""));
+        assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.name, "headless", "a collision renames nothing");
+        const renamed = await daemon.renameWorkspace(headless.workspaceId, "headless-2");
+        assert.equal(renamed.name, "headless-2");
+        const attached = await daemon.attachWorkspace({ workspaceId: headless.workspaceId });
+        assert.equal(attached.workspaceName, "headless-2");
+        assert.equal(attached.projectRoot, null, "renaming leaves the folder null");
+        assert.notEqual(other.workspaceId, headless.workspaceId);
     });
 });
 

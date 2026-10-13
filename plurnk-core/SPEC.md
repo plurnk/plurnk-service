@@ -3417,7 +3417,20 @@ addresses, while concurrent default-conversation ensures converge on one root
 worker. Generated addresses appear in ordinary operation receipts and child
 inventory; allocation never rewrites the submitted operation's target.
 
-§workspace-auto-name **Workspace auto-names are five anchor-alphabet characters.** A `workspace.create` without a name draws five characters from the {§line-anchors} alphabet `0-9A-Za-z` (uniformly, from a cryptographic source), redrawing on the astronomically rare collision. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from, so nothing can grow load-bearing on it.
+§workspace-name **A workspace's name is an opaque handle; its identity is its id; its folder is a
+separate fact.** A name is a unique non-empty string compared by exact bytes, the same comparison for
+creation, rename and lookup; nothing in it is normalized, restricted or decoded, and it authorizes
+nothing: only `projectRoot` selects a folder, and a workspace may have none. Rename
+({§methods-workspace-rename}) changes the name alone; `listWorkspaces` is the lookup. With a project
+root and no name, `workspace.create` names the world after the root, the root's path with the daemon's
+home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the
+workspace of that name when one exists instead of creating a second, so two default launches on the
+same project and daemon share one world and a concurrent pair resolves to one. The default is a
+convention, not a mapping: a renamed world is not re-selected by its old default, and a world may
+carry any name over any folder. An explicit name that exists is `409 name-conflict`, never a
+selection.
+
+§workspace-auto-name **A world with neither name nor project root gets five anchor-alphabet characters.** Such a `workspace.create` draws five characters from the {§line-anchors} alphabet `0-9A-Za-z` (uniformly, from a cryptographic source), redrawing on the astronomically rare collision. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from, so nothing can grow load-bearing on it.
 
 §exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
 
@@ -4921,7 +4934,7 @@ Core's behavior behind them.
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |

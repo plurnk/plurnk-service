@@ -1302,14 +1302,37 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
         // The seam fails hard on malformed semantic input so every module inherits one wall:
         // the settings bag ({§operator-config-workspace-settings}) and absolute projectRoot.
-        const name = ClientInput.assertOptionalName("workspace.create", "name", args.name);
+        const explicit = ClientInput.assertOptionalName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
+        // {§workspace-name} — with a project root and no name, the world is named after the root with
+        // the daemon's home abbreviated to `~`, and that name selects the existing world when one exists:
+        // a default is a convention shared by every client, never a second world.
+        const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
+        const selected = async (): Promise<ClientEnvelope | undefined> => {
+            if (derived === undefined) return undefined;
+            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name: derived });
+            return existing === undefined ? undefined : Envelope.attachToWorkspace(this.#db, existing.id);
+        };
         return observed( // {§observability-boundary}
             "workspace.create",
             {},
             async (span) => {
-                const envelope = await Envelope.createClientEnvelope(this.#db, { name, projectRoot, settings });
+                const already = await selected();
+                if (already !== undefined) {
+                    span.setAttribute("workspace.id", already.workspaceId);
+                    return already;
+                }
+                let envelope: ClientEnvelope;
+                try {
+                    envelope = await Envelope.createClientEnvelope(this.#db, { name: explicit ?? derived, projectRoot, settings });
+                } catch (error) {
+                    // A concurrent default launch created it first: select what it created.
+                    const raced = derived !== undefined ? await selected() : undefined;
+                    if (raced === undefined) throw error;
+                    span.setAttribute("workspace.id", raced.workspaceId);
+                    return raced;
+                }
                 span.setAttribute("workspace.id", envelope.workspaceId);
                 this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
                 return envelope;
