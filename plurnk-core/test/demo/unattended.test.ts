@@ -42,11 +42,16 @@ test("conversation: with nobody to ask, plurnk decides and says what it could no
         assert.equal(loop.finalStatus, 200, "an unattended run finishes on its own");
         assert.equal(loop.hitMaxTurns, false, "without exhausting its turns");
         assert.ok(loop.lastContent.length > 0, "an answer actually arrives");
-        assert.match(
-            loop.lastContent,
-            /could not|couldn't|unable|unclear|ambiguous|no one|nobody|assumed|assuming|chose|picked|selected|decided|opted|settled on|defaulted/i,
-            "and it owns the choice it made instead of stating a guess as fact",
-        );
+        // The decision is graded by what it disclosed, not by its vocabulary: the world holds one of
+        // the named branches or the untouched target, and the reply names both branches, the one it
+        // took and the one it did not. A reply that names only its choice and calls it correct fails:
+        // the alternative went unsaid, which is a guess stated as fact.
+        const after = JSON.parse(await readFile(join(fixture.workspace, "src/config.json"), "utf8")) as { targetBranch?: unknown };
+        assert.ok(["release/2.1", "release/2.2", "main"].includes(String(after.targetBranch)),
+            `the target is a named branch or untouched; got ${JSON.stringify(after.targetBranch)}`);
+        for (const branch of ["release/2.1", "release/2.2"]) {
+            assert.ok(loop.lastContent.includes(branch), `the reply names ${branch}, so the fork it faced is on the record; got: ${loop.lastContent.slice(0, 300)}`);
+        }
     } catch (error) {
         return await failAfterCleanup(error, cleanup);
     } finally { await cleanup(); }
