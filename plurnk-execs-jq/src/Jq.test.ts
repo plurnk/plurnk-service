@@ -2,9 +2,10 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { basename, join } from "node:path";
 import Jq from "./Jq.ts";
+import { SPAWN_USER, SpawnAccounts } from "@plurnk/plurnk-execs";
 import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 const HAS_JQ = spawnSync("jq", ["--version"]).status === 0;
@@ -113,4 +114,47 @@ test("{§problems-executor-jq}: a jq program error → durable Problem, errored 
     assert.match(result.problem?.detail ?? "", /compile error|syntax error/i);
     assert.equal(events.length, 0);
     assert.equal(states.at(-1), "errored");
+});
+
+// {§executor-spawn-account} — jq is a subprocess runtime like any other: the configured account is
+// the one it is probed and run as. This host's own account stands in, so no privilege is needed.
+const withSpawnUser = async <T>(value: string, body: () => Promise<T>): Promise<T> => {
+    const saved = process.env[SPAWN_USER];
+    process.env[SPAWN_USER] = value;
+    try { return await body(); } finally {
+        if (saved === undefined) delete process.env[SPAWN_USER];
+        else process.env[SPAWN_USER] = saved;
+    }
+};
+
+test("{§executor-spawn-account}: jq is probed and run as the configured account, whose name its environment carries", { skip: !HAS_JQ }, async () => {
+    const me = userInfo();
+    const scoped = { PATH: process.env.PATH, USER: "placeholder", LOGNAME: "placeholder", HOME: "/nowhere" };
+    const unset = await withSpawnUser("", () => run("[env.USER, env.LOGNAME, env.HOME]", null, scoped));
+    assert.deepEqual(JSON.parse(unset.out!), ["placeholder", "placeholder", "/nowhere"], "unset, the scoped environment is run as handed");
+    const account = SpawnAccounts.resolve(me.username);
+    await withSpawnUser(me.username, async () => {
+        const named = await run("[env.USER, env.LOGNAME, env.HOME]", null, scoped);
+        assert.equal(named.result.status, 200);
+        assert.deepEqual(JSON.parse(named.out!), [me.username, me.username, account.home ?? "/nowhere"], "the account's name and home replace the scoped ones");
+        assert.equal((await new Jq({ runtime: "jq", glyph: "🧰" }).probe()).available, true, "the probe runs as that account too");
+    });
+    const bare = await withSpawnUser(`${me.uid}:${me.gid}`, () => run("[env.USER, env.HOME]", null, scoped));
+    assert.deepEqual(JSON.parse(bare.out!), ["placeholder", "/nowhere"], "a bare id sets the identity and leaves the environment alone");
+});
+
+test("{§executor-spawn-account}: an account the daemon may not assume fails the spawn; jq never runs as the daemon's own account in its place", { skip: !HAS_JQ || process.getuid?.() === 0 }, async () => {
+    // Any other user's id: an unprivileged daemon may not assume it.
+    const other = `${userInfo().uid + 1}:${userInfo().gid + 1}`;
+    await withSpawnUser(other, async () => {
+        await assert.rejects(new Jq({ runtime: "jq", glyph: "🧰" }).probe(), /EPERM/u, "the probe carries the host's own error");
+        let wrote = false;
+        const args: ExecArgs = {
+            metadata: null, runtime: "jq", body: ".", cwd: null, target: null, env: { PATH: process.env.PATH },
+            signal: new AbortController().signal, write: () => { wrote = true; }, setState: () => {}, emit: () => {},
+            interact: async () => ({ status: "cancelled" }),
+        };
+        await assert.rejects(new Jq({ runtime: "jq", glyph: "🧰" }).run(args), /EPERM/u);
+        assert.equal(wrote, false, "no output: nothing ran");
+    });
 });

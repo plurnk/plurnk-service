@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { BaseExecutor, ErrorDetail, InvocationMetadata, Results, SubprocessInput } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, InvocationMetadata, Results, SpawnAccounts, SubprocessInput } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // jq executor — shells the system `jq` binary (no third-party JSON-filter lib).
@@ -36,7 +36,8 @@ export default class Jq extends BaseExecutor {
             let out = "";
             // Honor the consumer's per-probe signal so a resolved/timed-out probe
             // reaps the child ({§executor-probe}); /dev/null stdin+stderr.
-            const child = spawn("jq", ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"] });
+            // {§executor-spawn-account} — probed as the account jq will run as.
+            const child = spawn("jq", ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options() });
             child.stdout?.on("data", (c: Buffer) => { out += c.toString("utf8"); });
             child.on("error", (err) => resolve((err as NodeJS.ErrnoException).code === "ABORT_ERR"
                 ? { available: false }
@@ -79,8 +80,9 @@ export default class Jq extends BaseExecutor {
             let err = "";
             // jq can read the environment (`env`, `$ENV`), so honor the
             // consumer's scoped env when provided ({§exec-env-scoped}).
-            const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: env ?? process.env,
-                stdio: [interactive ? "pipe" : "ignore", "pipe", "pipe"] });
+            // {§executor-spawn-account} — jq runs as the configured account, with its name in its environment.
+            const child = spawn("jq", args, { signal, cwd: cwd ?? undefined, env: SpawnAccounts.environment(env ?? process.env),
+                stdio: [interactive ? "pipe" : "ignore", "pipe", "pipe"], ...SpawnAccounts.options() });
             if (interactive && child.stdin) {
                 const input = new SubprocessInput(child.stdin, signal);
                 registerInput!((message) => input.receive(message));
