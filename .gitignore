@@ -10,3 +10,4 @@ preserved-runs/
 .env.local
 AGENTS.local.md
 .claude/
+.playwright-mcp/
