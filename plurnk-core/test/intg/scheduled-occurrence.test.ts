@@ -6,6 +6,7 @@ import { Module, type SchedulerTimers } from "@plurnk/plurnk-schedule";
 import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
 import { holdChild, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
@@ -156,10 +157,21 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
         await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
         assert.equal(provider.received.length, 1, "a real parked loop, not a WAIT receipt that merely says continue");
 
-        const added = await daemon.invokeModuleAction("workspace.schedule.add", {
-            alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `worker://${workerName}`, prompt: "scheduled-proof" },
-        }, { scope: "workspace", workspaceId }) as { status: number };
-        assert.equal(added.status, 201);
+        // The parking turn still holds the workspace gate for a moment after the loop's status row
+        // says 202. A capability change in that window is answered `workspace-busy`, 409 and
+        // retryable, and this witness retries it as a client would (#1117).
+        const added = await waitForDb(async (): Promise<{ status: number } | null> => {
+            try {
+                return await daemon.invokeModuleAction("workspace.schedule.add", {
+                    alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `worker://${workerName}`, prompt: "scheduled-proof" },
+                }, { scope: "workspace", workspaceId }) as { status: number };
+            } catch (cause) {
+                const problem = cause instanceof OperationFailureError ? cause.result.problem : undefined;
+                if (problem?.type?.endsWith("/workspace-busy") === true && problem.retryable === true) return null;
+                throw cause;
+            }
+        }, (result) => result !== null);
+        assert.equal(added?.status, 201);
         const occurrence = [...timers.entries()].toSorted((a, b) => a[1].due - b[1].due)[0];
         assert.ok(occurrence, "one occurrence is armed");
         now = occurrence[1].due;
