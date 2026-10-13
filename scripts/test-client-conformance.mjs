@@ -256,9 +256,6 @@ try {
         PLURNK_PORT: String(port),
         PLURNK_AGUI_URL: "",
         PLURNK_SECRET: operatorSecret,
-        // The client checkout as it stands still reads the secret under its former name; its own
-        // landing on `PLURNK_SECRET` retires this line.
-        PLURNK_AGUI_SECRET: operatorSecret,
         NO_COLOR: "1",
     };
 
