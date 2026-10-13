@@ -1,4 +1,5 @@
 -- MIGRATE: 27 members identity
+-- Released in 3.3.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§members-functionality} {§functionality-addressing}: a members definition is its glob. Workspace
 -- definitions are re-keyed by their glob. A service-origin row held only an enabledness override
 -- keyed by the operator's environment alias, which no longer names a definition, so it is dropped;

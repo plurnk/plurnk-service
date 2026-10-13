@@ -1,5 +1,26 @@
 # @plurnk/plurnk-execs
 
+## 3.2.0
+
+### Minor Changes
+
+- d99a836: An executor's preparation declares whether its invocation registers an input
+  receiver (`ExecPreparation.input: "open"`; the subprocess and jq executors
+  declare it when launched with `[{"stdin": "open"}]`), and SEND to an execution
+  answers each state exactly: launched without input is refused at once naming
+  the launch form; queued for a slot is refused at once and retryable; a declared
+  receiver that has not opened yet is waited for within the input timeout, and
+  the execution settling first closes input. A receiver registered without the
+  declaration is the executor's defect and fails its run.
+
+### Patch Changes
+
+- Updated dependencies [3e3e2f4]
+- Updated dependencies [157cf8f]
+- Updated dependencies [a8df72c]
+  - @plurnk/plurnk-schemes@3.2.0
+  - @plurnk/plurnk-contracts@3.3.0
+
 ## 3.1.1
 
 ### Patch Changes

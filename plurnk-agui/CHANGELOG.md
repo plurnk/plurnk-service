@@ -1,5 +1,25 @@
 # @plurnk/plurnk-agui
 
+## 3.1.0
+
+### Minor Changes
+
+- a8df72c: Rollback reverses a worker's settled file mutations after a log coordinate,
+  latest first, as the acting client's own operations:
+  `rollback({ workspaceId, workerId, clientWorkerId, to })` on the application
+  port, `workspace.rollback { to, workerId? }` for a client, and `RollbackReport`
+  naming what was restored, the rows skipped (no patch, or reversed already) and
+  where drift or a refusal stopped it (#880).
+
+### Patch Changes
+
+- 1799168: Close remaining AG-UI Runs during daemon shutdown after terminal-event delivery,
+  including idle client connections. Refuse stream registration after module closure
+  instead of holding HTTP teardown until its emergency deadline (#1111).
+- Updated dependencies [157cf8f]
+- Updated dependencies [a8df72c]
+  - @plurnk/plurnk-contracts@3.3.0
+
 ## 3.0.0
 
 ### Major Changes

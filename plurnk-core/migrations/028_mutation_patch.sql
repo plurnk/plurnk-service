@@ -1,4 +1,5 @@
 -- MIGRATE: 28 mutation patch
+-- Released in 3.3.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§log-mutation-patch}: a settled file mutation's row keeps the unified diff of what it did, for the
 -- life of the row; it is served as the row's `patch` channel and never enters a receipt or a packet.
 -- Rows settled before this version, byte writes and operations that changed no text hold NULL.

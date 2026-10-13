@@ -1,4 +1,5 @@
 -- MIGRATE: 26 message obligations
+-- Released in 3.3.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§worker-obligations}: a message a worker sent to another worker holds the sender, beside its live children
 -- and open streams, until the recipient completes it ({§message-completion}) or the recipient's loop ends
 -- ({§message-abandonment}). The two liveness views are recreated with that third column; no row changes.

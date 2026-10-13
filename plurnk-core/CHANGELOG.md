@@ -1,5 +1,88 @@
 # @plurnk/plurnk-service
 
+## 3.3.0
+
+### Minor Changes
+
+- d99a836: An executor's preparation declares whether its invocation registers an input
+  receiver (`ExecPreparation.input: "open"`; the subprocess and jq executors
+  declare it when launched with `[{"stdin": "open"}]`), and SEND to an execution
+  answers each state exactly: launched without input is refused at once naming
+  the launch form; queued for a slot is refused at once and retryable; a declared
+  receiver that has not opened yet is waited for within the input timeout, and
+  the execution settling first closes input. A receiver registered without the
+  declaration is the executor's defect and fails its run.
+- 5b7460a: The Context gauge states its share on every packet with a budget: `percent`,
+  `floor(100 × tokens / budget)` over the gauge's own final figures, sits after
+  `tokens` and `budget`; the `largest` inventory still joins only above
+  `PLURNK_SERVICE_BUDGET_PRESSURE`. The `budget_pressure` notice and its "YOU
+  MUST NOT exceed budget." directive are retired; the over-budget row remains the
+  one mandate, for a packet that does not fit.
+- 3e3e2f4: A settled file mutation's log row keeps the unified diff of what it did: an
+  accepted EDIT, COPY, MOVE or KILL that writes or removes a text member appends
+  `current` to `proposed` to `log_entries.patch` (migration 28), served as the
+  row's `patch` channel (`log:///<loop>/<turn>/<item>/<OP>#patch`, `text/x-diff`)
+  for the life of the row and copied by a fork. A byte write, a member past the
+  materialization bound, and a row settled before this version keep none, and a
+  reader meets no channel rather than an invented one.
+- 157cf8f: A members definition is its glob. `members (add)` takes `{"files": ["<glob>",
+  "!<glob>"]}` and admits each glob as one definition, all or none, with a receipt
+  listing them; `enable`, `disable` and `remove` take `{"file": "<glob>"}`; the
+  family serves no `replace`. The operator's `PLURNK_MEMBERS_<alias>=<glob>` key
+  is the definition's provenance, shown by `list`. Migration 27 re-keys workspace
+  definitions by their glob and drops alias-keyed overrides of service
+  definitions. The coordinator gains one seam, `addressing`: a family may name
+  definitions by their content, `admit` may return one admission per definition,
+  `FunctionalityPreparation.admissions` carries them, and
+  `FunctionalityMutationResult` lists `definitions` for such an add. Every file
+  miss recovery names the `members (add)` body the family accepts.
+- 89def41: The packet's `## Worker` block carries the worker's approval owner and whether a
+  person attends it (`"owner": {"address", "interactive"}`), so a model knows up
+  front when nobody can answer a question ({§packet-current-turn}).
+- a8df72c: Rollback reverses a worker's settled file mutations after a log coordinate,
+  latest first, as the acting client's own operations:
+  `rollback({ workspaceId, workerId, clientWorkerId, to })` on the application
+  port, `workspace.rollback { to, workerId? }` for a client, and `RollbackReport`
+  naming what was restored, the rows skipped (no patch, or reversed already) and
+  where drift or a refusal stopped it (#880).
+- 6320dc4: A message a worker sends to another worker holds the sender until it is
+  completed: `worker_obligations` gains `messages` beside `streams` and
+  `workers`, an authored WAIT parks on it, the completion wakes the same loop, and
+  with no WAIT the sender joins the bounded park instead of concluding idle. The
+  packet's Delegation object lists those messages as its third pointer list. A
+  loop that ends with another worker's message unanswered has it completed 499
+  by the daemon, delivered to the sender like any reply.
+- 16a7eca: A WORK whose name a worker already holds delivers its body to that worker as a
+  message through the voice door: nothing is created, the receipt names the
+  worker and `delivered: message`, and an `env` option is refused by name since a
+  message takes none. FORK to a held name stays `409 worker-name-conflict`, now
+  with a recovery naming the working forms. The ping/pong between a parent and
+  the worker it names, spawn then message, is witnessed end to end.
+
+### Patch Changes
+
+- be45046: The live and demo tiers write a census: every run lands its workers and a
+  `census.md`/`census.json` under one `tier-<kind>-<stamp>/` directory in the
+  benchmark home, each specimen declares what it requires of its route and host
+  and skips by name when unmet, and `tier:history` ledgers runs ({§tier-census}).
+  The third-party MCP composition, the llama-server rails, the upstream A2A TCK
+  and the client's real-model TUI tier are live specimens, no longer opt-in flags
+  or scripts. `digest-missing` recovers workers inside tier runs and resolves the
+  benchmark home the one way every harness does.
+- Updated dependencies [1799168]
+- Updated dependencies [d99a836]
+- Updated dependencies [ee4c585]
+- Updated dependencies [3e3e2f4]
+- Updated dependencies [157cf8f]
+- Updated dependencies [a8df72c]
+  - @plurnk/plurnk-agui@3.1.0
+  - @plurnk/plurnk-execs@3.2.0
+  - @plurnk/plurnk-mcp@3.1.0
+  - @plurnk/plurnk-schemes@3.2.0
+  - @plurnk/plurnk-contracts@3.3.0
+  - @plurnk/plurnk-modules@3.2.0
+  - @plurnk/plurnk-schedule@3.0.2
+
 ## 3.2.0
 
 ### Minor Changes
