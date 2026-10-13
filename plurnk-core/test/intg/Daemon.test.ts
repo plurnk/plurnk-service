@@ -9,7 +9,8 @@ import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { bindListener } from "./_a2a.ts";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
@@ -2032,4 +2033,81 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
         await daemon.stop();
         await db.close();
     }
+});
+
+// {§credential-authority} — the posture witnesses set PLURNK_AUTH and PLURNK_SECRET themselves and
+// restore the tier's own values after.
+const withPosture = async <T>(posture: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
+    const saved = Object.fromEntries(Object.keys(posture).map((key) => [key, process.env[key]]));
+    const apply = (values: Record<string, string | undefined>): void => {
+        for (const [key, value] of Object.entries(values)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    };
+    apply(posture);
+    try { return await fn(); } finally { apply(saved); }
+};
+
+test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret is written beside the database, 0600; a configured secret or PLURNK_AUTH=0 leaves no file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-posture-"));
+    const dbPath = join(dir, "plurnk.db");
+    const secretFile = join(dir, "secret");
+    const boot = async (): Promise<{ daemon: Daemon; close: () => Promise<void> }> => {
+        const db = await openMigrated(dbPath);
+        const daemon = new Daemon({ db, provider: null, dbPath });
+        await daemon.start();
+        return { daemon, close: async () => { await daemon.stop(); await db.close(); } };
+    };
+    try {
+        const minted = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, boot);
+        try {
+            assert.equal(minted.daemon.secretFile, secretFile, "the file is named for same-user tools");
+            assert.equal((await readFile(secretFile, "utf8")).trim(), minted.daemon.credentials.operatorSecret, "the file holds this boot's secret");
+            assert.equal((await stat(secretFile)).mode & 0o777, 0o600);
+        } finally { await minted.close(); }
+        const configured = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: "configured" }, boot);
+        try {
+            assert.equal(configured.daemon.credentials.operatorSecret, "configured");
+            assert.equal(configured.daemon.secretFile, null);
+            await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "a configured secret removes the file a minting boot left");
+        } finally { await configured.close(); }
+        await writeFile(secretFile, "stale\n", { mode: 0o600 });
+        const off = await withPosture({ PLURNK_AUTH: "0", PLURNK_SECRET: undefined }, boot);
+        try {
+            assert.equal(off.daemon.credentials.operatorSecret, null);
+            assert.equal(off.daemon.secretFile, null);
+            assert.equal(off.daemon.credentials.face(), null);
+            await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "an open daemon leaves no stale secret behind");
+        } finally { await off.close(); }
+        await withPosture({ PLURNK_AUTH: "maybe" }, async () => {
+            const db = await openMigrated(dbPath);
+            try { assert.throws(() => new Daemon({ db, provider: null, dbPath }), /PLURNK_AUTH must be 0 or 1/u); }
+            finally { await db.close(); }
+        });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to start until a module publishes the authority's face", async () => {
+    const empty = await mkdtemp(join(tmpdir(), "plurnk-no-modules-"));
+    const nodeModulesPath = join(empty, "node_modules");
+    try {
+        await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, async () => {
+            const db = await openMigrated();
+            const http = await bindListener();
+            const silent = new Daemon({ db, provider: null, http, nodeModulesPath });
+            try {
+                await assert.rejects(silent.start(), /PLURNK_AUTH=1, and no module publishes an authorization server/u);
+            } finally { await silent.stop(); await http.close(); await db.close(); }
+            const db2 = await openMigrated();
+            const http2 = await bindListener();
+            const issuing = new Daemon({ db: db2, provider: null, http: http2, nodeModulesPath });
+            issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "test-issuer");
+            try {
+                await issuing.start();
+                assert.equal(issuing.credentials.face()?.issuer(), "http://127.0.0.1:1");
+                assert.ok(issuing.credentials.operatorSecret, "the authority holds a minted operator secret");
+            } finally { await issuing.stop(); await http2.close(); await db2.close(); }
+        });
+    } finally { await rm(empty, { recursive: true, force: true }); }
 });

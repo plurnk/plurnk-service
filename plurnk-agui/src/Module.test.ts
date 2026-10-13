@@ -17,9 +17,9 @@ import type {
 import type { AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
 // {§credential-authority} — the daemon's own authority on the mock seam; the module issues through it.
-const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new () => ApplicationPort["credentials"] };
+const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 const FLOOR = {
-    PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ISSUER: "", PLURNK_AGUI_USER: "", PLURNK_AGUI_PASSWORD: "",
+    PLURNK_AUTH: "0", PLURNK_USER: "", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
 };
 
@@ -67,7 +67,8 @@ const workerRow = (
     lifecycle: "idle" as const,
 });
 
-const mockSeam = () => {
+// `operatorSecret` is the authority's under PLURNK_AUTH=1 ({§credential-authority}); the floor is off.
+const mockSeam = (operatorSecret: string | null = null) => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
     const loopRuns: Array<{
         selector?: string;
@@ -80,7 +81,7 @@ const mockSeam = () => {
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const owners = new Map<string, WorkerOwner>();
     const seam: ApplicationPort = {
-        credentials: new Credentials(),
+        credentials: new Credentials({ operatorSecret }),
         registerWorkerOwner: async (_workspaceId, owner) => { owners.set(owner.address, owner); },
         claimWorkerOwner: async ({ owner }) => {
             const registered = owners.get(owner);
@@ -2609,10 +2610,10 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
 });
 
 test("{§agui-cors} the panel states which pages may read a reply, and its empty value sends no CORS header", async () => {
-    const { seam } = mockSeam();
+    const { seam } = mockSeam("expected");
     const cors = async (allowOrigin: string): Promise<{ origin: string | null; headers: string | null; preflight: number }> => {
         const mod = await host(seam, {
-            env: { ...FLOOR, PLURNK_AGUI_SECRET: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
+            env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
         });
         try {
             const base = `http://127.0.0.1:${mod.address().port}/agui`;
@@ -2634,11 +2635,11 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
 });
 
 test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
-    const { seam } = mockSeam();
+    const { seam } = mockSeam("expected");
     const mod = await host(seam, {
         env: {
             ...FLOOR,
-            PLURNK_AGUI_SECRET: "expected",
+            PLURNK_AUTH: "1",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
@@ -3062,7 +3063,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam, {
-        env: { ...FLOOR, PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
+        env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
     });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -3080,7 +3081,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam, {
-        env: { ...FLOOR, PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
+        env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
     });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -3102,7 +3103,6 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
     const mod = await host(seam, {
         env: {
             ...FLOOR,
-            PLURNK_AGUI_SECRET: "",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
@@ -3357,10 +3357,10 @@ const mintAccess = async (port: number, client: { id: string; secret: string }):
 };
 
 test("{§agui-run-source} the principal is the credential's subject: the operator or a declared client", async () => {
-    const { seam } = mockSeam();
+    const { seam } = mockSeam("s3cret");
     const sources: string[] = [];
     const mod = await host(seam, { env: {
-        ...FLOOR, PLURNK_AGUI_SECRET: "s3cret", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0",
+        ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0",
         PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["agui"] }),
     } });
     try {
@@ -3389,10 +3389,10 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
 });
 
 test("{§agui-oauth-revocation} revoking a credential ends the streams admitted under it and cancels no worker; another family's stream continues", async () => {
-    const { seam } = mockSeam();
+    const { seam } = mockSeam("s3cret");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
-    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AGUI_SECRET: "s3cret", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
     const controllers = [new AbortController(), new AbortController()];
     try {
         const port = mod.address().port;

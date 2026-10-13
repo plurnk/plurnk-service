@@ -73,6 +73,9 @@ const bootDaemon = (
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
+            // {§credential-authority} — these witnesses drive the listener anonymously; the shipped
+            // posture is witnessed by the installed-service probe with the daemon's minted secret.
+            PLURNK_AUTH: "0",
             ...overrides,
         };
 

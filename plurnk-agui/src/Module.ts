@@ -174,8 +174,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
 
     async setup(seam: AguiSetupSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
-        // {§agui-oauth} — the daemon authenticates when it holds anything to authenticate against; the
-        // face says so to every mounted resource before any module starts ({§module-phases}).
+        // {§agui-oauth} — under PLURNK_AUTH=1 the face says so to every mounted resource before any
+        // module starts ({§module-phases}); the daemon refuses to run authenticating without one.
         if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer() });
     }
 

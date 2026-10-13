@@ -19,7 +19,10 @@ export const host = async (seam: AguiPort, options: ModuleOptions = {}, observeR
     const port: AguiPort = Object.assign(Object.create(seam) as AguiPort, {
         registerHttpRoute: (prefix: string, handler: HttpRouteHandler): void => { routes.set(prefix, handler); },
     });
-    const module = Module.create(options);
+    // {§credential-authority} — a hosted module rides the shipped panel, whose posture is on; a test that
+    // brings no floor of its own runs anonymously, and one that authenticates says so in its floor or
+    // its options.
+    const module = Module.create(options.env === undefined && options.auth === undefined ? { ...options, auth: false } : options);
     // {§module-phases} — setup precedes start when the seam can take it: a scheme to register, a face to publish.
     if ("registerScheme" in port) await module.setup(port as unknown as AguiSetupSeam);
     await module.start(port);

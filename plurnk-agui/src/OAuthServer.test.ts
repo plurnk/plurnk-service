@@ -10,19 +10,19 @@ import { host, type Hosted } from "../test/host.ts";
 import type { AguiPort, ModuleOptions } from "./Module.ts";
 import type { AguiEvent } from "./types.ts";
 
-const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new () => ApplicationPort["credentials"] };
+const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 
 const FLOOR = {
-    PLURNK_AGUI_SECRET: "s3cret", PLURNK_AGUI_ISSUER: "", PLURNK_AGUI_USER: "ada", PLURNK_AGUI_PASSWORD: "lovelace",
+    PLURNK_AUTH: "1", PLURNK_USER: "ada", PLURNK_PASS: "lovelace", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
     PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_MAX_TURNS: "", PLURNK_AGUI_HEARTBEAT_MS: "0",
 };
 
-// The least seam the module needs to start and to answer a worldless action: the authority, the
-// listener, no module actions and no events.
-const boot = async (env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}): Promise<Hosted & { readonly base: string; readonly credentials: ApplicationPort["credentials"] }> => {
+// The least seam the module needs to start and to answer a worldless action: the authority holding
+// the operator's secret ({§credential-authority}), the listener, no module actions and no events.
+const boot = async (env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret"): Promise<Hosted & { readonly base: string; readonly credentials: ApplicationPort["credentials"] }> => {
     let port = 0;
-    const credentials = new Credentials();
+    const credentials = new Credentials({ operatorSecret });
     const seam = {
         credentials,
         registerScheme: async () => {},
@@ -264,12 +264,12 @@ test("{§agui-oauth-login} a bad client or redirect is told to the person; a mal
         assert.equal((await json(bad)).error, "invalid_client_metadata", "a confidential client is declared, never registered");
         assert.equal((await json(await fetch(`${mod.base}/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ redirect_uris: ["not a url"] }) }))).error, "invalid_redirect_uri");
     } finally { await mod.close(); }
-    const unconfigured = await boot({ PLURNK_AGUI_USER: "", PLURNK_AGUI_PASSWORD: "" });
+    const unconfigured = await boot({ PLURNK_USER: "", PLURNK_PASS: "" });
     try {
         const { client_id } = await register(unconfigured.base, "http://127.0.0.1:4000/callback");
         const page = await fetch(`${unconfigured.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: "http://127.0.0.1:4000/callback", response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" })}`);
         assert.equal(page.status, 503);
-        assert.match(await page.text(), /PLURNK_AGUI_USER.*PLURNK_AGUI_PASSWORD/su);
+        assert.match(await page.text(), /PLURNK_USER.*PLURNK_PASS/su);
         const minted = await json<{ access_token: string }>(await fetch(`${unconfigured.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
         await pinged(unconfigured.base, { authorization: `Bearer ${minted.access_token}` });
     } finally { await unconfigured.close(); }
@@ -351,8 +351,8 @@ test("{§agui-oauth-login} failed sign-ins and client secrets from one address a
     } finally { await unlimited.close(); }
 });
 
-test("{§agui-oauth} with nothing to authenticate against the module mounts only /agui and admits anonymously", async () => {
-    const mod = await boot({ PLURNK_AGUI_SECRET: "", PLURNK_AGUI_USER: "", PLURNK_AGUI_PASSWORD: "" });
+test("{§agui-oauth} under PLURNK_AUTH=0 the module mounts only /agui and admits anonymously, whatever else is set", async () => {
+    const mod = await boot({ PLURNK_AUTH: "0" }, {}, null);
     try {
         assert.deepEqual([...mod.module.mounts], ["/agui"]);
         assert.equal(mod.credentials.face(), null, "no face is published");
@@ -360,8 +360,8 @@ test("{§agui-oauth} with nothing to authenticate against the module mounts only
     } finally { await mod.close(); }
 });
 
-test("{§agui-oauth} a sign-in alone authenticates: no operator client, the code flow is the way in, and the face is published", async () => {
-    const mod = await boot({ PLURNK_AGUI_SECRET: "" });
+test("{§agui-oauth} an authority without an operator secret still authenticates: the code flow is the way in, and the face is published", async () => {
+    const mod = await boot({}, {}, null);
     try {
         assert.equal(mod.module.mounts.length, 4);
         assert.equal(mod.credentials.face()?.issuer(), mod.base);

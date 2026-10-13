@@ -4,6 +4,7 @@
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { request } from "node:http";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
@@ -52,14 +53,12 @@ const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
 const project = join(temp, "project");
 
-// {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so
-// every client presents it. The real client reads it through its own env cascade; this harness
-// drives AguiTransport directly, so it reads the same file the daemon just seeded.
-const seededToken = async () => {
-    const file = join(home, ".config", "plurnk", ".env");
-    const text = await readFile(file, "utf8").catch(() => "");
-    return /^PLURNK_AGUI_SECRET=(.*)$/m.exec(text)?.[1]?.trim() ?? "";
-};
+// {§credential-authority} {§agui-oauth-clients} — the daemon under test authenticates (the shipped
+// PLURNK_AUTH=1) with a configured operator secret, the posture of a tool on another host or under
+// another user: every client exchanges it for access tokens through its own env cascade, and this
+// harness drives AguiTransport directly with the same value.
+const operatorSecret = randomBytes(32).toString("base64url");
+const seededToken = async () => operatorSecret;
 const world = "cross-client-conformance";
 
 const freePort = () => new Promise((accept, reject) => {
@@ -222,6 +221,7 @@ try {
         XDG_STATE_HOME: join(home, ".local", "state"),
         XDG_CACHE_HOME: join(home, ".cache"),
         PLURNK_PORT: String(port),
+        PLURNK_SECRET: operatorSecret,
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
         PLURNK_MCP_sourcecheck: JSON.stringify({ name: "sourcecheck", type: "stdio", command: "node" }),
@@ -255,6 +255,10 @@ try {
         PLURNK_HOST: "127.0.0.1",
         PLURNK_PORT: String(port),
         PLURNK_AGUI_URL: "",
+        PLURNK_SECRET: operatorSecret,
+        // The client checkout as it stands still reads the secret under its former name; its own
+        // landing on `PLURNK_SECRET` retires this line.
+        PLURNK_AGUI_SECRET: operatorSecret,
         NO_COLOR: "1",
     };
 

@@ -210,6 +210,11 @@ export interface CredentialFace {
  * exterior adapter verifies through it; the client protocol is its issuing face.
  */
 export interface CredentialAuthority {
+    /**
+     * The operator's client secret, `PLURNK_SECRET` when set, else one minted for this boot; null
+     * when the daemon authenticates nothing (`PLURNK_AUTH=0`) and no credential exists.
+     */
+    readonly operatorSecret: string | null;
     issue(credential: Omit<CredentialClaims, "expiresAt"> & { readonly ttlMs: number }): IssuedCredential;
     /** The claims of a live credential; null for one unknown, expired, consumed or revoked. */
     verify(token: string): CredentialClaims | null;

@@ -22,15 +22,13 @@ test("{§operator-config-discovery} the seed is one dotenv front door with exact
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");
 });
 
-test("{§agui-http-authorization} the seed mints this install's own bearer, uncommented and unique", () => {
+test("{§credential-authority} the seed teaches the posture and sets no credential: the daemon mints its secret at boot", () => {
     const seed = OperatorConfig.renderSeed();
-    const minted = /^PLURNK_AGUI_SECRET=(.+)$/m.exec(seed);
-    assert.ok(minted, `the seed ships no bearer: ${seed.slice(0, 200)}`);
-    // Empty is what "no check" looks like at the perimeter, so a seeded value must be real.
-    assert.ok(minted[1]!.length >= 32, `a minted bearer is not guessable: ${minted[1]}`);
-    assert.doesNotMatch(minted[1]!, /[^A-Za-z0-9_-]/u, "url-safe, so it survives a shell and a header");
-    const second = /^PLURNK_AGUI_SECRET=(.+)$/m.exec(OperatorConfig.renderSeed());
-    assert.notEqual(minted[1], second?.[1], "each install mints its own, never a shipped constant");
+    assert.match(seed, /^# PLURNK_SECRET=$/m, "the secret line is a commented teaching line, never a shipped value");
+    assert.match(seed, /^# PLURNK_USER=$/m);
+    assert.match(seed, /^# PLURNK_PASS=$/m);
+    assert.doesNotMatch(seed, /^PLURNK_(?:AUTH|SECRET|USER|PASS)=/m, "the shared panel's posture stands; the seed sets none of its keys");
+    assert.equal(seed, OperatorConfig.renderSeed(), "the seed is one text, with nothing minted into it");
 });
 
 test("{§policy} {§host-path-layout} first run creates private user-owned config once", async () => {
@@ -87,7 +85,7 @@ test("{§operator-config-discovery} concurrent first starts publish one complete
         assert.equal(starts.filter(({ created }) => created).length, 1);
         for (const start of starts) {
             assert.equal(start.config, starts[0]!.config);
-            assert.match(start.config, /^PLURNK_AGUI_SECRET=[A-Za-z0-9_-]{32,}$/m);
+            assert.match(start.config, /^# PLURNK_SECRET=$/m);
             assert.equal(start.policy, "# Policy\nShared initial policy.\n");
         }
         assert.deepEqual(await readdir(paths.configHome), ["plurnk"], "losing initializers remove only their staging directories");

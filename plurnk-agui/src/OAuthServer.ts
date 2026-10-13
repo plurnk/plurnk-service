@@ -122,9 +122,11 @@ export default class OAuthServer {
         this.#opts = opts;
         this.#issuer = issuer;
         this.#now = now;
-        // {§agui-oauth-clients} — the operator's own client holds the minted secret and every scope; with
-        // no secret there is no such client, and the operator signs in or declares clients instead.
-        if (opts.secret.length > 0) this.#clients.set(OPERATOR, { id: OPERATOR, secret: opts.secret, scopes: SCOPES, redirectUris: [], name: null });
+        // {§agui-oauth-clients} — the operator's own client holds the authority's operator secret,
+        // configured or minted for this boot ({§credential-authority}), and every scope; an authority
+        // without one has no such client, and the operator signs in or declares clients instead.
+        const operatorSecret = credentials.operatorSecret;
+        if (operatorSecret !== null) this.#clients.set(OPERATOR, { id: OPERATOR, secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
             this.#clients.set(id, { id, secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
         }
@@ -289,7 +291,7 @@ export default class OAuthServer {
         // {§agui-oauth-login} — the operator signs in here; an unconfigured login explains itself and issues nothing.
         if (this.#opts.user.length === 0 || this.#opts.password.length === 0) {
             this.#html(res, 503, "Plurnk: sign-in not configured", "<h1>Sign-in is not configured</h1>"
-                + "<p>Set <code>PLURNK_AGUI_USER</code> and <code>PLURNK_AGUI_PASSWORD</code> in the operator's configuration file and restart the daemon.</p>");
+                + "<p>Set <code>PLURNK_USER</code> and <code>PLURNK_PASS</code> in the operator's configuration file and restart the daemon.</p>");
             return;
         }
         const hidden = ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]

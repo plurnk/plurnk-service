@@ -1,4 +1,5 @@
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 /** {§agui-oauth-authority} The resources a credential of this daemon may name: the client interface, and the A2A exposure. */
 export const SCOPES: readonly string[] = Object.freeze(["agui", "a2a"]);
@@ -10,7 +11,8 @@ export interface DeclaredClient {
 }
 
 export interface ModuleOptions {
-    readonly secret?: string;
+    /** {§credential-authority} The daemon's posture, `PLURNK_AUTH`: authenticate, or admit anonymously. */
+    readonly auth?: boolean;
     readonly issuer?: string;
     readonly user?: string;
     readonly password?: string;
@@ -26,9 +28,8 @@ export interface ModuleOptions {
 }
 
 export interface ResolvedModuleOptions {
-    /** {§agui-oauth} The daemon authenticates when it holds anything to authenticate against. */
+    /** {§agui-oauth} The daemon authenticates when `PLURNK_AUTH` says so, never by inference. */
     readonly authenticates: boolean;
-    readonly secret: string;
     readonly issuer: string;
     readonly user: string;
     readonly password: string;
@@ -106,15 +107,13 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AGUI_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
         readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
     }
-    const secret = floorString(options, env, "secret", "PLURNK_AGUI_SECRET");
-    const user = floorString(options, env, "user", "PLURNK_AGUI_USER");
-    const password = floorString(options, env, "password", "PLURNK_AGUI_PASSWORD");
+    if (options.auth !== undefined && typeof options.auth !== "boolean") throw new Error(`ModuleOptions.auth must be a boolean; got ${JSON.stringify(options.auth)}.`);
     return {
-        authenticates: secret.length > 0 || (user.length > 0 && password.length > 0) || Object.keys(clients).length > 0,
-        secret,
+        // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
+        authenticates: options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth,
         issuer: floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER"),
-        user,
-        password,
+        user: floorString(options, env, "user", "PLURNK_USER"),
+        password: floorString(options, env, "password", "PLURNK_PASS"),
         accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),
         loginAttempts: number("loginAttempts", "PLURNK_AGUI_LOGIN_ATTEMPTS", 0),

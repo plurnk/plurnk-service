@@ -159,11 +159,13 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve extensions package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_AGUI_SECRET", "PLURNK_AGUI_ALLOW_ORIGIN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
+    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_USER", "PLURNK_PASS", "PLURNK_AGUI_ALLOW_ORIGIN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
         if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
     }
     Object.assign(childEnv, sandboxHostEnv, { PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
+    // {§credential-authority} — the daemon under probe mints its operator secret beside its database.
+    currentSecretFile = resolve(dirname(childEnv.PLURNK_SERVICE_DB_PATH ?? resolve(sandboxHostEnv.XDG_DATA_HOME, "plurnk", "plurnk.db")), "secret");
     const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
     let stdout = "", stderr = "", listening = false, probeResult, probeError;
     // Resolve on EXIT after graceful SIGTERM so both diagnostic pipes drain.
@@ -187,13 +189,14 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
-// {§agui-http-authorization} {§agui-oauth-clients} — a fresh install mints the operator's client secret
-// into the operator file, and the probe exchanges it for an access token exactly as a real client does.
-// Reading it here also proves the perimeter is on: without the header these calls would be refused.
+// {§credential-authority} {§agui-oauth-clients} — a fresh install authenticates: the daemon mints its
+// operator secret at boot into the file beside its database, and the probe exchanges it for an access
+// token exactly as a real client does. Reading it here also proves the perimeter is on: without the
+// header these calls would be refused.
+let currentSecretFile = "";
 const seededSecret = () => {
-    const file = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env");
-    if (!existsSync(file)) return "";
-    return /^PLURNK_AGUI_SECRET=(.*)$/m.exec(readFileSync(file, "utf8"))?.[1]?.trim() ?? "";
+    if (currentSecretFile.length === 0 || !existsSync(currentSecretFile)) return "";
+    return readFileSync(currentSecretFile, "utf8").trim();
 };
 const accessTokens = new Map();
 const accessToken = async (address, secret) => {

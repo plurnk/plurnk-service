@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { resolveModuleOptions, SCOPES } from "./config.ts";
 
 const floor: NodeJS.ProcessEnv = {
-    PLURNK_AGUI_SECRET: "",
+    PLURNK_AUTH: "0",
+    PLURNK_USER: "",
+    PLURNK_PASS: "",
     PLURNK_AGUI_ISSUER: "",
-    PLURNK_AGUI_USER: "",
-    PLURNK_AGUI_PASSWORD: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600",
     PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
     PLURNK_AGUI_LOGIN_ATTEMPTS: "5",
@@ -19,7 +19,6 @@ const floor: NodeJS.ProcessEnv = {
 test("[{§agui-configuration}] AG-UI consumes and validates its package-owned environment", () => {
     assert.deepEqual(resolveModuleOptions({ env: floor }), {
         authenticates: false,
-        secret: "",
         issuer: "",
         user: "",
         password: "",
@@ -39,7 +38,7 @@ test("[{§agui-configuration}] AG-UI consumes and validates its package-owned en
 
 test("[{§agui-configuration}] explicit in-process options override the assembled environment", () => {
     const resolved = resolveModuleOptions({
-        secret: "explicit",
+        auth: true,
         issuer: "https://plurnk.example",
         user: "ada",
         password: "lovelace",
@@ -53,10 +52,10 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         heartbeatMs: 0,
         env: {
             ...floor,
-            PLURNK_AGUI_SECRET: "environment",
+            PLURNK_AUTH: "0",
             PLURNK_AGUI_ISSUER: "http://127.0.0.1:1",
-            PLURNK_AGUI_USER: "env-user",
-            PLURNK_AGUI_PASSWORD: "env-password",
+            PLURNK_USER: "env-user",
+            PLURNK_PASS: "env-password",
             PLURNK_AGUI_CLIENT_other: JSON.stringify({ secret: "o", scopes: ["agui"] }),
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "25",
@@ -64,7 +63,6 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
     });
     assert.deepEqual(resolved, {
         authenticates: true,
-        secret: "explicit",
         issuer: "https://plurnk.example",
         user: "ada",
         password: "lovelace",
@@ -77,15 +75,16 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         maxTurns: 3,
         heartbeatMs: 0,
     });
-    assert.equal(resolveModuleOptions({
-        secret: "",
-        env: { ...floor, PLURNK_AGUI_SECRET: "environment" },
-    }).secret, "", "an explicit empty secret overrides the environment's");
-    // {§agui-oauth} — the daemon authenticates when it holds anything to authenticate against.
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_SECRET: "s" } }).authenticates, true);
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_USER: "ada", PLURNK_AGUI_PASSWORD: "pw" } }).authenticates, true, "a sign-in alone");
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_USER: "ada" } }).authenticates, false, "a user without a password is no sign-in");
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["agui"] }) } }).authenticates, true, "a declared client alone");
+    assert.equal(resolveModuleOptions({ auth: false, env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, false, "an explicit posture overrides the environment's");
+});
+
+test("[{§credential-authority}] the posture is PLURNK_AUTH alone, never inferred from a sign-in or a declared client", () => {
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, true);
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1", PLURNK_USER: "", PLURNK_PASS: "" } }).authenticates, true, "on without a sign-in");
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_USER: "ada", PLURNK_PASS: "pw" } }).authenticates, false, "a sign-in does not switch it on");
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["agui"] }) } }).authenticates, false, "a declared client does not switch it on");
+    assert.throws(() => resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "yes" } }), /PLURNK_AUTH must be 0 or 1/u);
+    assert.throws(() => resolveModuleOptions({ auth: "1" as unknown as boolean, env: floor }), /ModuleOptions.auth must be a boolean/u);
 });
 
 test("[{§agui-oauth-clients}] every PLURNK_AGUI_CLIENT_<id> line declares one confidential client, validated at the owner", () => {
@@ -109,8 +108,8 @@ test("[{§agui-oauth-clients}] every PLURNK_AGUI_CLIENT_<id> line declares one c
 test("[{§agui-configuration}] missing and malformed configuration fails at the owner", () => {
     const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ env });
     // {§operator-config-only-home} — an absent key is a broken floor, never a silently open listener.
-    assert.throws(() => resolve({}), /PLURNK_AGUI_SECRET is missing from the assembled environment floor/);
-    for (const key of ["PLURNK_AGUI_ISSUER", "PLURNK_AGUI_USER", "PLURNK_AGUI_PASSWORD", "PLURNK_AGUI_ALLOW_ORIGIN"]) {
+    assert.throws(() => resolve({}), /PLURNK_AUTH is missing from the assembled environment floor/);
+    for (const key of ["PLURNK_AGUI_ISSUER", "PLURNK_USER", "PLURNK_PASS", "PLURNK_AGUI_ALLOW_ORIGIN"]) {
         const env = { ...floor };
         delete env[key];
         assert.throws(() => resolve(env), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
@@ -138,5 +137,5 @@ test("[{§agui-configuration}] missing and malformed configuration fails at the 
         /ModuleOptions.maxTurns must be a safe integer/,
         "only an empty environment value means no module turn default",
     );
-    assert.throws(() => resolveModuleOptions({ secret: 1 as unknown as string, env: floor }), /ModuleOptions.secret must be a string/u);
+    assert.throws(() => resolveModuleOptions({ user: 1 as unknown as string, env: floor }), /ModuleOptions.user must be a string/u);
 });

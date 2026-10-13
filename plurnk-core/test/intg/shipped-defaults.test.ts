@@ -90,8 +90,11 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
 test("{§operator-config-shared-keys} a key the daemon and its clients both read is declared by contracts, and only there", async () => {
     const contracts = await readFile(new URL("../../../plurnk-contracts/.env.defaults", import.meta.url), "utf8");
     const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1]!, match[2]!]));
-    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_AGUI_URL"]);
+    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_AGUI_URL", "PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_USER", "PLURNK_PASS"]);
     assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
+    // {§credential-authority} — authenticated with nothing set: the secret line teaches, and the daemon mints.
+    assert.equal(declared.get("PLURNK_AUTH"), "1", "authenticated unless the operator says otherwise");
+    assert.equal(declared.get("PLURNK_SECRET"), "", "no shipped secret; the daemon mints one per boot");
     const core = await shippedEnv();
     for (const key of declared.keys()) assert.equal(core.get(key), undefined, `${key} has one owner, and it is not the service`);
 });

@@ -21,12 +21,10 @@ export const parseEvents = (body: string): Event[] => body
     .map((frame) => JSON.parse(frame.slice(6)) as Event);
 
 export const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<Event[]> => {
-    // {§agui-http-authorization} — under the live tier the operator's minted bearer is in the
-    // environment and the listener requires it; the intg tier mints none and sends none.
-    const token = process.env.PLURNK_AGUI_SECRET;
+    // {§credential-authority} — both tiers boot their daemon with PLURNK_AUTH=0, so the listener admits anonymously.
     const response = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
     });
     assert.equal(response.status, 200);

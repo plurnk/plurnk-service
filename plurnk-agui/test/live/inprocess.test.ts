@@ -31,8 +31,9 @@ test("live: discovery and model response traverse the in-process AG-UI module", 
     const addr = http.httpAddress();
 
     try {
-        // {§agui-http-authorization} — the operator's minted bearer, from the environment every client reads.
-        const token = process.env.PLURNK_AGUI_SECRET;
+        // {§agui-http-authorization} — an access token the daemon's own authority issued; under the
+        // gate profile's PLURNK_AUTH=0 the listener ignores it and admits anonymously.
+        const token = daemon.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["agui"], family: "live", ttlMs: 600_000 }).token;
         const res = await fetch(`http://${addr.host}:${addr.port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },

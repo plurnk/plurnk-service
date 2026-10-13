@@ -225,9 +225,14 @@ a refresh token is consumed once, and a second presentation revokes its family a
 authority has no HTTP face and no policy of its own: the issuing module publishes the one face
 (`publish({ issuer })`, at setup) that names where credentials are obtained, an exterior adapter
 verifies through it ({§agui-http-authorization}), and the client protocol issues through it
-({§agui-oauth}). A published face means the daemon authenticates; none means every mounted resource
-admits anonymously. Credentials the daemon presents to others follow the remote party's declared
-scheme and are never minted here.
+({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
+never inferred from what else is set. Under `1` the authority holds the operator's client secret,
+`PLURNK_SECRET` when set, else one minted for this boot and written to the file `secret` beside the
+database, 0600 and complete or absent, before any mount is admitted, where a tool running as the
+operator reads it; a configured secret and a daemon that does not authenticate leave no such file. A
+listening daemon under `1` refuses to start until a module publishes the face. Under `0` no
+credential exists, no face is published and every mounted resource admits anonymously. Credentials
+the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
 §startup-admission-order After listener ownership, database admission completes
 before capability initialization can perform external work. Provider construction
@@ -4162,7 +4167,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
+| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_USER`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§agui-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |

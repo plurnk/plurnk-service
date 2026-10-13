@@ -62,7 +62,7 @@ test("{§module-http-mounts} a daemon with a listener needs no root owner", asyn
 });
 
 test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", async (t) => {
-    const client = AguiModule.create({ secret: "" });
+    const client = AguiModule.create({ auth: false });
     assert.deepEqual(client.mounts, ["/agui"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
@@ -88,7 +88,7 @@ test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", asyn
 });
 
 test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization server's paths beside /agui, never the root", async (t) => {
-    const client = AguiModule.create({ secret: "s3cret" });
+    const client = AguiModule.create({ auth: true });
     assert.deepEqual(client.mounts, ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
@@ -103,7 +103,7 @@ test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization 
 });
 
 test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {
-    const { daemon, get } = await fixture(t, AguiModule.create({ secret: "" }));
+    const { daemon, get } = await fixture(t, AguiModule.create({ auth: false }));
     daemon.registerModule(serving(["/"]), "@acme/web");
     await daemon.start();
     assert.deepEqual(await get("/"), { status: 200, body: "/" });

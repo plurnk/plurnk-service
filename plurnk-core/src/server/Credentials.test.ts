@@ -70,3 +70,38 @@ test("{§credential-authority} a credential needs a positive lifetime and its th
     assert.throws(() => authority.issue(claims({ subject: "" })), /subject/u);
     assert.throws(() => authority.issue(claims({ family: "" })), /family/u);
 });
+
+test("{§credential-authority} the posture is PLURNK_AUTH alone: on, the secret is configured or minted for this boot; off, none exists", () => {
+    assert.throws(() => Credentials.posture({}), /PLURNK_AUTH is missing from the assembled environment floor/u);
+    assert.throws(() => Credentials.posture({ PLURNK_AUTH: "yes" }), /PLURNK_AUTH must be 0 or 1/u);
+    assert.deepEqual(Credentials.posture({ PLURNK_AUTH: "0", PLURNK_SECRET: "configured" }), { authenticates: false, secret: null, minted: false },
+        "off is off, whatever else is set");
+    assert.deepEqual(Credentials.posture({ PLURNK_AUTH: "1", PLURNK_SECRET: "configured" }), { authenticates: true, secret: "configured", minted: false });
+    const minted = Credentials.posture({ PLURNK_AUTH: "1" });
+    assert.equal(minted.authenticates, true);
+    assert.equal(minted.minted, true);
+    assert.match(minted.secret ?? "", /^[A-Za-z0-9_-]{43}$/u, "a minted secret is long, url-safe and header-safe");
+    assert.notEqual(minted.secret, Credentials.posture({ PLURNK_AUTH: "1", PLURNK_SECRET: "" }).secret, "every boot mints its own; an empty value is unset");
+    assert.equal(new Credentials({ operatorSecret: "s" }).operatorSecret, "s");
+    assert.equal(new Credentials().operatorSecret, null);
+});
+
+test("{§credential-authority} a minted secret is written beside the database, 0600 and complete, and removed when nothing minted it", async () => {
+    const { mkdtemp, readFile, rm, stat, readdir } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-secret-"));
+    try {
+        const path = Credentials.secretPath(join(dir, "plurnk.db"));
+        assert.equal(path, join(dir, "secret"));
+        await Credentials.writeSecret(path, "first");
+        assert.equal(await readFile(path, "utf8"), "first\n");
+        assert.equal((await stat(path)).mode & 0o777, 0o600);
+        await Credentials.writeSecret(path, "second");
+        assert.equal(await readFile(path, "utf8"), "second\n", "a later boot overwrites the file in place");
+        assert.deepEqual(await readdir(dir), ["secret"], "no staging file outlives the write");
+        await Credentials.removeSecret(path);
+        await assert.rejects(readFile(path), { code: "ENOENT" });
+        await Credentials.removeSecret(path);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
