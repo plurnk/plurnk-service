@@ -1,5 +1,6 @@
-// {§packet-current-turn} — the Worker block follows the log and carries the actor, its parent
-// and the coordinate this packet's response becomes; the packet carries no date, time or zone.
+// {§packet-current-turn} — the Worker block follows the log and carries the actor, its parent, the
+// coordinate this packet's response becomes and its owner with whether a person attends; the packet
+// carries no date, time or zone.
 import assert from "node:assert/strict";
 import test from "node:test";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
@@ -9,7 +10,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 import { packetSection } from "./_packet.ts";
 import { provider } from "./reasoning-fixture.ts";
 
-test("{§packet-current-turn}: the Worker block follows the log with path, parent, loop and turn, and nothing dated", async () => {
+test("{§packet-current-turn}: the Worker block follows the log with path, parent, loop, turn and owner, and nothing dated", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-worker-block");
@@ -19,11 +20,12 @@ test("{§packet-current-turn}: the Worker block follows the log with path, paren
         const packet = await packets.buildRequestPacket({
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 3, provider: provider(), gitStatus: null,
         });
-        const block = JSON.parse(packetSection(packet, "worker")) as { path: string; parent: string | null; loop: number; turn: number };
+        const block = JSON.parse(packetSection(packet, "worker")) as { path: string; parent: string | null; loop: number; turn: number; owner: { address: string; interactive: boolean } };
         assert.match(block.path, /^worker:\/\//);
         assert.equal(block.parent, null, "a root worker states parent: null");
         assert.deepEqual([block.loop, block.turn], [1, 3], "the coordinate this packet's response becomes");
-        assert.deepEqual(Object.keys(block), ["path", "parent", "loop", "turn"], "the block carries nothing else: no date, time or zone");
+        assert.deepEqual(block.owner, { address: "_plurnk", interactive: false }, "a runtime-owned worker is told that nobody attends its owner");
+        assert.deepEqual(Object.keys(block), ["path", "parent", "loop", "turn", "owner"], "the block carries nothing else: no date, time or zone");
         const user = packet.sections.filter(({ slot }) => slot === "user").map(({ name }) => name);
         assert.ok(user.indexOf("worker") > user.indexOf("log"), "the Worker block sits in the status clump below the log");
         assert.equal(user[0], "log", "nothing volatile precedes the log");

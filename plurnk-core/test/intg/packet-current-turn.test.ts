@@ -44,7 +44,7 @@ test("{§packet-current-turn}: the coordinate on the packet is the one whose rea
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: ran.turnId });
         assert.equal(turn?.sequence, 2);
         const user = userText(mock.received.at(-1)!);
-        assert.match(user, /## Worker\n\{"path":"worker:\/\/alice","parent":null,"loop":1,"turn":2\}/, "the packet the model answered named turn 1/2 in its Worker block");
+        assert.match(user, /## Worker\n\{"path":"worker:\/\/alice","parent":null,"loop":1,"turn":2,"owner":\{"address":"[^"]+","interactive":(?:true|false)\}\}/, "the packet the model answered named turn 1/2 and its owner in its Worker block");
         assert.ok(user.indexOf("## Log") < user.indexOf("## Worker"), "below the log");
         const own = await engine.look({ ...context, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") });
         assert.equal(own.status, 200);

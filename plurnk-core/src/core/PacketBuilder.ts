@@ -1,3 +1,4 @@
+import WorkerOwners from "./WorkerOwners.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
@@ -277,6 +278,7 @@ export default class PacketBuilder {
         // block; a root worker states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
+        const owner = await WorkerOwners.forLoop(this.#db, loopId);
         // {§fs-namespace} Receipt directories are relative to the workspace project root.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         // {§emission-history}: the durable emission row, not its turn's first observation,
@@ -375,7 +377,12 @@ export default class PacketBuilder {
             // coordinate this packet's response becomes — the one fact the sources cannot state about
             // themselves (which `reasoning://<worker>/L/T` is the model's own). It changes every turn, so it
             // never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
+            // {§packet-current-turn} — and whose worker it is: the approval owner, with whether a person
+            // attends it, so nobody-can-answer is a stated fact rather than an inference from a missing tool.
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({
+                path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
+                owner: { address: owner.address, interactive: owner.interactive },
+            }) },
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word. Terse pointers (the path is the actionable address the model READs,
             // SENDs to, or KILLs), never advice. {§child-orientation}

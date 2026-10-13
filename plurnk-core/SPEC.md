@@ -650,15 +650,17 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   notices, and the rest keep that rule. The parent is not a section: the
   `## Worker` identity block carries `"parent": "worker://<name>"`, or
   `"parent": null` at a root, so a worker never infers its rank from silence.
-- §packet-current-turn **The packet says who and which turn, below the log.** The
+- §packet-current-turn **The packet says who, which turn and who attends, below the log.** The
   `## Worker` block, in the status clump below the log ({§packet-cache-monotone}), carries
-  `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T}`: the actor,
-  whose child it is, and the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
-  and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
-  present from the last row's coordinate, which may or may not be its own turn. The block
-  changes every turn, so nothing of it precedes the log, and the packet carries no date, time
-  or zone anywhere. The coordinate only; the source addresses stay
-  documented, not taught.
+  `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T, "owner":
+  {"address": "<owner>", "interactive": <boolean>}}`: the actor, whose child it is, the coordinate
+  this packet's response becomes, so `reasoning://<worker>/L/T` and `ops://<worker>/L/T` are the
+  model's own and `log:///L/T/*` its rows, and its approval owner ({§worker-ownership}) with whether
+  a person attends that owner; a model never infers the present from the last row's coordinate,
+  which may or may not be its own turn, and never infers from a missing tool alone that nobody can
+  answer. The block changes every turn, so nothing of it precedes the log, and the packet carries no
+  date, time or zone anywhere. The coordinate only; the source addresses stay documented, not
+  taught.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
