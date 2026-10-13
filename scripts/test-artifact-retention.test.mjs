@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { benchmarksRoot, testArtifactDirectory, testArtifactPath } from "./test-artifacts.ts";
+import { benchmarksRoot, testArtifactDirectory, testArtifactPath, tierRunPath } from "./test-artifacts.ts";
 
 const root = new URL("../", import.meta.url);
 const LANES = ["plurnk-core", "plurnk-agui", "plurnk-schedule"];
@@ -18,12 +18,30 @@ test("{§test-artifact-retention} a run's databases live under the one artifact 
     delete process.env.PLURNK_BENCHMARKS;
     assert.equal(benchmarksRoot(), join(homedir(), "benchmarks"), "the default home is ~/benchmarks");
 
-    process.env.PLURNK_BENCHMARKS = "/tmp/plurnk-artifacts-fixture";
-    assert.equal(benchmarksRoot(), "/tmp/plurnk-artifacts-fixture", "the operator's home wins");
+    const home = join(tmpdir(), "plurnk-artifacts-fixture");
+    process.env.PLURNK_BENCHMARKS = home;
+    assert.equal(benchmarksRoot(), home, "the operator's home wins");
     assert.ok(
-        testArtifactPath("core").startsWith("/tmp/plurnk-artifacts-fixture/"),
+        testArtifactPath("core").startsWith(`${home}/`),
         "a lane's directory is inside the artifact home and nowhere else",
     );
+});
+
+test("{§tier-census} a stamped tier run is one directory under the home; an unstamped worker has none", (t) => {
+    const prior = { PLURNK_BENCHMARKS: process.env.PLURNK_BENCHMARKS, PLURNK_TIER_RUN: process.env.PLURNK_TIER_RUN };
+    t.after(() => {
+        for (const [key, value] of Object.entries(prior)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    });
+    const home = join(tmpdir(), "plurnk-artifacts-fixture");
+    process.env.PLURNK_BENCHMARKS = home;
+    process.env.PLURNK_TIER_RUN = "live-20261012T000000Z";
+    assert.equal(tierRunPath(), join(home, "tier-live-20261012T000000Z"));
+    assert.equal(tierRunPath("demo-20261012T000000Z"), join(home, "tier-demo-20261012T000000Z"), "a driver names the run it is about to stamp");
+    delete process.env.PLURNK_TIER_RUN;
+    assert.equal(tierRunPath(), null);
 });
 
 test("{§test-artifact-retention} each lane's run is one directory, stamped once and shared by every test process", (t) => {
@@ -47,7 +65,7 @@ test("{§test-artifact-retention} each lane's run is one directory, stamped once
 
 test("{§test-artifact-retention} the directory is created on demand, with no pretest step to remember", async (t) => {
     const prior = process.env.PLURNK_BENCHMARKS;
-    process.env.PLURNK_BENCHMARKS = join("/tmp", `plurnk-artifacts-${crypto.randomUUID()}`);
+    process.env.PLURNK_BENCHMARKS = join(tmpdir(), `plurnk-artifacts-${crypto.randomUUID()}`);
     t.after(async () => {
         const { rm } = await import("node:fs/promises");
         await rm(process.env.PLURNK_BENCHMARKS, { recursive: true, force: true });

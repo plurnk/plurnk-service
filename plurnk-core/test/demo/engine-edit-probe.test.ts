@@ -1,7 +1,8 @@
 // {§edit-marker-required-on-existing} {§render-rule-line-navigable-prefix}: exercise locate-and-edit
 // against a large source file, beyond the coordinate range of the small demo fixtures. The test
-// copies Engine.ts into a throwaway repository, then proves target adjacency, structural survival,
-// and byte-identical content after removing the one requested insertion.
+// copies a frozen snapshot of Engine.ts (fixtures/engine-edit-probe.ts.txt, so the story's
+// coordinates never move with the live source) into a throwaway repository, then proves target
+// adjacency, structural survival, and byte-identical content after removing the one requested insertion.
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { readFile, copyFile, mkdtemp, rm } from "node:fs/promises";
@@ -12,14 +13,14 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
-const ENGINE_SRC = fileURLToPath(new URL("../../src/core/Engine.ts", import.meta.url));
+const ENGINE_SRC = fileURLToPath(new URL("./fixtures/engine-edit-probe.ts.txt", import.meta.url));
 
 test("demo: locate and edit deep in a large source file — coordinate held, no corruption", async (t) => {
     const fixture = await mkdtemp(join(tmpdir(), "plurnk-engine-probe-"));
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(() => rm(fixture, { recursive: true, force: true }));
     try {
-        await copyFile(ENGINE_SRC, join(fixture, "Engine.ts")); // a copy of the real thing; the source is untouched
+        await copyFile(ENGINE_SRC, join(fixture, "Engine.ts")); // the snapshot, under the name the prompt uses
         initializeDemoRepository(fixture, "fixture");
         const original = await readFile(join(fixture, "Engine.ts"), "utf8");
         const origLines = original.split("\n");

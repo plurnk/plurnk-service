@@ -21,7 +21,7 @@ const packets = async (s: LiveWorkspace, turnIds: readonly number[]) => {
     });
 };
 
-test("live: a client-attached image persists until log curation", async (t) => {
+test("live: a client-attached image persists until log curation", { requires: ["input:image"] }, async (t) => {
     const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-native-live-"));
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(async () => { await rm(projectRoot, { recursive: true, force: true }); });
@@ -29,10 +29,6 @@ test("live: a client-attached image persists until log curation", async (t) => {
         await writeFile(join(projectRoot, "sample.png"), PNG);
         const s = await liveWorkspace({ name: `live-native-observation-${crypto.randomUUID()}`, projectRoot });
         lifetime.defer(s.cleanup);
-        if (!s.provider.inputModalities.has("image")) {
-            t.skip("The selected route does not advertise native image input.");
-            return;
-        }
         const member = await s.invokeWorkspaceAction("workspace.members.add", { files: ["sample.png"] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);
@@ -83,7 +79,7 @@ test("live: a client-attached image persists until log curation", async (t) => {
 // carries nothing must be reported as carrying nothing, and the image counted once.
 const ACCOUNT = "Reply with exactly one line and nothing else, in this form: `distinct_images=<n> new_image_this_message=<yes|no>` — n is how many distinct images you have seen in this conversation, and the second field says whether a new image arrived with this message.";
 
-test("live: a retained image is reported as one earlier READ, never as a new arrival", async (t) => {
+test("live: a retained image is reported as one earlier READ, never as a new arrival", { requires: ["input:image"] }, async (t) => {
     const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-native-caption-"));
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(async () => { await rm(projectRoot, { recursive: true, force: true }); });
@@ -91,10 +87,6 @@ test("live: a retained image is reported as one earlier READ, never as a new arr
         await writeFile(join(projectRoot, "sample.png"), PNG);
         const s = await liveWorkspace({ name: `live-native-caption-${crypto.randomUUID()}`, projectRoot });
         lifetime.defer(s.cleanup);
-        if (!s.provider.inputModalities.has("image")) {
-            t.skip("The selected route does not advertise native image input.");
-            return;
-        }
         const member = await s.invokeWorkspaceAction("workspace.members.add", { files: ["sample.png"] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);
@@ -133,7 +125,7 @@ const accountOf = (noun: string) => `Reply with exactly one line and nothing els
 for (const kind of [
     { modality: "pdf" as const, noun: "document", file: "contract.pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), question: "How many pages does contract.pdf have?", answer: /\b(1|one)\b/iu },
     { modality: "audio" as const, noun: "audio_clip", file: "clip.wav", bytes: wav(), question: "How long is clip.wav, in seconds?", answer: /\b(1|one)\b/iu },
-]) test(`live: a retained ${kind.modality} is reported as one earlier READ, never as a new arrival`, async (t) => {
+]) test(`live: a retained ${kind.modality} is reported as one earlier READ, never as a new arrival`, { requires: [`input:${kind.modality}`] }, async (t) => {
     const projectRoot = await mkdtemp(join(tmpdir(), `plurnk-native-${kind.modality}-`));
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(async () => { await rm(projectRoot, { recursive: true, force: true }); });
@@ -141,10 +133,6 @@ for (const kind of [
         await writeFile(join(projectRoot, kind.file), kind.bytes);
         const s = await liveWorkspace({ name: `live-native-${kind.modality}-${crypto.randomUUID()}`, projectRoot });
         lifetime.defer(s.cleanup);
-        if (!s.provider.inputModalities.has(kind.modality)) {
-            t.skip(`The selected route does not advertise native ${kind.modality} input.`);
-            return;
-        }
         const member = await s.invokeWorkspaceAction("workspace.members.add", { files: [kind.file] }) as { status: number };
         assert.equal(member.status, 201);
         await s.daemon.settleFunctionality(s.workspaceId);

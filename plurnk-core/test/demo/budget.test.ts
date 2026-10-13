@@ -67,7 +67,7 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
 
 // {§context-fit} {§context-verbs} — attachments beyond the room land as receipts, the longest prefix
 // of lines above each; the model retrieves an answer absent from its opening packet.
-test("budget: attachments beyond the room land as receipts; the model retrieves the recovery site", async (t) => {
+test("budget: attachments beyond the room land as receipts; the model retrieves the recovery site", { requires: ["output-budget"] }, async (t) => {
     const fixture = await seedAttachmentFixture();
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);
@@ -98,7 +98,7 @@ test("budget: attachments beyond the room land as receipts; the model retrieves 
 // reaches the buried fact by FIND and a range READ; a packet that does go over budget is answered with
 // curation alone. A model that curates ahead of the pressure never sees the row, and that is the
 // product working; the row's own mechanics are the intg tier's.
-test("budget: a long NOTE in a tight room — receipts by prefix, curation by the verbs, the buried code by range", async (t) => {
+test("budget: a long NOTE in a tight room — receipts by prefix, curation by the verbs, the buried code by range", { requires: ["output-budget"] }, async (t) => {
     const doc = await seedLedgerFixture();
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(doc.cleanup);

@@ -6369,6 +6369,20 @@ lane's run directory and the lane's reclaim takes all of it; an unnamed run is C
 that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
 caller's own run directory.
 
+§tier-census **A real-model tier run is one directory with its census.** The live and demo drivers
+stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every worker the run claims lands inside
+`PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own
+host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests,
+tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter
+when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the
+workers it claimed, turns, requests and cost; a run never deletes or moves any of it. A specimen
+declares what it requires of the route (`input:<image|pdf|audio|video>`, `reasoning`,
+`output-budget`, `env:<NAME>`, `url:<http(s) URL>`); an unmet requirement is a skip, before anything
+boots or is spent, whose reason names the requirement and what was observed, and the census answers
+each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A
+route the harness cannot resolve is a failure, never a skip. `tier:history` ledgers every census
+under the home: per specimen, its verdicts over runs and its last reason.
+
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
 ## Problem codes and pinned wording

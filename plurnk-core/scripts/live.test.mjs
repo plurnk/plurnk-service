@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { exactSpecimen, liveFiles, liveInvocation } from "./live.mjs";
-import { collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { catalogSnapshot } from "@plurnk/plurnk-models";
+import { exactSpecimen, liveFiles, liveInvocation, stampTierRun, tierArguments, tierEnvironment } from "./live.mjs";
+import { compose, isSpecimenVerdict, render, workerRows } from "./census-reporter.mjs";
+import { censuses, history } from "./tier-history.mjs";
+import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
+import { aliasesSatisfying, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
 import { failAfterCleanup } from "../test/live-failure.ts";
+import { tierRunPath } from "../../scripts/test-artifacts.ts";
 
 test("live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
     const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
@@ -54,6 +62,115 @@ test("the full tier and exact specimen share one invocation", async () => {
 test("{§provider-conformance-matrix} the specimen selector rejects absent and duplicate names", () => {
     assert.throws(() => exactSpecimen("missing", ["present"]), /matched 0 registered tests/);
     assert.throws(() => exactSpecimen("duplicate", ["duplicate", "duplicate"]), /matched 2 registered tests/);
+});
+
+test("{§tier-census} a stamped run names its directory, adds the census reporter and stamps the child; an unstamped one does neither", async () => {
+    assert.equal(stampTierRun("live", new Date("2026-10-12T23:59:59.123Z")), "live-20261012T235959Z");
+    const files = ["/x/a.test.ts"];
+    const stamped = tierArguments({ files, pattern: undefined, run: "live-20261012T235959Z" });
+    const reporter = stamped.find((arg) => arg.startsWith("--test-reporter=") && arg.endsWith("census-reporter.mjs"));
+    assert.ok(reporter, "the census reporter is configured");
+    assert.equal(stamped[stamped.indexOf(reporter) + 1], `--test-reporter-destination=${join(tierRunPath("live-20261012T235959Z"), "census.md")}`);
+    assert.ok(stamped.includes("--test-reporter=spec"), "the console keeps the spec reporter");
+    const bare = tierArguments({ files, pattern: undefined, run: undefined });
+    assert.ok(!bare.some((arg) => arg.endsWith("census-reporter.mjs")));
+    assert.equal((await tierEnvironment("live-20261012T235959Z")).PLURNK_TIER_RUN, "live-20261012T235959Z");
+    assert.equal((await tierEnvironment(undefined)).PLURNK_TIER_RUN, undefined);
+});
+
+test("{§tier-census} every specimen declares requirements from the closed vocabulary", async () => {
+    const specimens = await collectLiveSpecimens(await liveFiles());
+    for (const { name, requires } of specimens) {
+        for (const requirement of requires) assert.doesNotThrow(() => parseRequirement(requirement), `${name} declares ${requirement}`);
+    }
+    assert.ok(specimens.some(({ requires }) => requires.includes("input:pdf")), "the pdf account specimen declares its modality");
+    assert.throws(() => parseRequirement("vision"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("env:lowercase"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("url:ftp://x"), /is not a live requirement/);
+});
+
+test("{§tier-census} an unmet requirement is named with what the route advertised; a met one is silent", async () => {
+    const facts = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null });
+    const env = { PRESENT: "1" };
+    const probe = async (url) => url.endsWith("/up");
+    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up"], facts, env, probe), []);
+    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down"], facts, env, probe), [
+        "requires input:pdf: the route advertises image input",
+        "requires reasoning: the route's efforts are off, adaptive",
+        "requires output-budget: the route resolved no output budget",
+        "requires env:ABSENT: ABSENT is not in the operator environment",
+        "requires url:https://example.test/down: https://example.test/down did not answer within 10 s",
+    ]);
+    assert.deepEqual(requirementsOfSkip("requires input:pdf: the route advertises image input; requires reasoning: the route's efforts are off, adaptive"), ["input:pdf", "reasoning"]);
+    assert.deepEqual(requirementsOfSkip("The selected route does not advertise native pdf input."), []);
+});
+
+test("{§tier-census} the catalog answers which declared aliases satisfy a route-bound requirement", () => {
+    const snapshot = catalogSnapshot();
+    const cataloged = (predicate) => {
+        for (const [provider, models] of Object.entries(snapshot)) {
+            for (const [model, info] of Object.entries(models)) if (predicate(info)) return { provider, model };
+        }
+        throw new Error("the catalog snapshot holds no such model");
+    };
+    const withPdf = cataloged((info) => info.modalities.input.includes("pdf"));
+    const withoutPdf = cataloged((info) => !info.modalities.input.includes("pdf"));
+    const aliases = [
+        { alias: "pdfs", ...withPdf },
+        { alias: "text", ...withoutPdf },
+        { alias: "local", provider: "openai", model: "not-in-any-catalog.gguf" },
+    ];
+    assert.deepEqual(aliasesSatisfying("input:pdf", aliases), ["pdfs"]);
+    assert.deepEqual(aliasesSatisfying("output-budget", aliases), ["pdfs", "text"], "a cataloged route resolves an output budget; an uncataloged one advertises nothing");
+    assert.equal(aliasesSatisfying("env:BRAVE_API_KEY", aliases), null);
+    assert.equal(aliasesSatisfying("url:https://example.test/", aliases), null);
+});
+
+test("{§tier-census} a census row is a specimen's own verdict, never a file's or a subtest's", () => {
+    const file = "/x/a.test.ts";
+    assert.ok(isSpecimenVerdict({ type: "test:pass", data: { name: "live: a", file, nesting: 0 } }));
+    assert.ok(isSpecimenVerdict({ type: "test:fail", data: { name: "live: a", file, nesting: 0 } }));
+    assert.ok(!isSpecimenVerdict({ type: "test:pass", data: { name: file, file, nesting: 0 } }), "a file reported as a pass under a name pattern");
+    assert.ok(!isSpecimenVerdict({ type: "test:pass", data: { name: "inner", file, nesting: 1 } }), "a subtest");
+    assert.ok(!isSpecimenVerdict({ type: "test:diagnostic", data: { nesting: 0, message: "x" } }));
+});
+
+test("{§tier-census} the census joins verdicts with the workers each specimen claimed and names unmet requirements; the history ledgers runs", async (t) => {
+    const home = await mkdtemp(join(tmpdir(), "plurnk-census-"));
+    t.after(() => rm(home, { recursive: true, force: true }));
+    const dir = join(home, "tier-live-20261012T000000Z");
+    const worker = (name, specimen, usd) => ({ specimen, label: name, runDir: join(dir, name), loops: 1, turns: 3, requests: 2, tokens: { input: 10, output: 5 }, cost: { usd, kinds: ["estimated"] } });
+    for (const [name, specimen, usd] of [["live-a-AAAAAA", "a", 0.001], ["live-a-BBBBBB", "a", 0.002], ["live-stray-CCCCCC", null, 0]]) {
+        await mkdir(join(dir, name), { recursive: true });
+        await writeFile(join(dir, name, "census.json"), JSON.stringify(worker(name, specimen, usd)));
+    }
+    const workers = workerRows(dir);
+    assert.deepEqual(workers.map(({ label }) => label), ["live-a-AAAAAA", "live-a-BBBBBB", "live-stray-CCCCCC"]);
+    const census = compose({
+        run: "live-20261012T000000Z", route: "deepdumb = deepseek/deepseek-flash",
+        aliases: [{ alias: "local", provider: "openai", model: "x.gguf" }],
+        tests: [
+            { name: "a", file: "a.test.ts", verdict: "pass", reason: null, duration_ms: 1 },
+            { name: "b", file: "b.test.ts", verdict: "skip", reason: "requires input:pdf: the route advertises image input", duration_ms: 1 },
+            { name: "c", file: "c.test.ts", verdict: "fail", reason: "one is not two", duration_ms: 1 },
+        ],
+        workers, started: "2026-10-12T00:00:00.000Z", finished: "2026-10-12T00:01:00.000Z",
+    });
+    assert.deepEqual(census.totals, { pass: 1, fail: 1, skip: 1, todo: 0 });
+    assert.deepEqual(census.specimens[0].workers, ["live-a-AAAAAA", "live-a-BBBBBB"]);
+    assert.equal(census.specimens[0].turns, 6);
+    assert.equal(census.specimens[0].usd, 0.003);
+    assert.deepEqual(census.unattributed, ["live-stray-CCCCCC"]);
+    assert.deepEqual(census.unmet, [{ requirement: "input:pdf", specimens: ["b"], satisfiedBy: [] }]);
+    const markdown = render(census);
+    assert.match(markdown, /\| skip \| b \| requires input:pdf: the route advertises image input \|/u);
+    assert.match(markdown, /\| input:pdf \| 1 \| none declared \|/u);
+    await writeFile(join(dir, "census.json"), JSON.stringify(census));
+    const runs = censuses(home);
+    assert.equal(runs.length, 1);
+    const ledger = history(runs);
+    assert.deepEqual(ledger.map(({ name, fail, skip }) => [name, fail, skip]), [["c", 1, 0], ["b", 0, 1], ["a", 0, 0]], "failures first, then skips, then by name");
+    assert.equal(ledger[0].last.reason, "one is not two");
 });
 
 test("live failure preserves cancellation failure without obscuring either cause", async () => {

@@ -25,14 +25,17 @@ Where things are, for an agent that has to act before it has read everything:
   (specimens in `test/live/`), `npm run test:demo` (stories), or
   `npm run test:live:specimen -- "<exact name>"`. The whole-platform candidate is
   `npm run candidate` at the root (see README).
-- **Every live or demo worker leaves evidence** under `$PLURNK_BENCHMARKS/<label>-XXXXXX/` (`~/benchmarks` when unset):
-  `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
-  errors, cost), `<worker>-<loop>-<turn>.request.md` (ordered input messages with roles),
-  `.assistant.md` (that turn's raw output), and `.wire.json` (the same ordered text input as JSON,
-  not an HTTP capture). `.user.md` and `.system.md` are role-filtered extracts, not the full request,
-  named by log coordinate. Read the digest;
-  the database is evidence, never the diagnostic interface. For any other database,
-  `npm run share -- <plurnk.db> [folder]` writes the same folder
+- **Every live or demo run leaves its census and its workers' evidence** under
+  `$PLURNK_BENCHMARKS/tier-<live|demo>-<stamp>/` (`~/benchmarks` when unset): `census.md` has one row
+  per specimen (verdict, skip reason or first failure line, evidence directories, turns, cost) and
+  names the declared aliases that would satisfy each unmet requirement; each worker's
+  `<label>-XXXXXX/` holds `plurnk.db`, `workspace`, `census.json` and `digest/` with `digest.md`
+  (loops, turns, ops, errors, cost), `<worker>-<loop>-<turn>.request.md` (ordered input messages with
+  roles), `.assistant.md` (that turn's raw output), and `.wire.json` (the same ordered text input as
+  JSON, not an HTTP capture). `.user.md` and `.system.md` are role-filtered extracts, not the full
+  request, named by log coordinate. `npm run tier:history -w @plurnk/plurnk-service` ledgers every
+  run's census ({§tier-census}). Read the digest; the database is evidence, never the diagnostic
+  interface. For any other database, `npm run share -- <plurnk.db> [folder]` writes the same folder
   from a consistent copy it takes itself ({§share}); a live database is safe to name.
 - **A daemon you did not start is a live session** someone is using: never stop it to
   free a port, and read its database only through `npm run share`. A daemon reads

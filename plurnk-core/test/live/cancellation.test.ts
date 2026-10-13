@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
 import { waitForDb } from "../intg/_rpc.ts";
 
-test("live: cancellation settles an active model request", async (t) => {
+test("live: cancellation settles an active model request", { requires: ["reasoning"] }, async (t) => {
     const s = await liveWorkspace({ name: "live-cancellation-accounting" });
     const cancellation = new AbortController();
     const reason = new Error("live cancellation after first reasoning delta");

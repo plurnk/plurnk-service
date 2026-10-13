@@ -8,18 +8,22 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventType, type AguiEvent } from "../../src/types.ts";
-import { bindListener, openTestDatabase, SERVICE } from "../intg/_helpers.ts";
+import { bindListener, SERVICE } from "../intg/_helpers.ts";
 
 test("live: discovery and model response traverse the in-process AG-UI module", async (t) => {
     const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
     serverProposals(t, "accept");
-    const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { liveProvider, liveRun } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
-    const db = await openTestDatabase();
+    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live worker's.
+    const run = await liveRun("live-agui-inprocess");
+    const db = await openMigrated(run.dbPath);
     const provider = await liveProvider();
     const http = await bindListener();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http, hostPaths: run.hostPaths });
     const sandbox = await mkdtemp(join(tmpdir(), "agui-inproc-"));
 
     // The daemon discovers the module, starts it on the application port, and admits its listener.
@@ -74,6 +78,7 @@ test("live: discovery and model response traverse the in-process AG-UI module", 
         await daemon.stop();
         await http.close();
         await db.close();
+        run.finish();
         await rm(sandbox, { recursive: true, force: true });
     }
 });

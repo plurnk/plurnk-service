@@ -167,13 +167,9 @@ test("story: find a single value in a JSON config", async (t) => {
     } finally { await story.cleanup(); }
 });
 
-test("{§web-search-retrieval} story: answer a current question with search MCP available", async (t) => {
+test("{§web-search-retrieval} story: answer a current question with search MCP available", { requires: ["env:BRAVE_API_KEY"] }, async (t) => {
     // The attachment provides an option, not an oracle requirement. The independent
     // release index is never injected into the model's prompt or workspace.
-    if (process.env.BRAVE_API_KEY === undefined) {
-        test.skip("BRAVE_API_KEY is not in the operator environment — the Brave Search demo server cannot serve");
-        return;
-    }
     const index = await fetch("https://nodejs.org/dist/index.json", {
         signal: AbortSignal.any([t.signal, AbortSignal.timeout(30_000)]),
     });
@@ -209,13 +205,15 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
     } finally { await story.cleanup(); }
 });
 
-test("story: answer a recent general-knowledge question", async (t) => {
+// The prompt never says to search: the model has to notice the question is past its knowledge and
+// retrieve, so the search server is a requirement of the story, not an option.
+test("story: answer a recent general-knowledge question", { requires: ["env:BRAVE_API_KEY"] }, async (t) => {
     const story = await runStory({
         signal: t.signal,
         label: "web-retrieve-live",
         prompt: "As of August 20, 2026, who won the 2026 Eurovision Song Contest, and with which song?",
         maxTurns: 30,
-        ...(process.env.BRAVE_API_KEY === undefined ? {} : { setup: addMcp(BRAVE_SEARCH) }),
+        setup: addMcp(BRAVE_SEARCH),
     });
     try {
         const ok = story.finalStatus === 200

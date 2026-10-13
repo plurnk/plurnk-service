@@ -25,10 +25,13 @@ import { DEFAULT_MIMETYPES } from "../intg/_scheme.ts";
 import { fixtureExecutors } from "../intg/_mock.ts";
 
 // A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the
-// HTTP scheme's generic acquisition path, which is exercised separately).
+// HTTP scheme's generic acquisition path, which is exercised separately). The target is public by
+// necessity: the scheme's guard admits no loopback or private address, so the specimen requires the
+// URL to answer and skips, by name, when it does not.
 const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ atomically materializes a real URL (no model, no mock)",
+    { requires: [`url:${HTTP_URL}`] },
     async () => {
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (${HTTP_URL})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`READ (${HTTP_URL})`, null)) });
         const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;

@@ -9,12 +9,10 @@
 // this script exists instead of forwarding an appended flag through the inline
 // npm script.
 
-import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import HostPaths from "../src/core/HostPaths.ts";
-import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 import { collectLiveTestNames } from "../test/live-test.ts";
+import { runTier, stampTierRun, tierArguments, tierEnvironment } from "./live.mjs";
 
 const workspace = resolve(import.meta.dirname, "..");
 const demoDirectory = resolve(workspace, "test/demo");
@@ -38,26 +36,11 @@ export const matchingStories = (selector, names) => {
     return matches;
 };
 
-export const demoInvocation = async (pattern) => {
+export const demoInvocation = async (pattern, run) => {
     const files = await demoFiles();
     if (files.length === 0) throw new Error("no demo stories found under test/demo");
     if (pattern !== undefined) matchingStories(pattern, await collectLiveTestNames(files));
-    const configFile = new HostPaths().configFile;
-    const operatorEnv = [`--env-file-if-exists=${configFile}`];
-    return {
-        args: [
-            "--conditions=plurnk-dev",
-            "--import=./test/floor.ts",
-            "--env-file-if-exists=.env.defaults",
-            ...operatorEnv,
-            "--env-file-if-exists=.env.test",
-            "--test",
-            "--test-concurrency=1",
-            ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
-            ...files,
-        ],
-        env: { ...await gateResourceEnvironment(configFile), PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
-    };
+    return { args: tierArguments({ files, pattern, run }), env: await tierEnvironment(run) };
 };
 
 const main = async () => {
@@ -65,19 +48,7 @@ const main = async () => {
     if (mode !== undefined && (mode !== "--specimen" || requested === undefined || extra.length > 0)) {
         throw new Error("usage: npm run test:demo[:specimen] -- [story-name-pattern]");
     }
-    const { args, env } = await demoInvocation(requested);
-    const child = spawn(process.execPath, args, {
-        cwd: workspace,
-        env: { ...process.env, ...env },
-        stdio: "inherit",
-    });
-    child.once("exit", (code, signal) => {
-        if (signal !== null) {
-            console.error(`demo: terminated by ${signal}`);
-            process.exit(1);
-        }
-        process.exit(code ?? 1);
-    });
+    await runTier("demo", await demoInvocation(requested, stampTierRun("demo")));
 };
 
 if (import.meta.main) await main();

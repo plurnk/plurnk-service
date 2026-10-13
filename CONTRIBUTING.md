@@ -26,6 +26,7 @@ npm test
 | `npm run test:live` | Long-running real-model wire assertions. |
 | `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
 | `npm run test:demo` | Long-running real-model outcome assertions. |
+| `npm run test:benchlet -w @plurnk/plurnk-service` | The bench's quick lane from this checkout. `PLURNK_BENCH_ROOT` names the bench checkout (`../plurnk-bench` by default) and `PLURNK_CLIENT_CHECKOUT` the client. |
 | `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:list` | Validate and list configuration ownership and source classes without values. |
 | `npm run candidate -- …` | Run an explicit client checkout against the source-built daemon. |
@@ -72,6 +73,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 |---|---|
 | Configuration/startup | `npm run config:list`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
 | Deterministic test failure | The reported `~/benchmarks/intg-<lane>-<run>/` directory (`PLURNK_BENCHMARKS` overrides the root). Successful suites remove their own artifacts; failed suites retain them. |
+| Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement; `npm run tier:history -w @plurnk/plurnk-service` ledgers every run ({§tier-census}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
 | Published type resolution | Optional `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds. |

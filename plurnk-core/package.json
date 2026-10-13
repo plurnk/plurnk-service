@@ -60,6 +60,7 @@
         "test:demo": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/demo.mjs",
         "test:demo:specimen": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/demo.mjs --specimen",
         "test:demo:zeropin": "PLURNK_ZERO_PIN=1 npm run test:demo",
+        "tier:history": "node --conditions=plurnk-dev scripts/tier-history.mjs",
         "test:benchlet": "bash ../scripts/operator-environment.sh node scripts/benchlet.mjs",
         "fixture:demo": "node --conditions=plurnk-dev test/demo/_fixture.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",

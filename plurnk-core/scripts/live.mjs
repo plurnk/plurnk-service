@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import HostPaths from "../src/core/HostPaths.ts";
 import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
+import { tierRunPath } from "../../scripts/test-artifacts.ts";
 
 const workspace = resolve(import.meta.dirname, "..");
 const liveDirectories = [resolve(workspace, "test/live"), resolve(workspace, "../plurnk-agui/test/live")];
+const reporter = resolve(workspace, "scripts/census-reporter.mjs");
 
 export const liveFiles = async () => (await Promise.all(liveDirectories.map(async (directory) =>
     (await readdir(directory)).filter((name) => name.endsWith(".test.ts"))
@@ -24,36 +26,46 @@ export const exactSpecimen = (requested, names) => {
     return `^${requested.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`;
 };
 
-export const liveInvocation = async (requested) => {
+// {§tier-census} — a run is stamped once by the driver: `<kind>-<UTC stamp>` names the directory every
+// worker lands in and the census the reporter writes there.
+export const stampTierRun = (kind, now = new Date()) =>
+    `${kind}-${now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;
+
+// The node:test invocation the tier and its single-specimen form share. A stamped run adds the
+// census reporter beside the console's spec reporter; an unstamped one (the driver's own tests) does not.
+export const tierArguments = ({ files, pattern, run }) => [
+    "--conditions=plurnk-dev",
+    "--import=./test/floor.ts",
+    "--env-file-if-exists=.env.defaults",
+    `--env-file-if-exists=${new HostPaths().configFile}`,
+    "--env-file-if-exists=.env.test",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    ...(run === undefined ? [] : [`--test-reporter=${reporter}`, `--test-reporter-destination=${join(tierRunPath(run), "census.md")}`]),
+    ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
+    ...files,
+];
+
+export const tierEnvironment = async (run) => ({
+    ...await gateResourceEnvironment(new HostPaths().configFile),
+    PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md",
+    ...(run === undefined ? {} : { PLURNK_TIER_RUN: run }),
+});
+
+export const liveInvocation = async (requested, run) => {
     const files = await liveFiles();
     if (files.length === 0) throw new Error("no live specimens found under test/live");
     const pattern = requested === undefined
         ? undefined
         : exactSpecimen(requested, await collectLiveTestNames(files));
-    const configFile = new HostPaths().configFile;
-    const operatorEnv = [`--env-file-if-exists=${configFile}`];
-    return {
-        args: [
-            "--conditions=plurnk-dev",
-            "--import=./test/floor.ts",
-            "--env-file-if-exists=.env.defaults",
-            ...operatorEnv,
-            "--env-file-if-exists=.env.test",
-            "--test",
-            "--test-concurrency=1",
-            ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
-            ...files,
-        ],
-        env: { ...await gateResourceEnvironment(configFile), PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
-    };
+    return { args: tierArguments({ files, pattern, run }), env: await tierEnvironment(run) };
 };
 
-const main = async () => {
-    const [mode, requested, ...extra] = process.argv.slice(2);
-    if (mode !== undefined && (mode !== "--specimen" || requested === undefined || extra.length > 0)) {
-        throw new Error("usage: npm run test:live[:specimen] -- [exact test name]");
-    }
-    const { args, env } = await liveInvocation(requested);
+// Spawn the tier under its stamp and exit as it exits; the reporter has written the census by then.
+export const runTier = async (kind, { args, env }) => {
+    await mkdir(tierRunPath(env.PLURNK_TIER_RUN), { recursive: true });
     const child = spawn(process.execPath, args, {
         cwd: workspace,
         env: { ...process.env, ...env },
@@ -61,11 +73,19 @@ const main = async () => {
     });
     child.once("exit", (code, signal) => {
         if (signal !== null) {
-            console.error(`live: terminated by ${signal}`);
+            console.error(`${kind}: terminated by ${signal}`);
             process.exit(1);
         }
         process.exit(code ?? 1);
     });
+};
+
+const main = async () => {
+    const [mode, requested, ...extra] = process.argv.slice(2);
+    if (mode !== undefined && (mode !== "--specimen" || requested === undefined || extra.length > 0)) {
+        throw new Error("usage: npm run test:live[:specimen] -- [exact test name]");
+    }
+    await runTier("live", await liveInvocation(requested, stampTierRun("live")));
 };
 
 if (import.meta.main) await main();

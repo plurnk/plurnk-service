@@ -10,9 +10,10 @@
 // stance). Everything funnels through these two so the tier has exactly one path.
 
 import { after } from "node:test";
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { benchmarksRoot } from "../../scripts/test-artifacts.ts";
+import { benchmarksRoot, tierRunPath } from "../../scripts/test-artifacts.ts";
 import { join } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";
@@ -30,7 +31,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { failAfterCleanup } from "./live-failure.ts";
-import { liveTimeoutMs } from "./live-test.ts";
+import { currentSpecimen, type LiveSpecimen, liveTimeoutMs } from "./live-test.ts";
 
 export interface LiveWorkspace {
     daemon: Daemon;
@@ -46,6 +47,7 @@ export interface LiveWorkspace {
 // Every live/demo worker is a self-contained benchmark artifact. The filesystem
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
+// {§tier-census} — under a stamped tier run, every worker lands inside the run's own directory.
 const BENCHMARKS = benchmarksRoot();
 
 // A test-file process owns one extension generation, matching production's long-lived daemon
@@ -55,14 +57,78 @@ const mimetypes = new Mimetypes({ defaultMimetype: "text/markdown" });
 after(async () => { await mimetypes.dispose(); });
 
 const claimRunDir = async (workspace: string): Promise<string> => {
-    await mkdir(BENCHMARKS, { recursive: true });
+    const home = tierRunPath() ?? BENCHMARKS;
+    await mkdir(home, { recursive: true });
     const label = workspace
         .replace(/-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i, "")
         .replace(/[^a-zA-Z0-9._-]+/g, "-")
         .slice(0, 80) || "worker";
-    const dir = await mkdtemp(join(BENCHMARKS, `${label}-`));
+    const dir = await mkdtemp(join(home, `${label}-`));
     await writeFile(join(dir, "workspace"), `${workspace}\n`);
     return dir;
+};
+
+export interface WorkerCensus {
+    readonly specimen: string | null;
+    readonly label: string;
+    readonly runDir: string;
+    readonly loops: number;
+    readonly turns: number;
+    readonly requests: number;
+    readonly tokens: { readonly input: number; readonly output: number };
+    readonly cost: { readonly usd: number; readonly kinds: readonly string[] };
+}
+
+// {§tier-census} — what one worker's digest says it did, named by the specimen that drove it.
+const workerCensus = (runDir: string, label: string, specimen: LiveSpecimen | undefined): WorkerCensus => {
+    type Request = { accounting?: { usage?: { inputTokens?: number; outputTokens?: number }; cost?: { kind?: string; amount?: { amount?: string; currency?: string } } } };
+    const digest = JSON.parse(readFileSync(join(runDir, "digest", "digest.json"), "utf8")) as {
+        loops?: unknown[]; turns?: unknown[]; provider_requests?: Request[];
+    };
+    const requests = digest.provider_requests ?? [];
+    let input = 0;
+    let output = 0;
+    let usd = 0;
+    const kinds = new Set<string>();
+    for (const { accounting } of requests) {
+        input += accounting?.usage?.inputTokens ?? 0;
+        output += accounting?.usage?.outputTokens ?? 0;
+        const cost = accounting?.cost;
+        if (cost?.amount?.currency === "USD" && cost.amount.amount !== undefined) {
+            usd += Number(cost.amount.amount);
+            if (cost.kind !== undefined) kinds.add(cost.kind);
+        }
+    }
+    return {
+        specimen: specimen?.name ?? null, label, runDir,
+        loops: digest.loops?.length ?? 0, turns: digest.turns?.length ?? 0, requests: requests.length,
+        tokens: { input, output }, cost: { usd, kinds: [...kinds].toSorted() },
+    };
+};
+
+export interface LiveRun {
+    readonly runDir: string;
+    readonly dbPath: string;
+    readonly hostPaths: HostPaths;
+    // After the database is closed: the digest, then the worker's census row beside it.
+    finish(): void;
+}
+
+// One worker's run directory: its database path, its own host beside its evidence
+// ({§host-path-layout}: the operator's installed plugins, skills and workspace state neither shape a
+// run nor receive its writes), and the finish that writes its digest and census.
+export const liveRun = async (name: string): Promise<LiveRun> => {
+    const runDir = await claimRunDir(name);
+    const dbPath = join(runDir, "plurnk.db");
+    const hostPaths = new HostPaths({ home: join(runDir, "home"), env: {} });
+    const specimen = currentSpecimen();
+    return {
+        runDir, dbPath, hostPaths,
+        finish: () => {
+            Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") });
+            writeFileSync(join(runDir, "census.json"), `${JSON.stringify(workerCensus(runDir, name, specimen), null, 2)}\n`);
+        },
+    };
 };
 
 // Resolve the active env provider the launcher way (PLURNK_MODEL →
@@ -83,19 +149,16 @@ export const liveProvider = async (): Promise<Provider> => {
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
 export const liveWorkspace = async (opts: { name: string; projectRoot?: string }): Promise<LiveWorkspace> => {
     const provider = await liveProvider();
-    const runDir = await claimRunDir(opts.name);
-    const dbPath = join(runDir, "plurnk.db");
-    const db = await openMigrated(dbPath);
-    // {§host-path-layout} — the run keeps its own host beside its evidence, so the operator's installed
-    // plugins, skills and workspace state neither shape a gate nor receive its writes.
-    const hostPaths = new HostPaths({ home: join(runDir, "home"), env: {} });
-    const daemon = new Daemon({ db, provider, mimetypes, hostPaths });
+    const run = await liveRun(opts.name);
+    const { runDir } = run;
+    const db = await openMigrated(run.dbPath);
+    const daemon = new Daemon({ db, provider, mimetypes, hostPaths: run.hostPaths });
     let ws: SeamSocket | undefined;
     let projectRoot = opts.projectRoot;
     const ownsSandbox = projectRoot === undefined;
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(async () => { if (ownsSandbox && projectRoot !== undefined) await rm(projectRoot, { recursive: true, force: true }); });
-    lifetime.defer(async () => { Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") }); });
+    lifetime.defer(async () => { run.finish(); });
     lifetime.defer(async () => { await db.close(); });
     lifetime.defer(async () => { await daemon.stop(); });
     lifetime.defer(async () => { ws?.close(); });

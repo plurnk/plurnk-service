@@ -5,14 +5,19 @@
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import { initializeDemoRepository } from "./_git.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
 
-// Genuinely ambiguous: the fixture does not say which branch, and no amount of reading will tell it.
-// Nothing in the prompt invites asking; the model has to notice the gap itself.
+// Genuinely ambiguous, and bounded: the project names two maintained release branches and targets
+// neither, and nothing says which is right. Two reads find the gap; no amount of further reading
+// closes it. Nothing in the prompt invites asking; the model has to notice the gap itself.
 const AMBIGUOUS = "Update the project so it targets the right release branch, then tell me what you did.";
+const RELEASES = "# Release branches\n\nMaintained release branches, both receiving fixes:\n\n- release/2.1\n- release/2.2\n";
 
 test("conversation: with nobody to ask, plurnk decides and says what it could not resolve", { timeout: 600_000 }, async (t) => {
     const fixture = await seedDemoFixture("unattended-recovery");
@@ -20,11 +25,17 @@ test("conversation: with nobody to ask, plurnk decides and says what it could no
     lifetime.defer(fixture.cleanup);
     const cleanup = (): Promise<void> => lifetime.disposeAsync();
     try {
+        await writeFile(join(fixture.workspace, "RELEASES.md"), RELEASES);
+        const config = JSON.parse(await readFile(join(fixture.workspace, "src/config.json"), "utf8")) as Record<string, unknown>;
+        await writeFile(join(fixture.workspace, "src/config.json"), `${JSON.stringify({ ...config, targetBranch: "main" }, null, 2)}\n`);
+        initializeDemoRepository(fixture.workspace, "releases");
         const s = await liveWorkspace({ name: `demo-unattended-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         lifetime.defer(s.cleanup);
+        // The ceiling is room, not the contract: a run that decides finishes well inside it, and one
+        // that keeps searching is the failure the story names.
         const loop = await liveLoop(s, 2, {
             prompt: AMBIGUOUS,
-            maxTurns: 8,
+            maxTurns: 16,
         }, { signal: t.signal });
 
         assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
@@ -33,7 +44,7 @@ test("conversation: with nobody to ask, plurnk decides and says what it could no
         assert.ok(loop.lastContent.length > 0, "an answer actually arrives");
         assert.match(
             loop.lastContent,
-            /could not|couldn't|unable|unclear|ambiguous|no one|nobody|assumed|assuming|chose|picked|defaulted/i,
+            /could not|couldn't|unable|unclear|ambiguous|no one|nobody|assumed|assuming|chose|picked|selected|decided|opted|settled on|defaulted/i,
             "and it owns the choice it made instead of stating a guess as fact",
         );
     } catch (error) {

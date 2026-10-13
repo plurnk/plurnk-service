@@ -6,19 +6,23 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindListener, openTestDatabase, SERVICE } from "../intg/_helpers.ts";
+import { bindListener, SERVICE } from "../intg/_helpers.ts";
 
 test("live: the official AG-UI client accepts the complete model response stream", async (t) => {
     const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
     serverProposals(t, "accept");
-    const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { liveProvider, liveRun } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { HttpAgent } = await import("@ag-ui/client");
 
-    const db = await openTestDatabase();
+    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live worker's.
+    const run = await liveRun("live-agui-conformance");
+    const db = await openMigrated(run.dbPath);
     const provider = await liveProvider();
     const http = await bindListener();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http, hostPaths: run.hostPaths });
     await daemon.start();
     const addr = http.httpAddress();
     assert.ok(addr !== undefined);
@@ -44,6 +48,7 @@ test("live: the official AG-UI client accepts the complete model response stream
         await daemon.stop();
         await http.close();
         await db.close();
+        run.finish();
         await rm(sandbox, { recursive: true, force: true });
     }
 });
