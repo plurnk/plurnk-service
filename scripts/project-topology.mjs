@@ -1,3 +1,4 @@
+import { benchmarksRoot } from "./benchmarks-root.mjs";
 import { resolve } from "node:path";
 
 const optionalPath = (value) => {
@@ -18,9 +19,8 @@ export const resolveCandidateTopology = (serviceRoot, env, cwd = process.cwd()) 
     const candidateDir = optionalPath(env.PLURNK_CANDIDATE_DIR);
     return {
         clientRoot: resolveClientCheckout(env, cwd),
-        benchmarks: benchmarks === undefined
-            ? resolve(serviceRoot, "..", "benchmarks")
-            : resolve(cwd, benchmarks),
+        // {§test-artifact-retention} — unset, the one benchmark home; set, the caller's directory resolves it.
+        benchmarks: benchmarks === undefined ? benchmarksRoot(env) : resolve(cwd, benchmarks),
         candidateDir: candidateDir === undefined ? undefined : resolve(cwd, candidateDir),
     };
 };

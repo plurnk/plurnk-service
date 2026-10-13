@@ -365,7 +365,7 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
 test("bin: --help prints usage without booting daemon", async () => {
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "--help"], {
-            env: { ...process.env, HOME: "/tmp/plurnk-help-home", PLURNK_SERVICE_DB_PATH: "/tmp/plurnk-help-test.db", PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
+            env: { ...process.env, HOME: join(tmpdir(), "plurnk-help-home"), PLURNK_SERVICE_DB_PATH: join(tmpdir(), "plurnk-help-test.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
             stdio: ["ignore", "pipe", "pipe"],
         });
         let stdout = "";

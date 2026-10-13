@@ -56,9 +56,12 @@ export const launch = (
             if (counted || !/plurnk-service agui=http:\/\//.test(stdout)) return;
             counted = true;
             void (async () => {
-                const fds = await readdir(`/proc/${child.pid}/fd`);
-                const targets = await Promise.all(fds.map((fd) => readlink(`/proc/${child.pid}/fd/${fd}`).catch(() => "")));
-                dbConnections = targets.filter((target) => target === dbPath).length;
+                // The count is read from procfs where there is one; a host without it reports none.
+                const fds = await readdir(`/proc/${child.pid}/fd`).catch(() => null);
+                if (fds !== null) {
+                    const targets = await Promise.all(fds.map((fd) => readlink(`/proc/${child.pid}/fd/${fd}`).catch(() => "")));
+                    dbConnections = targets.filter((target) => target === dbPath).length;
+                }
                 child.kill("SIGTERM");
             })().catch((error: unknown) => { child.kill("SIGKILL"); void finish(error as Error); });
         });

@@ -6,15 +6,20 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const IGNORED_DIRECTORIES = new Set([".git", ".tmp", "coverage", "dist", "node_modules"]);
 const TEXT_EXTENSIONS = new Set([".cjs", ".js", ".json", ".md", ".mjs", ".sh", ".ts"]);
 const PATH_OWNER = "plurnk-core/src/core/HostPaths.ts";
+// {§test-artifact-retention} — the benchmark home is an evidence location, not a daemon host path,
+// and the candidate launcher ({§candidate-pinned-runtime}) must resolve it without TypeScript: its
+// one resolver forms exactly one path, `~/benchmarks`, and is the one other owner.
+const BENCHMARK_HOME_OWNER = "scripts/benchmarks-root.mjs";
+const OWNERS = new Set([PATH_OWNER, BENCHMARK_HOME_OWNER]);
 
 const isTest = (name) => /(?:^|\/)(?:test|tests)\//u.test(name) || /\.test\.[^.]+$/u.test(name);
 
 export const hostPathViolations = (sources) => {
     const violations = [];
     for (const { name, content } of sources) {
-        if (isTest(name) || name === PATH_OWNER) continue;
+        if (isTest(name) || OWNERS.has(name)) continue;
         if (/\b(?:join|resolve)\(\s*homedir\(\)/u.test(content)) {
-            violations.push(`${name}: reconstructs a host path from homedir() outside ${PATH_OWNER}`);
+            violations.push(`${name}: reconstructs a host path from homedir() outside ${PATH_OWNER} or ${BENCHMARK_HOME_OWNER}`);
         }
     }
     return violations;

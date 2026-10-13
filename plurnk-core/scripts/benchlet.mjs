@@ -16,7 +16,7 @@ if (!existsSync(resolve(benchRoot, "deepswe/benchlet.ts"))) {
     process.exit(2);
 }
 
-const clientRoot = process.env.PLURNK_CLIENT_ROOT ?? resolve(serviceRoot, "../plurnk");
+const clientRoot = process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(serviceRoot, "../plurnk");
 
 const result = spawnSync(process.execPath, [
     "--conditions=plurnk-dev",

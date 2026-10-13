@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import { benchmarksRoot } from "../../scripts/benchmarks-root.mjs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import {
     aggregateProviderAccounting,
@@ -261,12 +262,8 @@ const invokeRoute = async (route, env, sensitiveValues) => {
     }
 };
 
-const artifactRoot = (env) => {
-    const configured = env.PLURNK_BENCHMARKS?.trim();
-    return configured === undefined || configured.length === 0
-        ? resolve(import.meta.dirname, "../../../..", "benchmarks")
-        : resolve(process.cwd(), configured);
-};
+// {§test-artifact-retention} — the one benchmark home, resolved by the one resolver.
+const artifactRoot = (env) => benchmarksRoot(env);
 
 const formatCost = (costUsd) => costUsd === null ? "unknown" : `${costUsd} USD`;
 

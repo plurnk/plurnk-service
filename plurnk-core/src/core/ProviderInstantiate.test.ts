@@ -1,7 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer, type AddressInfo } from "node:net";
 import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+
+// A loopback port the kernel just handed out and this process released: closed, by evidence.
+const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+        const { port } = server.address() as AddressInfo;
+        server.close(() => resolve(port));
+    });
+});
 
 test("{§observability-genai-conventions} provider identity is independent of its configuration alias", () => {
     for (const alias of [undefined, "potato"]) {
@@ -28,18 +39,20 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
         hit.push(String(u));
         return (realFetch as (...a: unknown[]) => Promise<Response>)(u, ...rest);
     }) as typeof fetch;
+    // Both endpoints are ports this process bound and released a moment ago, so each is closed by
+    // evidence rather than by assumption — we assert routing, not a live response, so the probe's
+    // connection failure is expected and irrelevant.
+    const [aliasPort, ambientPort] = await Promise.all([releasedPort(), releasedPort()]);
     try {
-        // Both endpoints are dead ports — we assert routing, not a live response, so
-        // the probe's connection failure is expected and irrelevant.
         await ProviderInstantiate.instantiateProvider(
-            { alias: "probe", provider: "openai", model: "m", baseUrl: "http://127.0.0.1:59731/v1" },
-            { ...process.env, OPENAI_BASE_URL: "http://127.0.0.1:59732", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500" },
+            { alias: "probe", provider: "openai", model: "m", baseUrl: `http://127.0.0.1:${aliasPort}/v1` },
+            { ...process.env, OPENAI_BASE_URL: `http://127.0.0.1:${ambientPort}`, PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500" },
         ).catch(() => {});
     } finally {
         globalThis.fetch = realFetch;
     }
-    assert.ok(hit.some((u) => u.startsWith("http://127.0.0.1:59731")), `probe must use alias.baseUrl; hit: ${hit.join(", ")}`);
-    assert.ok(!hit.some((u) => u.startsWith("http://127.0.0.1:59732")), `probe must NOT fall through to OPENAI_BASE_URL; hit: ${hit.join(", ")}`);
+    assert.ok(hit.some((u) => u.startsWith(`http://127.0.0.1:${aliasPort}`)), `probe must use alias.baseUrl; hit: ${hit.join(", ")}`);
+    assert.ok(!hit.some((u) => u.startsWith(`http://127.0.0.1:${ambientPort}`)), `probe must NOT fall through to OPENAI_BASE_URL; hit: ${hit.join(", ")}`);
 });
 
 test("an alias-scoped provider knob binds at construction — the per-alias CONTEXT_WINDOW pin is promoted, not dropped", async () => {

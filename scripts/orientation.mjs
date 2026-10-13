@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { benchmarksRoot as artifactHome } from "./benchmarks-root.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import {
     appendFileSync,
@@ -31,7 +32,7 @@ if (!clientCheckout) {
     throw new Error("PLURNK_CLIENT_CHECKOUT must name the outside open-client checkout");
 }
 const clientRoot = resolve(clientCheckout);
-const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "benchmarks"));
+const benchmarksRoot = artifactHome();
 const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
 if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();

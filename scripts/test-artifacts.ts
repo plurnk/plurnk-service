@@ -1,16 +1,13 @@
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
+import { join } from "node:path";
+import { benchmarksRoot } from "./benchmarks-root.mjs";
 
 // {§test-artifact-retention} — one home for every harness. A live worker, a benchlet run and an
 // integration suite all write a self-contained directory under PLURNK_BENCHMARKS: the database is
 // born where it lives, and nothing counts, reuses, moves, hides or conditionally sweeps it. The
-// checkout holds source; it never holds run output. This is the one resolver of that home: a blank
-// value is unset, `~` expands, and a relative value is the working directory's.
-export const benchmarksRoot = (env: NodeJS.ProcessEnv = process.env): string => {
-    const configured = env.PLURNK_BENCHMARKS?.trim();
-    return resolve(new HostPaths().expandUserPath(configured === undefined || configured.length === 0 ? "~/benchmarks" : configured));
-};
+// checkout holds source; it never holds run output. The home itself is resolved once, in
+// benchmarks-root.mjs, and re-exported here for the TypeScript harnesses.
+export { benchmarksRoot };
 
 // One directory per suite run. The runner stamps PLURNK_TEST_RUN once and every test process
 // inherits it, so a lane's databases land together without a pretest step, a marker file or a

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -41,7 +42,7 @@ test("conformance's sibling default applies only when no client checkout is supp
     }
 });
 
-test("candidate topology defaults artifacts to the shared benchmark tree", () => {
+test("candidate topology defaults artifacts to the one benchmark home", () => {
     assert.deepEqual(
         resolveCandidateTopology(serviceRoot, {
             PLURNK_CLIENT_CHECKOUT: "../client",
@@ -50,7 +51,8 @@ test("candidate topology defaults artifacts to the shared benchmark tree", () =>
         }, cwd),
         {
             clientRoot: resolve(cwd, "../client"),
-            benchmarks: "/open/benchmarks",
+            // {§test-artifact-retention} — the one benchmark home, as every harness resolves it.
+            benchmarks: resolve(homedir(), "benchmarks"),
             candidateDir: undefined,
         },
     );
