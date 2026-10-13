@@ -792,9 +792,8 @@ cascade, so the shipped posture is authenticated: the empty value that means *no
 operator's deliberate choice, never a default, and then no authorization server is served and
 every request is admitted as `anonymous`. This is the perimeter because a daemon is one trust
 domain and on loopback the operator's browser is inside it — any page they visit can reach the
-port, and only the credential tells the two apart. For this one landing (#1115) the secret presented
-directly as the bearer is still admitted, as `anonymous`, while the terminal client moves to client
-credentials; the next landing retires that admission.
+port, and only the credential tells the two apart. The secret itself is never a bearer: presented
+directly, it is an unknown token.
 
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and

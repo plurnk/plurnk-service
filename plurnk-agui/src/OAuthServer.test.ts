@@ -145,8 +145,7 @@ test("{§agui-oauth-clients} the operator's secret is a client secret: client_cr
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
             await pinged(mod.base, { authorization: `Bearer ${body.access_token}` });
         }
-        // Transitional (#1115): the secret presented directly, until the terminal client exchanges it.
-        await pinged(mod.base, { authorization: "Bearer s3cret" });
+        assert.match((await refused(mod.base, { authorization: "Bearer s3cret" })).type, /\/bearer-token-invalid$/u, "the secret itself is never a bearer");
         const wrong = await fetch(`${mod.base}/oauth/token`, { ...form({ grant_type: "client_credentials" }), headers: { "content-type": "application/x-www-form-urlencoded", ...basic("operator", "nope") } });
         assert.equal(wrong.status, 401);
         assert.equal(wrong.headers.get("www-authenticate"), 'Basic realm="plurnk"');
@@ -270,7 +269,8 @@ test("{§agui-oauth-login} a bad client or redirect is told to the person; a mal
         const page = await fetch(`${unconfigured.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: "http://127.0.0.1:4000/callback", response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" })}`);
         assert.equal(page.status, 503);
         assert.match(await page.text(), /PLURNK_AGUI_USER.*PLURNK_AGUI_PASSWORD/su);
-        await pinged(unconfigured.base, { authorization: "Bearer s3cret" });
+        const minted = await json<{ access_token: string }>(await fetch(`${unconfigured.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
+        await pinged(unconfigured.base, { authorization: `Bearer ${minted.access_token}` });
     } finally { await unconfigured.close(); }
 });
 

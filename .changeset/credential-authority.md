@@ -14,6 +14,5 @@ RFC 6750 challenges and names the credential's subject as the run's
 principal; a revoked credential ends the streams admitted under it and
 cancels no loop. `PLURNK_AGUI_TOKEN` is `PLURNK_AGUI_SECRET`, the operator's
 client secret, which a fresh install mints; `PLURNK_AGUI_USER` and
-`PLURNK_AGUI_PASSWORD` sign the operator in from a browser. For this landing
-the secret presented directly as a bearer is still admitted while the
-terminal client moves to client credentials.
+`PLURNK_AGUI_PASSWORD` sign the operator in from a browser. The secret itself
+is never a bearer: a client exchanges it for an access token.

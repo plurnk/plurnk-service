@@ -2644,6 +2644,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
         },
     });
     const base = `http://127.0.0.1:${mod.address().port}`;
+    const access = await mintAccess(mod.address().port, { id: "operator", secret: "expected" });
     const problem = async (path: string, init: RequestInit): Promise<Record<string, unknown>> => {
         const response = await fetch(`${base}${path}`, init);
         assert.equal(response.headers.get("content-type"), "application/problem+json");
@@ -2659,7 +2660,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
 
         const invalidJson = await problem("/agui", {
             method: "POST",
-            headers: { authorization: "Bearer expected", "content-type": "application/json" },
+            headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
             body: "{",
         });
         assert.equal(invalidJson.type, "https://problems.plurnk.xyz/agui/http/invalid-json");
@@ -2668,7 +2669,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
 
         const invalidInput = await problem("/agui", {
             method: "POST",
-            headers: { authorization: "Bearer expected", "content-type": "application/json" },
+            headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
             body: "{}",
         });
         assert.equal(invalidInput.type, "https://problems.plurnk.xyz/agui/http/invalid-run-input");
@@ -2676,7 +2677,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
 
         const missingRoute = await problem("/agui/missing", {
             method: "GET",
-            headers: { authorization: "Bearer expected" },
+            headers: { authorization: `Bearer ${access}` },
         });
         assert.equal(missingRoute.type, "https://problems.plurnk.xyz/agui/http/route-not-found");
         assert.equal(missingRoute.path, "/agui/missing");
@@ -3355,7 +3356,7 @@ const mintAccess = async (port: number, client: { id: string; secret: string }):
     return body.access_token!;
 };
 
-test("{§agui-run-source} the principal is the credential's subject: the operator, a declared client, or nobody", async () => {
+test("{§agui-run-source} the principal is the credential's subject: the operator or a declared client", async () => {
     const { seam } = mockSeam();
     const sources: string[] = [];
     const mod = await host(seam, { env: {
@@ -3380,11 +3381,9 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
         };
         await prompt(`Bearer ${await mintAccess(port, { id: "operator", secret: "s3cret" })}`);
         await prompt(`Bearer ${await mintAccess(port, { id: "agent", secret: "agent-secret" })}`);
-        await prompt("Bearer s3cret");
         assert.deepEqual(sources.map((source) => source.replace(/\/messages\/.*$/u, "")), [
             "agui://operator/threads/agui-t",
             "agui://agent/threads/agui-t",
-            "agui://anonymous/threads/agui-t",
         ]);
     } finally { await mod.close(); }
 });

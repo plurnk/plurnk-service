@@ -417,6 +417,8 @@ try {
     )).href);
     const aguiToken = await seededToken();
     const credential = () => ({ aguiUrl: `http://127.0.0.1:${port}/agui`, credential: new Credential(aguiToken) });
+    // One access token for a raw request, minted the way the client mints its own.
+    const bearer = async () => (await new Credential(aguiToken).headers(`http://127.0.0.1:${port}/agui`)).authorization;
     const terminal = new AguiTransport(credential(), world, { workspace: world });
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
@@ -507,7 +509,7 @@ try {
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({
         host: "127.0.0.1", port, method: "POST", path: "/agui",
-        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: `Bearer ${aguiToken}` },
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: await bearer() },
     });
     const disconnected = new Promise((accept) => unfinished.on("error", accept));
     try {

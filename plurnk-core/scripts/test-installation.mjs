@@ -187,22 +187,38 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
-// {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so the
-// probe presents it exactly as a real client does. Reading it here also proves the perimeter is on:
-// without the header these calls would be refused.
-const seededToken = () => {
+// {§agui-http-authorization} {§agui-oauth-clients} — a fresh install mints the operator's client secret
+// into the operator file, and the probe exchanges it for an access token exactly as a real client does.
+// Reading it here also proves the perimeter is on: without the header these calls would be refused.
+const seededSecret = () => {
     const file = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env");
     if (!existsSync(file)) return "";
     return /^PLURNK_AGUI_SECRET=(.*)$/m.exec(readFileSync(file, "utf8"))?.[1]?.trim() ?? "";
 };
+const accessTokens = new Map();
+const accessToken = async (address, secret) => {
+    const origin = new URL(address).origin;
+    const key = `${origin} ${secret}`;
+    if (!accessTokens.has(key)) {
+        const response = await fetch(`${origin}/oauth/token`, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ grant_type: "client_credentials", client_id: "operator", client_secret: secret, scope: "agui" }).toString(),
+        });
+        const body = await response.json();
+        if (!response.ok || typeof body.access_token !== "string") throw new Error(`the installed daemon refused the seeded secret: ${JSON.stringify(body)}`);
+        accessTokens.set(key, body.access_token);
+    }
+    return accessTokens.get(key);
+};
 
 const aguiRun = async (address, plurnk, extra = {}) => {
-    const token = seededToken();
+    const secret = seededSecret();
     const response = await fetch(address, {
         method: "POST",
         headers: {
             "content-type": "application/json",
-            ...(token.length === 0 ? {} : { authorization: `Bearer ${token}` }),
+            ...(secret.length === 0 ? {} : { authorization: `Bearer ${await accessToken(address, secret)}` }),
         },
         body: JSON.stringify({
             runId: crypto.randomUUID(),

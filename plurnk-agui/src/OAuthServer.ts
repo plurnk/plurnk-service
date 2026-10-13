@@ -178,9 +178,6 @@ export default class OAuthServer {
             };
         }
         const token = (presented[1] ?? "").trim();
-        // Transitional (#1115, retired in the next landing): the operator's secret presented directly is
-        // admitted as it was before the authority existed, naming nobody.
-        if (token.length > 0 && same(token, this.#opts.secret)) return { ok: true, principal: "anonymous", family: null };
         const claims = this.#credentials.verify(token);
         if (claims === null || claims.kind !== "access") {
             return {
