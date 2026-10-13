@@ -3438,13 +3438,24 @@ inventory; allocation never rewrites the submitted operation's target.
 
 §workspace-name **A workspace's name is an opaque handle; its identity is its id; its folder is a
 separate fact.** A name is a unique non-empty string compared by exact bytes, the same comparison for
-creation, rename and lookup; nothing in it is normalized, restricted or decoded, and it authorizes
-nothing: only `projectRoot` selects a folder, and a workspace may have none. Rename
+creation, rename and lookup; nothing in it is normalized or decoded, and it authorizes
+nothing: only `projectRoot` selects a folder, and a workspace may have none. Admission, at creation
+and rename, refuses exactly two spellings as `name-invalid` (400), because a name is embedded in
+paths a URL parser reads and neither survives one: text that is not well-formed Unicode (an unpaired
+surrogate has no encoding), and a name with a slash-delimited segment that is exactly `.` or `..`
+(a parser resolves it away, encoded or not). Neither is repaired or resolved. Every other spelling
+is admitted as written: spaces, Unicode, `~`, `@`, `%` and a literal `%2E%2E`, query and fragment
+punctuation, and a dot within a segment (`.config`, `file.txt`, `...`). A refused rename changes
+nothing. Admission governs new names only: a workspace already carrying a refused spelling keeps it,
+its id, its folder and its workers, stays listed and attachable, and is renamed like any other. Rename
 ({§methods-workspace-rename}) changes the name alone; `listWorkspaces` is the lookup. With a project
 root and no name, `workspace.create` names the world after the root, the root's path with the daemon's
 home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the
 workspace of that name when one exists instead of creating a second, so two default launches on the
-same project and daemon share one world and a concurrent pair resolves to one. The default is a
+same project and daemon share one world and a concurrent pair resolves to one. The root is resolved
+before it is named, so a root spelled with `.` or `..` components derives the name of the folder it
+reaches and no default is ever refused; a root that is not well-formed Unicode is
+`project-root-invalid` (400), since it names no folder. The default is a
 convention, not a mapping: a renamed world is not re-selected by its old default, and a world may
 carry any name over any folder. An explicit name that exists is `409 name-conflict`, never a
 selection.
@@ -4963,7 +4974,7 @@ Core's behavior behind them.
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
-| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name; workers, log, and membership remain intact. |
+| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, clientWorkerId, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as the client's own operations in `clientWorkerId` ({§rollback}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity and derivation progress. |
@@ -6642,6 +6653,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the worker's owner would not receive ({§owner-interaction-ring}) |
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
+| name '*name*' has the path segment '*segment*'. Recovery: Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary. / name is not well-formed Unicode: it holds an unpaired surrogate. | a workspace name refused at creation or rename ({§workspace-name}) |
 | The stream was cancelled by KILL. | a stream terminal after KILL |
 | '*runtime*' exited with code 127; `*program*` is a registered tool of `*owner*`. | a tool run as a shell command ({§exec-tool-fall-through}) |
 | '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |

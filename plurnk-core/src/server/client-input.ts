@@ -66,6 +66,15 @@ export default class ClientInput {
                 { field: "projectRoot", recovery: "Provide an absolute project path or null." },
             );
         }
+        // A lone surrogate has no UTF-8 spelling: the filesystem would be asked for a different folder.
+        if (!root.isWellFormed()) {
+            ClientInput.#invalid(
+                context,
+                "project-root-invalid",
+                "projectRoot is not well-formed Unicode: it holds an unpaired surrogate.",
+                { field: "projectRoot", recovery: "Provide an absolute project path of well-formed Unicode." },
+            );
+        }
         if (!isAbsolute(root)) {
             ClientInput.#invalid(
                 context,
@@ -88,6 +97,33 @@ export default class ClientInput {
             );
         }
         return value;
+    }
+
+    // {§workspace-name} — admission, at creation and rename. A name is embedded in paths a URL parser
+    // reads, so two spellings no path can carry are refused, never repaired: text with no Unicode
+    // encoding, and a slash-delimited segment that is exactly `.` or `..`. Nothing is decoded: a
+    // literal `%2E%2E` is ordinary text, and a dot inside a segment (`.config`, `file.txt`) is ordinary.
+    static assertOptionalWorkspaceName(context: string, field: string, value: unknown): string | undefined {
+        const name = ClientInput.assertOptionalName(context, field, value);
+        if (name === undefined) return undefined;
+        if (!name.isWellFormed()) {
+            ClientInput.#invalid(
+                context,
+                "name-invalid",
+                `${field} is not well-formed Unicode: it holds an unpaired surrogate.`,
+                { field, recovery: `Provide a ${field} of well-formed Unicode.` },
+            );
+        }
+        const segment = name.split("/").find((part) => part === "." || part === "..");
+        if (segment !== undefined) {
+            ClientInput.#invalid(
+                context,
+                "name-invalid",
+                `${field} '${name}' has the path segment '${segment}'.`,
+                { field, value: name, segment, recovery: `Provide a ${field} with no '.' or '..' between its slashes; a dot within a segment is ordinary.` },
+            );
+        }
+        return name;
     }
 
     static assertOptionalWorkerName(context: string, field: string, value: unknown): string | undefined {

@@ -843,6 +843,102 @@ test("{§workspace-name} a folderless world is created, listed, renamed and atta
     });
 });
 
+// {§workspace-name} — the admission matrix: every refused spelling at creation and at rename, every
+// retained spelling by exact identity, the default derivation, and a workspace that predates the rule.
+const REFUSED_SEGMENTS: ReadonlyArray<readonly [name: string, segment: string]> = [
+    [".", "."], ["..", ".."], ["a/../b", ".."], ["a/./b", "."], ["../x", ".."], ["x/..", ".."], ["./x", "."], ["x/.", "."],
+    ["~/ptl/../etc", ".."], ["/abs/./path", "."],
+];
+const ILL_FORMED = [String.fromCharCode(0xd800), `lead${String.fromCharCode(0xdc00)}`, `mid${String.fromCharCode(0xd83d)}tail`];
+const RETAINED = [
+    "~/ptl/project", "/abs/path", "plain", "with space", "ünïcödé/名前", "😀/emoji", "a@b", "100%", "100%25", "%2E%2E", "a/%2E%2E/b", "%2F",
+    ".config", "file.txt", "...", "a/.../b", "..x", "x..", ".x/y.", "q?x=1#frag", "back\\slash", "trailing/", "/", "a//b", "~", "a~b",
+];
+const nameInvalid = (detail: RegExp) => (error: unknown): boolean =>
+    error instanceof OperationFailureError && error.result.status === 400
+    && /\/daemon\/input\/name-invalid$/u.test(error.result.problem?.type ?? "") && detail.test(error.result.problem?.detail ?? "");
+
+test("{§workspace-name} creation and rename refuse a '.' or '..' segment and ill-formed Unicode as name-invalid; a refusal creates and renames nothing", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const standing = await daemon.createWorkspace({ name: "standing" });
+        for (const [name, segment] of REFUSED_SEGMENTS) {
+            const refusal = nameInvalid(new RegExp(`^name '.*' has the path segment '${segment.replaceAll(".", "\\.")}'\\.$`, "u"));
+            await assert.rejects(daemon.createWorkspace({ name }), refusal, `create ${JSON.stringify(name)}`);
+            await assert.rejects(daemon.renameWorkspace(standing.workspaceId, name), refusal, `rename to ${JSON.stringify(name)}`);
+        }
+        for (const name of ILL_FORMED) {
+            const refusal = nameInvalid(/^name is not well-formed Unicode: it holds an unpaired surrogate\.$/u);
+            await assert.rejects(daemon.createWorkspace({ name }), refusal, "create with an unpaired surrogate");
+            await assert.rejects(daemon.renameWorkspace(standing.workspaceId, name), refusal, "rename to an unpaired surrogate");
+        }
+        assert.deepEqual((await daemon.listWorkspaces()).map(({ id, name }) => ({ id, name })), [{ id: standing.workspaceId, name: "standing" }],
+            "no refused creation made a world, and no refused rename changed the name");
+        const refused = await daemon.createWorkspace({ name: "a/../b" }).catch((error: unknown) => error);
+        assert.ok(refused instanceof OperationFailureError);
+        assert.equal(refused.result.problem?.recovery, "Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary.");
+        assert.equal(refused.result.problem?.segment, "..");
+        assert.equal(refused.result.problem?.retryable, false);
+    });
+});
+
+test("{§workspace-name} every other spelling is admitted as written at creation and at rename: no repair, no decoding, no collapse", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const created = new Map<number, string>();
+        for (const name of RETAINED) {
+            const world = await daemon.createWorkspace({ name });
+            assert.equal(world.workspaceName, name, `create keeps ${JSON.stringify(name)} exactly`);
+            created.set(world.workspaceId, name);
+        }
+        const listed = new Map((await daemon.listWorkspaces()).map(({ id, name }) => [id, name]));
+        assert.deepEqual([...listed.entries()].toSorted(([a], [b]) => a - b), [...created.entries()].toSorted(([a], [b]) => a - b),
+            "each name is stored as written and none collapsed into another");
+        assert.equal(new Set(RETAINED).size, listed.size, "a literal %2E%2E, %2F and 100%25 stay distinct from what they would decode to");
+        const carrier = await daemon.createWorkspace({ name: "carrier" });
+        for (const name of RETAINED) {
+            const target = `renamed ${name}`;
+            assert.equal((await daemon.renameWorkspace(carrier.workspaceId, target)).name, target, `rename keeps ${JSON.stringify(target)} exactly`);
+        }
+    });
+});
+
+test("{§workspace-name} a root spelled with '.' or '..' derives the name of the folder it reaches; an ill-formed root is project-root-invalid", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const home = new HostPaths().home;
+        const inside = await mkdtemp(join(home, "dotted-"));
+        try {
+            const plain = await daemon.createWorkspace({ projectRoot: inside });
+            assert.equal(plain.workspaceName, `~/${basename(inside)}`);
+            for (const spelling of [`${inside}/.`, `${inside}/sub/..`, `${home}/./${basename(inside)}`, `${inside}/../${basename(inside)}`]) {
+                const selected = await daemon.createWorkspace({ projectRoot: spelling });
+                assert.equal(selected.workspaceId, plain.workspaceId, `${spelling} selects the folder's world`);
+                assert.equal(selected.workspaceName, plain.workspaceName, "and no dot segment reaches the name");
+            }
+            await assert.rejects(daemon.createWorkspace({ projectRoot: `${inside}/${String.fromCharCode(0xd800)}` }), (error: unknown) =>
+                error instanceof OperationFailureError && error.result.status === 400
+                && /\/project-root-invalid$/u.test(error.result.problem?.type ?? "")
+                && error.result.problem?.detail === "projectRoot is not well-formed Unicode: it holds an unpaired surrogate.");
+            assert.equal((await daemon.listWorkspaces()).length, 1, "the refused root made no world");
+        } finally { await rm(inside, { recursive: true, force: true }); }
+    });
+});
+
+test("{§workspace-name} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and workers", async () => {
+    await withDaemon(null, async (db, daemon) => {
+        const legacyId = await insertWorkspace(db, "old/../name");
+        const { workerId } = await daemon.createConversationWorker({ workspaceId: legacyId, name: "kept" });
+        assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === legacyId)?.name, "old/../name", "enumeration hides nothing");
+        const attached = await daemon.attachWorkspace({ workspaceId: legacyId });
+        assert.equal(attached.workspaceName, "old/../name", "it is attached under the name it carries");
+        await assert.rejects(daemon.renameWorkspace(legacyId, "still/./refused"), nameInvalid(/has the path segment '\.'/u));
+        assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === legacyId)?.name, "old/../name", "the refused rename changed nothing");
+        const renamed = await daemon.renameWorkspace(legacyId, "old/name");
+        assert.deepEqual(renamed, { id: legacyId, name: "old/name" }, "the same world under an admitted name");
+        const after = await daemon.attachWorkspace({ workspaceId: legacyId });
+        assert.equal(after.projectRoot, attached.projectRoot, "its folder is untouched");
+        assert.ok((await daemon.listWorkers(legacyId)).some(({ id }) => id === workerId), "its workers are kept");
+    });
+});
+
 test("workspace.create on an already-attached connection re-binds in place (no reject)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

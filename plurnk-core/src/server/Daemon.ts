@@ -1315,7 +1315,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
         // The seam fails hard on malformed semantic input so every module inherits one wall:
         // the settings bag ({§operator-config-workspace-settings}) and absolute projectRoot.
-        const explicit = ClientInput.assertOptionalName("workspace.create", "name", args.name);
+        const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
         // {§workspace-name} — with a project root and no name, the world is named after the root with
@@ -1407,8 +1407,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     async renameWorkspace(workspaceId: number, name: string): Promise<{ id: number; name: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.rename", "workspaceId", workspaceId);
-        const checkedName = ClientInput.assertOptionalName("workspace.rename", "name", name);
-        if (checkedName === undefined) throw new Error("ClientInput.assertOptionalName accepted a required name as undefined");
+        const checkedName = ClientInput.assertOptionalWorkspaceName("workspace.rename", "name", name);
+        if (checkedName === undefined) throw new Error("ClientInput.assertOptionalWorkspaceName accepted a required name as undefined");
         return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
     }
 
