@@ -9,6 +9,7 @@ import EventRouter from "./EventRouter.ts";
 import { aliveChildren, descendantsState, stateDelta, type AguiDescendantsState } from "./AguiPlus.ts";
 import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
+import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import type { TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
@@ -104,6 +105,7 @@ export default class Portal {
     #continuations = new Map<string, PresentedInterrupt>();
     #deliveryTails = new Map<number, Promise<void>>();
     #off: (() => void) | null = null;
+    #stopped = false;
 
     constructor(seam: PortalPort) {
         this.#seam = seam;
@@ -304,10 +306,18 @@ export default class Portal {
     }
 
     stop(): void {
+        if (this.#stopped) return;
+        this.#stopped = true;
         this.#hitl.stop();
         this.#off?.();
         this.#off = null;
         this.#continuations.clear();
+        // {§agui-shutdown} Module close follows core settlement; remaining Runs are
+        // transport lifetimes, not unfinished worker obligations to await again.
+        for (const threads of this.#threads.values()) {
+            for (const thread of threads) this.failThread(thread, runErrorEvents(serviceStoppingProblem()));
+        }
+        this.#threads.clear();
     }
 
     #emitDelivery(
@@ -451,6 +461,7 @@ export default class Portal {
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+        if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
         const first = candidates[0];

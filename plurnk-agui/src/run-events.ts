@@ -9,6 +9,11 @@ export const httpProblem = (
     extensions: Readonly<Record<string, unknown>> = {},
 ): ProblemDetails => Problems.create("agui:http", code, status, detail, extensions);
 
+export const serviceStoppingProblem = (): ProblemDetails => httpProblem(
+    "service-stopping", 503, "The PLURNK service is shutting down.",
+    { stage: "shutdown", retryable: true },
+);
+
 export const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
     { type: EventType.CUSTOM, name: "plurnk.problem", value: problem },
     { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },

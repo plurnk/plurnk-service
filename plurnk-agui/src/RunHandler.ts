@@ -156,13 +156,8 @@ export default class RunHandler {
             }
         }
 
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
         const interrupts: Interrupt[] = [];
-        // {§agui-configuration}: long generations can emit no events; SSE comments keep
-        // consumers fed without adding protocol events.
-        const cadence = this.#opts().heartbeatMs;
-        const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
         const finish = (): void => {
             if (finished) return;
             finished = true;
@@ -171,6 +166,7 @@ export default class RunHandler {
             res.end();
         };
         const emit = (events: AguiEvent[]): void => {
+            if (finished) return;
             for (const e of events) {
                 res.write(`data: ${JSON.stringify(e)}\n\n`);
                 // Terminate-resume, the terminate half: a stopped-world tool call
@@ -215,6 +211,12 @@ export default class RunHandler {
             cancelOnDisconnect: prompt !== null || notificationScope === "operation",
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
+        // {§agui-shutdown} Acquire the Run before committing headers or a heartbeat:
+        // preparation may have crossed module closure.
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
+        // {§agui-configuration} SSE comments keep quiet generations connected.
+        const cadence = this.#opts().heartbeatMs;
+        const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
         // {§agui-run-disconnect} Install once, before any asynchronous preparation.
         const disconnected = (): void => {
             if (finished) return;

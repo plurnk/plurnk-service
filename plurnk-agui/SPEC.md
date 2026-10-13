@@ -114,6 +114,14 @@ child gates, is delivered without client polling or fabricated prompts. A termin
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
 This is the transport implementation of the AG-UI `connect()` extension, not another event protocol.
 
+§agui-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new
+requests while admitted Runs retain terminal-event delivery. In `close`, after core
+settlement ({§module-shutdown-order}), each still-open Run receives `service-stopping`
+as `CUSTOM plurnk.problem` and `RUN_ERROR`, then its response and heartbeat end. This
+ends the transport Run, not a worker obligation. Already-ended Runs receive nothing
+further; repeated closure is inert. Preparation finishing after closure cannot open
+a new stream. Clients need not disconnect for the daemon to stop.
+
 ## §agui-projection The projection
 
 One accepted Run or daemon notification produces zero-or-more AG-UI events:

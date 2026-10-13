@@ -358,6 +358,79 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
     } finally { await mod.close(); }
 });
 
+test("{§agui-shutdown} close ends every idle connection without cancelling workers", async () => {
+    const { seam } = mockSeam();
+    const cancellations: number[] = [];
+    seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
+    const mod = await host(seam);
+    const controllers = Array.from({ length: 3 }, () => new AbortController());
+    let closing: Promise<void> | undefined;
+    try {
+        const streams = await Promise.all(controllers.map(async (controller, index) => {
+            const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui/connect`, {
+                method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+                body: JSON.stringify(standardInput({ threadId: `idle-${index}`, messages: [],
+                    forwardedProps: { plurnk: { workspace: "w" } } })),
+            });
+            assert.equal(response.status, 200);
+            return response;
+        }));
+        mod.stop();
+        const bodies = Promise.all(streams.map((response) => response.text()));
+        closing = mod.close();
+        await waitForFixture(Promise.all([closing, bodies]).then(() => {}), () => "idle client streams prevented module/listener closure");
+        for (const body of await bodies) {
+            const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+            assert.equal(events.filter(({ type }) => type === "RUN_STARTED").length, 1);
+            assert.equal(events.filter(({ type }) => type === "RUN_ERROR").length, 1);
+            const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
+            assert.equal(problem?.type, "CUSTOM");
+            if (problem?.type === "CUSTOM") {
+                assert.equal(problem.value.type, "https://problems.plurnk.xyz/agui/http/service-stopping");
+                assert.equal(problem.value.status, 503);
+            }
+            assert.equal(events.at(-1)?.type, "RUN_ERROR");
+            assert.ok(!events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
+        }
+        assert.deepEqual(cancellations, []);
+        mod.module.close();
+    } finally {
+        controllers.forEach((controller) => controller.abort());
+        await (closing ?? mod.close());
+    }
+});
+
+test("{§agui-shutdown} preparation finishing after close cannot open a stream", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    seam.createConversationWorker = async () => {
+        entered.resolve();
+        await release.promise;
+        return { workerId: 77, workerName: "late" };
+    };
+    const mod = await host(seam);
+    const controller = new AbortController();
+    try {
+        const response = fetch(`http://127.0.0.1:${mod.address().port}/agui/connect`, {
+            method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
+            body: JSON.stringify(standardInput({ threadId: "late", messages: [],
+                forwardedProps: { plurnk: { workspace: "w" } } })),
+        });
+        await entered.promise;
+        mod.module.close();
+        release.resolve();
+        const res = await response;
+        assert.equal(res.status, 503);
+        assert.equal((await res.json()).type, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        assert.deepEqual(loopRuns, []);
+    } finally {
+        release.resolve();
+        controller.abort();
+        await mod.close();
+    }
+});
+
 test("{§agui-stream-producer} workspace stream notifications route to their producing worker's AG-UI Run", async () => {
     const { seam, emit } = mockSeam();
     const firstRun = Promise.withResolvers<void>();

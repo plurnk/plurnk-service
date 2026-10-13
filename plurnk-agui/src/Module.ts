@@ -23,7 +23,7 @@ import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } fro
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort } from "./BuiltinActions.ts";
-import { httpProblem, runErrorEvents } from "./run-events.ts";
+import { httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import RunHandler, { type RunPort } from "./RunHandler.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
@@ -178,12 +178,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.#stopped) {
-            writeHttpProblem(res, httpProblem(
-                "service-stopping",
-                503,
-                "The PLURNK service is shutting down and no longer accepts requests.",
-                { stage: "shutdown", retryable: true },
-            ));
+            writeHttpProblem(res, serviceStoppingProblem());
             return;
         }
         return observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.

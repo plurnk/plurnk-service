@@ -153,6 +153,25 @@ const mockSeam = (
 
 const nextTask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
+test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and rejects new binding", () => {
+    const m = mockSeam();
+    const portal = new Portal(m.seam);
+    portal.start();
+    const events: AguiEvent[] = [];
+    const args = { workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation" as const,
+        emit: (batch: AguiEvent[]) => events.push(...batch) };
+    const thread = portal.openThread(args);
+    m.fire(3, "stream/event", streamEvent({ entryId: 5, workerId: 10, target: "sh:///abcd1234", scheme: "sh", contentLength: 5 }));
+    portal.finishThread(thread, []);
+    assert.ok(!events.some(({ type }) => type === "RUN_FINISHED"));
+    portal.stop();
+    portal.stop();
+    assert.equal(events.filter(({ type }) => type === "RUN_ERROR").length, 1);
+    assert.equal(events.at(-1)?.type, "RUN_ERROR");
+    assert.equal(m.cancelled(), null);
+    assert.throws(() => portal.openThread(args), /The PLURNK service is shutting down/u);
+});
+
 test("{§agui-worker-owner}: an action gate stays on its exact Run rather than interrupting its owner's conversation too", async () => {
     const m = mockSeam([], [], { workers: [worker(10), worker(20), worker(30)] });
     const conversation: AguiEvent[] = [];
