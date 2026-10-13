@@ -827,7 +827,9 @@ directly, it is an unknown token.
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and
 `authorization` request headers; an empty value sends neither header, so no
-browser page can read a reply. CORS narrows which pages may *read*; it does
+page of another origin can read a reply, while a page the daemon itself serves
+reads its own origin's replies as any same-origin page does. CORS narrows which
+other origins' pages may *read*; it does
 not authenticate a request and is no substitute for the bearer
 ({§agui-http-authorization}). A preflight is answered `204` before
 authorization.
