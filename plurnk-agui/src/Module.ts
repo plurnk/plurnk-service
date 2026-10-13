@@ -23,7 +23,8 @@ import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } fro
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort } from "./BuiltinActions.ts";
-import { httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
+import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
+import OAuthServer from "./OAuthServer.ts";
 import RunHandler, { type RunPort } from "./RunHandler.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
@@ -37,10 +38,12 @@ export type AguiPort = Pick<
     ApplicationPort,
     | "attachWorkspace"
     | "configurationNotices"
+    | "credentials"
     | "createConversationWorker"
     | "createWorkspace"
     | "descendantAccounting"
     | "ensureModelWorker"
+    | "httpAddress"
     | "invokeModuleAction"
     | "listClientDisplayCapabilities"
     | "listModuleActions"
@@ -62,7 +65,8 @@ type ActionExecutor = (
     params: Readonly<Record<string, unknown>>,
     input: RunAgentInput,
     env: ClientEnvelope | null,
-    conversationWorkerId?: number,
+    conversationWorkerId: number | undefined,
+    principal: string,
 ) => Promise<ActionOutcome>;
 
 interface RegisteredAction extends AguiActionContract {
@@ -70,11 +74,14 @@ interface RegisteredAction extends AguiActionContract {
 }
 
 export default class Module implements DaemonModule<SchemeRegistrationSeam, AguiPort> {
-    // {§module-http-mounts} — the client protocol owns only its own prefix.
-    readonly mounts: readonly string[] = Object.freeze(["/agui"]);
+    // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
+    // authorization server's ({§agui-oauth-endpoints}).
+    readonly mounts: readonly string[];
     #seam!: AguiPort;
     readonly #opts: ResolvedModuleOptions;
     #portal!: Portal;
+    #oauth: OAuthServer | null = null;
+    #offRevoked: (() => void) | null = null;
     #threadEnvelopes = new Map<string, ClientEnvelope>();
     #threadWorkers = new Map<string, Promise<number>>();
     #workspaceAcquisitions = new Map<string, Promise<void>>();
@@ -86,6 +93,13 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
+        this.mounts = Object.freeze(this.#opts.secret.length > 0
+            ? ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]
+            : ["/agui"]);
+    }
+
+    static #origin({ host, port }: { readonly host: string; readonly port: number }): string {
+        return `http://${host.includes(":") ? `[${host}]` : host}:${port}`;
     }
 
     // {§agui-configuration} — the module reads its settings from the assembled environment;
@@ -98,8 +112,8 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
             this.#actions.set(name, {
                 ...contract,
-                execute: (params, input, env, conversationWorkerId) =>
-                    this.#builtins.executeBuiltin(name, params, input, env, conversationWorkerId),
+                execute: (params, input, env, conversationWorkerId, principal) =>
+                    this.#builtins.executeBuiltin(name, params, input, env, conversationWorkerId, principal),
             });
         }
         for (const descriptor of this.#seam.listModuleActions()) {
@@ -162,6 +176,20 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         this.#registerActions();
         this.#portal = new Portal(seam);
         this.#portal.start();
+        if (this.#opts.secret.length > 0) {
+            // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
+            this.#oauth = new OAuthServer({
+                credentials: seam.credentials,
+                opts: this.#opts,
+                issuer: () => this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(seam.httpAddress()),
+            });
+            for (const prefix of this.mounts) {
+                if (prefix !== "/agui") seam.registerHttpRoute(prefix, (req, res) => this.#oauthRoute(req, res));
+            }
+            // {§agui-oauth-revocation} — a revoked family's open Runs end; their loops continue.
+            this.#offRevoked = seam.credentials.onRevoked((family) =>
+                this.#portal.failFamily(family, runErrorEvents(credentialRevokedProblem())));
+        }
         this.#activated = true;
     }
 
@@ -173,7 +201,25 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         this.stop();
         if (!this.#activated) return;
         this.#activated = false;
+        this.#offRevoked?.();
         this.#portal.stop();
+    }
+
+    async #oauthRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.#stopped) {
+            writeHttpProblem(res, serviceStoppingProblem());
+            return;
+        }
+        if (this.#opts.allowOrigin.length > 0) {
+            res.setHeader("access-control-allow-origin", this.#opts.allowOrigin);
+            res.setHeader("access-control-allow-headers", "content-type, authorization");
+        }
+        if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
+        if (this.#oauth === null || !(await this.#oauth.handle(req, res))) {
+            writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                method: req.method ?? null, path: req.url ?? null, stage: "routing", retryable: false,
+            }));
+        }
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -196,23 +242,20 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
                 res.setHeader("access-control-allow-headers", "content-type, authorization");
             }
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
-            // The perimeter ({§agui-http-authorization}): bearer check before any body read.
-            const token = this.#opts.token ?? "";
-            if (token.length > 0 && req.headers.authorization !== `Bearer ${token}`) {
-                writeHttpProblem(res, httpProblem(
-                    "bearer-token-required",
-                    401,
-                    "The request did not provide the required bearer token.",
-                    {
-                        stage: "authorization",
-                        recovery: "Provide the configured bearer token.",
-                        retryable: false,
-                    },
-                ));
-                return;
+            // The perimeter ({§agui-http-authorization}): bearer admission before any body read.
+            let principal = "anonymous";
+            let family: string | null = null;
+            if (this.#oauth !== null) {
+                const admission = this.#oauth.admit(req, "agui");
+                if (!admission.ok) {
+                    res.setHeader("www-authenticate", admission.challenge);
+                    writeHttpProblem(res, admission.problem);
+                    return;
+                }
+                ({ principal, family } = admission);
             }
-            if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res);
-            if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true);
+            if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res, false, principal, family);
+            if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, principal, family);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -369,7 +412,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
 
     // A control-plane AG-UI Run: no world bound. Open the SSE, execute the worldless verb, answer on
     // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
-    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
+    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
@@ -378,7 +421,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
                 emit({ type: EventType.CUSTOM, name: "plurnk.notice", value: notice });
             }
         }
-        const outcome = await this.#action(action, input, null)
+        const outcome = await this.#action(action, input, null, undefined, principal)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);
                 const problem = Problems.fromError(err);
@@ -412,7 +455,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         });
     }
 
-    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string): Promise<ActionOutcome> {
         const action = this.#actions.get(a.kind);
         if (action === undefined) {
             return actionFailure(
@@ -442,7 +485,7 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         }
         try {
             if (action.scope !== "worldless") Module.#requireWorkspace(a.kind, env);
-            const outcome = await action.execute(a.params, input, env, conversationWorkerId);
+            const outcome = await action.execute(a.params, input, env, conversationWorkerId, principal);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
             if (!projected.valid) {

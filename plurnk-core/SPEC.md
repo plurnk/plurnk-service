@@ -215,6 +215,17 @@ none opens a socket of its own. The standards
 address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the
 well-known card and its endpoint path, on the same address.
 
+§credential-authority **The daemon is one credential authority.** Every credential presented
+to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials`
+authority on the application port ({§application-port}): an opaque random token held in memory
+with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its
+subject, its client, its scopes, its family and its expiry. A restart revokes every credential.
+Revocation is by family, so an access token and the refresh token that renews it fall together;
+a refresh token is consumed once, and a second presentation revokes its family and says so. The
+authority has no HTTP face and no policy of its own: an exterior adapter verifies through it
+({§agui-http-authorization}), and the client protocol issues through it ({§agui-oauth}). Credentials
+the daemon presents to others follow the remote party's declared scheme and are never minted here.
+
 §startup-admission-order After listener ownership, database admission completes
 before capability initialization can perform external work. Provider construction
 and endpoint verification occur on worker selection or first use, never merely
@@ -4921,6 +4932,7 @@ Core's behavior behind them.
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
+| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily` and `onRevoked`, one in-memory authority per daemon, offered to every module on the seam. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |

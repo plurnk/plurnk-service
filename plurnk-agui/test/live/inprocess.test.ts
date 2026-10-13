@@ -32,7 +32,7 @@ test("live: discovery and model response traverse the in-process AG-UI module", 
 
     try {
         // {§agui-http-authorization} — the operator's minted bearer, from the environment every client reads.
-        const token = process.env.PLURNK_AGUI_TOKEN;
+        const token = process.env.PLURNK_AGUI_SECRET;
         const res = await fetch(`http://${addr.host}:${addr.port}/agui`, {
             method: "POST",
             headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },

@@ -23,22 +23,22 @@ export default class RunHandler {
     readonly #opts: () => ResolvedModuleOptions;
     readonly #portal: () => Portal;
     readonly #requiresWorkspace: (kind: string) => boolean;
-    readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
+    readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
+    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
 
     constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, workerStatus, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
         requiresWorkspace: (kind: string) => boolean;
-        controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
+        controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
+        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -51,7 +51,8 @@ export default class RunHandler {
         this.#action = action;
     }
 
-    async run(req: IncomingMessage, res: ServerResponse, connect = false): Promise<void> {
+    // {§agui-http-authorization} — the principal and credential family the perimeter admitted this request under.
+    async run(req: IncomingMessage, res: ServerResponse, connect = false, principal = "anonymous", family: string | null = null): Promise<void> {
         let decoded: unknown;
         try {
             decoded = JSON.parse(await RunHandler.#body(req));
@@ -110,7 +111,7 @@ export default class RunHandler {
             ));
         }
         if (action !== null && !this.#requiresWorkspace(action.kind)) {
-            return await this.#controlRun(action, input, res);
+            return await this.#controlRun(action, input, res, principal);
         }
 
         let prompt: string | null = null;
@@ -144,7 +145,7 @@ export default class RunHandler {
         const workerId = await this.#conversationWorker(input.threadId, env);
         const control = forwarded?.control === true || (!synchronize && action === null)
             || action?.kind === "op.exec" || action?.kind === "op.parse";
-        const owner = control ? MessageAddress.owner(input.threadId) : undefined;
+        const owner = control ? MessageAddress.owner(principal, input.threadId) : undefined;
         if (owner !== undefined) {
             // {§agui-worker-owner} The Run declares the owner's capability set: the tools it
             // implements, and whether a person attends it. Unstated, nobody does.
@@ -204,6 +205,7 @@ export default class RunHandler {
             threadId: input.threadId,
             notificationScope,
             ...(owner === undefined ? {} : { owner }),
+            family,
             descendants,
             emit,
             modelWorkerId: workerId,
@@ -274,7 +276,7 @@ export default class RunHandler {
                 }
                 this.#portal().finishRun(workspaceId, lifecycleWorkerId, input.threadId, events);
             };
-            void this.#action(action, input, env, workerId)
+            void this.#action(action, input, env, workerId, principal)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
@@ -309,7 +311,7 @@ export default class RunHandler {
         }
         const started = await this.#portal().run(boundRun, {
             workspaceId, workerId, prompt,
-            ...MessageAddress.submission(input, currentUser),
+            ...MessageAddress.submission(principal, input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),

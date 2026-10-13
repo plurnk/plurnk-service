@@ -19,23 +19,28 @@ const exists = async (path: string): Promise<boolean> => access(path, constants.
 // Package defaults remain package-owned and are projected on demand.
 export default class OperatorConfig {
     // {§agui-http-authorization} — a daemon is one trust domain, and on loopback the operator's own
-    // browser is inside it: any page they visit can POST to the port. The bearer is the perimeter,
-    // so a fresh install mints one instead of shipping the empty value that means "no check". It
-    // lands in the same file the client reads through the same cascade, so a default install keeps
-    // working untouched; an operator who wants no perimeter empties the line themselves.
-    static #mintToken(): string {
+    // browser is inside it: any page they visit can POST to the port. The operator's client secret
+    // is the perimeter ({§agui-oauth-clients}), so a fresh install mints one instead of shipping the
+    // empty value that means "no check". It lands in the same file the client reads through the same
+    // cascade, so a default install keeps working untouched; an operator who wants no perimeter
+    // empties the line themselves.
+    static #mintSecret(): string {
         return randomBytes(32).toString("base64url");
     }
 
-    static renderSeed(token = OperatorConfig.#mintToken()): string {
+    static renderSeed(secret = OperatorConfig.#mintSecret()): string {
         return [
             "# Plurnk user configuration. This file is yours and is never overwritten.",
             "# Full installed options: plurnk-service config defaults",
             "# Validate this cascade: plurnk-service config check",
             "#",
-            "# The bearer every client presents to this daemon, minted for this install. Anything",
-            "# that can reach the port can drive the daemon, so emptying this removes the perimeter.",
-            `PLURNK_AGUI_TOKEN=${token}`,
+            "# The client secret your own tools exchange for access tokens at this daemon, minted for",
+            "# this install. Anything that can reach the port can drive the daemon, so emptying this",
+            "# removes the perimeter.",
+            `PLURNK_AGUI_SECRET=${secret}`,
+            "# Signing in from a browser needs a user and a password; set both, then restart.",
+            "# PLURNK_AGUI_USER=",
+            "# PLURNK_AGUI_PASSWORD=",
             "",
             "# Choose one model profile by uncommenting its complete block.",
             "",

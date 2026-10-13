@@ -16,6 +16,12 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
+// {§credential-authority} — the daemon's own authority on the mock seam; the module issues through it.
+const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new () => ApplicationPort["credentials"] };
+const FLOOR = {
+    PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ISSUER: "", PLURNK_AGUI_USER: "", PLURNK_AGUI_PASSWORD: "",
+    PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
+};
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
 // carry only what the module under test reads.
@@ -74,6 +80,7 @@ const mockSeam = () => {
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const owners = new Map<string, WorkerOwner>();
     const seam: ApplicationPort = {
+        credentials: new Credentials(),
         registerWorkerOwner: async (_workspaceId, owner) => { owners.set(owner.address, owner); },
         claimWorkerOwner: async ({ owner }) => {
             const registered = owners.get(owner);
@@ -2605,7 +2612,7 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
     const { seam } = mockSeam();
     const cors = async (allowOrigin: string): Promise<{ origin: string | null; headers: string | null; preflight: number }> => {
         const mod = await host(seam, {
-            env: { PLURNK_AGUI_TOKEN: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
+            env: { ...FLOOR, PLURNK_AGUI_SECRET: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
         });
         try {
             const base = `http://127.0.0.1:${mod.address().port}/agui`;
@@ -2630,7 +2637,8 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
     const { seam } = mockSeam();
     const mod = await host(seam, {
         env: {
-            PLURNK_AGUI_TOKEN: "expected",
+            ...FLOOR,
+            PLURNK_AGUI_SECRET: "expected",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
@@ -3053,7 +3061,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam, {
-        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
+        env: { ...FLOOR, PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
     });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -3071,7 +3079,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam, {
-        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
+        env: { ...FLOOR, PLURNK_AGUI_SECRET: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
     });
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -3092,7 +3100,8 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
     };
     const mod = await host(seam, {
         env: {
-            PLURNK_AGUI_TOKEN: "",
+            ...FLOOR,
+            PLURNK_AGUI_SECRET: "",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
@@ -3334,4 +3343,88 @@ test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a 
         const value = (events.find((event) => (event as { name?: string }).name === "plurnk.descendant") as { value: { workerId: number; name: string; depth: number } }).value;
         assert.deepEqual([value.workerId, value.name, value.depth], [78, "child", 1]);
     } finally { await mod.close(); }
+});
+
+const mintAccess = async (port: number, client: { id: string; secret: string }): Promise<string> => {
+    const response = await fetch(`http://127.0.0.1:${port}/oauth/token`, {
+        method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "client_credentials", client_id: client.id, client_secret: client.secret }).toString(),
+    });
+    const body = await response.json() as { access_token?: string; error?: string };
+    assert.equal(response.status, 200, JSON.stringify(body));
+    return body.access_token!;
+};
+
+test("{§agui-run-source} the principal is the credential's subject: the operator, a declared client, or nobody", async () => {
+    const { seam } = mockSeam();
+    const sources: string[] = [];
+    const mod = await host(seam, { env: {
+        ...FLOOR, PLURNK_AGUI_SECRET: "s3cret", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0",
+        PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["agui"] }),
+    } });
+    try {
+        const port = mod.address().port;
+        // A conversation Run submits the message under the admitted principal; the loop it enqueues is
+        // not the subject here, so the Run is abandoned once the submission was seen.
+        const prompt = async (authorization: string): Promise<void> => {
+            const entered = Promise.withResolvers<void>();
+            seam.runLoop = async (a) => { sources.push(a.source ?? ""); entered.resolve(); return { status: 100, action: "enqueued_new_loop", loopId: 9, turnSeq: 1 }; };
+            const controller = new AbortController();
+            const response = fetch(`http://127.0.0.1:${port}/agui`, {
+                method: "POST", headers: { "content-type": "application/json", authorization }, signal: controller.signal,
+                body: JSON.stringify(standardInput({ threadId: "agui-t", messages: [{ role: "user", content: "hello" }], forwardedProps: { plurnk: { workspace: "agui-t" } } })),
+            });
+            await waitForFixture(entered.promise, () => "the Run never submitted its message");
+            controller.abort();
+            await response.then((r) => r.text()).catch(() => undefined);
+        };
+        await prompt(`Bearer ${await mintAccess(port, { id: "operator", secret: "s3cret" })}`);
+        await prompt(`Bearer ${await mintAccess(port, { id: "agent", secret: "agent-secret" })}`);
+        await prompt("Bearer s3cret");
+        assert.deepEqual(sources.map((source) => source.replace(/\/messages\/.*$/u, "")), [
+            "agui://operator/threads/agui-t",
+            "agui://agent/threads/agui-t",
+            "agui://anonymous/threads/agui-t",
+        ]);
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-revocation} revoking a credential ends the streams admitted under it and cancels no worker; another family's stream continues", async () => {
+    const { seam } = mockSeam();
+    const cancellations: number[] = [];
+    seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AGUI_SECRET: "s3cret", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const controllers = [new AbortController(), new AbortController()];
+    try {
+        const port = mod.address().port;
+        const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
+        const open = async (token: string, index: number): Promise<Response> => {
+            const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
+                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index]!.signal,
+                body: JSON.stringify(standardInput({ threadId: `observer-${index}`, messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
+            });
+            assert.equal(response.status, 200);
+            return response;
+        };
+        const ending = await open(revoked, 0);
+        const surviving = await open(kept, 1);
+        const revocation = await fetch(`http://127.0.0.1:${port}/oauth/revoke`, {
+            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: revoked, client_id: "operator", client_secret: "s3cret" }).toString(),
+        });
+        assert.equal(revocation.status, 200);
+        const body = await ending.text();
+        const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+        const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
+        assert.ok(problem?.type === "CUSTOM" && problem.value.type === "https://problems.plurnk.xyz/agui/http/credential-revoked", JSON.stringify(events.map(({ type }) => type)));
+        assert.equal(events.at(-1)?.type, "RUN_ERROR");
+        assert.deepEqual(cancellations, [], "a revoked observer is not a cancelling one");
+        const stillOpen = await Promise.race([surviving.text().then(() => false), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 200))]);
+        assert.equal(stillOpen, true, "the other family's stream is still open");
+        controllers[1]!.abort();
+        await surviving.text().catch(() => undefined);
+    } finally {
+        for (const controller of controllers) controller.abort();
+        await mod.close();
+    }
 });

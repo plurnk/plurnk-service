@@ -1,0 +1,537 @@
+// {§agui-oauth} — the daemon's OAuth 2.1 authorization server, the issuing face of the daemon's one
+// credential authority ({§credential-authority}): discovery (RFC 8414, RFC 9728), the operator's login
+// and authorization code with PKCE (RFC 6749 §4.1, RFC 7636), client credentials (§4.4), refresh with
+// rotation, revocation (RFC 7009) and public-client registration (RFC 7591), all on the daemon's one
+// listener. Bearer admission for a protected resource is here too (RFC 6750).
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { CredentialAuthority, CredentialClaims, ProblemDetails } from "@plurnk/plurnk-contracts";
+import { SCOPES, type ResolvedModuleOptions } from "./config.ts";
+import { httpProblem } from "./run-events.ts";
+
+// Mechanism, not choices ({§operator-config-only-home}); each is registered in the root's mechanism list.
+const CODE_TTL_MS = 60_000;
+const MAX_BODY_BYTES = 65_536;
+const MAX_REGISTERED_CLIENTS = 1_000;
+
+const OPERATOR = "operator";
+const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/u;
+const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/u;
+
+interface Client {
+    readonly id: string;
+    /** null for a public client: it authenticates by its id alone and holds nothing to keep. */
+    readonly secret: string | null;
+    readonly scopes: readonly string[];
+    readonly redirectUris: readonly string[];
+    readonly name: string | null;
+}
+
+interface Code {
+    readonly clientId: string;
+    readonly redirectUri: string;
+    readonly challenge: string;
+    readonly scopes: readonly string[];
+    readonly family: string;
+    readonly expiresAt: number;
+}
+
+export type Admission =
+    | { readonly ok: true; readonly principal: string; readonly family: string | null }
+    | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string };
+
+// RFC 6749 §5.2 — an error code, its description and the status it is answered with.
+class OAuthError extends Error {
+    readonly code: string;
+    readonly description: string;
+    readonly status: number;
+
+    constructor(code: string, description: string, status = 400) {
+        super(description);
+        this.code = code;
+        this.description = description;
+        this.status = status;
+    }
+}
+
+const sha256 = (value: string): Buffer => createHash("sha256").update(value).digest();
+// Constant-time equality over digests: lengths never leak, and a secret compares in fixed time.
+const same = (a: string, b: string): boolean => timingSafeEqual(sha256(a), sha256(b));
+const escape = (value: string): string => value
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+const mint = (): string => randomBytes(32).toString("base64url");
+
+const readBody = (req: IncomingMessage): Promise<string> => new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_BODY_BYTES) {
+            reject(new OAuthError("invalid_request", "The request body is too large.", 413));
+            req.destroy();
+            return;
+        }
+        chunks.push(chunk);
+    });
+    req.once("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.once("error", reject);
+});
+
+const isForm = (req: IncomingMessage): boolean =>
+    (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/x-www-form-urlencoded";
+const isJson = (req: IncomingMessage): boolean =>
+    (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
+
+const absoluteHttpUrl = (value: unknown): URL | null => {
+    if (typeof value !== "string") return null;
+    try {
+        const url = new URL(value);
+        return (url.protocol === "http:" || url.protocol === "https:") && url.hash === "" ? url : null;
+    } catch { return null; }
+};
+
+// RFC 8252 §7.3 — a loopback redirect may change its port between registration and use.
+const redirectMatches = (registered: string, presented: string): boolean => {
+    if (registered === presented) return true;
+    const a = absoluteHttpUrl(registered);
+    const b = absoluteHttpUrl(presented);
+    if (a === null || b === null) return false;
+    const loopback = (url: URL): boolean => url.hostname === "127.0.0.1" || url.hostname === "[::1]" || url.hostname === "localhost";
+    return loopback(a) && loopback(b) && a.protocol === b.protocol && a.hostname === b.hostname
+        && a.pathname === b.pathname && a.search === b.search;
+};
+
+export default class OAuthServer {
+    readonly #credentials: CredentialAuthority;
+    readonly #opts: ResolvedModuleOptions;
+    readonly #issuer: () => string;
+    readonly #clients = new Map<string, Client>();
+    readonly #codes = new Map<string, Code>();
+    // {§agui-oauth-login} — failures per source address within the configured window.
+    readonly #failures = new Map<string, { count: number; windowStart: number }>();
+    readonly #now: () => number;
+    #registered = 0;
+
+    constructor({ credentials, opts, issuer, now = Date.now }: {
+        readonly credentials: CredentialAuthority;
+        readonly opts: ResolvedModuleOptions;
+        readonly issuer: () => string;
+        readonly now?: () => number;
+    }) {
+        this.#credentials = credentials;
+        this.#opts = opts;
+        this.#issuer = issuer;
+        this.#now = now;
+        // {§agui-oauth-clients} — the operator's own client holds the minted secret and every scope.
+        this.#clients.set(OPERATOR, { id: OPERATOR, secret: opts.secret, scopes: SCOPES, redirectUris: [], name: null });
+        for (const [id, declared] of Object.entries(opts.clients)) {
+            this.#clients.set(id, { id, secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
+        }
+    }
+
+    get issuer(): string { return this.#issuer(); }
+    get resource(): string { return `${this.issuer}/agui`; }
+    get resourceMetadataUrl(): string { return `${this.issuer}/.well-known/oauth-protected-resource`; }
+
+    /** {§agui-oauth-endpoints} RFC 8414 */
+    metadata(): Record<string, unknown> {
+        const issuer = this.issuer;
+        return {
+            issuer,
+            authorization_endpoint: `${issuer}/oauth/authorize`,
+            token_endpoint: `${issuer}/oauth/token`,
+            revocation_endpoint: `${issuer}/oauth/revoke`,
+            registration_endpoint: `${issuer}/oauth/register`,
+            response_types_supported: ["code"],
+            response_modes_supported: ["query"],
+            grant_types_supported: ["authorization_code", "client_credentials", "refresh_token"],
+            token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
+            revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
+            code_challenge_methods_supported: ["S256"],
+            scopes_supported: [...SCOPES],
+        };
+    }
+
+    /** {§agui-oauth-endpoints} RFC 9728 */
+    resourceMetadata(): Record<string, unknown> {
+        return {
+            resource: this.resource,
+            authorization_servers: [this.issuer],
+            scopes_supported: [...SCOPES],
+            bearer_methods_supported: ["header"],
+            resource_name: "Plurnk AG-UI",
+        };
+    }
+
+    // {§agui-http-authorization} — bearer admission for the AG-UI resource (RFC 6750 §3).
+    admit(req: IncomingMessage, scope: string): Admission {
+        const header = req.headers.authorization;
+        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${this.resourceMetadataUrl}"`;
+        const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
+        if (presented === null) {
+            return {
+                ok: false,
+                challenge: challenge(""),
+                problem: httpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
+                    stage: "authorization", recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.", retryable: false,
+                }),
+            };
+        }
+        const token = (presented[1] ?? "").trim();
+        // Transitional (#1115, retired in the next landing): the operator's secret presented directly is
+        // admitted as it was before the authority existed, naming nobody.
+        if (token.length > 0 && same(token, this.#opts.secret)) return { ok: true, principal: "anonymous", family: null };
+        const claims = this.#credentials.verify(token);
+        if (claims === null || claims.kind !== "access") {
+            return {
+                ok: false,
+                challenge: challenge(', error="invalid_token", error_description="The access token is unknown, expired or revoked."'),
+                problem: httpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
+                    stage: "authorization", recovery: "Obtain a new access token from this daemon's token endpoint.", retryable: false,
+                }),
+            };
+        }
+        if (!claims.scopes.includes(scope)) {
+            return {
+                ok: false,
+                challenge: challenge(`, error="insufficient_scope", scope="${scope}"`),
+                problem: httpProblem("bearer-scope-insufficient", 403, `The access token does not carry the scope ${scope}.`, {
+                    stage: "authorization", scope, recovery: `Obtain an access token with the scope ${scope}.`, retryable: false,
+                }),
+            };
+        }
+        return { ok: true, principal: claims.subject, family: claims.family };
+    }
+
+    /** Routes one request under `/oauth` or a well-known document; answers true when it was one of ours. */
+    async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+        const pathname = new URL(req.url ?? "/", "http://host").pathname;
+        const route = this.#routes()[pathname];
+        if (route === undefined) return false;
+        try {
+            await route(req, res);
+        } catch (cause) {
+            const error = cause instanceof OAuthError ? cause : new OAuthError("server_error", "The authorization server failed.", 500);
+            if (!(cause instanceof OAuthError)) console.error("OAuth request failed:", cause);
+            this.#json(res, error.status, { error: error.code, error_description: error.description },
+                error.code === "invalid_client" && /^Basic\s/iu.test(req.headers.authorization ?? "") ? { "www-authenticate": 'Basic realm="plurnk"' } : {});
+        }
+        return true;
+    }
+
+    #routes(): Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> {
+        return {
+            "/.well-known/oauth-authorization-server": async (req, res) => this.#document(req, res, this.metadata()),
+            "/.well-known/oauth-protected-resource": async (req, res) => this.#document(req, res, this.resourceMetadata()),
+            "/oauth/authorize": (req, res) => this.#authorize(req, res),
+            "/oauth/token": (req, res) => this.#token(req, res),
+            "/oauth/revoke": (req, res) => this.#revoke(req, res),
+            "/oauth/register": (req, res) => this.#register(req, res),
+        };
+    }
+
+    async #document(req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>): Promise<void> {
+        if (req.method !== "GET" && req.method !== "HEAD") throw new OAuthError("invalid_request", "Use GET.", 405);
+        this.#json(res, 200, body);
+    }
+
+    #json(res: ServerResponse, status: number, body: Record<string, unknown>, headers: Record<string, string> = {}): void {
+        res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", pragma: "no-cache", ...headers });
+        res.end(JSON.stringify(body));
+    }
+
+    #html(res: ServerResponse, status: number, title: string, body: string, headers: Record<string, string> = {}): void {
+        res.writeHead(status, {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+            "x-frame-options": "DENY",
+            ...headers,
+        });
+        res.end(`<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`
+            + `<title>${escape(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:28rem;padding:0 1rem}`
+            + `label{display:block;margin:.75rem 0 .25rem}input{width:100%;box-sizing:border-box;padding:.5rem}button{margin-top:1rem;padding:.5rem 1rem}`
+            + `p.error{color:#8b0000}</style></head><body>${body}</body></html>\n`);
+    }
+
+    // ── authorization ───────────────────────────────────────────────────────────────────────────
+
+    async #authorize(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        let params: URLSearchParams;
+        if (req.method === "GET") params = new URL(req.url ?? "/", "http://host").searchParams;
+        else if (req.method === "POST" && isForm(req)) params = new URLSearchParams(await readBody(req));
+        else throw new OAuthError("invalid_request", "Use GET, or POST a form.", 405);
+
+        // RFC 6749 §4.1.2.1 — a bad client or redirect is told to the person, never redirected to.
+        const client = this.#clients.get(params.get("client_id") ?? "");
+        const redirectUri = params.get("redirect_uri");
+        if (client === undefined || redirectUri === null || !client.redirectUris.some((registered) => redirectMatches(registered, redirectUri))) {
+            this.#html(res, 400, "Plurnk: request refused", "<h1>Request refused</h1><p>The client or its redirect address is not registered with this daemon.</p>");
+            return;
+        }
+        const state = params.get("state");
+        const fail = (code: string, description: string): void => {
+            const target = new URL(redirectUri);
+            target.searchParams.set("error", code);
+            target.searchParams.set("error_description", description);
+            if (state !== null) target.searchParams.set("state", state);
+            res.writeHead(302, { location: target.toString(), "cache-control": "no-store" });
+            res.end();
+        };
+        if (params.get("response_type") !== "code") { fail("unsupported_response_type", "Only response_type=code is supported."); return; }
+        const challenge = params.get("code_challenge") ?? "";
+        if (!PKCE_VERIFIER.test(challenge) || (params.get("code_challenge_method") ?? "") !== "S256") {
+            fail("invalid_request", "A code_challenge with code_challenge_method=S256 is required."); return;
+        }
+        const scopes = this.#scopes(params.get("scope"), client);
+        if (scopes === null) { fail("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`); return; }
+        const resource = params.get("resource");
+        if (resource !== null && resource !== this.resource) { fail("invalid_target", `The resource must be ${this.resource}.`); return; }
+
+        // {§agui-oauth-login} — the operator signs in here; an unconfigured login explains itself and issues nothing.
+        if (this.#opts.user.length === 0 || this.#opts.password.length === 0) {
+            this.#html(res, 503, "Plurnk: sign-in not configured", "<h1>Sign-in is not configured</h1>"
+                + "<p>Set <code>PLURNK_AGUI_USER</code> and <code>PLURNK_AGUI_PASSWORD</code> in the operator's configuration file and restart the daemon.</p>");
+            return;
+        }
+        const hidden = ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]
+            .filter((name) => params.has(name))
+            .map((name) => `<input type="hidden" name="${name}" value="${escape(params.get(name)!)}">`).join("");
+        const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>`
+            + `<p><strong>${escape(client.name ?? client.id)}</strong> asks to use this daemon (scope: ${escape(scopes.join(" "))}).</p>`
+            + (message === null ? "" : `<p class="error">${escape(message)}</p>`)
+            + `<form method="post" action="/oauth/authorize">${hidden}`
+            + `<label for="username">User</label><input id="username" name="username" autocomplete="username" required>`
+            + `<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>`
+            + `<button type="submit">Continue</button></form>`;
+        const username = params.get("username");
+        const password = params.get("password");
+        if (req.method === "GET" || username === null || password === null) {
+            this.#html(res, 200, "Plurnk: sign in", form(null));
+            return;
+        }
+        const address = req.socket.remoteAddress ?? "unknown";
+        const retryAfter = this.#limited(address);
+        if (retryAfter !== null) {
+            this.#html(res, 429, "Plurnk: too many attempts", `<h1>Too many attempts</h1><p>Try again in ${retryAfter} seconds.</p>`, { "retry-after": String(retryAfter) });
+            return;
+        }
+        if (!(same(username, this.#opts.user) && same(password, this.#opts.password))) {
+            this.#failed(address);
+            this.#html(res, 401, "Plurnk: sign in", form("The user or password is wrong."));
+            return;
+        }
+        this.#failures.delete(address);
+        const code = mint();
+        this.#sweepCodes();
+        this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family: randomUUID(), expiresAt: this.#now() + CODE_TTL_MS });
+        const target = new URL(redirectUri);
+        target.searchParams.set("code", code);
+        if (state !== null) target.searchParams.set("state", state);
+        res.writeHead(302, { location: target.toString(), "cache-control": "no-store" });
+        res.end();
+    }
+
+    #scopes(requested: string | null, client: Client): readonly string[] | null {
+        if (requested === null || requested.trim().length === 0) return client.scopes;
+        const scopes = [...new Set(requested.trim().split(/\s+/u))];
+        if (scopes.some((scope) => !SCOPE_TOKEN.test(scope) || !client.scopes.includes(scope))) return null;
+        return Object.freeze(scopes);
+    }
+
+    #limited(address: string): number | null {
+        if (this.#opts.loginAttempts === 0) return null;
+        const record = this.#failures.get(address);
+        if (record === undefined) return null;
+        const windowMs = this.#opts.loginWindowSec * 1000;
+        if (record.windowStart + windowMs <= this.#now()) { this.#failures.delete(address); return null; }
+        if (record.count < this.#opts.loginAttempts) return null;
+        return Math.max(1, Math.ceil((record.windowStart + windowMs - this.#now()) / 1000));
+    }
+
+    #failed(address: string): void {
+        const record = this.#failures.get(address);
+        const windowMs = this.#opts.loginWindowSec * 1000;
+        if (record === undefined || record.windowStart + windowMs <= this.#now()) {
+            this.#failures.set(address, { count: 1, windowStart: this.#now() });
+            return;
+        }
+        record.count += 1;
+    }
+
+    #sweepCodes(): void {
+        const now = this.#now();
+        for (const [code, issued] of this.#codes) if (issued.expiresAt <= now) this.#codes.delete(code);
+    }
+
+    // ── token ───────────────────────────────────────────────────────────────────────────────────
+
+    async #form(req: IncomingMessage): Promise<URLSearchParams> {
+        if (req.method !== "POST") throw new OAuthError("invalid_request", "Use POST.", 405);
+        if (!isForm(req)) throw new OAuthError("invalid_request", "POST an application/x-www-form-urlencoded body.");
+        return new URLSearchParams(await readBody(req));
+    }
+
+    // RFC 6749 §2.3.1 — client_secret_basic or client_secret_post; a public client by its id alone.
+    #authenticateClient(req: IncomingMessage, form: URLSearchParams): Client {
+        const header = req.headers.authorization;
+        let id: string | null = null;
+        let secret: string | null = null;
+        if (header !== undefined && /^Basic\s/iu.test(header)) {
+            const decoded = Buffer.from(header.replace(/^Basic\s+/iu, ""), "base64").toString("utf8");
+            const colon = decoded.indexOf(":");
+            if (colon < 0) throw new OAuthError("invalid_client", "The Basic credentials are malformed.", 401);
+            try {
+                id = decodeURIComponent(decoded.slice(0, colon));
+                secret = decodeURIComponent(decoded.slice(colon + 1));
+            } catch { throw new OAuthError("invalid_client", "The Basic credentials are malformed.", 401); }
+            if (form.has("client_secret")) throw new OAuthError("invalid_request", "Authenticate by one method only.");
+        } else {
+            id = form.get("client_id");
+            secret = form.get("client_secret");
+        }
+        if (id === null || id.length === 0) throw new OAuthError("invalid_client", "The client did not identify itself.", 401);
+        const client = this.#clients.get(id);
+        const address = req.socket.remoteAddress ?? "unknown";
+        if (client === undefined) {
+            this.#failed(address);
+            throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
+        }
+        if (client.secret === null) {
+            if (secret !== null && secret.length > 0) throw new OAuthError("invalid_client", "A public client presents no secret.", 401);
+            return client;
+        }
+        const retryAfter = this.#limited(address);
+        if (retryAfter !== null) throw new OAuthError("invalid_client", `Too many failed attempts; retry in ${retryAfter} seconds.`, 429);
+        if (secret === null || !same(secret, client.secret)) {
+            this.#failed(address);
+            throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
+        }
+        this.#failures.delete(address);
+        return client;
+    }
+
+    async #token(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const form = await this.#form(req);
+        const client = this.#authenticateClient(req, form);
+        const grant = form.get("grant_type");
+        let issued: { readonly claims: Omit<CredentialClaims, "expiresAt" | "kind">; readonly refresh: boolean };
+        if (grant === "authorization_code") {
+            const code = this.#codes.get(form.get("code") ?? "");
+            this.#codes.delete(form.get("code") ?? "");
+            if (code === undefined || code.expiresAt <= this.#now()) {
+                throw new OAuthError("invalid_grant", "The authorization code is unknown, used or expired.");
+            }
+            if (code.clientId !== client.id) {
+                // RFC 6749 §4.1.2 — a code presented by another client ends everything it stood for.
+                this.#credentials.revokeFamily(code.family);
+                throw new OAuthError("invalid_grant", "The authorization code was issued to another client.");
+            }
+            const verifier = form.get("code_verifier") ?? "";
+            if (!PKCE_VERIFIER.test(verifier) || !same(createHash("sha256").update(verifier).digest("base64url"), code.challenge)) {
+                throw new OAuthError("invalid_grant", "The code_verifier does not match the code_challenge.");
+            }
+            if (form.get("redirect_uri") !== code.redirectUri) throw new OAuthError("invalid_grant", "The redirect_uri differs from the authorization request's.");
+            issued = { claims: { subject: OPERATOR, clientId: client.id, scopes: code.scopes, family: code.family }, refresh: true };
+        } else if (grant === "refresh_token") {
+            const presented = form.get("refresh_token") ?? "";
+            // Read before consuming: a refused scope leaves the token usable; a reuse is told as such.
+            const claims = this.#credentials.verify(presented);
+            if (claims === null || claims.kind !== "refresh") {
+                const outcome = this.#credentials.consume(presented);
+                throw new OAuthError("invalid_grant", "reusedFamily" in outcome && outcome.reusedFamily !== null
+                    ? "The refresh token was already used; its grant is revoked."
+                    : "The refresh token is unknown, expired or revoked.");
+            }
+            if (claims.clientId !== client.id) {
+                this.#credentials.revokeFamily(claims.family);
+                throw new OAuthError("invalid_grant", "The refresh token was issued to another client.");
+            }
+            const requested = form.get("scope");
+            const scopes = requested === null ? claims.scopes : this.#scopes(requested, { ...client, scopes: claims.scopes });
+            if (scopes === null) throw new OAuthError("invalid_scope", "A refreshed scope is within the grant's.");
+            if (!("claims" in this.#credentials.consume(presented))) throw new OAuthError("invalid_grant", "The refresh token is unknown, expired or revoked.");
+            issued = { claims: { subject: claims.subject, clientId: client.id, scopes, family: claims.family }, refresh: true };
+        } else if (grant === "client_credentials") {
+            if (client.secret === null) throw new OAuthError("unauthorized_client", "Only a confidential client may use client_credentials.");
+            const scopes = this.#scopes(form.get("scope"), client);
+            if (scopes === null) throw new OAuthError("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`);
+            issued = { claims: { subject: client.id === OPERATOR ? OPERATOR : client.id, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
+        } else {
+            throw new OAuthError("unsupported_grant_type", "The grant type is not authorization_code, refresh_token or client_credentials.");
+        }
+        const resource = form.get("resource");
+        if (resource !== null && resource !== this.resource) throw new OAuthError("invalid_target", `The resource must be ${this.resource}.`);
+        const access = this.#credentials.issue({ kind: "access", ...issued.claims, ttlMs: this.#opts.accessTtlSec * 1000 });
+        const body: Record<string, unknown> = {
+            access_token: access.token,
+            token_type: "Bearer",
+            expires_in: this.#opts.accessTtlSec,
+            scope: issued.claims.scopes.join(" "),
+        };
+        if (issued.refresh) {
+            body.refresh_token = this.#credentials.issue({ kind: "refresh", ...issued.claims, ttlMs: this.#opts.refreshTtlSec * 1000 }).token;
+        }
+        this.#json(res, 200, body);
+    }
+
+    // ── revocation (RFC 7009) ───────────────────────────────────────────────────────────────────
+
+    async #revoke(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const form = await this.#form(req);
+        const client = this.#authenticateClient(req, form);
+        const token = form.get("token");
+        if (token === null) throw new OAuthError("invalid_request", "A token is required.");
+        const claims = this.#credentials.verify(token);
+        // §2.2 — a token that is not the client's, or not live, revokes nothing and still answers 200.
+        if (claims !== null && claims.clientId === client.id) this.#credentials.revokeFamily(claims.family);
+        res.writeHead(200, { "cache-control": "no-store" });
+        res.end();
+    }
+
+    // ── registration (RFC 7591) ─────────────────────────────────────────────────────────────────
+
+    async #register(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (req.method !== "POST") throw new OAuthError("invalid_request", "Use POST.", 405);
+        if (!isJson(req)) throw new OAuthError("invalid_client_metadata", "POST an application/json body.");
+        let metadata: Record<string, unknown>;
+        try {
+            const parsed: unknown = JSON.parse(await readBody(req));
+            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+            metadata = parsed as Record<string, unknown>;
+        } catch { throw new OAuthError("invalid_client_metadata", "The body is not a JSON object."); }
+        const redirectUris = metadata.redirect_uris;
+        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || redirectUris.some((uri) => absoluteHttpUrl(uri) === null)) {
+            throw new OAuthError("invalid_redirect_uri", "redirect_uris must list absolute http(s) URLs without fragments.");
+        }
+        const method = metadata.token_endpoint_auth_method ?? "none";
+        if (method !== "none") {
+            throw new OAuthError("invalid_client_metadata", "Only public clients register here; a confidential client is declared in the operator's configuration.");
+        }
+        const grantTypes = metadata.grant_types ?? ["authorization_code", "refresh_token"];
+        if (!Array.isArray(grantTypes) || grantTypes.some((type) => type !== "authorization_code" && type !== "refresh_token")) {
+            throw new OAuthError("invalid_client_metadata", "grant_types may name authorization_code and refresh_token.");
+        }
+        const responseTypes = metadata.response_types ?? ["code"];
+        if (!Array.isArray(responseTypes) || responseTypes.some((type) => type !== "code")) {
+            throw new OAuthError("invalid_client_metadata", "response_types may name code.");
+        }
+        const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", secret: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
+        if (scopes === null) throw new OAuthError("invalid_client_metadata", `scope must be from ${SCOPES.join(" ")}.`);
+        const name = typeof metadata.client_name === "string" && metadata.client_name.length > 0 ? metadata.client_name : null;
+        if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
+        const id = mint();
+        this.#registered += 1;
+        this.#clients.set(id, { id, secret: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
+        this.#json(res, 201, {
+            client_id: id,
+            client_id_issued_at: Math.floor(this.#now() / 1000),
+            redirect_uris: redirectUris,
+            token_endpoint_auth_method: "none",
+            grant_types: grantTypes,
+            response_types: responseTypes,
+            scope: scopes.join(" "),
+            ...(name === null ? {} : { client_name: name }),
+        });
+    }
+}

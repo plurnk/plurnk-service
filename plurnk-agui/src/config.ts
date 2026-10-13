@@ -1,7 +1,24 @@
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
 
+/** {§agui-oauth-authority} The resources a credential of this daemon may name. */
+export const SCOPES: readonly string[] = Object.freeze(["agui"]);
+
+/** {§agui-oauth-clients} A confidential client the operator declared: its secret and the scopes it may hold. */
+export interface DeclaredClient {
+    readonly secret: string;
+    readonly scopes: readonly string[];
+}
+
 export interface ModuleOptions {
-    readonly token?: string;
+    readonly secret?: string;
+    readonly issuer?: string;
+    readonly user?: string;
+    readonly password?: string;
+    readonly accessTtlSec?: number;
+    readonly refreshTtlSec?: number;
+    readonly loginAttempts?: number;
+    readonly loginWindowSec?: number;
+    readonly clients?: Readonly<Record<string, DeclaredClient>>;
     readonly allowOrigin?: string;
     readonly maxTurns?: number;
     readonly heartbeatMs?: number;
@@ -9,11 +26,22 @@ export interface ModuleOptions {
 }
 
 export interface ResolvedModuleOptions {
-    readonly token: string;
+    readonly secret: string;
+    readonly issuer: string;
+    readonly user: string;
+    readonly password: string;
+    readonly accessTtlSec: number;
+    readonly refreshTtlSec: number;
+    readonly loginAttempts: number;
+    readonly loginWindowSec: number;
+    readonly clients: Readonly<Record<string, DeclaredClient>>;
     readonly allowOrigin: string;
     readonly maxTurns?: number;
     readonly heartbeatMs: number;
 }
+
+const CLIENT_KEY = /^PLURNK_AGUI_CLIENT_([A-Za-z0-9._-]+)$/u;
+const OPERATOR_CLIENT = "operator";
 
 const safeInteger = (
     raw: unknown,
@@ -33,21 +61,61 @@ const environmentMaxTurns = (raw: string | undefined): number | undefined => {
     return safeInteger(raw, "PLURNK_AGUI_MAX_TURNS", -1);
 };
 
+// {§operator-config-only-home} — an absent key is a broken floor; only the panel's own value speaks.
+const floorString = (options: ModuleOptions, env: NodeJS.ProcessEnv, option: keyof ModuleOptions, key: string): string => {
+    const explicit = options[option];
+    const value = explicit === undefined ? env[key] : explicit;
+    if (value === undefined) throw new Error(`${key} is missing from the assembled environment floor.`);
+    if (typeof value !== "string") throw new Error(`ModuleOptions.${option} must be a string; got ${JSON.stringify(value)}.`);
+    return value;
+};
+
+const readClient = (key: string, raw: string): DeclaredClient => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { throw new Error(`${key} must be a JSON object; got ${JSON.stringify(raw)}.`); }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${key} must be a JSON object.`);
+    const { secret, scopes } = parsed as { secret?: unknown; scopes?: unknown };
+    if (typeof secret !== "string" || secret.length === 0) throw new Error(`${key} needs a non-empty "secret".`);
+    if (!Array.isArray(scopes) || scopes.length === 0 || scopes.some((scope) => typeof scope !== "string" || !SCOPES.includes(scope))) {
+        throw new Error(`${key} needs "scopes", a non-empty array from ${JSON.stringify(SCOPES)}.`);
+    }
+    return { secret, scopes: Object.freeze([...new Set(scopes as string[])]) };
+};
+
+// {§agui-oauth-clients} — every PLURNK_AGUI_CLIENT_<id> line declares one confidential client.
+const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, DeclaredClient>> => {
+    const clients: Record<string, DeclaredClient> = {};
+    for (const [key, raw] of Object.entries(env)) {
+        const match = CLIENT_KEY.exec(key);
+        if (match === null || raw === undefined) continue;
+        const id = match[1]!;
+        if (id === OPERATOR_CLIENT) throw new Error(`${key}: "${OPERATOR_CLIENT}" is the operator's own client; declare another id.`);
+        clients[id] = readClient(key, raw);
+    }
+    return Object.freeze(clients);
+};
+
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    // {§operator-config-only-home} — an absent key is a broken floor, never a silent "no
-    // authentication": only the panel's own empty value may say that the listener is open.
-    const token = options.token === undefined ? env.PLURNK_AGUI_TOKEN : options.token;
-    if (token === undefined) throw new Error("PLURNK_AGUI_TOKEN is missing from the assembled environment floor.");
-    if (typeof token !== "string") {
-        throw new Error(`ModuleOptions.token must be a string; got ${JSON.stringify(token)}.`);
+    const number = (option: "accessTtlSec" | "refreshTtlSec" | "loginAttempts" | "loginWindowSec", key: string, minimum: number, maximum?: number): number =>
+        safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum, maximum);
+    const clients = options.clients === undefined ? environmentClients(env) : options.clients;
+    for (const [id, client] of Object.entries(clients)) {
+        if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AGUI_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
+        readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
     }
-    // {§agui-cors} — the panel states the origin; only its own empty value sends no CORS header.
-    const allowOrigin = options.allowOrigin === undefined ? env.PLURNK_AGUI_ALLOW_ORIGIN : options.allowOrigin;
-    if (allowOrigin === undefined) throw new Error("PLURNK_AGUI_ALLOW_ORIGIN is missing from the assembled environment floor.");
     return {
-        token,
-        allowOrigin,
+        secret: floorString(options, env, "secret", "PLURNK_AGUI_SECRET"),
+        issuer: floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER"),
+        user: floorString(options, env, "user", "PLURNK_AGUI_USER"),
+        password: floorString(options, env, "password", "PLURNK_AGUI_PASSWORD"),
+        accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
+        refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),
+        loginAttempts: number("loginAttempts", "PLURNK_AGUI_LOGIN_ATTEMPTS", 0),
+        loginWindowSec: number("loginWindowSec", "PLURNK_AGUI_LOGIN_WINDOW_SEC", 1, Math.floor(MAX_TIMER_MS / 1000)),
+        clients,
+        // {§agui-cors} — the panel states the origin; only its own empty value sends no CORS header.
+        allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_AGUI_ALLOW_ORIGIN"),
         maxTurns: options.maxTurns === undefined
             ? environmentMaxTurns(env.PLURNK_AGUI_MAX_TURNS)
             : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1),

@@ -58,7 +58,7 @@ const project = join(temp, "project");
 const seededToken = async () => {
     const file = join(home, ".config", "plurnk", ".env");
     const text = await readFile(file, "utf8").catch(() => "");
-    return /^PLURNK_AGUI_TOKEN=(.*)$/m.exec(text)?.[1]?.trim() ?? "";
+    return /^PLURNK_AGUI_SECRET=(.*)$/m.exec(text)?.[1]?.trim() ?? "";
 };
 const world = "cross-client-conformance";
 
@@ -411,12 +411,13 @@ try {
     const { AguiTransport } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
     )).href);
+    // {§agui-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
+    const { default: Credential } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
+    )).href);
     const aguiToken = await seededToken();
-    const terminal = new AguiTransport(
-        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
-        world,
-        { workspace: world },
-    );
+    const credential = () => ({ aguiUrl: `http://127.0.0.1:${port}/agui`, credential: new Credential(aguiToken) });
+    const terminal = new AguiTransport(credential(), world, { workspace: world });
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
@@ -452,7 +453,7 @@ try {
     }
 
     const observer = new AguiTransport(
-        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
+        credential(),
         "independent-observer",
         { workspace: world },
     );
@@ -474,7 +475,7 @@ try {
     await daemon.stop();
     daemon = await boot();
     const persistedFiles = new AguiTransport(
-        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
+        credential(),
         "file-observer",
         { workspace: "installed-files", projectRoot: project },
     );
@@ -485,7 +486,7 @@ try {
     }
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
     const afterRestart = new AguiTransport(
-        { aguiUrl: `http://127.0.0.1:${port}/agui`, token: aguiToken },
+        credential(),
         world,
         { workspace: world },
     );

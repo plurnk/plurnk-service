@@ -320,10 +320,18 @@ a second home for a choice, and it will eventually disagree with the first.
   family's owning schema and lifecycle, not separate registries. Inspection
   must distinguish the effective configuration from runtime readiness and
   identify where the configuration came from.
-- **A daemon is one trust domain.** Everything holding a daemon's credential is
-  one principal. A different security situation is a different daemon with a
-  different panel — ideally inside a sandbox, which is somebody else's project:
-  PLURNK owns authority, consent and audit, and never claims containment.
+- **A daemon is one trust domain with one credential authority.** Every
+  credential presented to the listener, whatever protocol is mounted there, was
+  issued by the daemon ({§credential-authority}): `plurnk-core` holds the
+  records, `plurnk-agui` is the OAuth 2.1 face that issues them ({§agui-oauth}),
+  and every mounted resource verifies through the same seam. The operator signs
+  in from a browser; the operator's own tools exchange the minted secret; a
+  remote agent is a declared client with its own revocable credentials. What the
+  daemon presents to others (MCP servers, remote agents, model providers)
+  follows the remote party's scheme and is never minted here. A different
+  security situation is a different daemon with a different panel — ideally
+  inside a sandbox, which is somebody else's project: PLURNK owns authority,
+  consent and audit, and never claims containment.
 
 `scripts/env-surface-policy.mjs` enforces this in `root:lint`
 ({§operator-config-only-home}). A number whose own name says duration, size or

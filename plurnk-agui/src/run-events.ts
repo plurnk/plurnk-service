@@ -14,6 +14,12 @@ export const serviceStoppingProblem = (): ProblemDetails => httpProblem(
     { stage: "shutdown", retryable: true },
 );
 
+// {§agui-oauth-revocation} — a stream admitted under a credential whose family was revoked ends here.
+export const credentialRevokedProblem = (): ProblemDetails => httpProblem(
+    "credential-revoked", 401, "The credential this stream was admitted under has been revoked.",
+    { stage: "authorization", retryable: false },
+);
+
 export const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
     { type: EventType.CUSTOM, name: "plurnk.problem", value: problem },
     { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },

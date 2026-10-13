@@ -32,6 +32,7 @@ import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, t
 import type { HttpRouteHandler, PlurnkStatement, RollbackReport } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
+import Credentials from "./Credentials.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
@@ -151,6 +152,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§http-host} — the one listener, bound by the service before durable admission; null in
     // tests that never open a transport.
     readonly #http: HttpListener | null;
+    // {§credential-authority} {§methods-credentials} — the one authority over credentials presented to the listener.
+    readonly credentials = new Credentials();
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 

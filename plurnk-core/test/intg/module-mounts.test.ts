@@ -62,7 +62,7 @@ test("{§module-http-mounts} a daemon with a listener needs no root owner", asyn
 });
 
 test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", async (t) => {
-    const client = AguiModule.create({ token: "" });
+    const client = AguiModule.create({ secret: "" });
     assert.deepEqual(client.mounts, ["/agui"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
@@ -87,8 +87,23 @@ test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", asyn
     assert.equal((await get("/")).status, 404);
 });
 
+test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization server's paths beside /agui, never the root", async (t) => {
+    const client = AguiModule.create({ secret: "s3cret" });
+    assert.deepEqual(client.mounts, ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
+    const { daemon, get, port } = await fixture(t, client);
+    await daemon.start();
+    const metadata = await get("/.well-known/oauth-authorization-server");
+    assert.equal(metadata.status, 200);
+    assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the listener's own origin");
+    assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}/agui`);
+    assert.equal((await get("/")).status, 404);
+    const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(refused.status, 401);
+    assert.match(refused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
+});
+
 test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {
-    const { daemon, get } = await fixture(t, AguiModule.create({ token: "" }));
+    const { daemon, get } = await fixture(t, AguiModule.create({ secret: "" }));
     daemon.registerModule(serving(["/"]), "@acme/web");
     await daemon.start();
     assert.deepEqual(await get("/"), { status: 200, body: "/" });

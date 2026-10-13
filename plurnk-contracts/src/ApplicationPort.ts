@@ -171,8 +171,51 @@ export interface HttpHost {
     httpAddress(): { readonly host: string; readonly port: number };
 }
 
+/**
+ * {§credential-authority} The kind of a credential: an access token is presented as a bearer; a
+ * refresh token is exchanged for new credentials of its family and is never presented.
+ */
+export type CredentialKind = "access" | "refresh";
+
+/**
+ * {§credential-authority} What an issued credential stands for. `family` names the grant it descends
+ * from: revocation is by family, so an access token and the refresh token that renews it fall together.
+ */
+export interface CredentialClaims {
+    readonly kind: CredentialKind;
+    readonly subject: string;
+    readonly clientId: string;
+    readonly scopes: readonly string[];
+    readonly family: string;
+    readonly expiresAt: number;
+}
+
+export interface IssuedCredential {
+    readonly token: string;
+    readonly expiresAt: number;
+}
+
+/**
+ * {§credential-authority} The daemon's one authority over the credentials presented to its listener:
+ * opaque tokens it issued, live until they expire, are consumed or their family is revoked. Every
+ * exterior adapter verifies through it; the client protocol is its issuing face.
+ */
+export interface CredentialAuthority {
+    issue(credential: Omit<CredentialClaims, "expiresAt"> & { readonly ttlMs: number }): IssuedCredential;
+    /** The claims of a live credential; null for one unknown, expired, consumed or revoked. */
+    verify(token: string): CredentialClaims | null;
+    /**
+     * Retires a live refresh token in exchange for new credentials of its family. A token already
+     * retired is a reuse: its whole family is revoked and named; anything else answers null.
+     */
+    consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
+    revokeFamily(family: string): void;
+    onRevoked(listener: (family: string) => void): () => void;
+}
+
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
+    readonly credentials: CredentialAuthority;
     registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void>;
     claimWorkerOwner(args: { readonly workspaceId: number; readonly workerId: number; readonly owner: string }): Promise<WorkerOwner>;
     configurationNotices(): readonly Notice[];

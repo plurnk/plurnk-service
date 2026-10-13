@@ -21,6 +21,8 @@ import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
     owner: string | null;
+    // {§agui-oauth-revocation} — the credential family this Run was admitted under; null when none was.
+    family: string | null;
     workerId: number;
     loopId: number | null;
     notificationScope: NotificationScope;
@@ -460,7 +462,7 @@ export default class Portal {
     // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
-    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -478,6 +480,7 @@ export default class Portal {
         });
         const t: Thread = {
             owner: args.owner ?? null,
+            family: args.family ?? null,
             workerId: restored?.binding.workerId ?? args.workerId,
             loopId: restored?.binding.loopId ?? null,
             notificationScope: restored?.notificationScope ?? args.notificationScope,
@@ -538,6 +541,18 @@ export default class Portal {
     failThread(thread: unknown, events: AguiEvent[]): void {
         const bound = thread as Thread;
         bound.emit([...bound.router.finish(), ...events]);
+    }
+
+    // {§agui-oauth-revocation} — every Run admitted under the family ends with the given events; the
+    // loops those Runs observed continue, since a revoked observer is not a cancelling one.
+    failFamily(family: string, events: AguiEvent[]): void {
+        for (const threads of this.#threads.values()) {
+            for (const thread of threads) {
+                if (thread.family !== family) continue;
+                this.failThread(thread, events);
+                threads.delete(thread);
+            }
+        }
     }
 
     // Emit extra events + RUN_FINISHED through the resumed Run that owns the

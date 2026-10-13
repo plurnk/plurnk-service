@@ -42,6 +42,8 @@ export const host = async (seam: AguiPort, options: ModuleOptions = {}, observeR
         stop: () => module.stop(),
         close: async () => {
             module.close();
+            // An unread stream would hold the socket open past the module's end; the daemon's listener ends them too.
+            server.closeAllConnections();
             await new Promise<void>((resolve, reject) => server.close((cause) => (cause === undefined ? resolve() : reject(cause))));
         },
     };

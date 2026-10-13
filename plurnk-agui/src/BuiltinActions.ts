@@ -102,6 +102,7 @@ export default class BuiltinActions {
         input: RunAgentInput,
         env: ClientEnvelope | null,
         conversationWorkerId?: number,
+        principal = "anonymous",
     ): Promise<ActionOutcome> {
         try {
             // Worldless actions never bind or forge a workspace.
@@ -193,7 +194,7 @@ export default class BuiltinActions {
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         prompt: p.prompt,
-                        ...MessageAddress.submission(input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
+                        ...MessageAddress.submission(principal, input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
                     });
                     return operationOutcome(ack);
                 }
