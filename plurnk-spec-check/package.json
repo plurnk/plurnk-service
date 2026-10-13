@@ -1,0 +1,23 @@
+{
+    "name": "@plurnk/plurnk-spec-check",
+    "version": "0.1.0",
+    "description": "Development-only validation of Plurnk specification tags and coverage references.",
+    "license": "MIT",
+    "type": "module",
+    "engines": { "node": ">=26" },
+    "bin": { "plurnk-spec-check": "check.mjs" },
+    "exports": { "./package.json": "./package.json" },
+    "files": ["check.mjs", "README.md", "SPEC.md", "LICENSE"],
+    "scripts": {
+        "test:unit": "node --test check.test.mjs installation.test.mjs",
+        "test": "npm run test:unit"
+    },
+    "publishConfig": { "access": "public" },
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-spec-check#readme",
+    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-spec-check"
+    }
+}

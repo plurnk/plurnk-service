@@ -101,6 +101,8 @@ Where things are, for an agent that has to act before it has read everything:
   `plurnk-execs*` own their respective extension contracts and implementations.
 - `plurnk-meta` contains shared package discovery and model-facing reference
   material. It is not a second orchestration layer.
+- `plurnk-spec-check` owns the shared development-only specification validator;
+  it is not a daemon dependency.
 
 Dependencies should point from consumers to the smallest package that owns the
 required contract. Do not duplicate schemas, package discovery, configuration

@@ -1,7 +1,8 @@
+#!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 
 const HEADING = /^ {0,3}#{1,6}[ \t]+/;
 const LIST_ITEM = /^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/;
@@ -260,15 +261,34 @@ const printLocations = (title, entries, render) => {
 };
 
 const main = async () => {
-    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const allowancePath = path.join(root, "scripts/spec-witness-allowance.json");
+    // {§spec-check-cli} The consumer owns its source tree and any existing debt.
+    const { values, positionals } = parseArgs({
+        allowPositionals: true,
+        options: {
+            allowance: { type: "string" },
+            write: { type: "boolean" },
+            help: { type: "boolean" },
+        },
+    });
+    if (values.help) {
+        console.log("Usage: plurnk-spec-check [directory] [--allowance file] [--write]");
+        return;
+    }
+    if (positionals.length > 1) throw new Error("Expected at most one source directory");
+    if (values.write && values.allowance === undefined) throw new Error("--write requires --allowance");
+    const root = path.resolve(positionals[0] ?? process.cwd());
+    const allowancePath = values.allowance === undefined ? null : path.resolve(root, values.allowance);
     const files = await repositoryFiles(root);
-    if (process.argv.includes("--write")) {
+    if (values.write) {
         await fs.writeFile(allowancePath, `${JSON.stringify(unwitnessedAnchors(files), null, 4)}\n`);
     }
     const analysis = analyzeSpecReferences(files);
     const issueShorthands = ambiguousIssueShorthands(files);
-    const allowance = JSON.parse(await fs.readFile(allowancePath, "utf8"));
+    const allowance = allowancePath === null ? {} : JSON.parse(await fs.readFile(allowancePath, "utf8"));
+    if (allowance === null || Array.isArray(allowance) || typeof allowance !== "object"
+        || Object.values(allowance).some((tags) => !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string"))) {
+        throw new Error("Witness allowance must map specification paths to arrays of tag names");
+    }
     const unwitnessed = witnessViolations(files, allowance);
     const failed = Object.values(analysis).some((entries) => entries.length > 0)
         || issueShorthands.length > 0 || unwitnessed.length > 0;
@@ -312,6 +332,6 @@ const main = async () => {
     process.exitCode = 1;
 };
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
     await main();
 }

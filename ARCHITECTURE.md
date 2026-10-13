@@ -241,7 +241,9 @@ anchor; every other document cites. An anchor is *witnessed* when the
 implementation, a panel or a test cites it. One that nothing outside prose cites
 is a principle in the wrong document, orientation in the wrong document, or a
 contract nobody witnesses — and, cited by nothing, it rots without anything
-failing. `scripts/spec-references.mjs` holds that allowance, which only shrinks.
+failing. The shared development tool `@plurnk/plurnk-spec-check` enforces this
+discipline; `scripts/spec-witness-allowance.json` holds this repository's existing
+allowance, which only shrinks.
 
 Promotion is never duplication. A principle moves here; a how-to moves to the
 field guide; a value that lives on a panel is deleted from prose, which cites

@@ -10,6 +10,7 @@
     },
     "packageManager": "npm@11.18.0",
     "workspaces": [
+        "plurnk-spec-check",
         "plurnk-meta",
         "plurnk-contracts",
         "plurnk-modules",
@@ -65,7 +66,7 @@
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "metadata:check": "node scripts/package-provenance.mjs",
         "lifecycle:check": "node scripts/package-lifecycle-policy.mjs",
-        "root:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && node scripts/problem-codes.mjs && node scripts/host-path-policy.mjs && node scripts/env-surface-policy.mjs && npm run source:check && npm run docs:check && node scripts/changelog.mjs --check",
+        "root:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && plurnk-spec-check --allowance scripts/spec-witness-allowance.json && node scripts/problem-codes.mjs && node scripts/host-path-policy.mjs && node scripts/env-surface-policy.mjs && npm run source:check && npm run docs:check && node scripts/changelog.mjs --check",
         "root:unit": "node --test 'scripts/*.test.*'",
         "pretest:lint": "npm run lifecycle:check",
         "test:lint": "npm run root:lint && npm run test:lint --workspaces --if-present",
@@ -96,6 +97,7 @@
         "report:sql": "node --conditions=plurnk-dev plurnk-core/scripts/sql-report.mjs"
     },
     "devDependencies": {
+        "@plurnk/plurnk-spec-check": "^0.1.0",
         "@changesets/cli": "3.0.3",
         "@possumtech/sqlrite": "^6.6.1",
         "@types/node": "^26.1.1",

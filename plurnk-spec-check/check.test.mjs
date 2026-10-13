@@ -5,7 +5,9 @@ import {
     analyzeSpecReferences,
     unwitnessedAnchors,
     witnessViolations,
-} from "./spec-references.mjs";
+} from "./check.mjs";
+
+// {§spec-check-tags} {§spec-check-witnesses} {§spec-check-provenance}
 
 const cite = (tag) => `{${"§"}${tag}}`;
 const declare = (tag) => `${"§"}${tag}`;
