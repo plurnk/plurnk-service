@@ -19,7 +19,13 @@ operator's client secret is the shared `PLURNK_SECRET`, and when it is unset
 the daemon mints one at every boot into the file `secret` beside its
 database (0600), where the operator's own tools read it, so a fresh install
 authenticates with nothing configured. `PLURNK_USER` and `PLURNK_PASS` sign
-the operator in from a browser. The secret itself is never a bearer: a
-client exchanges it for an access token. Operators who set
+the operator in from a browser; with both empty, a browser on the daemon's
+own host is the operator without a sign-in, through a session cookie the
+authorization server establishes on its first visit ({§agui-oauth-session}),
+a client served by a module of this daemon is authorized silently, any other
+client is shown a consent page, and every request under the authorization
+server's paths must name this daemon by a loopback or issuer `Host`. The
+secret itself is never a bearer: a client exchanges it for an access token.
+Operators who set
 `PLURNK_AGUI_TOKEN` or `PLURNK_AGUI_SECRET` rename the line to
 `PLURNK_SECRET`, or remove it and let the daemon mint.

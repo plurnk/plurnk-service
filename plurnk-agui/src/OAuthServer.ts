@@ -15,6 +15,9 @@ const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
 const OPERATOR = "operator";
+// {§agui-oauth-session} — the browser session's cookie, scoped to the authorization server's paths.
+const SESSION_COOKIE = "plurnk_session";
+const BROWSER = "browser";
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/u;
 const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/u;
 
@@ -82,6 +85,29 @@ const isForm = (req: IncomingMessage): boolean =>
 const isJson = (req: IncomingMessage): boolean =>
     (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
 
+// {§agui-oauth-session} — a peer on the daemon's own host: the loopback range, in either family.
+const loopbackAddress = (address: string | undefined): boolean => {
+    if (address === undefined) return false;
+    const bare = address.startsWith("::ffff:") ? address.slice(7) : address;
+    return bare === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(bare);
+};
+
+const cookieValue = (req: IncomingMessage, name: string): string | null => {
+    for (const part of (req.headers.cookie ?? "").split(";")) {
+        const separator = part.indexOf("=");
+        if (separator !== -1 && part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim();
+    }
+    return null;
+};
+
+// The host a request names, without its port; absent or unparsable is null.
+const requestHost = (req: IncomingMessage): string | null => {
+    const raw = req.headers.host;
+    if (raw === undefined || raw.length === 0) return null;
+    try { return new URL(`http://${raw}`).hostname; } catch { return null; }
+};
+const loopbackHost = (host: string): boolean => host === "localhost" || host === "[::1]" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
+
 const absoluteHttpUrl = (value: unknown): URL | null => {
     if (typeof value !== "string") return null;
     try {
@@ -110,18 +136,22 @@ export default class OAuthServer {
     // {§agui-oauth-login} — failures per source address within the configured window.
     readonly #failures = new Map<string, { count: number; windowStart: number }>();
     readonly #now: () => number;
+    // The address a request arrives from; a witness substitutes a remote one.
+    readonly #peer: (req: IncomingMessage) => string | undefined;
     #registered = 0;
 
-    constructor({ credentials, opts, issuer, now = Date.now }: {
+    constructor({ credentials, opts, issuer, now = Date.now, peer = (req) => req.socket.remoteAddress }: {
         readonly credentials: CredentialAuthority;
         readonly opts: ResolvedModuleOptions;
         readonly issuer: () => string;
         readonly now?: () => number;
+        readonly peer?: (req: IncomingMessage) => string | undefined;
     }) {
         this.#credentials = credentials;
         this.#opts = opts;
         this.#issuer = issuer;
         this.#now = now;
+        this.#peer = peer;
         // {§agui-oauth-clients} — the operator's own client holds the authority's operator secret,
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
@@ -209,6 +239,9 @@ export default class OAuthServer {
         const route = this.#routes()[pathname];
         if (route === undefined) return false;
         try {
+            // {§agui-oauth-session} — a request must name this daemon: a page that rebinds its own name
+            // to the loopback address arrives with that name and is refused before any route.
+            if (!this.#hostAllowed(req)) throw new OAuthError("invalid_request", "The request names a host this daemon does not serve.", 421);
             await route(req, res);
         } catch (cause) {
             const error = cause instanceof OAuthError ? cause : new OAuthError("server_error", "The authorization server failed.", 500);
@@ -227,7 +260,62 @@ export default class OAuthServer {
             "/oauth/token": (req, res) => this.#token(req, res),
             "/oauth/revoke": (req, res) => this.#revoke(req, res),
             "/oauth/register": (req, res) => this.#register(req, res),
+            "/oauth/session": (req, res) => this.#sessionPage(req, res),
         };
+    }
+
+    #hostAllowed(req: IncomingMessage): boolean {
+        const host = requestHost(req);
+        if (host === null) return false;
+        if (loopbackHost(host)) return true;
+        try { return host === new URL(this.issuer).hostname; } catch { return false; }
+    }
+
+    // ── session ───────────────────────────────────────────────────────────
+
+    // {§agui-oauth-session} — the browser's session is a credential of the authority, presented as a cookie.
+    #session(req: IncomingMessage): CredentialClaims | null {
+        const token = cookieValue(req, SESSION_COOKIE);
+        if (token === null) return null;
+        const claims = this.#credentials.verify(token);
+        return claims !== null && claims.kind === "session" ? claims : null;
+    }
+
+    #establishSession(res: ServerResponse): CredentialClaims {
+        const ttlMs = this.#opts.refreshTtlSec * 1000;
+        const family = randomUUID();
+        const issued = this.#credentials.issue({ kind: "session", subject: OPERATOR, clientId: BROWSER, scopes: SCOPES, family, ttlMs });
+        res.setHeader("set-cookie", `${SESSION_COOKIE}=${issued.token}; Path=/oauth; Max-Age=${this.#opts.refreshTtlSec}; HttpOnly; SameSite=Lax${this.issuer.startsWith("https:") ? "; Secure" : ""}`);
+        return { kind: "session", subject: OPERATOR, clientId: BROWSER, scopes: SCOPES, family, expiresAt: issued.expiresAt };
+    }
+
+    #endSession(req: IncomingMessage, res: ServerResponse): void {
+        const session = this.#session(req);
+        if (session !== null) this.#credentials.revokeFamily(session.family);
+        res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/oauth; Max-Age=0; HttpOnly; SameSite=Lax`);
+    }
+
+    // A client whose redirect is on this daemon's own origin is served by a module of this daemon.
+    #firstParty(redirectUri: string): boolean {
+        const target = absoluteHttpUrl(redirectUri);
+        if (target === null) return false;
+        try { return target.origin === new URL(this.issuer).origin; } catch { return false; }
+    }
+
+    async #sessionPage(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (req.method === "POST") {
+            const form = await this.#form(req);
+            if (form.get("action") !== "end") throw new OAuthError("invalid_request", "POST action=end to sign this browser out.");
+            this.#endSession(req, res);
+            this.#html(res, 200, "Plurnk: signed out", "<h1>Signed out</h1><p>This browser no longer holds a session with this daemon.</p>");
+            return;
+        }
+        if (req.method !== "GET") throw new OAuthError("invalid_request", "Use GET, or POST a form.", 405);
+        const session = this.#session(req);
+        this.#html(res, 200, session === null ? "Plurnk: not signed in" : "Plurnk: signed in", session === null
+            ? "<h1>Not signed in</h1><p>This browser holds no session with this daemon.</p>"
+            : "<h1>Signed in</h1><p>This browser is signed in to this daemon as the operator.</p>"
+                + `<form method="post" action="/oauth/session"><button type="submit" name="action" value="end">Sign out</button></form>`);
     }
 
     async #document(req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>): Promise<void> {
@@ -288,17 +376,49 @@ export default class OAuthServer {
         const resource = params.get("resource");
         if (resource !== null && resource !== this.resource) { fail("invalid_target", `The resource must be ${this.resource}.`); return; }
 
+        const issue = (): void => {
+            const code = mint();
+            this.#sweepCodes();
+            this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family: randomUUID(), expiresAt: this.#now() + CODE_TTL_MS });
+            const target = new URL(redirectUri);
+            target.searchParams.set("code", code);
+            if (state !== null) target.searchParams.set("state", state);
+            res.writeHead(302, { location: target.toString(), "cache-control": "no-store" });
+            res.end();
+        };
+        const hidden = ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]
+            .filter((name) => params.has(name))
+            .map((name) => `<input type="hidden" name="${name}" value="${escape(params.get(name)!)}">`).join("");
+        const asks = `<p><strong>${escape(client.name ?? client.id)}</strong> asks to use this daemon (scope: ${escape(scopes.join(" "))}).</p>`;
+
+        // {§agui-oauth-session} — a browser from the same host is the operator unless a password is
+        // configured: its first visit establishes the session. A consent decision counts only with a
+        // session that preceded this request, since a cross-site POST carries no cookie.
+        const passwordConfigured = this.#opts.user.length > 0 && this.#opts.password.length > 0;
+        let session = this.#session(req);
+        let established = false;
+        if (session === null && !passwordConfigured && loopbackAddress(this.#peer(req))) {
+            session = this.#establishSession(res);
+            established = true;
+        }
+        if (session !== null) {
+            if (this.#firstParty(redirectUri)) { issue(); return; }
+            const decision = req.method === "POST" && !established ? params.get("consent") : null;
+            if (decision === "allow") { issue(); return; }
+            if (decision === "deny") { fail("access_denied", "The operator declined."); return; }
+            this.#html(res, 200, "Plurnk: allow access?", `<h1>Allow access?</h1>${asks}`
+                + `<form method="post" action="/oauth/authorize">${hidden}`
+                + `<button type="submit" name="consent" value="allow">Allow</button> <button type="submit" name="consent" value="deny">Deny</button></form>`);
+            return;
+        }
+
         // {§agui-oauth-login} — the operator signs in here; an unconfigured login explains itself and issues nothing.
-        if (this.#opts.user.length === 0 || this.#opts.password.length === 0) {
+        if (!passwordConfigured) {
             this.#html(res, 503, "Plurnk: sign-in not configured", "<h1>Sign-in is not configured</h1>"
                 + "<p>Set <code>PLURNK_USER</code> and <code>PLURNK_PASS</code> in the operator's configuration file and restart the daemon.</p>");
             return;
         }
-        const hidden = ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]
-            .filter((name) => params.has(name))
-            .map((name) => `<input type="hidden" name="${name}" value="${escape(params.get(name)!)}">`).join("");
-        const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>`
-            + `<p><strong>${escape(client.name ?? client.id)}</strong> asks to use this daemon (scope: ${escape(scopes.join(" "))}).</p>`
+        const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>${asks}`
             + (message === null ? "" : `<p class="error">${escape(message)}</p>`)
             + `<form method="post" action="/oauth/authorize">${hidden}`
             + `<label for="username">User</label><input id="username" name="username" autocomplete="username" required>`
@@ -322,14 +442,9 @@ export default class OAuthServer {
             return;
         }
         this.#failures.delete(address);
-        const code = mint();
-        this.#sweepCodes();
-        this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family: randomUUID(), expiresAt: this.#now() + CODE_TTL_MS });
-        const target = new URL(redirectUri);
-        target.searchParams.set("code", code);
-        if (state !== null) target.searchParams.set("state", state);
-        res.writeHead(302, { location: target.toString(), "cache-control": "no-store" });
-        res.end();
+        // A sign-in is the operator's own act, so it issues at once, and the browser keeps the session.
+        this.#establishSession(res);
+        issue();
     }
 
     #scopes(requested: string | null, client: Client): readonly string[] | null {

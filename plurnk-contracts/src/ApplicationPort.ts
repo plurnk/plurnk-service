@@ -173,9 +173,10 @@ export interface HttpHost {
 
 /**
  * {§credential-authority} The kind of a credential: an access token is presented as a bearer; a
- * refresh token is exchanged for new credentials of its family and is never presented.
+ * refresh token is exchanged for new credentials of its family and is never presented; a session
+ * is a browser's standing at the authorization server ({§agui-oauth-session}), never a bearer.
  */
-export type CredentialKind = "access" | "refresh";
+export type CredentialKind = "access" | "refresh" | "session";
 
 /**
  * {§credential-authority} What an issued credential stands for. `family` names the grant it descends

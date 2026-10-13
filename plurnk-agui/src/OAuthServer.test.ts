@@ -4,10 +4,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { host, type Hosted } from "../test/host.ts";
+import { resolveModuleOptions } from "./config.ts";
 import type { AguiPort, ModuleOptions } from "./Module.ts";
+import OAuthServer from "./OAuthServer.ts";
 import type { AguiEvent } from "./types.ts";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
@@ -233,7 +237,7 @@ test("{§agui-oauth-login} authorization code with PKCE: a registered public cli
     } finally { await mod.close(); }
 });
 
-test("{§agui-oauth-login} a bad client or redirect is told to the person; a malformed request is redirected as an error; unconfigured sign-in explains itself", async () => {
+test("{§agui-oauth-login} a bad client or redirect is told to the person; a malformed request is redirected as an error; a loopback browser needs no sign-in", async () => {
     const mod = await boot();
     try {
         const redirect = "http://127.0.0.1:4000/callback";
@@ -268,8 +272,8 @@ test("{§agui-oauth-login} a bad client or redirect is told to the person; a mal
     try {
         const { client_id } = await register(unconfigured.base, "http://127.0.0.1:4000/callback");
         const page = await fetch(`${unconfigured.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: "http://127.0.0.1:4000/callback", response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" })}`);
-        assert.equal(page.status, 503);
-        assert.match(await page.text(), /PLURNK_USER.*PLURNK_PASS/su);
+        assert.equal(page.status, 200, "a loopback browser with no password is the operator: consent for a client elsewhere ({§agui-oauth-session})");
+        assert.match(await page.text(), /Allow access\?/u);
         const minted = await json<{ access_token: string }>(await fetch(`${unconfigured.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })));
         await pinged(unconfigured.base, { authorization: `Bearer ${minted.access_token}` });
     } finally { await unconfigured.close(); }
@@ -378,4 +382,136 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
         const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
         await pinged(mod.base, { authorization: `Bearer ${tokens.access_token}` });
     } finally { await mod.close(); }
+});
+
+// {§agui-oauth-session} — the authorization server with an injected peer address, for the rows a
+// loopback test listener cannot present itself.
+const serve = async (peer: string, env: Record<string, string> = {}): Promise<{ readonly base: string; close(): Promise<void> }> => {
+    const credentials = new Credentials({ operatorSecret: "s3cret" });
+    let base = "";
+    const server = new OAuthServer({ credentials, opts: resolveModuleOptions({ env: { ...FLOOR, ...env } }), issuer: () => base, peer: () => peer });
+    const listener = createServer((req, res) => { void server.handle(req, res).then((ours) => { if (!ours) { res.writeHead(404); res.end(); } }); });
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    base = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
+    return { base, close: () => new Promise<void>((resolve) => { listener.closeAllConnections(); listener.close(() => resolve()); }) };
+};
+
+const withHost = (base: string, path: string, hostHeader: string): Promise<number> => new Promise((resolve, reject) => {
+    const { hostname, port } = new URL(base);
+    const req = httpRequest({ host: hostname, port, path, method: "GET", headers: { host: hostHeader } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+    req.once("error", reject);
+    req.end();
+});
+
+const sessionOf = (response: Response): string => {
+    const match = /plurnk_session=([^;]+)/u.exec(response.headers.get("set-cookie") ?? "");
+    assert.ok(match, `no session cookie: ${response.headers.get("set-cookie")}`);
+    return match[1]!;
+};
+
+test("{§agui-oauth-session} without a password a loopback browser is the operator: the first visit sets the session, a client on the daemon's origin is authorized silently, and a session is never a bearer", async () => {
+    const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "" });
+    try {
+        const redirect = `${mod.base}/web/callback`;
+        const { client_id } = await register(mod.base, redirect);
+        const { verifier, challenge } = pkce();
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
+        const first = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" });
+        assert.equal(first.status, 302, await first.text());
+        assert.match(first.headers.get("set-cookie") ?? "", /^plurnk_session=[A-Za-z0-9_-]{43}; Path=\/oauth; Max-Age=2592000; HttpOnly; SameSite=Lax$/u);
+        const session = sessionOf(first);
+        const location = new URL(first.headers.get("location")!);
+        assert.equal(`${location.origin}${location.pathname}`, redirect);
+        assert.equal(location.searchParams.get("state"), "s");
+        const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`,
+            form({ grant_type: "authorization_code", client_id, redirect_uri: redirect, code_verifier: verifier, code: location.searchParams.get("code")! })));
+        await pinged(mod.base, { authorization: `Bearer ${tokens.access_token}` });
+        assert.match((await refused(mod.base, { authorization: `Bearer ${session}` })).type, /\/bearer-token-invalid$/u, "a session is never a bearer");
+        const again = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
+        assert.equal(again.status, 302);
+        assert.equal(again.headers.get("set-cookie"), null, "a standing session is kept, not replaced");
+        const standing = await fetch(`${mod.base}/oauth/session`, { headers: { cookie: `plurnk_session=${session}` } });
+        assert.match(await standing.text(), /Signed in/u);
+        const ended = await fetch(`${mod.base}/oauth/session`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", cookie: `plurnk_session=${session}` }, body: "action=end" });
+        assert.equal(ended.status, 200);
+        assert.match(ended.headers.get("set-cookie") ?? "", /^plurnk_session=; Path=\/oauth; Max-Age=0; HttpOnly; SameSite=Lax$/u);
+        assert.match(await (await fetch(`${mod.base}/oauth/session`, { headers: { cookie: `plurnk_session=${session}` } })).text(), /Not signed in/u, "signing out revokes the session");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-session} a client elsewhere is shown consent: allowing with the session issues the code, denying redirects access_denied, and a POST without the session that preceded it issues nothing", async () => {
+    const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "" });
+    try {
+        const redirect = "http://127.0.0.1:4000/callback";
+        const { client_id } = await register(mod.base, redirect);
+        const { challenge } = pkce();
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
+        const page = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" });
+        assert.equal(page.status, 200);
+        const html = await page.text();
+        assert.match(html, /Allow access\?/u);
+        assert.match(html, /name="consent" value="allow"/u);
+        assert.match(page.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/u);
+        const session = sessionOf(page);
+        const decide = (consent: string, headers: Record<string, string> = {}): Promise<Response> => fetch(`${mod.base}/oauth/authorize`, {
+            method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body: new URLSearchParams({ ...query, consent }).toString(),
+        });
+        const allowed = await decide("allow", { cookie: `plurnk_session=${session}` });
+        assert.equal(allowed.status, 302);
+        assert.match(new URL(allowed.headers.get("location")!).searchParams.get("code") ?? "", /^[A-Za-z0-9_-]{43}$/u);
+        const denied = await decide("deny", { cookie: `plurnk_session=${session}` });
+        assert.equal(denied.status, 302);
+        assert.equal(new URL(denied.headers.get("location")!).searchParams.get("error"), "access_denied");
+        const crossSite = await decide("allow");
+        assert.equal(crossSite.status, 200, "a POST carrying no session that preceded it is shown the page, never a code");
+        assert.match(await crossSite.text(), /Allow access\?/u);
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-session} every request under the authorization server's paths must name this daemon: a foreign Host is refused at 421, a loopback or issuer Host is served", async () => {
+    const mod = await boot();
+    try {
+        for (const path of ["/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource", "/oauth/authorize", "/oauth/token", "/oauth/session"]) {
+            assert.equal(await withHost(mod.base, path, "attacker.example"), 421, path);
+        }
+        assert.equal(await withHost(mod.base, "/.well-known/oauth-authorization-server", "localhost"), 200);
+        assert.equal(await withHost(mod.base, "/.well-known/oauth-authorization-server", "127.0.0.1:1"), 200, "the port is not the name");
+    } finally { await mod.close(); }
+    const fronted = await boot({ PLURNK_AGUI_ISSUER: "https://plurnk.example" });
+    try {
+        assert.equal(await withHost(fronted.base, "/.well-known/oauth-authorization-server", "plurnk.example"), 200, "the issuer's host is this daemon's name");
+        assert.equal(await withHost(fronted.base, "/.well-known/oauth-authorization-server", "other.example"), 421);
+    } finally { await fronted.close(); }
+});
+
+test("{§agui-oauth-session} a browser elsewhere is not the operator: without a password it is told the two settings; with one it signs in, keeps the session, and is then authorized silently", async () => {
+    const open = await serve("203.0.113.5", { PLURNK_USER: "", PLURNK_PASS: "" });
+    try {
+        const redirect = `${open.base}/web/callback`;
+        const { client_id } = await register(open.base, redirect);
+        const page = await fetch(`${open.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: redirect, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" })}`, { redirect: "manual" });
+        assert.equal(page.status, 503);
+        assert.match(await page.text(), /PLURNK_USER.*PLURNK_PASS/su);
+        assert.equal(page.headers.get("set-cookie"), null, "no session for a peer elsewhere");
+    } finally { await open.close(); }
+    const guarded = await serve("203.0.113.5");
+    try {
+        const redirect = `${guarded.base}/web/callback`;
+        const { client_id } = await register(guarded.base, redirect);
+        const { challenge } = pkce();
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui" };
+        const form_ = await fetch(`${guarded.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" });
+        assert.equal(form_.status, 200);
+        assert.match(await form_.text(), /Sign in to Plurnk/u);
+        assert.equal(form_.headers.get("set-cookie"), null, "a password stands between a peer elsewhere and a session");
+        const signed = await fetch(`${guarded.base}/oauth/authorize`, {
+            method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ ...query, username: "ada", password: "lovelace" }).toString(),
+        });
+        assert.equal(signed.status, 302, await signed.text());
+        const session = sessionOf(signed);
+        const silent = await fetch(`${guarded.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
+        assert.equal(silent.status, 302, "the session authorizes the daemon's own module silently");
+        assert.equal(silent.headers.get("set-cookie"), null);
+    } finally { await guarded.close(); }
 });

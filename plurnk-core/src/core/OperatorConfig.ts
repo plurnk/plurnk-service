@@ -31,7 +31,7 @@ export default class OperatorConfig {
             "# database, where your own tools read it; set one here instead for a tool on another host",
             "# or under another user. Anything that can reach the port can drive the daemon.",
             "# PLURNK_SECRET=",
-            "# Signing in from a browser needs a user and a password; set both, then restart.",
+            "# A browser on this host is signed in as you. Set both to require a sign-in instead, then restart.",
             "# PLURNK_USER=",
             "# PLURNK_PASS=",
             "",
