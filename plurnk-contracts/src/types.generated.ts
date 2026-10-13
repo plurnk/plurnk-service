@@ -20,13 +20,34 @@ cardPath?: string
 headers?: {
 [k: string]: string
 }
-authorization?: {
+/**
+ * How the daemon authenticates to the agent: a fixed bearer, or OAuth 2.0 client credentials obtained from the agent's declared token endpoint.
+ */
+authorization?: ({
 type: "bearer"
 /**
  * A symbolic `${NAME}` environment reference; the secret is never persisted.
  */
 token: string
-}
+} | {
+type: "oauth2"
+/**
+ * The client id the agent's authorization server knows this daemon by.
+ */
+clientId: string
+/**
+ * A symbolic `${NAME}` environment reference to the client secret; the secret is never persisted.
+ */
+clientSecret: string
+/**
+ * The token endpoint; omitted, the Agent Card's clientCredentials flow names it.
+ */
+tokenUrl?: string
+/**
+ * The scope to request, space-separated; omitted, every scope the card's flow offers.
+ */
+scope?: string
+})
 }
 
 export type Disposition = ({

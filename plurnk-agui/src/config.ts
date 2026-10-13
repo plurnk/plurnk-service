@@ -1,7 +1,7 @@
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
 
-/** {§agui-oauth-authority} The resources a credential of this daemon may name. */
-export const SCOPES: readonly string[] = Object.freeze(["agui"]);
+/** {§agui-oauth-authority} The resources a credential of this daemon may name: the client interface, and the A2A exposure. */
+export const SCOPES: readonly string[] = Object.freeze(["agui", "a2a"]);
 
 /** {§agui-oauth-clients} A confidential client the operator declared: its secret and the scopes it may hold. */
 export interface DeclaredClient {

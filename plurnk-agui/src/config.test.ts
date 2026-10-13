@@ -34,7 +34,7 @@ test("[{§agui-configuration}] AG-UI consumes and validates its package-owned en
     });
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "-1" } }).maxTurns, -1);
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "0" } }).maxTurns, 0);
-    assert.deepEqual(SCOPES, ["agui"]);
+    assert.deepEqual(SCOPES, ["agui", "a2a"]);
 });
 
 test("[{§agui-configuration}] explicit in-process options override the assembled environment", () => {
@@ -99,7 +99,7 @@ test("[{§agui-oauth-clients}] every PLURNK_AGUI_CLIENT_<id> line declares one c
     assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", "not json"), /PLURNK_AGUI_CLIENT_bad must be a JSON object/u);
     assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", "[]"), /must be a JSON object/u);
     assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", JSON.stringify({ scopes: ["agui"] })), /needs a non-empty "secret"/u);
-    assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["agui"\]/u);
+    assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["agui","a2a"\]/u);
     assert.throws(resolve("PLURNK_AGUI_CLIENT_bad", JSON.stringify({ secret: "s", scopes: ["root"] })), /needs "scopes"/u);
     assert.throws(resolve("PLURNK_AGUI_CLIENT_operator", JSON.stringify({ secret: "s", scopes: ["agui"] })), /"operator" is the operator's own client/u);
     assert.throws(() => resolveModuleOptions({ clients: { operator: { secret: "s", scopes: ["agui"] } }, env: floor }), /"operator" is not a client id/u);

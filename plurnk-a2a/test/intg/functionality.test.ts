@@ -149,3 +149,36 @@ test("symbolic references that cannot be resolved make the alias unavailable wit
     assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/a2a/functionality/authorization-unresolved");
     assert.equal(outcome.problem.retryable, false, "the same unresolved environment reference cannot be replayed automatically");
 });
+
+test("{§a2a-outbound-credentials} an oauth2 definition obtains its token from the card's flow, presents it, obtains it again on 401, and names what the agent refuses", async () => {
+    const agent = await startDemoAgent("complete", undefined, { clientId: "plurnk", clientSecret: "agent-secret" });
+    try {
+        const family = new A2aFunctionality({ ...diagnosticEnv, SECRET: "agent-secret", WRONG: "nope" });
+        const definition = (clientSecret: string) => ({ name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret } });
+        const prepared = await family.prepare(preparation(3, { peer: definition("${SECRET}") }));
+        assert.equal(prepared.outcomes.get("peer")?.state, "active", JSON.stringify(prepared.outcomes.get("peer")));
+        assert.deepEqual(agent.tokenRequests, [{ clientId: "plurnk", clientSecret: "agent-secret", scope: "echo" }], "preparation minted once, with the card's scope, after discovering the card without it");
+        await prepared.commit();
+        const client = family.resolve("peer", 3);
+        assert.ok(client !== null);
+        await assert.rejects(client.getTask({ tenant: "", id: "missing-task", historyLength: 0 }), /not found/iu, "the token admits the client at the agent");
+        await assert.rejects(client.getTask({ tenant: "", id: "missing-task", historyLength: 0 }), /not found/iu);
+        assert.equal(agent.tokenRequests.length, 1, "a live token is reused across requests");
+
+        const refused = await family.prepare(preparation(4, { peer: definition("${WRONG}") }));
+        assert.equal(refused.outcomes.get("peer")?.state, "unavailable", "a wrong secret is a preparation outcome");
+        const problem = (refused.outcomes.get("peer") as { problem: { type: string; diagnostic?: string } }).problem;
+        assert.equal(problem.type, "https://problems.plurnk.xyz/a2a/functionality/token-unobtainable");
+        assert.match(String(problem.diagnostic), /invalid_client: The client secret is wrong\./u);
+    } finally { await agent.close(); }
+    const silent = await startDemoAgent("complete", undefined, { clientId: "plurnk", clientSecret: "agent-secret", declared: false });
+    try {
+        const family = new A2aFunctionality({ ...diagnosticEnv, SECRET: "agent-secret" });
+        const unknown = await family.prepare(preparation(5, { peer: { name: "peer", url: silent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret: "${SECRET}" } } }));
+        assert.equal(unknown.outcomes.get("peer")?.state, "unavailable");
+        assert.equal((unknown.outcomes.get("peer") as { problem: { type: string } }).problem.type, "https://problems.plurnk.xyz/a2a/functionality/token-endpoint-unknown");
+        const named = await family.prepare(preparation(6, { peer: { name: "peer", url: silent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret: "${SECRET}", tokenUrl: `${silent.baseUrl}/oauth/token`, scope: "echo" } } }));
+        assert.equal(named.outcomes.get("peer")?.state, "active", "a definition may name the endpoint the card does not");
+        assert.deepEqual(silent.tokenRequests, [{ clientId: "plurnk", clientSecret: "agent-secret", scope: "echo" }]);
+    } finally { await silent.close(); }
+});

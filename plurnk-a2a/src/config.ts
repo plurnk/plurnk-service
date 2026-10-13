@@ -11,7 +11,7 @@ import {
 
 const PREFIX = "PLURNK_A2A_";
 const CONTROLS = [
-    "CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "ERROR_DETAIL_LIMIT", "EXPOSE", "TOKEN",
+    "CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "ERROR_DETAIL_LIMIT", "EXPOSE",
     "ENDPOINT_PATH", "ENDPOINT_URL", "WORKSPACE", "PROJECT_ROOT", "PARENT_WORKER",
     "NAME", "DESCRIPTION", "VERSION", "PROVIDER_ORGANIZATION", "PROVIDER_URL",
     "DOCUMENTATION_URL", "ICON_URL", "SKILLS",
@@ -24,8 +24,6 @@ const OUTPUT_MODES = ["*/*"];
 export type OutboundAgentDefinition = A2aAgentDefinition;
 
 export interface HostedAgentConfiguration {
-    /** The bearer the endpoint requires and the card declares; empty = an unauthenticated exposure. */
-    readonly token: string;
     readonly endpointPath: string;
     readonly endpointUrl?: string;
     readonly workspace: {
@@ -164,10 +162,6 @@ export const hostedAgentConfiguration = (
         throw new ConfigurationError("PLURNK_A2A_PROVIDER_ORGANIZATION", "PLURNK_A2A_PROVIDER_ORGANIZATION and PLURNK_A2A_PROVIDER_URL must be set together.");
     }
     const endpointUrl = optionalUrl(environ.PLURNK_A2A_ENDPOINT_URL, "PLURNK_A2A_ENDPOINT_URL");
-    // {§operator-config-only-home} — an absent key is a broken floor, never a silent "no
-    // authentication": only the panel's own empty value may say that the exposure is open.
-    const token = environ.PLURNK_A2A_TOKEN;
-    if (token === undefined) throw new Error("PLURNK_A2A_TOKEN is missing from the assembled environment floor.");
     const documentationUrl = optionalUrl(
         environ.PLURNK_A2A_DOCUMENTATION_URL,
         "PLURNK_A2A_DOCUMENTATION_URL",
@@ -205,7 +199,6 @@ export const hostedAgentConfiguration = (
         ...(iconUrl === undefined ? {} : { iconUrl }),
     });
     return {
-        token,
         endpointPath,
         ...(endpointUrl === undefined ? {} : { endpointUrl }),
         workspace: {

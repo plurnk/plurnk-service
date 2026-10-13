@@ -20,7 +20,7 @@ cards are protocol projections, not configuration files.
 | Outbound defaults | `PLURNK_A2A_ENABLED=1`, `<alias>_ENABLED=0\|1` | Shared resource controls ({§resource-environment}); declared agents default enabled, and workspace state may override enabledness. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
-| Inbound exposure | `PLURNK_A2A_EXPOSE`, `_TOKEN`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. `_TOKEN` is the bearer the endpoint requires and the card declares ({§a2a-hosted-bearer}); empty is an unauthenticated exposure. |
+| Inbound exposure | `PLURNK_A2A_EXPOSE`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. The exposure holds no credential of its own: it authenticates exactly as the daemon does ({§a2a-hosted-credentials}). |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
 | Inbound parent | `PLURNK_A2A_PARENT_WORKER` | Existing parent for new Task workers; `_plurnk` uses the workspace runtime actor. Ownership follows {§worker-ownership}. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
@@ -137,7 +137,7 @@ resources ({§module-lifecycle}); it does not cancel Tasks to end an observation
 
 The exposure accepts text, data, URL, and raw Message Parts, advertises HTTP+JSON v1
 streaming without push notifications, tenants, or extended cards, declares no
-security beyond the bearer it enforces ({§a2a-hosted-bearer}), and rejects a
+security beyond what the daemon's authority enforces ({§a2a-hosted-credentials}), and rejects a
 card that claims any security of its own. Those omitted surfaces are not
 silently simulated. The adapter subscribes to live
 application events for streaming and reads durable Worker/Loop/log projections
@@ -147,19 +147,26 @@ for retrieval and restart truth.
 normalized environment identity plus actual adapter capabilities. The adapter,
 not configuration, fixes HTTP+JSON protocol `1.0`, streaming, no push
 notifications, no extended card, no tenant, the security it enforces
-({§a2a-hosted-bearer}), and `*/*` input/output.
+({§a2a-hosted-credentials}), and `*/*` input/output.
 Arbitrary media are resources; native model interpretation still depends on its route.
 Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
 
-§a2a-hosted-bearer With `PLURNK_A2A_TOKEN` set, the card declares one `http`
-bearer scheme as its whole security requirement, and the endpoint refuses any
-request without that exact bearer — `401`, `UNAUTHENTICATED`,
-`WWW-Authenticate: Bearer`, in the binding's own error shape — before the SDK
-reads anything. The card at the well-known path is never behind the bearer, so a
-caller can discover the scheme. Empty is an unauthenticated exposure: the panel
-states it, the adapter never infers it.
+§a2a-hosted-credentials **The exposure is a protected resource of the daemon's authority.** When
+the authority has an issuing face ({§credential-authority}), the card declares one `oauth2` scheme
+as its whole security requirement: the `clientCredentials` flow at the daemon's own token endpoint,
+`<issuer>/oauth/token`, with the one scope `a2a`, and `oauth2MetadataUrl` naming the issuer's RFC 8414
+document. The endpoint then admits only an access token the authority issued with that scope, checked
+before the SDK reads anything: no bearer is `401`, `UNAUTHENTICATED`, `ACCESS_TOKEN_REQUIRED` with
+`WWW-Authenticate: Bearer realm="plurnk"`; an unknown, expired, revoked or non-access token is `401`,
+`ACCESS_TOKEN_INVALID` with `error="invalid_token"`; a token without `a2a` is `403`,
+`PERMISSION_DENIED`, `INSUFFICIENT_SCOPE` with `error="insufficient_scope", scope="a2a"`, each in the
+binding's own error shape. The admitted caller is the SDK user named by the credential's subject. A
+remote agent is a declared client of this daemon ({§agui-oauth-clients}) holding the scope `a2a`. The
+card at the well-known path is never behind the perimeter, so a caller can discover the scheme. With
+no face the card declares nothing and the endpoint admits anonymously: the daemon's posture, never
+the exposure's own.
 
 §a2a-worker-ownership New Task workers are fresh model children of the configured
 existing parent and inherit its approval owner.
@@ -227,11 +234,12 @@ The package module registers, through its `OutboundModule` half, one workspace F
 family named `a2a` ({§functionality-adapter} in core): the package, its keys,
 the family and the scheme share one name. Its definition
 is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,
-optional `cardPath`, `headers`, and symbolic bearer `authorization` —
-exactly the environment's `PLURNK_A2A_<alias>` value. Environment and live
-admission use the same validator: a valid absolute HTTP(S) URL, schema-valid
-connection fields, and no simultaneous bearer `authorization` and
-case-insensitive `Authorization` header.
+optional `cardPath`, `headers`, and `authorization`, a symbolic `bearer` or
+OAuth 2.0 `oauth2` client credentials (`clientId`, a symbolic `clientSecret`,
+optional `tokenUrl` and `scope`) — exactly the environment's
+`PLURNK_A2A_<alias>` value. Environment and live admission use the same
+validator: a valid absolute HTTP(S) URL, schema-valid connection fields, and no
+simultaneous `authorization` and case-insensitive `Authorization` header.
 
 *Available definitions* are the environment's aliases; `PLURNK_A2A_ENABLED`
 supplies their default enabledness. *Admission* (`add {alias, definition}`)
@@ -247,7 +255,14 @@ adds, enables, authenticates beyond the named host, or persists.
 (`authorization-unresolved` when absent), discovers and validates the standard
 Agent Card at the definition's URL (`card-unreachable`), and connects only
 through an advertised HTTP+JSON `1.0` interface (`interface-unsupported`),
-reusing an unchanged attachment across publications. The outcome detail carries
+reusing an unchanged attachment across publications.
+
+§a2a-outbound-credentials **An `oauth2` authorization obtains its own access token.** It uses
+the `client_credentials` grant at the definition's `tokenUrl`, else at the card's
+`clientCredentials` flow (`token-endpoint-unknown` when neither names one), requesting the
+definition's `scope`, else every scope that flow offers. The token is obtained at preparation
+(`token-unobtainable` when the token endpoint refuses), presented as the bearer on every request,
+and obtained again once when the agent answers `401`. The card is discovered without it. The outcome detail carries
 the card's name, version, description, skill identifiers, and streaming
 capability. The family publishes no runtimes of its own; its snapshot is the
 workspace's `alias → client` map, and its scheme face ({§a2a-scheme-face})
@@ -425,6 +440,8 @@ delete the retained source.
 | `task-cancelled` | 499 | A2A Task *id* was cancelled. |
 | `remote-request-failed` | 502 | The A2A request to '*authority*' failed during *stage*. |
 | `configuration-invalid` | 400 | The offered A2A configuration is invalid. |
+| `token-endpoint-unknown` | 502 | A2A agent '*alias*' declares no OAuth 2.0 client-credentials token endpoint and its definition names none. |
+| `token-unobtainable` | 502 | The token endpoint of A2A agent '*alias*' refused the client credentials. |
 | `source-invalid` | 400 | A2A discovery requires an absolute HTTP(S) agent URL. |
 | `definition-invalid` | 400 | The A2A agent definition is invalid. |
 | `alias-mismatch` | 400 | Alias '*alias*' must equal the definition's name '*name*'. |

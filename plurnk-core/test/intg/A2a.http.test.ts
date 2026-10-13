@@ -12,7 +12,7 @@ import { openMigrated } from "./_db.ts";
 import { answer } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 
-const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answer>[], token = "") => {
+const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answer>[], authenticated = false) => {
     const db = await openMigrated();
     let http = await bindListener();
     let daemon = new Daemon({
@@ -43,7 +43,6 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
                     workspace: { name: workspace.workspaceName, projectRoot: null },
                     card: a2aCard(),
                     ...A2A_EXPOSURE,
-                    token,
                 }).start(port);
                 endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
                 exposure = adapter;
@@ -52,6 +51,9 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
         }, "test-module");
     };
     expose();
+    // {§a2a-hosted-credentials} — a face on the authority is the daemon's posture; this fixture plays the
+    // issuing module's part so the exposure can be witnessed authenticated.
+    if (authenticated) daemon.credentials.publish({ issuer: () => serviceUrl(daemon) });
     await daemon.start();
 
     // Deliberately use literal HTTP+JSON, not the adapter's client/request builders.
@@ -425,33 +427,56 @@ test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the sa
     assert.equal(calls, 1);
 });
 
-test("{§a2a-hosted-bearer}: a configured token is declared by the public card and required at the endpoint", async (t) => {
-    const { daemon, endpoint } = await fixture(t, [], "s3cret");
+test("{§a2a-hosted-credentials}: with a face on the authority the card declares client credentials at the daemon's token endpoint and the endpoint admits only an a2a access token", async (t) => {
+    const { daemon, endpoint } = await fixture(t, [], true);
     const origin = serviceUrl(daemon);
     const card = await fetch(`${origin}/.well-known/agent-card.json`);
-    assert.equal(card.status, 200, "the card is public: a caller discovers the scheme without a bearer");
-    const client = await connectHttpJsonAgent(origin, undefined, { headers: { authorization: "Bearer s3cret" } });
+    assert.equal(card.status, 200, "the card is public: a caller discovers the scheme without a credential");
+    const mint = (scopes: string[]): string => daemon.credentials.issue({ kind: "access", subject: "agent", clientId: "agent", scopes, family: `f-${scopes.join("-")}`, ttlMs: 60_000 }).token;
+    const client = await connectHttpJsonAgent(origin, undefined, { headers: { authorization: `Bearer ${mint(["a2a"])}` } });
     const discovered = await client.getAgentCard();
-    assert.deepEqual(discovered.securitySchemes.bearer?.scheme, {
-        $case: "httpAuthSecurityScheme",
-        value: { scheme: "bearer", bearerFormat: "", description: "The bearer configured for this exposure." },
+    assert.deepEqual(discovered.securitySchemes.oauth2?.scheme, {
+        $case: "oauth2SecurityScheme",
+        value: {
+            description: "The daemon's credential authority: client credentials for a declared client.",
+            flows: { flow: { $case: "clientCredentials", value: { tokenUrl: `${origin}/oauth/token`, refreshUrl: "", scopes: { a2a: "Send Tasks to this agent." } } } },
+            oauth2MetadataUrl: `${origin}/.well-known/oauth-authorization-server`,
+        },
     });
-    assert.deepEqual(discovered.securityRequirements, [{ schemes: { bearer: { list: [] } } }]);
-    const refusals: Record<string, string>[] = [{}, { authorization: "Bearer wrong" }, { authorization: "s3cret" }];
-    for (const headers of refusals) {
+    assert.deepEqual(discovered.securityRequirements, [{ schemes: { oauth2: { list: ["a2a"] } } }]);
+    const refusals: Array<[Record<string, string>, number, string, string]> = [
+        [{}, 401, "ACCESS_TOKEN_REQUIRED", 'Bearer realm="plurnk"'],
+        [{ authorization: "Bearer wrong" }, 401, "ACCESS_TOKEN_INVALID", 'Bearer realm="plurnk", error="invalid_token"'],
+        [{ authorization: `Bearer ${daemon.credentials.issue({ kind: "refresh", subject: "agent", clientId: "agent", scopes: ["a2a"], family: "r", ttlMs: 60_000 }).token}` }, 401, "ACCESS_TOKEN_INVALID", 'Bearer realm="plurnk", error="invalid_token"'],
+        [{ authorization: `Bearer ${mint(["agui"])}` }, 403, "INSUFFICIENT_SCOPE", 'Bearer realm="plurnk", error="insufficient_scope", scope="a2a"'],
+    ];
+    for (const [headers, status, reason, challenge] of refusals) {
         const refused = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", ...headers } });
-        assert.equal(refused.status, 401, JSON.stringify(headers));
-        assert.equal(refused.headers.get("www-authenticate"), "Bearer");
+        assert.equal(refused.status, status, JSON.stringify(headers));
+        assert.equal(refused.headers.get("www-authenticate"), challenge);
         const body = await refused.json();
-        assert.equal(body.error.status, "UNAUTHENTICATED");
-        assert.equal(body.error.details[0].reason, "BEARER_TOKEN_REQUIRED");
-        assert.match(body.error.message, /bearer token/u);
+        assert.equal(body.error.status, status === 401 ? "UNAUTHENTICATED" : "PERMISSION_DENIED");
+        assert.equal(body.error.details[0].reason, reason);
     }
-    const admitted = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", authorization: "Bearer s3cret" } });
+    const admitted = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", authorization: `Bearer ${mint(["a2a"])}` } });
     assert.equal(admitted.status, 200);
     assert.equal((await admitted.json()).totalSize, 0);
     await assert.rejects(client.getTask({ tenant: "", id: "missing-task", historyLength: 0 }), /Task not found/iu,
-        "the official client drives the authenticated interface with the bearer");
+        "the official client drives the authenticated interface with the access token");
+    // A revoked family is refused at the next request: the authority's word, not a cached gate.
+    const revocable = daemon.credentials.issue({ kind: "access", subject: "agent", clientId: "agent", scopes: ["a2a"], family: "gone", ttlMs: 60_000 }).token;
+    assert.equal((await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", authorization: `Bearer ${revocable}` } })).status, 200);
+    daemon.credentials.revokeFamily("gone");
+    assert.equal((await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", authorization: `Bearer ${revocable}` } })).status, 401);
+});
+
+test("{§a2a-hosted-credentials}: without a face the card declares nothing and the endpoint admits anonymously", async (t) => {
+    const { daemon, endpoint } = await fixture(t, []);
+    const client = await connectHttpJsonAgent(serviceUrl(daemon));
+    const discovered = await client.getAgentCard();
+    assert.equal(Object.keys(discovered.securitySchemes ?? {}).length, 0);
+    assert.equal((discovered.securityRequirements ?? []).length, 0);
+    assert.equal((await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0" } })).status, 200);
 });
 
 test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes staying mounted until the listener closes", async () => {

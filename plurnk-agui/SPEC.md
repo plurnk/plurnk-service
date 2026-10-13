@@ -676,8 +676,8 @@ credential source stands alone: a sign-in without a secret protects the daemon a
 without a sign-in.
 
 §agui-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the
-resources it may reach; `agui` names the client interface, and a mounted resource admits only a
-token carrying its own scope. Grants are authorization code with PKCE (`S256`, required) for public
+resources it may reach; `agui` names the client interface and `a2a` the hosted A2A exposure
+({§a2a-hosted-credentials}), and a mounted resource admits only a token carrying its own scope. Grants are authorization code with PKCE (`S256`, required) for public
 clients, `client_credentials` for confidential clients, and `refresh_token`; no password or implicit
 grant exists (RFC 9700). Nothing about a credential is interpreted by a consumer: every answer about
 one comes from the authority.

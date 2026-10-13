@@ -3,8 +3,8 @@ import { createServer, type Server } from "node:http";
 import {
     A2A_PROTOCOL_VERSION,
     AGENT_CARD_PATH,
+    AgentCard,
     Role,
-    type AgentCard,
     TaskState,
     type Artifact,
     type Message,
@@ -208,7 +208,17 @@ export interface DemoAgent {
     endpoint: string;
     card: AgentCard;
     executor: DemoAgentExecutor;
+    /** The client-credentials requests the agent's token endpoint answered, in order. */
+    tokenRequests: Array<{ clientId: string | null; clientSecret: string | null; scope: string | null }>;
     close(): Promise<void>;
+}
+
+/** {§a2a-outbound-credentials} — the agent requires OAuth 2.0 client credentials from this client. */
+export interface DemoCredentials {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    /** Declare the flow on the card (default true); false leaves the card silent about where tokens come from. */
+    readonly declared?: boolean;
 }
 
 const listen = (server: Server): Promise<void> => new Promise((resolve, reject) => {
@@ -223,10 +233,12 @@ const close = (server: Server): Promise<void> => new Promise((resolve, reject) =
     server.close((error) => error === undefined ? resolve() : reject(error));
 });
 
-export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[]): Promise<DemoAgent> => {
+export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[], credentials?: DemoCredentials): Promise<DemoAgent> => {
     const app = express();
     const server = createServer(app);
     const executor = new DemoAgentExecutor(mode, parts);
+    const tokenRequests: DemoAgent["tokenRequests"] = [];
+    const issued = new Set<string>();
     const card: AgentCard = {
         name: "Plurnk A2A protocol witness",
         description: "Independent deterministic A2A v1 test agent",
@@ -265,7 +277,29 @@ export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[]
         signatures: [],
     };
     const handler = new DefaultRequestHandler(card, new InMemoryTaskStore(), executor);
-    app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: handler }));
+    // A declared security scheme is a oneof whose discriminator is not wire format, so a card that
+    // declares one is served in wire form; the plain card keeps serving its object as before.
+    app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: credentials === undefined ? handler : async () => AgentCard.toJSON(card) as AgentCard }));
+    if (credentials !== undefined) {
+        // RFC 6749 §4.4 at /oauth/token; the endpoint admits only a token this agent issued.
+        app.post("/oauth/token", express.urlencoded({ extended: false }), (req, res) => {
+            const form = req.body as Record<string, string | undefined>;
+            tokenRequests.push({ clientId: form.client_id ?? null, clientSecret: form.client_secret ?? null, scope: form.scope ?? null });
+            if (form.grant_type !== "client_credentials" || form.client_id !== credentials.clientId || form.client_secret !== credentials.clientSecret) {
+                res.status(401).json({ error: "invalid_client", error_description: "The client secret is wrong." });
+                return;
+            }
+            const token = `demo-access-${randomUUID()}`;
+            issued.add(token);
+            res.json({ access_token: token, token_type: "Bearer", expires_in: 60, scope: form.scope ?? "" });
+        });
+        app.use("/a2a", (req, res, next) => {
+            const token = /^Bearer\s+(.+)$/u.exec(req.headers.authorization ?? "")?.[1];
+            if (token !== undefined && issued.has(token)) { next(); return; }
+            res.setHeader("www-authenticate", 'Bearer realm="demo", error="invalid_token"');
+            res.status(401).json({ error: { code: 401, status: "UNAUTHENTICATED", message: "The request did not present a token this agent issued." } });
+        });
+    }
     app.use("/a2a", restHandler({
         requestHandler: handler,
         userBuilder: UserBuilder.noAuthentication,
@@ -280,11 +314,20 @@ export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[]
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const endpoint = `${baseUrl}/a2a`;
     card.supportedInterfaces[0]!.url = endpoint;
+    if (credentials !== undefined && credentials.declared !== false) {
+        card.securitySchemes = { oauth2: { scheme: { $case: "oauth2SecurityScheme", value: {
+            description: "Client credentials at this agent's token endpoint.",
+            flows: { flow: { $case: "clientCredentials", value: { tokenUrl: `${baseUrl}/oauth/token`, refreshUrl: "", scopes: { echo: "Echo things." } } } },
+            oauth2MetadataUrl: "",
+        } } } };
+        card.securityRequirements = [{ schemes: { oauth2: { list: ["echo"] } } }];
+    }
     return {
         baseUrl,
         endpoint,
         card,
         executor,
+        tokenRequests,
         close: () => close(server),
     };
 };

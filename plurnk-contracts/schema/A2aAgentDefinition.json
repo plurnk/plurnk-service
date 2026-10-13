@@ -28,17 +28,49 @@
             "additionalProperties": { "type": "string" }
         },
         "authorization": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["type", "token"],
-            "properties": {
-                "type": { "const": "bearer" },
-                "token": {
-                    "description": "A symbolic `${NAME}` environment reference; the secret is never persisted.",
-                    "type": "string",
-                    "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+            "description": "How the daemon authenticates to the agent: a fixed bearer, or OAuth 2.0 client credentials obtained from the agent's declared token endpoint.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "token"],
+                    "properties": {
+                        "type": { "const": "bearer" },
+                        "token": {
+                            "description": "A symbolic `${NAME}` environment reference; the secret is never persisted.",
+                            "type": "string",
+                            "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "clientId", "clientSecret"],
+                    "properties": {
+                        "type": { "const": "oauth2" },
+                        "clientId": {
+                            "description": "The client id the agent's authorization server knows this daemon by.",
+                            "type": "string",
+                            "minLength": 1
+                        },
+                        "clientSecret": {
+                            "description": "A symbolic `${NAME}` environment reference to the client secret; the secret is never persisted.",
+                            "type": "string",
+                            "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                        },
+                        "tokenUrl": {
+                            "description": "The token endpoint; omitted, the Agent Card's clientCredentials flow names it.",
+                            "type": "string",
+                            "pattern": "^https?://"
+                        },
+                        "scope": {
+                            "description": "The scope to request, space-separated; omitted, every scope the card's flow offers.",
+                            "type": "string"
+                        }
+                    }
                 }
-            }
+            ]
         }
     }
 }

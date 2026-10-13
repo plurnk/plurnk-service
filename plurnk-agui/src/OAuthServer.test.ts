@@ -106,10 +106,10 @@ test("{§agui-oauth-endpoints} discovery names the issuer's endpoints, grants an
             token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             code_challenge_methods_supported: ["S256"],
-            scopes_supported: ["agui"],
+            scopes_supported: ["agui", "a2a"],
         });
         assert.deepEqual(await json(await fetch(`${mod.base}/.well-known/oauth-protected-resource`)), {
-            resource: `${mod.base}/agui`, authorization_servers: [mod.base], scopes_supported: ["agui"], bearer_methods_supported: ["header"], resource_name: "Plurnk AG-UI",
+            resource: `${mod.base}/agui`, authorization_servers: [mod.base], scopes_supported: ["agui", "a2a"], bearer_methods_supported: ["header"], resource_name: "Plurnk AG-UI",
         });
         const preflight = await fetch(`${mod.base}/oauth/token`, { method: "OPTIONS" });
         assert.equal(preflight.status, 204);
@@ -142,7 +142,7 @@ test("{§agui-oauth-clients} the operator's secret is a client secret: client_cr
             const body = JSON.parse(text) as { access_token: string; token_type: string; expires_in: number; scope: string; refresh_token?: string };
             assert.equal(body.token_type, "Bearer");
             assert.equal(body.expires_in, 3600);
-            assert.equal(body.scope, "agui");
+            assert.equal(body.scope, String(init.body).includes("scope=agui") ? "agui" : "agui a2a", "the operator holds every scope; a request may narrow");
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
             await pinged(mod.base, { authorization: `Bearer ${body.access_token}` });
         }

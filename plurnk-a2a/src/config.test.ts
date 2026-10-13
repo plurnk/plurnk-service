@@ -14,7 +14,6 @@ const floor = {
     PLURNK_A2A_REQUEST_TIMEOUT: "86400000",
     PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
     PLURNK_A2A_PARENT_WORKER: "_plurnk",
-    PLURNK_A2A_TOKEN: "",
 };
 
 test("{§operator-config-offline-validation} A2A validation checks definitions, exposure and bounds without discovery", () => {
@@ -112,7 +111,6 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
         }]),
     });
     assert.ok(config !== null);
-    assert.equal(config.token, "", "the floor's empty token is an unauthenticated exposure");
     assert.deepEqual(config.workspace, {
         name: "research",
         projectRoot: "/srv/research",
@@ -234,7 +232,7 @@ test("{§env-knob} A2A timeouts use the shared safe-integer reader", () => {
     });
 });
 
-test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a value is the bearer, absence is a broken floor", () => {
+test("{§a2a-hosted-credentials} the exposure holds no credential of its own: no key of the family names one", () => {
     const hosted = {
         ...floor,
         PLURNK_A2A_EXPOSE: "1",
@@ -245,9 +243,7 @@ test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a 
         PLURNK_A2A_VERSION: "1.0.0",
         PLURNK_A2A_SKILLS: "[]",
     };
-    assert.equal(hostedAgentConfiguration(hosted)?.token, "");
-    assert.equal(hostedAgentConfiguration({ ...hosted, PLURNK_A2A_TOKEN: "s3cret" })?.token, "s3cret");
-    const { PLURNK_A2A_TOKEN: _unset, ...missing } = hosted;
-    assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_TOKEN is missing from the assembled environment floor/);
-    assert.deepEqual(outboundDefinitions({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
+    const configuration = hostedAgentConfiguration(hosted);
+    assert.ok(configuration !== null);
+    assert.equal("token" in configuration, false);
 });

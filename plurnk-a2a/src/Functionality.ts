@@ -27,6 +27,8 @@ import { outboundDefinitions } from "./config.ts";
 import { readDefinition } from "./definition.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import { connectHttpJsonAgentFromCard, discoverAgentCard } from "./HttpJsonClient.ts";
+import ClientCredentials from "./ClientCredentials.ts";
+import { createAuthenticatingFetchWithRetry } from "@a2a-js/sdk/client";
 
 export const A2A_FAMILY = "a2a";
 export const A2A_OWNER = "@plurnk/plurnk-a2a";
@@ -88,6 +90,17 @@ const resolveReference = (value: string, env: NodeJS.ProcessEnv, alias: string, 
         throw failure("authorization-unresolved", 409, `A2A agent '${alias}' references ${value} in ${field}, which is not set in the service environment.`, { agent: alias, field, reference: value, retryable: false });
     }
     return resolved;
+};
+
+// The card's clientCredentials flow, when it declares one oauth2 scheme with it.
+const clientCredentialsFlow = (card: AgentCard): { tokenUrl: string; scopes: Record<string, string> } | null => {
+    for (const scheme of Object.values(card.securitySchemes ?? {})) {
+        const declared = scheme.scheme;
+        if (declared?.$case !== "oauth2SecurityScheme") continue;
+        const flow = declared.value.flows?.flow;
+        if (flow?.$case === "clientCredentials" && flow.value.tokenUrl.length > 0) return { tokenUrl: flow.value.tokenUrl, scopes: flow.value.scopes };
+    }
+    return null;
 };
 
 export const aliasOfCard = (card: AgentCard): string => {
@@ -230,7 +243,7 @@ export default class A2aFunctionality {
         for (const [name, value] of Object.entries(definition.headers ?? {})) {
             headers[name] = resolveReference(value, this.#env, alias, `headers.${name}`);
         }
-        if (definition.authorization !== undefined) {
+        if (definition.authorization?.type === "bearer") {
             headers.Authorization = `Bearer ${resolveReference(definition.authorization.token, this.#env, alias, "authorization.token")}`;
         }
         let card: AgentCard;
@@ -244,9 +257,32 @@ export default class A2aFunctionality {
                 retryable: true,
             }, cause);
         }
+        // {§a2a-outbound-credentials} — client credentials at the agent's token endpoint, the card's
+        // declared flow unless the definition names one; the card itself was discovered without them.
+        let fetchImpl: typeof fetch | undefined;
+        if (definition.authorization?.type === "oauth2") {
+            const { clientId, tokenUrl, scope } = definition.authorization;
+            const clientSecret = resolveReference(definition.authorization.clientSecret, this.#env, alias, "authorization.clientSecret");
+            const flow = clientCredentialsFlow(card);
+            const endpoint = tokenUrl ?? flow?.tokenUrl;
+            if (endpoint === undefined) {
+                throw failure("token-endpoint-unknown", 502, `A2A agent '${alias}' declares no OAuth 2.0 client-credentials token endpoint and its definition names none.`, {
+                    agent: alias, url: definition.url, retryable: false,
+                });
+            }
+            const credentials = new ClientCredentials({
+                tokenUrl: endpoint, clientId, clientSecret,
+                scope: scope ?? Object.keys(flow?.scopes ?? {}).join(" "),
+                refuse: (diagnostic) => failure("token-unobtainable", 502, `The token endpoint of A2A agent '${alias}' refused the client credentials.`, {
+                    agent: alias, tokenUrl: endpoint, diagnostic: ErrorDetail.preview(diagnostic), retryable: true,
+                }),
+            });
+            await credentials.prime();
+            fetchImpl = createAuthenticatingFetchWithRetry(fetch, credentials.handler);
+        }
         let client: Client;
         try {
-            client = await connectHttpJsonAgentFromCard(card, { headers });
+            client = await connectHttpJsonAgentFromCard(card, { headers, ...(fetchImpl === undefined ? {} : { fetchImpl }) });
         } catch (cause) {
             throw failure("interface-unsupported", 502, "The Agent Card advertises no usable HTTP+JSON 1.0 interface.", {
                 agent: alias,

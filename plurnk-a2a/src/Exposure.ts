@@ -9,7 +9,7 @@ import {
     agentCardHandler,
     restHandler,
 } from "@a2a-js/sdk/server/express";
-import type { HttpHost } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort, CredentialClaims, HttpHost } from "@plurnk/plurnk-contracts";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import TaskAdmission, { type AdmissionPort } from "./TaskAdmission.ts";
@@ -21,23 +21,25 @@ export interface A2aExposureOptions {
     readonly workspace: A2aWorkspaceConfiguration;
     readonly card: AgentCard;
     readonly parentWorker: string;
-    /** The bearer the endpoint requires and the card declares; empty = an unauthenticated exposure. */
-    readonly token: string;
     readonly endpointPath: string;
     /** Canonical public endpoint URL when it cannot be inferred from the service listener. */
     readonly endpointUrl?: string;
 }
 
-// {§a2a-inbound-exposure} The start seam: the port functions the exposure calls, and the listener it mounts on.
-export type ExposurePort = WorkspacePort & HostedTasksPort & AdmissionPort & RequestHandlerPort & HttpHost;
+// {§a2a-inbound-exposure} The start seam: the port functions the exposure calls, the listener it mounts
+// on, and the authority it admits through ({§a2a-hosted-credentials}).
+export type ExposurePort = WorkspacePort & HostedTasksPort & AdmissionPort & RequestHandlerPort & HttpHost & Pick<ApplicationPort, "credentials">;
 
 export interface A2aExposureRegistration extends DaemonModule<ModuleSetupSeam, ExposurePort> {
     readonly mounts: readonly string[];
     start(port: ExposurePort): Promise<Exposure>;
 }
 
-// {§a2a-hosted-bearer} — the SDK's user for a caller that presented the configured bearer.
-const BEARER_USER: User = { get isAuthenticated() { return true; }, get userName() { return "bearer"; } };
+// {§a2a-hosted-credentials} — the one scope the exposure admits, and the SDK's user for an admitted caller:
+// the credential's subject.
+const A2A_SCOPE = "a2a";
+const userOf = (claims: CredentialClaims): User => ({ get isAuthenticated() { return true; }, get userName() { return claims.subject; } });
+type GatedRequest = Request & { plurnkClaims?: CredentialClaims };
 
 // The REST binding's error body: google.rpc.Status carrying one ErrorInfo detail, the shape the SDK
 // gives every other refusal on this interface.
@@ -58,6 +60,7 @@ export default class Exposure {
     readonly #endpointPath: string;
     readonly #endpointUrl: string | undefined;
     readonly #handler: PlurnkRequestHandler;
+    readonly #credentials: ApplicationPort["credentials"];
     #closed = false;
 
     private constructor(application: ExposurePort, options: A2aExposureOptions) {
@@ -69,7 +72,7 @@ export default class Exposure {
         if (options.card.securityRequirements.length > 0 || Object.keys(options.card.securitySchemes).length > 0) {
             throw new TypeError("The A2A card cannot declare security; the adapter declares the bearer scheme it enforces.");
         }
-        const { token } = options;
+        this.#credentials = application.credentials;
         this.#card = structuredClone(options.card);
         this.#card.capabilities = {
             streaming: true,
@@ -83,18 +86,6 @@ export default class Exposure {
             protocolVersion: A2A_PROTOCOL_VERSION,
             tenant: "",
         }];
-        // {§a2a-hosted-bearer} — the card declares exactly what the endpoint enforces: one `http`
-        // bearer scheme when a token is configured, none otherwise.
-        this.#card.securitySchemes = token.length === 0 ? {} : {
-            bearer: {
-                scheme: {
-                    $case: "httpAuthSecurityScheme",
-                    value: { scheme: "bearer", bearerFormat: "", description: "The bearer configured for this exposure." },
-                },
-            },
-        };
-        this.#card.securityRequirements = token.length === 0 ? [] : [{ schemes: { bearer: { list: [] } } }];
-
         const workspace = new WorkspaceBinding(application, options.workspace);
         const tasks = new HostedTasks(application, workspace);
         const admission = new TaskAdmission(application, workspace, tasks, options.parentWorker);
@@ -112,13 +103,16 @@ export default class Exposure {
         // The SDK writes the provided object verbatim, so the well-known route is handed the card's
         // proto3 JSON form: a declared security scheme is a oneof, and its TypeScript discriminator
         // (`$case`) is not wire format.
-        app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: async () => AgentCard.toJSON(this.#card) as AgentCard }));
+        // {§a2a-hosted-credentials} — the security section is the authority's posture at serve time.
+        app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: async () => AgentCard.toJSON(this.agentCard()) as AgentCard }));
         const endpoint = restHandler({
             requestHandler: this.#handler,
-            userBuilder: token.length === 0 ? UserBuilder.noAuthentication : async () => BEARER_USER,
+            userBuilder: async (req) => {
+                const claims = (req as GatedRequest).plurnkClaims;
+                return claims === undefined ? UserBuilder.noAuthentication() : userOf(claims);
+            },
         });
-        if (token.length === 0) app.use(this.#endpointPath, endpoint);
-        else app.use(this.#endpointPath, Exposure.#bearerGate(token), endpoint);
+        app.use(this.#endpointPath, this.#gate(), endpoint);
         this.#app = app;
     }
 
@@ -134,16 +128,35 @@ export default class Exposure {
         };
     }
 
-    // {§a2a-hosted-bearer} — the perimeter: the exact bearer, checked before the SDK reads anything.
-    // The card at the well-known path is not behind it, so a caller can discover the scheme.
-    static #bearerGate(token: string) {
+    // {§a2a-hosted-credentials} — the perimeter: an access token of the daemon's authority carrying the
+    // scope a2a, checked before the SDK reads anything, while the authority has a face. The card at
+    // the well-known path is not behind it, so a caller can discover the scheme.
+    #gate() {
         return (req: Request, res: Response, next: NextFunction): void => {
-            if (req.headers.authorization === `Bearer ${token}`) {
+            if (this.#credentials.face() === null) {
                 next();
                 return;
             }
-            res.setHeader("www-authenticate", "Bearer");
-            restError(res, 401, "UNAUTHENTICATED", "BEARER_TOKEN_REQUIRED", "The request did not provide the required bearer token.");
+            const header = req.headers.authorization;
+            const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
+            if (presented === null) {
+                res.setHeader("www-authenticate", 'Bearer realm="plurnk"');
+                restError(res, 401, "UNAUTHENTICATED", "ACCESS_TOKEN_REQUIRED", "The request did not provide an access token.");
+                return;
+            }
+            const claims = this.#credentials.verify((presented[1] ?? "").trim());
+            if (claims === null || claims.kind !== "access") {
+                res.setHeader("www-authenticate", 'Bearer realm="plurnk", error="invalid_token"');
+                restError(res, 401, "UNAUTHENTICATED", "ACCESS_TOKEN_INVALID", "The access token is unknown, expired or revoked.");
+                return;
+            }
+            if (!claims.scopes.includes(A2A_SCOPE)) {
+                res.setHeader("www-authenticate", `Bearer realm="plurnk", error="insufficient_scope", scope="${A2A_SCOPE}"`);
+                restError(res, 403, "PERMISSION_DENIED", "INSUFFICIENT_SCOPE", `The access token does not carry the scope ${A2A_SCOPE}.`);
+                return;
+            }
+            (req as GatedRequest).plurnkClaims = claims;
+            next();
         };
     }
 
@@ -156,8 +169,31 @@ export default class Exposure {
         host.registerHttpRoute(this.#endpointPath, this.#app);
     }
 
+    // {§a2a-hosted-credentials} — the card declares exactly what the endpoint enforces: with a face, one
+    // oauth2 scheme, client credentials at the daemon's own token endpoint with the scope a2a; none otherwise.
     agentCard(): AgentCard {
-        return structuredClone(this.#card);
+        const card = structuredClone(this.#card);
+        const face = this.#credentials.face();
+        if (face === null) {
+            card.securitySchemes = {};
+            card.securityRequirements = [];
+            return card;
+        }
+        const issuer = face.issuer();
+        card.securitySchemes = {
+            oauth2: {
+                scheme: {
+                    $case: "oauth2SecurityScheme",
+                    value: {
+                        description: "The daemon's credential authority: client credentials for a declared client.",
+                        flows: { flow: { $case: "clientCredentials", value: { tokenUrl: `${issuer}/oauth/token`, refreshUrl: "", scopes: { [A2A_SCOPE]: "Send Tasks to this agent." } } } },
+                        oauth2MetadataUrl: `${issuer}/.well-known/oauth-authorization-server`,
+                    },
+                },
+            },
+        };
+        card.securityRequirements = [{ schemes: { oauth2: { list: [A2A_SCOPE] } } }];
+        return card;
     }
 
     stop(): void {
