@@ -1,15 +1,16 @@
 /**
- * Live llama-server reasoning contract. Opt-in: `npm run test:llama`.
- *
- * Unit coverage proves the wire mapping. This specimen proves a real local
- * server honors that request rather than running to the generation envelope.
+ * Live llama-server reasoning contract, in the live tier ({§tier-census}): unit coverage proves the
+ * wire mapping; these specimens prove a real local server honors the request rather than running to
+ * the generation envelope. They require the server at PLURNK_LLAMA_URL (127.0.0.1:11435 unless set)
+ * to answer and skip by name otherwise; PLURNK_LLAMA_RAIL_PROFILE names its template, gemma or qwen.
  */
 
-import test from "node:test";
 import assert from "node:assert/strict";
+import { liveTest as test } from "../../../plurnk-core/test/live-test.ts";
 import AiSdkProvider from "../../src/AiSdkProvider.ts";
 
 const baseUrl = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
+const REQUIRES = [`url:${baseUrl.replace(/\/$/, "")}/v1/models`] as const;
 const reasoningAllowance = 32;
 const generationEnvelope = 96;
 const railProfile = process.env.PLURNK_LLAMA_RAIL_PROFILE ?? "qwen";
@@ -38,7 +39,7 @@ const provider = (): AiSdkProvider => new AiSdkProvider({
 });
 
 // {§llama-reasoning-request}
-test("llama-server honors PLURNK's request-scoped reasoning allowance", async () => {
+test("live llama-server honors PLURNK's request-scoped reasoning allowance", { requires: [...REQUIRES] }, async () => {
     const response = await provider().generate({
         workerId: "llama-reasoning-contract",
         messages: [{
@@ -58,7 +59,7 @@ test("llama-server honors PLURNK's request-scoped reasoning allowance", async ()
 
 // {§provider-grammar-evidence} — the live adapter must preserve the raw sentence
 // before separating reasoning and content itself.
-test("llama-server returns exact pre-projection grammar evidence", async () => {
+test("live llama-server returns exact pre-projection grammar evidence", { requires: [...REQUIRES] }, async () => {
     const prefix = envelope("verify");
     const input = `${prefix}PLURNK-RAILS-LIVE`;
     const response = await provider().generate({
@@ -77,7 +78,7 @@ test("llama-server returns exact pre-projection grammar evidence", async () => {
     });
 });
 
-test("llama-server preserves an empty grammar-required reasoning channel", async () => {
+test("live llama-server preserves an empty grammar-required reasoning channel", { requires: [...REQUIRES] }, async () => {
     const prefix = envelope("");
     const input = `${prefix}PLURNK-EMPTY-RAILS-LIVE`;
     const response = await provider().generate({

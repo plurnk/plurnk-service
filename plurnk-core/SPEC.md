@@ -6378,12 +6378,16 @@ host, its digest and a `census.json` naming the specimen that drove it, its loop
 tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter
 when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the
 workers it claimed, turns, requests and cost; a run never deletes or moves any of it. A specimen
-declares what it requires of the route (`input:<image|pdf|audio|video>`, `reasoning`,
-`output-budget`, `env:<NAME>`, `url:<http(s) URL>`); an unmet requirement is a skip, before anything
-boots or is spent, whose reason names the requirement and what was observed, and the census answers
-each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A
-route the harness cannot resolve is a failure, never a skip. `tier:history` ledgers every census
-under the home: per specimen, its verdicts over runs and its last reason.
+declares what it requires of the route and the host (`input:<image|pdf|audio|video>`, `reasoning`,
+`output-budget`, `env:<NAME>`, `url:<http(s) URL>`, `bin:<name>` on PATH, `checkout:<client|a2a-tck>`
+at `PLURNK_CLIENT_CHECKOUT` or `PLURNK_A2A_TCK_CHECKOUT`, else beside the repository); an unmet
+requirement is a skip, before anything boots or is spent, whose reason names the requirement and what
+was observed, and the census answers each unmet route-bound requirement with the declared aliases
+whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No
+test surface is an opt-in flag or a script of its own: the third-party MCP composition, the
+llama-server rails, the upstream A2A TCK and the client's real-model TUI tier are live specimens that
+run wherever their requirements hold. `tier:history` ledgers every census under the home: per
+specimen, its verdicts over runs and its last reason.
 
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 

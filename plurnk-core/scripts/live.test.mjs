@@ -8,7 +8,7 @@ import { exactSpecimen, liveFiles, liveInvocation, stampTierRun, tierArguments, 
 import { compose, isSpecimenVerdict, render, workerRows } from "./census-reporter.mjs";
 import { censuses, history } from "./tier-history.mjs";
 import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
-import { aliasesSatisfying, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
+import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
 import { failAfterCleanup } from "../test/live-failure.ts";
 import { tierRunPath } from "../../scripts/test-artifacts.ts";
 
@@ -31,7 +31,12 @@ test("live and demo deadline reads the existing env knob and rejects invalid lim
 test("the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 36);
+    assert.equal(names.length, 42);
+    // {§tier-census} — the surfaces that were flags and scripts are specimens with requirements.
+    assert.ok(names.includes("live mcp: current third-party stdio and HTTP servers compose through the assembled product"));
+    assert.ok(names.includes("live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"));
+    assert.ok(names.includes("live client: the terminal client's real-model TUI tier passes against this service"));
+    assert.ok(names.includes("live llama-server honors PLURNK's request-scoped reasoning allowance"));
     assert.ok(names.includes("live: the official AG-UI client accepts the complete model response stream"));
     assert.ok(names.includes("live: discovery and model response traverse the in-process AG-UI module"));
     assert.ok(names.includes("live: full-text READ answers from the selected source lines"));
@@ -87,20 +92,34 @@ test("{§tier-census} every specimen declares requirements from the closed vocab
     assert.throws(() => parseRequirement("vision"), /is not a live requirement/);
     assert.throws(() => parseRequirement("env:lowercase"), /is not a live requirement/);
     assert.throws(() => parseRequirement("url:ftp://x"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("bin:/usr/bin/uv"), /is not a live requirement/);
+    assert.throws(() => parseRequirement("checkout:bench"), /is not a live requirement/);
 });
 
-test("{§tier-census} an unmet requirement is named with what the route advertised; a met one is silent", async () => {
+test("{§tier-census} an unmet requirement is named with what the route or host showed; a met one is silent", async (t) => {
     const facts = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null });
+    const present = await mkdtemp(join(tmpdir(), "plurnk-checkout-"));
+    t.after(() => rm(present, { recursive: true, force: true }));
     const env = { PRESENT: "1" };
-    const probe = async (url) => url.endsWith("/up");
-    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up"], facts, env, probe), []);
-    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down"], facts, env, probe), [
+    const probes = {
+        url: async (url) => url.endsWith("/up"),
+        bin: (name) => name === "npx",
+        checkout: (name) => (name === "client" ? present : join(present, "missing")),
+    };
+    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up", "bin:npx", "checkout:client"], facts, env, probes), []);
+    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down", "bin:uv", "checkout:a2a-tck"], facts, env, probes), [
         "requires input:pdf: the route advertises image input",
         "requires reasoning: the route's efforts are off, adaptive",
         "requires output-budget: the route resolved no output budget",
         "requires env:ABSENT: ABSENT is not in the operator environment",
         "requires url:https://example.test/down: https://example.test/down did not answer within 10 s",
+        "requires bin:uv: uv is not on PATH",
+        `requires checkout:a2a-tck: no a2a-tck checkout at ${join(present, "missing")}; PLURNK_A2A_TCK_CHECKOUT names one`,
     ]);
+    assert.equal(onPath("node"), true, "the running node is on PATH");
+    assert.equal(onPath("no-such-binary-plurnk"), false);
+    assert.equal(checkoutPath("client", { PLURNK_CLIENT_CHECKOUT: "/elsewhere/plurnk" }), "/elsewhere/plurnk");
+    assert.ok(checkoutPath("a2a-tck", {}).endsWith("/a2a-tck"), "the TCK's default is the sibling checkout");
     assert.deepEqual(requirementsOfSkip("requires input:pdf: the route advertises image input; requires reasoning: the route's efforts are off, adaptive"), ["input:pdf", "reasoning"]);
     assert.deepEqual(requirementsOfSkip("The selected route does not advertise native pdf input."), []);
 });
@@ -124,6 +143,8 @@ test("{§tier-census} the catalog answers which declared aliases satisfy a route
     assert.deepEqual(aliasesSatisfying("output-budget", aliases), ["pdfs", "text"], "a cataloged route resolves an output budget; an uncataloged one advertises nothing");
     assert.equal(aliasesSatisfying("env:BRAVE_API_KEY", aliases), null);
     assert.equal(aliasesSatisfying("url:https://example.test/", aliases), null);
+    assert.equal(aliasesSatisfying("bin:uv", aliases), null);
+    assert.equal(aliasesSatisfying("checkout:client", aliases), null);
 });
 
 test("{§tier-census} a census row is a specimen's own verdict, never a file's or a subtest's", () => {

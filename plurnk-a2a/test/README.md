@@ -15,17 +15,21 @@ Prerequisites: `uv`, Git, and the normal installed monorepo dependencies. Python
 is test tooling, not an installed Plurnk dependency. Use a separate checkout:
 
 ```sh
-git clone https://github.com/a2aproject/a2a-tck.git /tmp/a2a-tck
-git -C /tmp/a2a-tck checkout --detach 263b9cfaf16a554bdfb166a7ba5b67716e946349
-npm run test:a2a:tck -w @plurnk/plurnk-service -- /tmp/a2a-tck
+git clone https://github.com/a2aproject/a2a-tck.git ../a2a-tck
+git -C ../a2a-tck checkout --detach 263b9cfaf16a554bdfb166a7ba5b67716e946349
+PLURNK_MODEL=<selector> npm run test:live:specimen -w @plurnk/plurnk-service -- "live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"
 ```
 
-The runner checks the revision and tracked-file cleanliness, starts a temporary
-Core daemon on a loopback ephemeral port, runs all HTTP+JSON requirement tiers, then
-stops its daemon. Inference is deterministic and free. It does not use or
-restart the operator's daemon. Each run retains the database, service log,
-checker output, JSON/HTML/JUnit reports, command, and source/spec revisions in
-`$PLURNK_BENCHMARKS/a2a-tck-*` (`~/benchmarks` when unset). A nonzero checker result remains nonzero.
+The checker is a live specimen ({§tier-census}): it runs in every live tier whose
+host has `uv` and the pinned checkout beside the repository (or at
+`PLURNK_A2A_TCK_CHECKOUT`), and skips by name otherwise. It asserts the revision
+and tracked-file cleanliness, starts a temporary Core daemon on a loopback
+ephemeral port, runs all HTTP+JSON requirement tiers, then stops its daemon.
+Inference is deterministic and free. It does not use or restart the operator's
+daemon. Each run retains the database and digest, service log, checker output,
+JSON/HTML/JUnit reports, command, and source/spec revisions in its run directory
+under the tier's `$PLURNK_BENCHMARKS/tier-live-<stamp>/` (`~/benchmarks` when
+unset). A nonzero checker result fails the specimen.
 
 ## Interpretation
 

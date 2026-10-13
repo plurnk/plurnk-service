@@ -9,7 +9,12 @@ import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 import { tierRunPath } from "../../scripts/test-artifacts.ts";
 
 const workspace = resolve(import.meta.dirname, "..");
-const liveDirectories = [resolve(workspace, "test/live"), resolve(workspace, "../plurnk-agui/test/live")];
+// Every package's live specimens: the daemon's, the client interface's and the providers' rails.
+const liveDirectories = [
+    resolve(workspace, "test/live"),
+    resolve(workspace, "../plurnk-agui/test/live"),
+    resolve(workspace, "../plurnk-providers/test/live"),
+];
 const reporter = resolve(workspace, "scripts/census-reporter.mjs");
 
 export const liveFiles = async () => (await Promise.all(liveDirectories.map(async (directory) =>

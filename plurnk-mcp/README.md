@@ -205,9 +205,11 @@ failures rather than retryable server downtime.
 
 ```sh
 npm test -w @plurnk/plurnk-mcp
-npm run test:mcp:dogfood -w @plurnk/plurnk-service
+PLURNK_MODEL=<selector> npm run test:live:specimen -w @plurnk/plurnk-service -- "live mcp: current third-party stdio and HTTP servers compose through the assembled product"
 ```
 
 The package gate runs the exact current SDK and official conformance
-requirements. The opt-in dogfood gate composes representative current stdio
-and Streamable HTTP servers through the assembled daemon and AG-UI product.
+requirements. The live specimen composes representative current stdio and
+Streamable HTTP servers through the assembled daemon and AG-UI product with a
+scripted model; it runs in every live tier whose host has `npx`, the npm
+registry and the remote server, and skips by name otherwise.

@@ -10,7 +10,7 @@
 // stance). Everything funnels through these two so the tier has exactly one path.
 
 import { after } from "node:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { benchmarksRoot, tierRunPath } from "../../scripts/test-artifacts.ts";
@@ -79,10 +79,12 @@ export interface WorkerCensus {
     readonly cost: { readonly usd: number; readonly kinds: readonly string[] };
 }
 
-// {§tier-census} — what one worker's digest says it did, named by the specimen that drove it.
+// {§tier-census} — what one worker's digest says it did, named by the specimen that drove it; a run
+// that kept no database (a tier driven elsewhere) counts nothing.
 const workerCensus = (runDir: string, label: string, specimen: LiveSpecimen | undefined): WorkerCensus => {
     type Request = { accounting?: { usage?: { inputTokens?: number; outputTokens?: number }; cost?: { kind?: string; amount?: { amount?: string; currency?: string } } } };
-    const digest = JSON.parse(readFileSync(join(runDir, "digest", "digest.json"), "utf8")) as {
+    const digestPath = join(runDir, "digest", "digest.json");
+    const digest = (existsSync(digestPath) ? JSON.parse(readFileSync(digestPath, "utf8")) : {}) as {
         loops?: unknown[]; turns?: unknown[]; provider_requests?: Request[];
     };
     const requests = digest.provider_requests ?? [];
@@ -116,8 +118,9 @@ export interface LiveRun {
 
 // One worker's run directory: its database path, its own host beside its evidence
 // ({§host-path-layout}: the operator's installed plugins, skills and workspace state neither shape a
-// run nor receive its writes), and the finish that writes its digest and census.
-export const liveRun = async (name: string): Promise<LiveRun> => {
+// run nor receive its writes), and the finish that writes its digest and census. A specimen that
+// drives a daemon elsewhere keeps no database here and says so; its finish writes the census alone.
+export const liveRun = async (name: string, opts: { database?: boolean } = {}): Promise<LiveRun> => {
     const runDir = await claimRunDir(name);
     const dbPath = join(runDir, "plurnk.db");
     const hostPaths = new HostPaths({ home: join(runDir, "home"), env: {} });
@@ -125,7 +128,7 @@ export const liveRun = async (name: string): Promise<LiveRun> => {
     return {
         runDir, dbPath, hostPaths,
         finish: () => {
-            Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") });
+            if (opts.database !== false) Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") });
             writeFileSync(join(runDir, "census.json"), `${JSON.stringify(workerCensus(runDir, name, specimen), null, 2)}\n`);
         },
     };
