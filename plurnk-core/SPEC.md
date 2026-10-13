@@ -222,9 +222,12 @@ with its kind (`access`, presented as a bearer; `refresh`, exchanged and never p
 subject, its client, its scopes, its family and its expiry. A restart revokes every credential.
 Revocation is by family, so an access token and the refresh token that renews it fall together;
 a refresh token is consumed once, and a second presentation revokes its family and says so. The
-authority has no HTTP face and no policy of its own: an exterior adapter verifies through it
-({§agui-http-authorization}), and the client protocol issues through it ({§agui-oauth}). Credentials
-the daemon presents to others follow the remote party's declared scheme and are never minted here.
+authority has no HTTP face and no policy of its own: the issuing module publishes the one face
+(`publish({ issuer })`, at setup) that names where credentials are obtained, an exterior adapter
+verifies through it ({§agui-http-authorization}), and the client protocol issues through it
+({§agui-oauth}). A published face means the daemon authenticates; none means every mounted resource
+admits anonymously. Credentials the daemon presents to others follow the remote party's declared
+scheme and are never minted here.
 
 §startup-admission-order After listener ownership, database admission completes
 before capability initialization can perform external work. Provider construction
@@ -4453,6 +4456,7 @@ published module contract.
 
 | Setup function | Contract |
 |---|---|
+| `credentials` | The {§credential-authority} on the setup seam: the issuing module publishes its face (`publish({ issuer })`) before any module starts, and every module may `verify` through it. |
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |

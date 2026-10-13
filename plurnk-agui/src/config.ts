@@ -26,6 +26,8 @@ export interface ModuleOptions {
 }
 
 export interface ResolvedModuleOptions {
+    /** {§agui-oauth} The daemon authenticates when it holds anything to authenticate against. */
+    readonly authenticates: boolean;
     readonly secret: string;
     readonly issuer: string;
     readonly user: string;
@@ -104,11 +106,15 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AGUI_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
         readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
     }
+    const secret = floorString(options, env, "secret", "PLURNK_AGUI_SECRET");
+    const user = floorString(options, env, "user", "PLURNK_AGUI_USER");
+    const password = floorString(options, env, "password", "PLURNK_AGUI_PASSWORD");
     return {
-        secret: floorString(options, env, "secret", "PLURNK_AGUI_SECRET"),
+        authenticates: secret.length > 0 || (user.length > 0 && password.length > 0) || Object.keys(clients).length > 0,
+        secret,
         issuer: floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER"),
-        user: floorString(options, env, "user", "PLURNK_AGUI_USER"),
-        password: floorString(options, env, "password", "PLURNK_AGUI_PASSWORD"),
+        user,
+        password,
         accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),
         loginAttempts: number("loginAttempts", "PLURNK_AGUI_LOGIN_ATTEMPTS", 0),

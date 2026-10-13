@@ -668,7 +668,12 @@ or turn disposition from an active conversation.
 
 AG-UI is the OAuth 2.1 authorization server of the daemon's one credential authority
 ({§credential-authority}): it issues every credential the listener admits and verifies them for
-`/agui` ({§agui-http-authorization}). It serves only when `PLURNK_AGUI_SECRET` is non-empty.
+`/agui` ({§agui-http-authorization}). The daemon authenticates when it holds anything to
+authenticate against: the operator's secret, a configured sign-in, or a declared client. Then the
+module publishes the authority's face at setup and serves the endpoints below; with none of the
+three it publishes nothing, serves none of them, and every resource admits anonymously. Each
+credential source stands alone: a sign-in without a secret protects the daemon as fully as a secret
+without a sign-in.
 
 §agui-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the
 resources it may reach; `agui` names the client interface, and a mounted resource admits only a
@@ -697,7 +702,8 @@ never redirected; any other malformed request is redirected with its `error` and
 
 §agui-oauth-clients **Three kinds of client.** The operator's own client, `operator`, is confidential:
 its secret is `PLURNK_AGUI_SECRET`, minted at install, and it holds every scope; the terminal client,
-scripts and the bench exchange it for access tokens with `client_credentials`. A declared client,
+scripts and the bench exchange it for access tokens with `client_credentials`. With the secret empty
+there is no `operator` client, and the operator's tools have no way in but the sign-in. A declared client,
 `PLURNK_AGUI_CLIENT_<id>={"secret":"…","scopes":[…]}`, is confidential too and holds only the scopes
 declared; its tokens name it as their subject, and removing its line and restarting revokes them. A
 registered client is public and holds nothing to keep: it authenticates by its id alone, uses only
@@ -740,7 +746,7 @@ address is the daemon's.
 | Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
 | ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
 | `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | The daemon's one listener ({§http-host}); AG-UI reads neither. |
-| `PLURNK_AGUI_SECRET`               | AG-UI   | No authentication; no authorization server | Any string                      | The operator's client secret ({§agui-oauth-clients}); non-empty, every non-preflight request to `/agui` presents an access token ({§agui-http-authorization}). |
+| `PLURNK_AGUI_SECRET`               | AG-UI   | No operator client                     | Any string                          | The operator's client secret ({§agui-oauth-clients}), what the operator's own tools exchange for access tokens. |
 | `PLURNK_AGUI_ISSUER`               | AG-UI   | The listener's own origin              | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
 | `PLURNK_AGUI_USER` / `PLURNK_AGUI_PASSWORD` | AG-UI | Sign-in not configured            | Any strings                         | The operator's browser sign-in ({§agui-oauth-login}). |
 | `PLURNK_AGUI_ACCESS_TTL_SEC` / `PLURNK_AGUI_REFRESH_TTL_SEC` | AG-UI | Invalid; the package floor is required | Positive safe integers | Credential lifetimes ({§agui-oauth-tokens}). |
@@ -778,19 +784,19 @@ SEND to this exact address answers this message under {§send-response-receipt};
 not create another inbound request. Standard AG-UI assistant messages and history replay
 carry the reply, independently of whether the loop can yet conclude.
 
-§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When
-`PLURNK_AGUI_SECRET` is non-empty, every non-preflight request carries an access token the daemon
-issued ({§agui-oauth}) as `authorization: Bearer <token>`, and admission precedes request-body
-reading. The principal of the admitted request is the credential's subject ({§agui-run-source}).
+§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the
+daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon
+issued as `authorization: Bearer <token>`, and admission precedes request-body reading. The principal of the admitted request is the credential's subject ({§agui-run-source}).
 Each refusal is an RFC 6750 challenge, a `WWW-Authenticate: Bearer` header naming the realm and the
 RFC 9728 resource metadata, beside its Problem: no bearer at all is 401 `bearer-token-required`; a
 token that is unknown, expired, consumed, revoked or not an access token is 401
 `bearer-token-invalid` with `error="invalid_token"`; an access token without the scope `agui` is 403
 `bearer-scope-insufficient` with `error="insufficient_scope"`. A fresh install **mints the secret**
 into the operator's file ({§operator-config-discovery}), which every client reads through the same
-cascade, so the shipped posture is authenticated: the empty value that means *no check* is an
-operator's deliberate choice, never a default, and then no authorization server is served and
-every request is admitted as `anonymous`. This is the perimeter because a daemon is one trust
+cascade, so the shipped posture is authenticated. A daemon that holds nothing to authenticate
+against, no secret, no sign-in and no declared client, serves no authorization server and admits
+every request as `anonymous`: that posture is the operator's deliberate configuration, never a
+default. This is the perimeter because a daemon is one trust
 domain and on loopback the operator's browser is inside it — any page they visit can reach the
 port, and only the credential tells the two apart. The secret itself is never a bearer: presented
 directly, it is an unknown token.

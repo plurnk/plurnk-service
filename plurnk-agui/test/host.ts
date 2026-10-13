@@ -4,7 +4,7 @@
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { HttpRouteHandler } from "@plurnk/plurnk-contracts";
-import Module, { type AguiPort, type ModuleOptions } from "../src/Module.ts";
+import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "../src/Module.ts";
 
 export interface Hosted {
     readonly module: Module;
@@ -20,6 +20,8 @@ export const host = async (seam: AguiPort, options: ModuleOptions = {}, observeR
         registerHttpRoute: (prefix: string, handler: HttpRouteHandler): void => { routes.set(prefix, handler); },
     });
     const module = Module.create(options);
+    // {§module-phases} — setup precedes start when the seam can take it: a scheme to register, a face to publish.
+    if ("registerScheme" in port) await module.setup(port as unknown as AguiSetupSeam);
     await module.start(port);
     const server = createServer((req, res) => {
         observeResponse?.(res);

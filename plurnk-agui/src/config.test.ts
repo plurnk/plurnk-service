@@ -18,6 +18,7 @@ const floor: NodeJS.ProcessEnv = {
 
 test("[{§agui-configuration}] AG-UI consumes and validates its package-owned environment", () => {
     assert.deepEqual(resolveModuleOptions({ env: floor }), {
+        authenticates: false,
         secret: "",
         issuer: "",
         user: "",
@@ -62,6 +63,7 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         },
     });
     assert.deepEqual(resolved, {
+        authenticates: true,
         secret: "explicit",
         issuer: "https://plurnk.example",
         user: "ada",
@@ -78,7 +80,12 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
     assert.equal(resolveModuleOptions({
         secret: "",
         env: { ...floor, PLURNK_AGUI_SECRET: "environment" },
-    }).secret, "", "an explicit empty secret turns the environment's authentication off");
+    }).secret, "", "an explicit empty secret overrides the environment's");
+    // {§agui-oauth} — the daemon authenticates when it holds anything to authenticate against.
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_SECRET: "s" } }).authenticates, true);
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_USER: "ada", PLURNK_AGUI_PASSWORD: "pw" } }).authenticates, true, "a sign-in alone");
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_USER: "ada" } }).authenticates, false, "a user without a password is no sign-in");
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["agui"] }) } }).authenticates, true, "a declared client alone");
 });
 
 test("[{§agui-oauth-clients}] every PLURNK_AGUI_CLIENT_<id> line declares one confidential client, validated at the owner", () => {

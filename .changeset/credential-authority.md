@@ -15,4 +15,6 @@ principal; a revoked credential ends the streams admitted under it and
 cancels no loop. `PLURNK_AGUI_TOKEN` is `PLURNK_AGUI_SECRET`, the operator's
 client secret, which a fresh install mints; `PLURNK_AGUI_USER` and
 `PLURNK_AGUI_PASSWORD` sign the operator in from a browser. The secret itself
-is never a bearer: a client exchanges it for an access token.
+is never a bearer: a client exchanges it for an access token. The daemon
+authenticates when it holds any of the three, the secret, a sign-in or a
+declared client, and admits anonymously only with none.

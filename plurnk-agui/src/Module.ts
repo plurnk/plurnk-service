@@ -73,7 +73,10 @@ interface RegisteredAction extends AguiActionContract {
     readonly execute: ActionExecutor;
 }
 
-export default class Module implements DaemonModule<SchemeRegistrationSeam, AguiPort> {
+// {§credential-authority} — at setup the module publishes the authority's issuing face, before any start.
+export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials">;
+
+export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
     // authorization server's ({§agui-oauth-endpoints}).
     readonly mounts: readonly string[];
@@ -93,9 +96,15 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
-        this.mounts = Object.freeze(this.#opts.secret.length > 0
+        this.mounts = Object.freeze(this.#opts.authenticates
             ? ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]
             : ["/agui"]);
+    }
+
+    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the listener's own. The
+    // listener is read lazily, after start, which is when anything asks.
+    #issuer(): string {
+        return this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(this.#seam.httpAddress());
     }
 
     static #origin({ host, port }: { readonly host: string; readonly port: number }): string {
@@ -163,8 +172,11 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         return JSON.stringify([workspace, threadId]);
     }
 
-    async setup(seam: SchemeRegistrationSeam): Promise<void> {
+    async setup(seam: AguiSetupSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
+        // {§agui-oauth} — the daemon authenticates when it holds anything to authenticate against; the
+        // face says so to every mounted resource before any module starts ({§module-phases}).
+        if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer() });
     }
 
     // {§agui-listener-admission} — the host admits traffic after every module has started.
@@ -176,13 +188,9 @@ export default class Module implements DaemonModule<SchemeRegistrationSeam, Agui
         this.#registerActions();
         this.#portal = new Portal(seam);
         this.#portal.start();
-        if (this.#opts.secret.length > 0) {
+        if (this.#opts.authenticates) {
             // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
-            this.#oauth = new OAuthServer({
-                credentials: seam.credentials,
-                opts: this.#opts,
-                issuer: () => this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(seam.httpAddress()),
-            });
+            this.#oauth = new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: () => this.#issuer() });
             for (const prefix of this.mounts) {
                 if (prefix !== "/agui") seam.registerHttpRoute(prefix, (req, res) => this.#oauthRoute(req, res));
             }

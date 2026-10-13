@@ -1,3 +1,4 @@
+import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 // The host's side of the module seam. Modules code against `@plurnk/plurnk-modules` and the slices
 // the frameworks own ({§module-seam-slices}); the daemon implements every slice and passes itself.
 // The capability-provider functions are the Functionality coordinator's host interface: core's own,
@@ -48,6 +49,8 @@ export interface CapabilityProviderSeam {
 
 // Everything the daemon hands a module at setup: every published slice, and core's own interface.
 export type HostSetupSeam = ModuleSetupSeam
+    // {§credential-authority} — the issuing module publishes the authority's face at setup.
+    & Pick<ApplicationPort, "credentials">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & SchemeRegistrationSeam
     & ResourceTreeRegistrationSeam

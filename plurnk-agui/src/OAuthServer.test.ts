@@ -25,6 +25,7 @@ const boot = async (env: Record<string, string> = {}, options: Omit<ModuleOption
     const credentials = new Credentials();
     const seam = {
         credentials,
+        registerScheme: async () => {},
         registerHttpRoute: () => {},
         httpAddress: () => ({ host: "127.0.0.1", port }),
         listModuleActions: () => [],
@@ -350,10 +351,31 @@ test("{§agui-oauth-login} failed sign-ins and client secrets from one address a
     } finally { await unlimited.close(); }
 });
 
-test("{§agui-oauth} with an empty secret the module mounts only /agui and admits anonymously", async () => {
-    const mod = await boot({ PLURNK_AGUI_SECRET: "" });
+test("{§agui-oauth} with nothing to authenticate against the module mounts only /agui and admits anonymously", async () => {
+    const mod = await boot({ PLURNK_AGUI_SECRET: "", PLURNK_AGUI_USER: "", PLURNK_AGUI_PASSWORD: "" });
     try {
         assert.deepEqual([...mod.module.mounts], ["/agui"]);
+        assert.equal(mod.credentials.face(), null, "no face is published");
         await pinged(mod.base, {});
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth} a sign-in alone authenticates: no operator client, the code flow is the way in, and the face is published", async () => {
+    const mod = await boot({ PLURNK_AGUI_SECRET: "" });
+    try {
+        assert.equal(mod.module.mounts.length, 4);
+        assert.equal(mod.credentials.face()?.issuer(), mod.base);
+        assert.match((await refused(mod.base, {})).type, /\/bearer-token-required$/u, "the daemon is protected without a secret");
+        const asOperator = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "" }));
+        assert.equal(asOperator.status, 401);
+        assert.equal((await json(asOperator)).error, "invalid_client", "no secret, no operator client");
+        const redirect = "http://127.0.0.1:4000/callback";
+        const { client_id } = await register(mod.base, redirect);
+        const { verifier, challenge } = pkce();
+        const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, { username: "ada", password: "lovelace" });
+        assert.equal(redirected.status, 302);
+        const code = new URL(redirected.headers.get("location")!).searchParams.get("code")!;
+        const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
+        await pinged(mod.base, { authorization: `Bearer ${tokens.access_token}` });
     } finally { await mod.close(); }
 });

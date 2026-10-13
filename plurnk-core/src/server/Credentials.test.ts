@@ -56,6 +56,14 @@ test("{§credential-authority} revocation is by family and reaches every listene
     assert.deepEqual(heard, ["one", "one"], "an unsubscribed listener hears nothing more");
 });
 
+test("{§credential-authority} the authority has at most one issuing face, and none means the daemon authenticates nothing", () => {
+    const authority = new Credentials();
+    assert.equal(authority.face(), null);
+    authority.publish({ issuer: () => "http://127.0.0.1:1" });
+    assert.equal(authority.face()?.issuer(), "http://127.0.0.1:1");
+    assert.throws(() => authority.publish({ issuer: () => "http://elsewhere" }), /already has an issuing face/u);
+});
+
 test("{§credential-authority} a credential needs a positive lifetime and its three names", () => {
     const authority = new Credentials();
     assert.throws(() => authority.issue(claims({ ttlMs: 0 })), /positive lifetime/u);

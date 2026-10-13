@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { CredentialAuthority, CredentialClaims, IssuedCredential } from "@plurnk/plurnk-contracts";
+import type { CredentialAuthority, CredentialClaims, CredentialFace, IssuedCredential } from "@plurnk/plurnk-contracts";
 
 // {§credential-authority} — the daemon's one authority over the credentials presented to its
 // listener. Tokens are opaque random strings held in memory, so a restart revokes every one of
@@ -12,6 +12,7 @@ export default class Credentials implements CredentialAuthority {
     readonly #retired = new Map<string, { readonly family: string; readonly expiresAt: number }>();
     readonly #listeners = new Set<(family: string) => void>();
     readonly #now: () => number;
+    #face: CredentialFace | null = null;
 
     constructor({ now = Date.now }: { readonly now?: () => number } = {}) {
         this.#now = now;
@@ -62,6 +63,15 @@ export default class Credentials implements CredentialAuthority {
     onRevoked(listener: (family: string) => void): () => void {
         this.#listeners.add(listener);
         return () => { this.#listeners.delete(listener); };
+    }
+
+    publish(face: CredentialFace): void {
+        if (this.#face !== null) throw new Error("the credential authority already has an issuing face");
+        this.#face = face;
+    }
+
+    face(): CredentialFace | null {
+        return this.#face;
     }
 
     #sweep(): void {

@@ -196,6 +196,15 @@ export interface IssuedCredential {
 }
 
 /**
+ * {§credential-authority} The issuing face of the authority, published by the module that issues:
+ * the issuer origin where credentials are obtained. Published, the daemon authenticates; absent,
+ * every mounted resource admits anonymously.
+ */
+export interface CredentialFace {
+    readonly issuer: () => string;
+}
+
+/**
  * {§credential-authority} The daemon's one authority over the credentials presented to its listener:
  * opaque tokens it issued, live until they expire, are consumed or their family is revoked. Every
  * exterior adapter verifies through it; the client protocol is its issuing face.
@@ -211,6 +220,10 @@ export interface CredentialAuthority {
     consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
     revokeFamily(family: string): void;
     onRevoked(listener: (family: string) => void): () => void;
+    /** Publishes the one issuing face; a second publication is a configuration fault. */
+    publish(face: CredentialFace): void;
+    /** The published face, or null while nothing issues: the daemon authenticates nothing. */
+    face(): CredentialFace | null;
 }
 
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */

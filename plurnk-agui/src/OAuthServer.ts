@@ -122,8 +122,9 @@ export default class OAuthServer {
         this.#opts = opts;
         this.#issuer = issuer;
         this.#now = now;
-        // {§agui-oauth-clients} — the operator's own client holds the minted secret and every scope.
-        this.#clients.set(OPERATOR, { id: OPERATOR, secret: opts.secret, scopes: SCOPES, redirectUris: [], name: null });
+        // {§agui-oauth-clients} — the operator's own client holds the minted secret and every scope; with
+        // no secret there is no such client, and the operator signs in or declares clients instead.
+        if (opts.secret.length > 0) this.#clients.set(OPERATOR, { id: OPERATOR, secret: opts.secret, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
             this.#clients.set(id, { id, secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
         }
