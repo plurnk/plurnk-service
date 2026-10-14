@@ -48,7 +48,7 @@ Operator configuration; ~/.config/plurnk/.env when XDG_CONFIG_HOME is unset.
 Optional systemd user unit shipped in the package; installation is manual.
 .TP
 .I plurnk.nginx.conf
-Optional nginx front shipped in the package: TLS, security headers and sign-in throttling.
+Optional nginx front shipped in the package: TLS, headers, sign-in throttling.
 .SH SEE ALSO
 plurnk(1)
 `],
