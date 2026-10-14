@@ -206,6 +206,17 @@ export interface CredentialFace {
 }
 
 /**
+ * {§credential-module-client} The confidential client a module of this daemon registers for itself at
+ * setup: its id, the exact absolute http(s) redirect addresses it may be answered at, and the scopes
+ * it may ask for. What others may know of it; never its secret.
+ */
+export interface ModuleClient {
+    readonly id: string;
+    readonly redirectUris: readonly string[];
+    readonly scopes: readonly string[];
+}
+
+/**
  * {§credential-authority} The daemon's one authority over the credentials presented to its listener:
  * opaque tokens it issued, live until they expire, are consumed or their family is revoked. Every
  * exterior adapter verifies through it; the client protocol is its issuing face.
@@ -226,6 +237,15 @@ export interface CredentialAuthority {
     consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
     revokeFamily(family: string): void;
     onRevoked(listener: (family: string) => void): () => void;
+    /**
+     * Registers the calling module's own confidential client and answers its secret, minted for
+     * this boot, held in memory and told to nobody else. A second registration of one id is a fault.
+     */
+    registerClient(client: ModuleClient): { readonly clientId: string; readonly clientSecret: string };
+    /** A module's registered client, without its secret; null for an id no module registered. */
+    client(id: string): ModuleClient | null;
+    /** Whether `secret` is the one minted for the module client `id`, compared in constant time. */
+    authenticateClient(id: string, secret: string): boolean;
     /** Publishes the one issuing face; a second publication is a configuration fault. */
     publish(face: CredentialFace): void;
     /** The published face, or null while nothing issues: the daemon authenticates nothing. */

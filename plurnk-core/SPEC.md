@@ -234,6 +234,19 @@ listening daemon under `1` refuses to start until a module publishes the face. U
 credential exists, no face is published and every mounted resource admits anonymously. Credentials
 the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
+§credential-module-client **A module of this daemon is a confidential client by registration.** At
+setup a module registers its own client on the authority, `registerClient({ id, redirectUris, scopes })`:
+an id of letters, digits, `.`, `_` or `-` other than `operator`, the exact absolute http(s) redirect
+addresses it may be answered at, and the scopes it may ask for. The authority mints the client's
+secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and
+checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration
+without the secret. A second registration of one id and a malformed registration are faults and
+register nothing. Nothing is configured, printed or persisted, so installing a module adds no
+operator step. The issuing face authenticates such a client as it does any confidential one
+({§agui-oauth-clients}). A module's own browser session is a credential of this authority too: a
+`session` credential it issues in the family of the authorization grant it stands on, so revoking
+the grant ends the session, the refresh token and the access tokens together.
+
 §startup-admission-order After listener ownership, database admission completes
 before capability initialization can perform external work. Provider construction
 and endpoint verification occur on worker selection or first use, never merely
@@ -4952,7 +4965,7 @@ Core's behavior behind them.
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
-| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily` and `onRevoked`, one in-memory authority per daemon, offered to every module on the seam. |
+| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily` and `onRevoked`, and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-module-client}); one in-memory authority per daemon, offered to every module on the seam. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |

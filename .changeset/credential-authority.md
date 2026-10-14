@@ -22,8 +22,11 @@ authenticates with nothing configured. `PLURNK_USER` and `PLURNK_PASS` sign
 the operator in from a browser; with both empty, a browser on the daemon's
 own host is the operator without a sign-in, through a session cookie the
 authorization server establishes on its first visit ({§agui-oauth-session}),
-a client served by a module of this daemon is authorized silently, any other
-client is shown a consent page, and every request under the authorization
+a module of this daemon registers its own confidential client on the
+authority at setup, with a secret the authority mints per boot and tells only
+that module ({§credential-module-client}; the confidential backend client of
+RFC 10017 §6.2.3.1, with PKCE), and that client is authorized silently, any
+other client is shown a consent page, and every request under the authorization
 server's paths must name this daemon by a loopback or issuer `Host`. The
 secret itself is never a bearer: a client exchanges it for an access token.
 Operators who set

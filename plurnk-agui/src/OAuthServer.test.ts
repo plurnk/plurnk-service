@@ -15,6 +15,7 @@ import OAuthServer from "./OAuthServer.ts";
 import type { AguiEvent } from "./types.ts";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
+type Authority = ApplicationPort["credentials"];
 
 const FLOOR = {
     PLURNK_AUTH: "1", PLURNK_USER: "ada", PLURNK_PASS: "lovelace", PLURNK_AGUI_ISSUER: "",
@@ -24,9 +25,14 @@ const FLOOR = {
 
 // The least seam the module needs to start and to answer a worldless action: the authority holding
 // the operator's secret ({§credential-authority}), the listener, no module actions and no events.
-const boot = async (env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret"): Promise<Hosted & { readonly base: string; readonly credentials: ApplicationPort["credentials"] }> => {
+const boot = async (
+    env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret",
+    // What another module does at setup, before this one starts: its registrations on the authority.
+    setup: (credentials: Authority) => void = () => {},
+): Promise<Hosted & { readonly base: string; readonly credentials: Authority }> => {
     let port = 0;
     const credentials = new Credentials({ operatorSecret });
+    setup(credentials);
     const seam = {
         credentials,
         registerScheme: async () => {},
@@ -386,8 +392,9 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
 
 // {§agui-oauth-session} — the authorization server with an injected peer address, for the rows a
 // loopback test listener cannot present itself.
-const serve = async (peer: string, env: Record<string, string> = {}): Promise<{ readonly base: string; close(): Promise<void> }> => {
+const serve = async (peer: string, env: Record<string, string> = {}, setup: (credentials: Authority) => void = () => {}): Promise<{ readonly base: string; close(): Promise<void> }> => {
     const credentials = new Credentials({ operatorSecret: "s3cret" });
+    setup(credentials);
     let base = "";
     const server = new OAuthServer({ credentials, opts: resolveModuleOptions({ env: { ...FLOOR, ...env } }), issuer: () => base, peer: () => peer });
     const listener = createServer((req, res) => { void server.handle(req, res).then((ours) => { if (!ours) { res.writeHead(404); res.end(); } }); });
@@ -409,11 +416,14 @@ const sessionOf = (response: Response): string => {
     return match[1]!;
 };
 
-test("{§agui-oauth-session} without a password a loopback browser is the operator: the first visit sets the session, a client on the daemon's origin is authorized silently, and a session is never a bearer", async () => {
-    const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "" });
+test("{§agui-oauth-session} without a password a loopback browser is the operator: the first visit sets the session, a module's own client is authorized silently, and a session is never a bearer", async () => {
+    const redirect = "http://127.0.0.1:1/web/callback";
+    let secret = "";
+    const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "" }, {}, "s3cret", (credentials) => {
+        secret = credentials.registerClient({ id: "web", redirectUris: [redirect], scopes: ["agui"] }).clientSecret;
+    });
     try {
-        const redirect = `${mod.base}/web/callback`;
-        const { client_id } = await register(mod.base, redirect);
+        const client_id = "web";
         const { verifier, challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
         const first = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" });
@@ -424,7 +434,7 @@ test("{§agui-oauth-session} without a password a loopback browser is the operat
         assert.equal(`${location.origin}${location.pathname}`, redirect);
         assert.equal(location.searchParams.get("state"), "s");
         const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`,
-            form({ grant_type: "authorization_code", client_id, redirect_uri: redirect, code_verifier: verifier, code: location.searchParams.get("code")! })));
+            form({ grant_type: "authorization_code", client_id, client_secret: secret, redirect_uri: redirect, code_verifier: verifier, code: location.searchParams.get("code")! })));
         await pinged(mod.base, { authorization: `Bearer ${tokens.access_token}` });
         assert.match((await refused(mod.base, { authorization: `Bearer ${session}` })).type, /\/bearer-token-invalid$/u, "a session is never a bearer");
         const again = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
@@ -494,10 +504,10 @@ test("{§agui-oauth-session} a browser elsewhere is not the operator: without a 
         assert.match(await page.text(), /PLURNK_USER.*PLURNK_PASS/su);
         assert.equal(page.headers.get("set-cookie"), null, "no session for a peer elsewhere");
     } finally { await open.close(); }
-    const guarded = await serve("203.0.113.5");
+    const guarded = await serve("203.0.113.5", {}, (credentials) => { credentials.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1/web/callback"], scopes: ["agui"] }); });
     try {
-        const redirect = `${guarded.base}/web/callback`;
-        const { client_id } = await register(guarded.base, redirect);
+        const redirect = "http://127.0.0.1:1/web/callback";
+        const client_id = "web";
         const { challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui" };
         const form_ = await fetch(`${guarded.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" });
@@ -514,4 +524,112 @@ test("{§agui-oauth-session} a browser elsewhere is not the operator: without a 
         assert.equal(silent.status, 302, "the session authorizes the daemon's own module silently");
         assert.equal(silent.headers.get("set-cookie"), null);
     } finally { await guarded.close(); }
+});
+
+// {§agui-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):
+// the token-mediating backend of RFC 10017 §6.2 authenticates at the token endpoint and brings PKCE.
+const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly string[] = ["agui"]) => {
+    const redirect = "http://127.0.0.1:1/web/callback";
+    let secret = "";
+    const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "", ...env }, {}, "s3cret", (credentials) => {
+        secret = credentials.registerClient({ id: "web", redirectUris: [redirect], scopes }).clientSecret;
+    });
+    const authorize = async (extra: Record<string, string> = {}): Promise<{ readonly response: Response; readonly verifier: string; readonly cookie: string }> => {
+        const { verifier, challenge } = pkce();
+        const response = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
+            client_id: "web", redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s", ...extra,
+        })}`, { redirect: "manual" });
+        return { response, verifier, cookie: /plurnk_session=([^;]+)/u.exec(response.headers.get("set-cookie") ?? "")?.[1] ?? "" };
+    };
+    const code = async (): Promise<{ readonly code: string; readonly verifier: string }> => {
+        const { response, verifier } = await authorize();
+        assert.equal(response.status, 302, await response.text());
+        return { code: new URL(response.headers.get("location")!).searchParams.get("code")!, verifier };
+    };
+    return { mod, redirect, secret: () => secret, authorize, code };
+};
+
+test("{§agui-oauth-clients} a module's own client authorizes with PKCE, exchanges the code with its secret, rotates its refresh token and revokes its grant", async () => {
+    const { mod, redirect, secret, code } = await moduleBoot();
+    try {
+        const first = await code();
+        const exchange = (fields: Record<string, string>, headers: Record<string, string> = basic("web", secret())): Promise<Response> => fetch(`${mod.base}/oauth/token`, {
+            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body: new URLSearchParams(fields).toString(),
+        });
+        const granted = await exchange({ grant_type: "authorization_code", code: first.code, redirect_uri: redirect, code_verifier: first.verifier });
+        const grantedText = await granted.text();
+        assert.equal(granted.status, 200, grantedText);
+        const tokens = JSON.parse(grantedText) as { access_token: string; refresh_token: string; scope: string };
+        assert.equal(tokens.scope, "agui");
+        await pinged(mod.base, { authorization: `Bearer ${tokens.access_token}` });
+        assert.equal(mod.credentials.verify(tokens.access_token)?.subject, "operator", "the token names the operator who authorized, never the module");
+        assert.equal(mod.credentials.verify(tokens.access_token)?.clientId, "web");
+        // Renewal requires the client's authentication (RFC 10017 §6.2.2.2) and rotates.
+        const unauthenticated = await exchange({ grant_type: "refresh_token", refresh_token: tokens.refresh_token, client_id: "web" }, {});
+        assert.equal(unauthenticated.status, 401);
+        assert.equal((await json(unauthenticated)).error, "invalid_client");
+        const renewed = await json<{ access_token: string; refresh_token: string }>(await exchange({ grant_type: "refresh_token", refresh_token: tokens.refresh_token }));
+        assert.notEqual(renewed.refresh_token, tokens.refresh_token, "the refresh token rotates");
+        await pinged(mod.base, { authorization: `Bearer ${renewed.access_token}` });
+        // By post as well as Basic.
+        const second = await code();
+        assert.equal((await exchange({ grant_type: "authorization_code", client_id: "web", client_secret: secret(), code: second.code, redirect_uri: redirect, code_verifier: second.verifier }, {})).status, 200);
+        const revoked = await fetch(`${mod.base}/oauth/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...basic("web", secret()) }, body: new URLSearchParams({ token: renewed.refresh_token }).toString() });
+        assert.equal(revoked.status, 200);
+        assert.match((await refused(mod.base, { authorization: `Bearer ${renewed.access_token}` })).type, /\/bearer-token-invalid$/u, "revoking the grant ends its access token");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-clients} a module's client is refused without its secret, with a wrong one, off its redirect, without PKCE, and for client_credentials", async () => {
+    const { mod, redirect, secret, code, authorize } = await moduleBoot();
+    try {
+        const post = (fields: Record<string, string>, headers: Record<string, string> = {}): Promise<Response> => fetch(`${mod.base}/oauth/token`, {
+            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body: new URLSearchParams(fields).toString(),
+        });
+        for (const [label, fields, headers] of [
+            ["no secret", { client_id: "web" }, {}],
+            ["a wrong secret by post", { client_id: "web", client_secret: "wrong" }, {}],
+            ["a wrong secret by Basic", {}, basic("web", "wrong")],
+            ["the operator's secret", {}, basic("web", "s3cret")],
+        ] as const) {
+            const attempt = await code();
+            const response = await post({ grant_type: "authorization_code", code: attempt.code, redirect_uri: redirect, code_verifier: attempt.verifier, ...fields }, headers);
+            assert.equal(response.status, 401, label);
+            assert.equal((await json(response)).error, "invalid_client", label);
+        }
+        const elsewhere = await authorize({ redirect_uri: "http://127.0.0.1:1/other" });
+        assert.equal(elsewhere.response.status, 400, "a redirect the module did not register is never followed");
+        const bare = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({ client_id: "web", redirect_uri: redirect, response_type: "code", state: "s" })}`, { redirect: "manual" });
+        assert.equal(new URL(bare.headers.get("location")!).searchParams.get("error"), "invalid_request", "PKCE is required of a confidential client too");
+        const own = await post({ grant_type: "client_credentials", scope: "agui" }, basic("web", secret()));
+        assert.equal(own.status, 400);
+        assert.deepEqual(await json(own), { error: "unauthorized_client", error_description: "A module's client obtains tokens through the operator's authorization." });
+        const wide = await authorize({ scope: "a2a" });
+        assert.equal(new URL(wide.response.headers.get("location")!).searchParams.get("error"), "invalid_scope", "a scope the module did not register");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-session} silence is for a module's own client: a registered public client is shown consent even when its redirect is on this daemon's origin", async () => {
+    const { mod } = await moduleBoot();
+    try {
+        const sameOrigin = `${mod.base}/web/callback`;
+        const { client_id } = await register(mod.base, sameOrigin);
+        const page = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: sameOrigin, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" })}`, { redirect: "manual" });
+        assert.equal(page.status, 200);
+        assert.match(await page.text(), /Allow access\?/u);
+    } finally { await mod.close(); }
+});
+
+test("{§agui-oauth-clients} a declared client may not take a module client's id, and a module client's scope must be one this server issues", async () => {
+    await assert.rejects(boot({ PLURNK_AGUI_CLIENT_web: JSON.stringify({ secret: "x", scopes: ["agui"] }) }, {}, "s3cret", (credentials) => {
+        credentials.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1/web/callback"], scopes: ["agui"] });
+    }), /PLURNK_AGUI_CLIENT_web: 'web' is the id of a module's own client/u);
+    const { mod, authorize } = await moduleBoot({}, ["agui", "elsewhere"]);
+    const complaints: unknown[] = [];
+    const error = console.error;
+    console.error = (...args: unknown[]): void => { complaints.push(args); };
+    try {
+        assert.equal((await authorize()).response.status, 500, "a module's fault is a server error, never a narrowed grant");
+        assert.match(String((complaints[0] as unknown[])[1]), /registered the scope 'elsewhere', which this authorization server does not issue/u);
+    } finally { console.error = error; await mod.close(); }
 });

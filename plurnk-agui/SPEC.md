@@ -699,7 +699,7 @@ URI must match a registered one exactly, except that a loopback redirect may cha
 (RFC 8252 §7.3). A request naming an unregistered client or redirect is answered to the person,
 never redirected; any other malformed request is redirected with its `error` and `state`.
 
-§agui-oauth-clients **Three kinds of client.** The operator's own client, `operator`, is confidential:
+§agui-oauth-clients **Four kinds of client.** The operator's own client, `operator`, is confidential:
 its secret is the authority's operator secret ({§credential-authority}), the shared `PLURNK_SECRET`
 when set and otherwise the one the daemon mints at boot into the file beside its database, and it
 holds every scope; the terminal client, scripts and the bench exchange it for access tokens with
@@ -709,7 +709,14 @@ operator's tools have no way in but the sign-in. A declared client,
 declared; its tokens name it as their subject, and removing its line and restarting revokes them. A
 registered client is public and holds nothing to keep: it authenticates by its id alone, uses only
 the code grant with PKCE and refresh, and its tokens name the operator who signed in. A public client
-may not use `client_credentials` (`unauthorized_client`).
+may not use `client_credentials` (`unauthorized_client`). A module's own client is the one a module
+of this daemon registered on the authority ({§credential-module-client}): confidential, as RFC 10017
+§6.2.3.1 requires of a backend that holds tokens for a page, authenticated by `client_secret_basic`
+or `client_secret_post` with the secret the authority minted and checks, using the code grant with
+PKCE and refresh, its tokens naming the operator who authorized it. It may not use
+`client_credentials` (`unauthorized_client`): it stands for the operator, never for itself. A scope
+it registered that this server does not issue is the module's fault and fails the request as a
+server error, never as a narrowed grant; a declared client may not take a module client's id.
 
 §agui-oauth-session **A browser from the same host is the operator unless a password is configured.**
 The browser's standing is a `session` credential of the authority ({§credential-authority}),
@@ -719,9 +726,9 @@ an https issuer), living as long as a refresh token and revoked by `POST /oauth/
 `PLURNK_PASS` both empty, a request to the authorization endpoint from a loopback peer with no
 session establishes one and continues as the operator; a request from elsewhere is told the two
 settings at 503. With both set, a browser without a session sees the sign-in form, and signing in
-establishes the session. A client whose redirect URI is on the issuer's own origin is served by a
-module of this daemon, and the operator's session authorizes it silently; any other client is shown
-a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the
+establishes the session. A module's own client ({§agui-oauth-clients}) is this daemon's by
+registration, and the operator's session authorizes it silently; any other client, wherever its
+redirect points, is shown a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the
 request issues the code (`consent=allow`) or declines it (`consent=deny`, `access_denied` to the
 redirect), so a page elsewhere, whose cross-site POST carries no cookie and whose top-level GET
 cannot click, obtains nothing. Every request under the authorization server's paths must name this

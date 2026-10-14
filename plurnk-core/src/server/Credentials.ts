@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { CredentialAuthority, CredentialClaims, CredentialFace, IssuedCredential } from "@plurnk/plurnk-contracts";
+import type { CredentialAuthority, CredentialClaims, CredentialFace, IssuedCredential, ModuleClient } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
 /** {§credential-authority} The daemon's posture, read once at boot from the shared panel. */
@@ -28,6 +28,9 @@ export default class Credentials implements CredentialAuthority {
     // presentation is recognized as reuse and ends its family ({§agui-oauth-tokens}).
     readonly #retired = new Map<string, { readonly family: string; readonly expiresAt: number }>();
     readonly #listeners = new Set<(family: string) => void>();
+    // {§credential-module-client} — the clients this daemon's own modules registered, each with the
+    // secret minted for it at this boot.
+    readonly #clients = new Map<string, { readonly client: ModuleClient; readonly secret: string }>();
     readonly #now: () => number;
     #face: CredentialFace | null = null;
 
@@ -113,6 +116,45 @@ export default class Credentials implements CredentialAuthority {
     onRevoked(listener: (family: string) => void): () => void {
         this.#listeners.add(listener);
         return () => { this.#listeners.delete(listener); };
+    }
+
+    registerClient({ id, redirectUris, scopes }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
+        if (typeof id !== "string" || !/^[A-Za-z0-9._-]+$/u.test(id) || id === "operator") {
+            throw new TypeError(`a module client id is letters, digits, '.', '_' or '-', and never "operator"; got ${JSON.stringify(id)}`);
+        }
+        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || !redirectUris.every(Credentials.#redirect)) {
+            throw new TypeError(`the module client '${id}' needs redirectUris, absolute http(s) URLs without fragments`);
+        }
+        if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every((scope) => typeof scope === "string" && /^[\x21\x23-\x5B\x5D-\x7E]+$/u.test(scope))) {
+            throw new TypeError(`the module client '${id}' needs scopes, a non-empty list of scope tokens`);
+        }
+        if (this.#clients.has(id)) throw new Error(`the credential authority already has a module client '${id}'`);
+        const secret = Credentials.mint();
+        this.#clients.set(id, {
+            client: Object.freeze({ id, redirectUris: Object.freeze([...redirectUris]), scopes: Object.freeze([...new Set(scopes)]) }),
+            secret,
+        });
+        return { clientId: id, clientSecret: secret };
+    }
+
+    client(id: string): ModuleClient | null {
+        return this.#clients.get(id)?.client ?? null;
+    }
+
+    // Digests are compared, so neither the length nor a prefix of the secret is told by timing.
+    authenticateClient(id: string, secret: string): boolean {
+        const held = this.#clients.get(id);
+        if (held === undefined) return false;
+        const digest = (value: string): Buffer => createHash("sha256").update(value).digest();
+        return timingSafeEqual(digest(secret), digest(held.secret));
+    }
+
+    static #redirect(value: unknown): boolean {
+        if (typeof value !== "string") return false;
+        try {
+            const url = new URL(value);
+            return (url.protocol === "http:" || url.protocol === "https:") && url.hash === "";
+        } catch { return false; }
     }
 
     publish(face: CredentialFace): void {

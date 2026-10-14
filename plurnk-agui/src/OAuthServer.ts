@@ -23,7 +23,13 @@ const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/u;
 
 interface Client {
     readonly id: string;
-    /** null for a public client: it authenticates by its id alone and holds nothing to keep. */
+    /**
+     * {§agui-oauth-clients} `public` registered itself and holds nothing; `declared` is the operator's
+     * own or a configured client, with its secret; `module` is a daemon module's own client, whose
+     * secret the authority holds and checks.
+     */
+    readonly kind: "public" | "declared" | "module";
+    /** The secret of a `declared` client; null for the other two kinds. */
     readonly secret: string | null;
     readonly scopes: readonly string[];
     readonly redirectUris: readonly string[];
@@ -156,9 +162,10 @@ export default class OAuthServer {
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
         const operatorSecret = credentials.operatorSecret;
-        if (operatorSecret !== null) this.#clients.set(OPERATOR, { id: OPERATOR, secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
+        if (operatorSecret !== null) this.#clients.set(OPERATOR, { id: OPERATOR, kind: "declared", secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
-            this.#clients.set(id, { id, secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
+            if (credentials.client(id) !== null) throw new Error(`PLURNK_AGUI_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
+            this.#clients.set(id, { id, kind: "declared", secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
         }
     }
 
@@ -295,11 +302,14 @@ export default class OAuthServer {
         res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/oauth; Max-Age=0; HttpOnly; SameSite=Lax`);
     }
 
-    // A client whose redirect is on this daemon's own origin is served by a module of this daemon.
-    #firstParty(redirectUri: string): boolean {
-        const target = absoluteHttpUrl(redirectUri);
-        if (target === null) return false;
-        try { return target.origin === new URL(this.issuer).origin; } catch { return false; }
+    // {§agui-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
+    // this server's. A module client naming a scope this server does not issue is a fault of the module.
+    #client(id: string): Client | undefined {
+        const registered = this.#credentials.client(id);
+        if (registered === null) return this.#clients.get(id);
+        const foreign = registered.scopes.find((scope) => !SCOPES.includes(scope));
+        if (foreign !== undefined) throw new Error(`the module client '${id}' registered the scope '${foreign}', which this authorization server does not issue`);
+        return { id, kind: "module", secret: null, scopes: registered.scopes, redirectUris: registered.redirectUris, name: null };
     }
 
     async #sessionPage(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -351,7 +361,7 @@ export default class OAuthServer {
         else throw new OAuthError("invalid_request", "Use GET, or POST a form.", 405);
 
         // RFC 6749 §4.1.2.1 — a bad client or redirect is told to the person, never redirected to.
-        const client = this.#clients.get(params.get("client_id") ?? "");
+        const client = this.#client(params.get("client_id") ?? "");
         const redirectUri = params.get("redirect_uri");
         if (client === undefined || redirectUri === null || !client.redirectUris.some((registered) => redirectMatches(registered, redirectUri))) {
             this.#html(res, 400, "Plurnk: request refused", "<h1>Request refused</h1><p>The client or its redirect address is not registered with this daemon.</p>");
@@ -402,7 +412,8 @@ export default class OAuthServer {
             established = true;
         }
         if (session !== null) {
-            if (this.#firstParty(redirectUri)) { issue(); return; }
+            // A module of this daemon registered this client: the operator's session authorizes it.
+            if (client.kind === "module") { issue(); return; }
             const decision = req.method === "POST" && !established ? params.get("consent") : null;
             if (decision === "allow") { issue(); return; }
             if (decision === "deny") { fail("access_denied", "The operator declined."); return; }
@@ -506,19 +517,22 @@ export default class OAuthServer {
             secret = form.get("client_secret");
         }
         if (id === null || id.length === 0) throw new OAuthError("invalid_client", "The client did not identify itself.", 401);
-        const client = this.#clients.get(id);
+        const client = this.#client(id);
         const address = req.socket.remoteAddress ?? "unknown";
         if (client === undefined) {
             this.#failed(address);
             throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
         }
-        if (client.secret === null) {
+        if (client.kind === "public") {
             if (secret !== null && secret.length > 0) throw new OAuthError("invalid_client", "A public client presents no secret.", 401);
             return client;
         }
         const retryAfter = this.#limited(address);
         if (retryAfter !== null) throw new OAuthError("invalid_client", `Too many failed attempts; retry in ${retryAfter} seconds.`, 429);
-        if (secret === null || !same(secret, client.secret)) {
+        const matches = secret !== null && (client.kind === "module"
+            ? this.#credentials.authenticateClient(client.id, secret)
+            : same(secret, client.secret ?? ""));
+        if (!matches) {
             this.#failed(address);
             throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
         }
@@ -568,7 +582,9 @@ export default class OAuthServer {
             if (!("claims" in this.#credentials.consume(presented))) throw new OAuthError("invalid_grant", "The refresh token is unknown, expired or revoked.");
             issued = { claims: { subject: claims.subject, clientId: client.id, scopes, family: claims.family }, refresh: true };
         } else if (grant === "client_credentials") {
-            if (client.secret === null) throw new OAuthError("unauthorized_client", "Only a confidential client may use client_credentials.");
+            if (client.kind === "public") throw new OAuthError("unauthorized_client", "Only a confidential client may use client_credentials.");
+            // {§agui-oauth-clients} — a module's client stands for the operator who authorized it, never for itself.
+            if (client.kind === "module") throw new OAuthError("unauthorized_client", "A module's client obtains tokens through the operator's authorization.");
             const scopes = this.#scopes(form.get("scope"), client);
             if (scopes === null) throw new OAuthError("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`);
             issued = { claims: { subject: client.id === OPERATOR ? OPERATOR : client.id, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
@@ -631,13 +647,13 @@ export default class OAuthServer {
         if (!Array.isArray(responseTypes) || responseTypes.some((type) => type !== "code")) {
             throw new OAuthError("invalid_client_metadata", "response_types may name code.");
         }
-        const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", secret: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
+        const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", kind: "public", secret: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
         if (scopes === null) throw new OAuthError("invalid_client_metadata", `scope must be from ${SCOPES.join(" ")}.`);
         const name = typeof metadata.client_name === "string" && metadata.client_name.length > 0 ? metadata.client_name : null;
         if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
         const id = mint();
         this.#registered += 1;
-        this.#clients.set(id, { id, secret: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
+        this.#clients.set(id, { id, kind: "public", secret: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
         this.#json(res, 201, {
             client_id: id,
             client_id_issued_at: Math.floor(this.#now() / 1000),
