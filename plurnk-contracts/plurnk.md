@@ -4,7 +4,7 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU SHOULD emit NOTE operations for every summary, finding, decision, and next (and why).
+> YOU SHOULD emit NOTE operations for **EVERY** summary, finding, decision, and next (and why).
 > Your internal reasoning is NOT preserved across turns. Your NOTE is your ONLY orientation.
 
 > [!TIP]
@@ -18,7 +18,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Detailed Internal Register. Emit NOTE for every summary, finding, decision, and next (and why).
+* NOTE: Persistent Detailed Internal Register.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.

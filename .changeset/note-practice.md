@@ -4,10 +4,10 @@
 ---
 
 The per-turn NOTE rule is retired. The card asks for NOTEs as practice rather
-than as a requirement of every turn, "YOU SHOULD emit NOTE operations for every
-summary, finding, decision, and next (and why).", and says why: reasoning is
-not preserved across turns, so a model's NOTEs are its only orientation. The
-daemon no longer answers a continuing turn that carried no NOTE, or a turn of
+than as a requirement of every turn, a NOTE for EVERY summary, finding,
+decision and next, with its reason, and says why: reasoning is not preserved
+across turns, so a model's NOTEs are its only orientation. The daemon no
+longer answers a continuing turn that carried no NOTE, or a turn of
 NOTEs alone, with a notice: `continued_without_note` and
 `noted_without_operation` are gone. A model worker's initialization program
 closes its surveys with a second NOTE, labelled `<!-- next -->` as the card's
