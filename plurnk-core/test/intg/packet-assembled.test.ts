@@ -65,7 +65,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         assert.equal(receipts.length, 2);
         const names = await Promise.all(children.map(async (id) => (await db.worker_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
-        const pointers = packetSection(packet, "delegation");
+        const pointers = packetSection(packet, "work");
         for (const [index, name] of names.entries()) {
             assert.match(name, /^[a-f0-9]{8}$/);
             assert.equal(receipts[index]?.worker, `worker://${name}`, "the outcome address is visible beside the spawning operation");
@@ -389,7 +389,7 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
         // append-mostly history precedes per-turn status, open message pointers and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "git", "budget", "worker", "delegation", "messages", "notices", "errors", "recap"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "worker", "work", "messages", "notices", "errors", "recap"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
@@ -557,14 +557,13 @@ test("the live things a worker holds — child workers — surface as terse poin
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
-        assert.match(packetSection(packet, "delegation"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
-        assert.equal(packet.sections.find((section) => section.name === "delegation")?.header, "Delegation", "the section carries the teaching's word");
+        assert.match(packetSection(packet, "work"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
-        assert.ok(usr.includes("delegation"), "{§child-orientation}: delegation rides the status clump");
+        assert.ok(usr.includes("work"), "{§child-orientation}: open work rides the status clump");
     } finally { await db.close(); }
 });
 
-test("no live children or streams → Delegation states both as empty", async () => {
+test("no live children or streams → Open Work states every list as empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
@@ -573,10 +572,10 @@ test("no live children or streams → Delegation states both as empty", async ()
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        // {§packet-empty-sections} — Delegation states emptiness as `[]` for both lists: the model
+        // {§packet-empty-sections} — Open Work states emptiness as `[]` for every list: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "delegation"), '{"workers":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
+        assert.equal(packetSection(packet, "work"), '{"workers":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
     } finally { await db.close(); }
 });
 

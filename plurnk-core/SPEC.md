@@ -669,9 +669,8 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   A failure reports its problem even when the loop answered earlier: the failure is the news.
   READs and completion observations use the same resolution, representation and projector.
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
-  turn the packet's status clump surfaces the live things this worker currently
-  holds under the teaching's own word for handing work out: `## Delegation` is
-  one JSON object, `{"workers": [...], "streams": [...], "messages": [...]}`, its
+  turn the packet's status clump surfaces the work this worker currently holds
+  open, beside the messages it owes: `## Open Work` is one JSON object, `{"workers": [...], "streams": [...], "messages": [...]}`, its
   unconcluded child workers, its open streams and the messages it sent that await
   completion ({§worker-obligations}) as `{status, path}` pointers (the same shape as
   the errors section); a message pointer carries the recipient loop's status. Body-suppressed child activity is durable
@@ -694,7 +693,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   Workspace schedules are not held work: an occurrence arrives as a message
   ({§schedule-delivery}).
 - §packet-empty-sections **Emptiness is stated where the model decides on it.**
-  `## Delegation` renders every turn, each of its two lists `[]` when empty: the
+  `## Open Work` renders every turn, each of its lists `[]` when empty: the
   model decides whether to wait or complete on exactly these facts, so their
   emptiness is stated rather than inferred from a missing heading. This is the
   deliberate exception to the wire rule that empty content is absent; errors,
@@ -3062,7 +3061,7 @@ The notice creates no state and does not demand another final reply.
 §worker-obligations A worker holds its unresolved children, its open non-detached
 streams, and the messages it sent to other workers that await completion while the
 recipient's loop is live (`worker_obligations`); `loop_obligations` names them per
-loop. The packet's Delegation list, WAIT, completion and drain wake settlement use
+loop. The packet's Open Work list, WAIT, completion and drain wake settlement use
 that same durable liveness: a worker that messaged another worker parks on an
 authored WAIT until the completion arrives ({§message-completion}), and with no WAIT
 joins that work with the bounded park rather than concluding idle.
@@ -3510,7 +3509,7 @@ two states and no others:
 
 | state | what the model receives |
 |---|---|
-| active | nothing in the Log. The `## Delegation` stream pointer reports timing and channel activity ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
+| active | nothing in the Log. The `## Open Work` stream pointer reports timing and channel activity ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet writes the read resource as its operand, exactly as an explicit READ does ({§log-address-metadata}). |
 
 §stream-observation-result **One liveness fact.** The durable READ result owns
@@ -3552,7 +3551,7 @@ records stop at the last complete line that fits, or at an exact Unicode region
 when even the first line exceeds the character bound. Explicit READ scopes stay exact.
 
 The durable per-subscription, per-channel cursor records the size last reported
-to the model — by the Delegation stream pointer while active, by the terminal
+to the model — by the Open Work stream pointer while active, by the terminal
 observation at close — so the pointer can state growth and no partial document
 or record ever reaches the model. The terminal observation and its cursor
 transition commit atomically. A concluded stream lands one conclusion row per
@@ -5397,7 +5396,7 @@ Conditional absence never reorders the surviving default sections.
 |     6 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
 |     7 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
 |     8 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
-|     9 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
+|     9 | user   | `work`                | `Open Work`: per-turn `{workers, streams, messages}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
 |    10 | user   | `messages`            | `Open Messages`: immutable message addresses and causal sources ({§message-arrival}). |
 |    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
 |    12 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
@@ -5407,7 +5406,7 @@ The order favors prefix-cache locality where semantics permit: the definition
 and privileged policy lead operator notes, while the append-mostly
 log and interpolated programs lead the volatile user-status clump. That clump is never cached
 across turns, since the next turn's log grows into its place, so its order serves attention alone:
-it runs from ambient state (Git Status, Context, Worker, Delegation) to what the turn owes (Open
+it runs from ambient state (Git Status, Context, Worker, Open Work) to what the turn owes (Open
 Messages) to feedback on the last turn (Notices, then Errors), and closes with the Recap. The nearer
 the end, the more a section asks of this turn. With `all`, appending new
 observations and programs preserves the existing history's roles and text prefix; no old program

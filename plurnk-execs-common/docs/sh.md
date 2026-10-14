@@ -38,7 +38,7 @@ directory the command ran in.
 An execution is a host effect, subject to approval. Output streams
 under the receipt's `stream` address, such as `sh:///ab3d5678`: `#stdout` is
 the default channel and `#stderr` the second; both are `text/stream`. While it
-runs, the packet's `## Delegation` streams list reports each channel's size and
+runs, the packet's `## Open Work` streams list reports each channel's size and
 growth, and READ can inspect any range. On completion, the harness adds one
 `_plurnk` READ per channel: the whole output when it fits the context budget,
 otherwise a bodiless receipt naming its size, with the `range` extent and the

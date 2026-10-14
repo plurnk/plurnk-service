@@ -383,10 +383,10 @@ export default class PacketBuilder {
                 path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
                 owner: { address: owner.address, interactive: owner.interactive },
             }) },
-            // child-orientation: what this worker holds live — its child workers and its open streams — under
-            // the teaching's own word. Terse pointers (the path is the actionable address the model READs,
-            // SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams, sentMessages) },
+            // child-orientation: the work this worker holds open — its child workers, its open streams and the
+            // messages it awaits — beside the messages it owes. Terse pointers (the path is the actionable
+            // address the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
+            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childWorkers, childStreams, sentMessages) },
             // The open arrivals this turn owes, as pointers; bodies arrive through their inbound SEND rows
             // ({§message-arrival}).
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },

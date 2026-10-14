@@ -1,5 +1,5 @@
 import { serverProposals } from "./_approval.ts";
-// {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as a Delegation stream
+// {§exec-stream} {§exec-stream-page} — an active stream reaches the model only as an Open Work stream
 // pointer with its size and growth; at close, ONE foisted READ that is exactly a markerless READ: the
 // first page of the output ({§markerless-first-page}), the extent, the terminal status. The channel
 // keeps every line for a scoped READ.
@@ -96,7 +96,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     }));
 });
 
-test("an active stream reaches the model only as a Delegation stream pointer with its size and growth", async (approvalContext) => {
+test("an active stream reaches the model only as an Open Work stream pointer with its size and growth", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new StreamMock({
         contextWindow: 100_000,
@@ -115,7 +115,7 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2]!;
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
-            const pointers = packetSection(packet, "delegation");
+            const pointers = packetSection(packet, "work");
             assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             assert.match(JSON.parse(pointers).streams[0].detail, /^elapsed \d+s; output unchanged \d+s;/u,
                 "a real running subprocess carries timing through the assembled provider packet");

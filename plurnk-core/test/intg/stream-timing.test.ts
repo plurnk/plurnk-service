@@ -34,7 +34,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
             provider: provider(), gitStatus: null,
         });
         const first = await build();
-        assert.deepEqual(JSON.parse(first.sections.find(({ name }) => name === "delegation")!.content), {
+        assert.deepEqual(JSON.parse(first.sections.find(({ name }) => name === "work")!.content), {
             workers: [],
             streams: [{
                 status: "active", path: "sh:///1234abcd",
@@ -44,12 +44,12 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         });
         await packets.recordObservations(first);
         const second = await build();
-        assert.equal(second.sections.find(({ name }) => name === "delegation")!.content,
-            first.sections.find(({ name }) => name === "delegation")!.content,
+        assert.equal(second.sections.find(({ name }) => name === "work")!.content,
+            first.sections.find(({ name }) => name === "work")!.content,
             "observing an empty stream does not reset its inactivity");
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         const terminal = await build();
-        assert.deepEqual(JSON.parse(terminal.sections.find(({ name }) => name === "delegation")!.content),
+        assert.deepEqual(JSON.parse(terminal.sections.find(({ name }) => name === "work")!.content),
             { workers: [], streams: [], messages: [] }, "closed streams leave the active inventory");
     } finally { await db.close(); }
 });
@@ -145,22 +145,22 @@ test("{§child-orientation}: packet durations advance independently, clamp clock
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1, provider: provider(), gitStatus: null,
         });
         const first = await build();
-        assert.equal(JSON.parse(first.sections.find(({ name }) => name === "delegation")!.content).streams[0].detail,
+        assert.equal(JSON.parse(first.sections.find(({ name }) => name === "work")!.content).streams[0].detail,
             "elapsed 300s; output unchanged 200s; stderr 0 lines (+0 bytes); stdout 1 lines (+6 bytes)");
         await packets.recordObservations(first);
         now += 20_000;
         const next = await build();
-        assert.equal(JSON.parse(next.sections.find(({ name }) => name === "delegation")!.content).streams[0].detail,
+        assert.equal(JSON.parse(next.sections.find(({ name }) => name === "work")!.content).streams[0].detail,
             "elapsed 320s; output unchanged 220s; stderr 0 lines (+0 bytes); stdout 1 lines (+0 bytes)");
         assert.equal(packetSection(next, "log"), packetSection(first, "log"),
             "volatile timing stays in the status footer, not the cacheable log prefix");
         now = Date.parse(openedAt) - 1_000;
         const backwards = await build();
-        assert.match(JSON.parse(backwards.sections.find(({ name }) => name === "delegation")!.content).streams[0].detail,
+        assert.match(JSON.parse(backwards.sections.find(({ name }) => name === "work")!.content).streams[0].detail,
             /^elapsed 0s; output unchanged 0s;/u);
         await db.test_stream_set_clock.run({ id: subscriptionId, opened_at: openedAt, output_changed_at: null });
         const unknown = await build();
-        assert.match(JSON.parse(unknown.sections.find(({ name }) => name === "delegation")!.content).streams[0].detail,
+        assert.match(JSON.parse(unknown.sections.find(({ name }) => name === "work")!.content).streams[0].detail,
             /^elapsed 0s; output timing unknown;/u);
     } finally { await db.close(); }
 });

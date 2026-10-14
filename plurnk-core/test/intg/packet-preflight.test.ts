@@ -37,7 +37,7 @@ test("{§worker-initialization-entry}: packet preflight preserves stream growth 
         const second = await build();
         assert.equal(await cursor(), 0);
         assert.deepEqual(first.sections, second.sections, "measuring the candidate cannot consume the stream's growth pointer");
-        assert.match(second.sections.find(({ name }) => name === "delegation")!.content, /\(\+8 bytes\)/);
+        assert.match(second.sections.find(({ name }) => name === "work")!.content, /\(\+8 bytes\)/);
         const attributed = { ...second, attributions: [] };
         assert.equal(packets.curationOverflow(attributed), null, "ordinary attribution copies preserve measured admission identity");
         await packets.recordObservations(attributed);
@@ -45,7 +45,7 @@ test("{§worker-initialization-entry}: packet preflight preserves stream growth 
         await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "stdout", chunk: "more\n" });
         const newer = await build();
         assert.equal(await cursor(), 8);
-        assert.match(newer.sections.find(({ name }) => name === "delegation")!.content, /\(\+5 bytes\)/);
+        assert.match(newer.sections.find(({ name }) => name === "work")!.content, /\(\+5 bytes\)/);
         const engine = new Engine({ db, schemes });
         await engine.runTurn({ workspaceId, workerId, loopId, provider: model, messages: [] });
         assert.equal(await cursor(), 13, "the composed provider path acknowledges the actual request");

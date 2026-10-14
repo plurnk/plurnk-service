@@ -16,7 +16,7 @@ ORDER BY m.id ASC;
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — any loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Delegation workers list ({§child-orientation}): terse `* <status> worker://<name>`
+-- Powers the Open Work workers list ({§child-orientation}): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name,
@@ -42,7 +42,7 @@ WHERE c.id = $worker_id;
 
 -- PREP: engine_child_streams_open
 -- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
--- size, publication cursor and durable activity clock. Powers the Delegation streams
+-- size, publication cursor and durable activity clock. Powers the Open Work streams
 -- inventory ({§child-orientation}); output bodies remain explicit READs while active ({§exec-stream}).
 SELECT s.scheme, e.authority, e.pathname, sp.id AS publication_id, ec.name AS channel,
     (length(ec.content) - length(replace(ec.content, char(10), ''))) AS lines,
@@ -56,7 +56,7 @@ WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
 ORDER BY e.pathname, ec.name;
 
 -- PREP: engine_streams_reported
--- {§child-orientation} — every publication cursor a packet's Delegation pointers reported lands
+-- {§child-orientation} — every publication cursor a packet's Open Work pointers reported lands
 -- in one statement ($observations is a JSON array of {publication_id, bytes}), so the next packet
 -- can say how much each stream grew. A cursor only advances.
 UPDATE subscription_publications

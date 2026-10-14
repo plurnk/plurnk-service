@@ -217,8 +217,8 @@ export default class TurnMaterialization {
                 ? null
                 : ch.channel;
             const targetParts = authorityParts(ch.authority);
-            // {§exec-stream} — nothing publishes while a stream is active: the Delegation streams
-            // section reports its size and growth ({§child-orientation}); the model READs any
+            // {§exec-stream} — nothing publishes while a stream is active: the Open Work streams
+            // list reports its size and growth ({§child-orientation}); the model READs any
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the first
             // page ({§markerless-first-page}, {§exec-stream-page}), whole when it fits the budget and
             // otherwise its size ({§context-fit}) — with the extent, the terminal status and Problem,

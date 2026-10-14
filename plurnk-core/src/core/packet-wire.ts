@@ -258,12 +258,12 @@ export default class PacketWire {
         }).join("\n\n");
     }
 
-    // The Delegation section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`
-    // JSON pointers (same shape as the errors section) to the live things the worker holds, under the
-    // word the teaching uses for handing work out: its unconcluded workers and its open streams. The
-    // model SEES them each turn and reasons for itself (READ / SEND / KILL via the path). Orienting
-    // state, never an instruction; both lists render every turn, `[]` when empty ({§packet-empty-sections}).
-    static renderDelegation(workers: unknown, streams: unknown, messages: unknown = []): string {
+    // The Open Work section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`
+    // JSON pointers (same shape as the errors section) to the live things the worker holds open: its
+    // unconcluded workers and its open streams. The model SEES them each turn and reasons for itself
+    // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
+    // turn, `[]` when empty ({§packet-empty-sections}).
+    static renderOpenWork(workers: unknown, streams: unknown, messages: unknown = []): string {
         // {§worker-obligations} — the messages it sent that await completion are the third list it is held on.
         return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
     }

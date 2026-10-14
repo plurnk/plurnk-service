@@ -48,7 +48,7 @@ WHERE id = $publication_id
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
 -- the channel; subscription_publication_id retains the invocation relationship;
 -- attrs.streamEnd is the next turn's cursor; rx.terminal owns the observation's liveness. Only terminal observations
--- materialize here, initially visible; active progress stays in the Delegation streams list. {§exec-stream}
+-- materialize here, initially visible; active progress stays in the Open Work streams list. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, model_call_id,
     subscription_publication_id,
