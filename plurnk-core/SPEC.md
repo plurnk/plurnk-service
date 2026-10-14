@@ -224,8 +224,10 @@ subject, its client, its scopes, its family and its expiry. A restart revokes ev
 Revocation is by family, so an access token and the refresh token that renews it fall together;
 a refresh token is consumed once, and a second presentation revokes its family and says so. The
 authority has no HTTP face and no policy of its own: the issuing module publishes the one face
-(`publish({ issuer })`, at setup) that names where credentials are obtained and answers from its
-publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter
+(`publish({ issuer, signIn })`, at setup) that names where credentials are obtained and how a browser
+signs in there, by the operator's `password` or by being on the daemon's own `host`
+({§agui-oauth-session}), and answers from its publication, so any module may read it from its own
+`start` on ({§module-phases}), an exterior adapter
 verifies through it ({§agui-http-authorization}), and the client protocol issues through it
 ({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
 never inferred from what else is set. Under `1` the authority holds the operator's client secret,
@@ -251,8 +253,19 @@ without the secret. A second registration of one id and a malformed registration
 register nothing. Nothing is configured, printed or persisted, so installing a module adds no
 operator step. The issuing face authenticates such a client as it does any confidential one
 ({§agui-oauth-clients}). A module's own browser session is a credential of this authority too: a
-`session` credential it issues in the family of the authorization grant it stands on, so revoking
-the grant ends the session, the refresh token and the access tokens together.
+`session` credential it issues in the family of the authorization grant it stands on, which is the
+family of the browser's sign-in that authorized it ({§agui-oauth-session}), so revoking that family
+from either side ends the module's session, its tokens and the browser's standing at the issuing
+face together.
+
+§credential-sessions **A browser sign-in is a family, and a subject's sign-ins are listed without a
+token.** `sessions(subject)` answers every family of that subject that holds a live `session`
+credential, oldest first: the family, which is the sign-in's handle and is never admitted as a
+credential; the subject; when a credential was first issued into the family; when the last of its
+session credentials expires; and the clients holding credentials in it. A grant with no session
+credential, such as a client's `client_credentials` token or a consented client's code grant, is no
+sign-in and is not listed. Revoking a listed family ({§credential-authority}) is signing that browser
+out. Nothing records last activity or a device, and a restart ends every sign-in.
 
 §startup-admission-order After listener ownership, database admission completes
 before capability initialization can perform external work. Provider construction
@@ -4973,7 +4986,7 @@ Core's behavior behind them.
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
-| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily` and `onRevoked`, and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-module-client}); one in-memory authority per daemon, offered to every module on the seam. |
+| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily`, `onRevoked` and the sign-ins of a subject by `sessions` ({§credential-sessions}), and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-module-client}); one in-memory authority per daemon, offered to every module on the seam. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |

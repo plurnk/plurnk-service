@@ -28,7 +28,11 @@ the authority mints per boot and tells only that module
 ({§credential-module-client}; the confidential backend client of RFC 10017
 §6.2.3.1, with PKCE), the issuer supplies the origin of those paths and
 answers from setup, so a module states no address and waits on no other
-module, and that client is authorized silently, any
+module, and that client is authorized silently with its grant in the family
+of the browser's sign-in, so a sign-out from either side ends both and
+`sessions(subject)` lists each sign-in once without a token
+({§credential-sessions}); the face states whether a browser signs in by
+password or by being on the daemon's host, any
 other client is shown a consent page, and every request under the authorization
 server's paths must name this daemon by a loopback or issuer `Host`. The
 secret itself is never a bearer: a client exchanges it for an access token.

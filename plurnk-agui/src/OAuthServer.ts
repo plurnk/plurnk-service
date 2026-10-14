@@ -167,6 +167,11 @@ export default class OAuthServer {
             if (credentials.client(id) !== null) throw new Error(`PLURNK_AGUI_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
         }
+        // {§agui-oauth-session} — a code not yet exchanged ends with the family it would issue into, so
+        // a sign-in ended between authorization and exchange stays ended.
+        credentials.onRevoked((family) => {
+            for (const [code, pending] of this.#codes) if (pending.family === family) this.#codes.delete(code);
+        });
     }
 
     get issuer(): string { return this.#issuer(); }
@@ -396,10 +401,14 @@ export default class OAuthServer {
         const resource = params.get("resource");
         if (resource !== null && resource !== this.resource) { fail("invalid_target", `The resource must be ${this.resource}.`); return; }
 
-        const issue = (): void => {
+        // {§agui-oauth-session} — a module's own client is authorized by the browser's sign-in and by
+        // nothing else, so its grant joins that sign-in's family: ending either ends both. Any other
+        // client's grant is a standing of its own, in a fresh family.
+        const issue = (session: CredentialClaims): void => {
             const code = mint();
             this.#sweepCodes();
-            this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family: randomUUID(), expiresAt: this.#now() + CODE_TTL_MS });
+            const family = client.kind === "module" ? session.family : randomUUID();
+            this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family, expiresAt: this.#now() + CODE_TTL_MS });
             const target = new URL(redirectUri);
             target.searchParams.set("code", code);
             if (state !== null) target.searchParams.set("state", state);
@@ -414,7 +423,7 @@ export default class OAuthServer {
         // {§agui-oauth-session} — a browser from the same host is the operator unless a password is
         // configured: its first visit establishes the session. A consent decision counts only with a
         // session that preceded this request, since a cross-site POST carries no cookie.
-        const passwordConfigured = this.#opts.user.length > 0 && this.#opts.password.length > 0;
+        const passwordConfigured = this.#opts.signIn === "password";
         let session = this.#session(req);
         let established = false;
         if (session === null && !passwordConfigured && loopbackAddress(this.#peer(req))) {
@@ -423,9 +432,9 @@ export default class OAuthServer {
         }
         if (session !== null) {
             // A module of this daemon registered this client: the operator's session authorizes it.
-            if (client.kind === "module") { issue(); return; }
+            if (client.kind === "module") { issue(session); return; }
             const decision = req.method === "POST" && !established ? params.get("consent") : null;
-            if (decision === "allow") { issue(); return; }
+            if (decision === "allow") { issue(session); return; }
             if (decision === "deny") { fail("access_denied", "The operator declined."); return; }
             this.#html(res, 200, "Plurnk: allow access?", `<h1>Allow access?</h1>${asks}`
                 + `<form method="post" action="/oauth/authorize">${hidden}`
@@ -464,8 +473,7 @@ export default class OAuthServer {
         }
         this.#failures.delete(address);
         // A sign-in is the operator's own act, so it issues at once, and the browser keeps the session.
-        this.#establishSession(res);
-        issue();
+        issue(this.#establishSession(res));
     }
 
     #scopes(requested: string | null, client: Client): readonly string[] | null {

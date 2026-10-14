@@ -643,6 +643,119 @@ test("{§credential-module-client} a module's redirect is its path on the issuer
     } finally { await fronted.mod.close(); }
 });
 
+// {§agui-oauth-session} — a browser signs in to the module's client and the module exchanges the code,
+// as a consumer does: by the daemon's host when no password is configured, else with the password.
+const moduleSignIn = async (m: Awaited<ReturnType<typeof moduleBoot>>, operator?: { username: string; password: string }) => {
+    const { verifier, challenge } = pkce();
+    const query = { client_id: "web", redirect_uri: m.redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s" };
+    const response = operator === undefined
+        ? await fetch(`${m.mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" })
+        : await fetch(`${m.mod.base}/oauth/authorize`, { ...form({ ...query, ...operator }), redirect: "manual" });
+    if (response.status !== 302) assert.fail(`${response.status}: ${await response.text()}`);
+    const cookie = sessionOf(response);
+    const exchanged = await fetch(`${m.mod.base}/oauth/token`, {
+        method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...basic("web", m.secret()) },
+        body: new URLSearchParams({ grant_type: "authorization_code", code: new URL(response.headers.get("location")!).searchParams.get("code")!, redirect_uri: m.redirect, code_verifier: verifier }).toString(),
+    });
+    const text = await exchanged.text();
+    assert.equal(exchanged.status, 200, text);
+    return { cookie, query, verifier, ...(JSON.parse(text) as { access_token: string; refresh_token: string }) };
+};
+const visit = (base: string, query: Record<string, string>, cookie: string): Promise<Response> =>
+    fetch(`${base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
+
+test("{§agui-oauth-session} a module's grant joins the browser's sign-in: one family, listed once without a token, and ended from either side", async () => {
+    const m = await moduleBoot();
+    const { credentials, base } = m.mod;
+    try {
+        assert.equal(credentials.face()?.signIn(), "host");
+        const first = await moduleSignIn(m);
+        const family = credentials.verify(first.cookie)!.family;
+        assert.equal(credentials.verify(first.access_token)?.family, family, "the access token is of the sign-in's family");
+        assert.equal(credentials.verify(first.refresh_token)?.family, family, "and so is the refresh token");
+        const listed = credentials.sessions("operator");
+        assert.deepEqual(listed.map((session) => [session.family, session.clients]), [[family, ["browser", "web"]]]);
+        assert.ok(![first.cookie, first.access_token, first.refresh_token].some((token) => JSON.stringify(listed).includes(token)), "no token is listed");
+
+        // Ended at the authorization server: the module's credentials end with the sign-in.
+        const ended = await fetch(`${base}/oauth/session`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", cookie: `plurnk_session=${first.cookie}` }, body: "action=end" });
+        assert.equal(ended.status, 200);
+        assert.match((await refused(base, { authorization: `Bearer ${first.access_token}` })).type, /\/bearer-token-invalid$/u);
+        const renewal = await fetch(`${base}/oauth/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...basic("web", m.secret()) }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: first.refresh_token }).toString() });
+        assert.equal((await json(renewal)).error, "invalid_grant");
+        assert.deepEqual(credentials.sessions("operator"), []);
+
+        // Ended by the module, as its own sign-out does: the browser's standing at the server ends with it.
+        const second = await moduleSignIn(m);
+        assert.notEqual(credentials.verify(second.cookie)!.family, family, "a new sign-in is a new family");
+        credentials.revokeFamily(credentials.verify(second.access_token)!.family);
+        assert.match(await (await fetch(`${base}/oauth/session`, { headers: { cookie: `plurnk_session=${second.cookie}` } })).text(), /Not signed in/u);
+    } finally { await m.mod.close(); }
+});
+
+test("{§agui-oauth-session} with a password configured a sign-out stays signed out; on the daemon's host without one, the next visit is a new sign-in", async () => {
+    const guarded = await moduleBoot({ PLURNK_USER: "ada", PLURNK_PASS: "lovelace" });
+    try {
+        const { credentials, base } = guarded.mod;
+        assert.equal(credentials.face()?.signIn(), "password");
+        const signed = await moduleSignIn(guarded, { username: "ada", password: "lovelace" });
+        assert.equal((await visit(base, signed.query, signed.cookie)).status, 302, "while signed in, the module's client is authorized silently");
+        credentials.revokeFamily(credentials.verify(signed.access_token)!.family);
+        const after = await visit(base, signed.query, signed.cookie);
+        assert.equal(after.status, 200, "the next visit is not authorized");
+        assert.match(await after.text(), /Sign in to Plurnk/u);
+        assert.equal(after.headers.get("set-cookie"), null, "and is given no session");
+    } finally { await guarded.mod.close(); }
+    const open = await moduleBoot();
+    try {
+        const { credentials, base } = open.mod;
+        const signed = await moduleSignIn(open);
+        const ended = credentials.verify(signed.cookie)!.family;
+        credentials.revokeFamily(ended);
+        const again = await visit(base, signed.query, signed.cookie);
+        assert.equal(again.status, 302, "a browser on the daemon's host is the operator again");
+        assert.notEqual(credentials.verify(sessionOf(again))!.family, ended, "by a new sign-in, never the ended one");
+    } finally { await open.mod.close(); }
+});
+
+test("{§agui-oauth-session} only a module's grant joins the sign-in: a consented client keeps its own grant, another browser its own sign-in, and a code not yet exchanged ends with its sign-in", async () => {
+    const m = await moduleBoot();
+    const { credentials, base } = m.mod;
+    try {
+        const here = await moduleSignIn(m);
+        const there = await moduleSignIn(m);
+        const family = credentials.verify(here.cookie)!.family;
+        assert.equal(credentials.sessions("operator").length, 2, "two browsers, two sign-ins");
+
+        // A registered public client the operator allows from this browser.
+        const redirect = "http://127.0.0.1:4000/callback";
+        const { client_id } = await register(base, redirect);
+        const { verifier, challenge } = pkce();
+        const allowed = await fetch(`${base}/oauth/authorize`, {
+            method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", cookie: `plurnk_session=${here.cookie}` },
+            body: new URLSearchParams({ client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", consent: "allow" }).toString(),
+        });
+        if (allowed.status !== 302) assert.fail(`${allowed.status}: ${await allowed.text()}`);
+        const terminal = await json<{ access_token: string }>(await fetch(`${base}/oauth/token`,
+            form({ grant_type: "authorization_code", client_id, code: new URL(allowed.headers.get("location")!).searchParams.get("code")!, redirect_uri: redirect, code_verifier: verifier })));
+        assert.notEqual(credentials.verify(terminal.access_token)?.family, family, "a consented client's grant is a family of its own");
+        assert.deepEqual(credentials.sessions("operator").find((session) => session.family === family)?.clients, ["browser", "web"], "and is no part of the sign-in");
+
+        // A code this browser was given and has not exchanged.
+        const pending = await visit(base, here.query, here.cookie);
+        assert.equal(pending.status, 302);
+        credentials.revokeFamily(family);
+        const late = await fetch(`${base}/oauth/token`, {
+            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...basic("web", m.secret()) },
+            body: new URLSearchParams({ grant_type: "authorization_code", code: new URL(pending.headers.get("location")!).searchParams.get("code")!, redirect_uri: m.redirect, code_verifier: here.verifier }).toString(),
+        });
+        assert.equal((await json(late)).error, "invalid_grant", "a sign-in ended before the exchange issues nothing");
+        await pinged(base, { authorization: `Bearer ${terminal.access_token}` });
+        await pinged(base, { authorization: `Bearer ${there.access_token}` });
+        assert.deepEqual(credentials.sessions("operator").map((session) => session.family), [credentials.verify(there.cookie)!.family]);
+    } finally { await m.mod.close(); }
+});
+
 test("{§agui-oauth-session} silence is for a module's own client: a registered public client is shown consent even when its redirect is on this daemon's origin", async () => {
     const { mod } = await moduleBoot();
     try {

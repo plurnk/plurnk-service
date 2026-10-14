@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { CredentialAuthority, CredentialClaims, CredentialFace, IssuedCredential, ModuleClient } from "@plurnk/plurnk-contracts";
+import type { CredentialAuthority, CredentialClaims, CredentialFace, CredentialSession, IssuedCredential, ModuleClient } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
 /** {§credential-authority} The daemon's posture, read once at boot from the shared panel. */
@@ -28,6 +28,8 @@ export default class Credentials implements CredentialAuthority {
     // presentation is recognized as reuse and ends its family ({§agui-oauth-tokens}).
     readonly #retired = new Map<string, { readonly family: string; readonly expiresAt: number }>();
     readonly #listeners = new Set<(family: string) => void>();
+    // {§credential-sessions} — when each family holding a live credential was first issued into.
+    readonly #established = new Map<string, number>();
     // {§credential-module-client} — the clients this daemon's own modules registered, each with the
     // secret minted for it at this boot.
     readonly #clients = new Map<string, { readonly client: ModuleClient; readonly secret: string }>();
@@ -79,6 +81,7 @@ export default class Credentials implements CredentialAuthority {
         this.#sweep();
         const token = randomBytes(32).toString("base64url");
         const expiresAt = this.#now() + ttlMs;
+        if (!this.#established.has(claims.family)) this.#established.set(claims.family, this.#now());
         this.#live.set(token, { ...claims, scopes: Object.freeze([...claims.scopes]), expiresAt });
         return { token, expiresAt };
     }
@@ -110,12 +113,36 @@ export default class Credentials implements CredentialAuthority {
     revokeFamily(family: string): void {
         for (const [token, claims] of this.#live) if (claims.family === family) this.#live.delete(token);
         for (const [token, retired] of this.#retired) if (retired.family === family) this.#retired.delete(token);
+        this.#established.delete(family);
         for (const listener of this.#listeners) listener(family);
     }
 
     onRevoked(listener: (family: string) => void): () => void {
         this.#listeners.add(listener);
         return () => { this.#listeners.delete(listener); };
+    }
+
+    // {§credential-sessions} — a browser sign-in is a family holding a live session credential. Its
+    // family is its handle: nothing admits a family as a credential, and no token is told here.
+    sessions(subject: string): readonly CredentialSession[] {
+        const now = this.#now();
+        const families = new Map<string, { expiresAt: number; signedIn: boolean; clients: Set<string> }>();
+        for (const claims of this.#live.values()) {
+            if (claims.subject !== subject || claims.expiresAt <= now) continue;
+            const family = families.get(claims.family) ?? { expiresAt: 0, signedIn: false, clients: new Set<string>() };
+            family.clients.add(claims.clientId);
+            if (claims.kind === "session") {
+                family.signedIn = true;
+                family.expiresAt = Math.max(family.expiresAt, claims.expiresAt);
+            }
+            families.set(claims.family, family);
+        }
+        return Object.freeze([...families]
+            .filter(([, family]) => family.signedIn)
+            .map(([family, { expiresAt, clients }]) => Object.freeze({
+                family, subject, createdAt: this.#established.get(family)!, expiresAt, clients: Object.freeze([...clients].sort()),
+            }))
+            .sort((a, b) => a.createdAt - b.createdAt || a.family.localeCompare(b.family)));
     }
 
     registerClient({ id, redirectPaths, scopes }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
@@ -172,5 +199,7 @@ export default class Credentials implements CredentialAuthority {
         const now = this.#now();
         for (const [token, claims] of this.#live) if (claims.expiresAt <= now) this.#live.delete(token);
         for (const [token, retired] of this.#retired) if (retired.expiresAt <= now) this.#retired.delete(token);
+        const held = new Set([...this.#live.values()].map(({ family }) => family));
+        for (const family of this.#established.keys()) if (!held.has(family)) this.#established.delete(family);
     }
 }

@@ -198,11 +198,27 @@ export interface IssuedCredential {
 
 /**
  * {§credential-authority} The issuing face of the authority, published by the module that issues:
- * the issuer origin where credentials are obtained, answered from the moment it is published.
+ * the issuer origin where credentials are obtained, answered from the moment it is published, and
+ * how a browser signs in there ({§agui-oauth-session}): by the operator's `password`, or by being
+ * on the daemon's own `host`, where ending a session cannot keep that browser signed out.
  * Published, the daemon authenticates; absent, every mounted resource admits anonymously.
  */
 export interface CredentialFace {
     readonly issuer: () => string;
+    readonly signIn: () => "password" | "host";
+}
+
+/**
+ * {§credential-sessions} A live browser sign-in: the family every credential of that sign-in shares,
+ * which is its handle and never a credential; whose it is; when it was established; when the last
+ * of its session credentials expires; and the clients holding credentials in it. Never a token.
+ */
+export interface CredentialSession {
+    readonly family: string;
+    readonly subject: string;
+    readonly createdAt: number;
+    readonly expiresAt: number;
+    readonly clients: readonly string[];
 }
 
 /**
@@ -237,6 +253,8 @@ export interface CredentialAuthority {
     consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
     revokeFamily(family: string): void;
     onRevoked(listener: (family: string) => void): () => void;
+    /** {§credential-sessions} The live browser sign-ins of `subject`, oldest first; never a token. */
+    sessions(subject: string): readonly CredentialSession[];
     /**
      * Registers the calling module's own confidential client and answers its secret, minted for
      * this boot, held in memory and told to nobody else. A second registration of one id is a fault.

@@ -59,9 +59,9 @@ test("{§credential-authority} revocation is by family and reaches every listene
 test("{§credential-authority} the authority has at most one issuing face, and none means the daemon authenticates nothing", () => {
     const authority = new Credentials();
     assert.equal(authority.face(), null);
-    authority.publish({ issuer: () => "http://127.0.0.1:1" });
+    authority.publish({ issuer: () => "http://127.0.0.1:1", signIn: () => "host" });
     assert.equal(authority.face()?.issuer(), "http://127.0.0.1:1");
-    assert.throws(() => authority.publish({ issuer: () => "http://elsewhere" }), /already has an issuing face/u);
+    assert.throws(() => authority.publish({ issuer: () => "http://elsewhere", signIn: () => "host" }), /already has an issuing face/u);
 });
 
 test("{§credential-authority} a credential needs a positive lifetime and its three names", () => {
@@ -104,6 +104,39 @@ test("{§credential-authority} a minted secret is written beside the database, 0
         await assert.rejects(readFile(path), { code: "ENOENT" });
         await Credentials.removeSecret(path);
     } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("{§credential-sessions} a subject's live browser sign-ins are listed by family, oldest first, with their clients and never a token", () => {
+    let now = 1_000;
+    const authority = new Credentials({ now: () => now });
+    const signIn = { kind: "session", subject: "operator", clientId: "browser", scopes: ["agui"] } as const;
+    const cookie = authority.issue({ ...signIn, family: "first", ttlMs: 10_000 });
+    const access = authority.issue({ kind: "access", subject: "operator", clientId: "web", scopes: ["agui"], family: "first", ttlMs: 1_000 });
+    authority.issue({ ...signIn, clientId: "web", family: "first", ttlMs: 20_000 });
+    now = 2_000;
+    authority.issue({ ...signIn, family: "second", ttlMs: 5_000 });
+    // Neither is a sign-in of the operator's: a grant holding no session credential, and another subject's.
+    authority.issue({ kind: "access", subject: "operator", clientId: "terminal", scopes: ["agui"], family: "grant", ttlMs: 5_000 });
+    authority.issue({ ...signIn, subject: "someone", family: "theirs", ttlMs: 5_000 });
+
+    const listed = authority.sessions("operator");
+    assert.deepEqual(listed, [
+        { family: "first", subject: "operator", createdAt: 1_000, expiresAt: 21_000, clients: ["browser", "web"] },
+        { family: "second", subject: "operator", createdAt: 2_000, expiresAt: 7_000, clients: ["browser"] },
+    ], "established when first issued into; expiring with the last of its session credentials");
+    assert.ok(![cookie.token, access.token].some((token) => JSON.stringify(listed).includes(token)), "no token is told");
+    assert.ok(Object.isFrozen(listed) && Object.isFrozen(listed[0]) && Object.isFrozen(listed[0]!.clients));
+    assert.deepEqual(authority.sessions("someone").map(({ family }) => family), ["theirs"]);
+    assert.deepEqual(authority.sessions("nobody"), []);
+    assert.equal(authority.verify("first"), null, "a family is a handle, never a credential");
+
+    authority.revokeFamily("first");
+    assert.deepEqual(authority.sessions("operator").map(({ family }) => family), ["second"], "a revoked sign-in is gone");
+    now = 7_000;
+    assert.deepEqual(authority.sessions("operator"), [], "and so is an expired one");
+    // A family issued into again after it ended is a new sign-in, established then.
+    authority.issue({ ...signIn, family: "first", ttlMs: 1_000 });
+    assert.equal(authority.sessions("operator")[0]?.createdAt, 7_000);
 });
 
 test("{§credential-module-client} a module registers its own confidential client once: the secret is minted here, told to the registrant alone and checked here", () => {

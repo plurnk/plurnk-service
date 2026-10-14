@@ -689,7 +689,7 @@ mounts them beside `/agui` ({§module-http-mounts}):
 |---|---|---|
 | `/.well-known/oauth-authorization-server` | RFC 8414 | The issuer, its endpoints, `code` as the response type, the three grant types, `S256`, the client authentication methods (`client_secret_basic`, `client_secret_post`, `none`) and the scopes. |
 | `/.well-known/oauth-protected-resource` | RFC 9728 | The resource `<issuer>/agui`, this issuer as its authorization server, its scopes and `header` as the bearer method; every 401 from `/agui` names this document. |
-| `GET`/`POST /oauth/authorize` | RFC 6749 §4.1, RFC 7636 | The sign-in page ({§agui-oauth-login}) and the authorization code: sixty seconds, bound to the client, the redirect, the challenge, the scopes and a fresh family, spent by its first presentation whatever the outcome. |
+| `GET`/`POST /oauth/authorize` | RFC 6749 §4.1, RFC 7636 | The sign-in page ({§agui-oauth-login}) and the authorization code: sixty seconds, bound to the client, the redirect, the challenge, the scopes and a family, the browser session's for a module's own client and a fresh one for any other ({§agui-oauth-session}), spent by its first presentation whatever the outcome. |
 | `POST /oauth/token` | RFC 6749 §5, RFC 8707 | The grants; `resource`, when present, must be `<issuer>/agui`. Errors use the §5.2 JSON (`invalid_request`, `invalid_client` as 401 with a `Basic` challenge when Basic was used, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`, `invalid_target`). |
 | `POST /oauth/revoke` | RFC 7009 | Revokes the family of a live token the authenticated client owns; any other token answers 200 and revokes nothing. |
 | `POST /oauth/register` | RFC 7591 | Registers a public client (`token_endpoint_auth_method: none`) with absolute http(s) redirect URIs; a confidential client is declared, never registered. |
@@ -730,7 +730,12 @@ an https issuer), living as long as a refresh token and revoked by `POST /oauth/
 session establishes one and continues as the operator; a request from elsewhere is told the two
 settings at 503. With both set, a browser without a session sees the sign-in form, and signing in
 establishes the session. A module's own client ({§agui-oauth-clients}) is this daemon's by
-registration, and the operator's session authorizes it silently; any other client, wherever its
+registration, and the operator's session authorizes it silently; having no standing apart from that
+sign-in, its grant joins the session's family, so revoking the family from either side, by
+`/oauth/session` or by the module's own sign-out, ends the browser's standing here and the module's
+credentials together, and a code not yet exchanged ends with them. With a password configured, the
+next visit after a sign-out meets the sign-in form; on the daemon's host without one, it establishes
+a new session, which the face states as `signIn: "host"` ({§credential-authority}). Any other client, wherever its
 redirect points, is shown a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the
 request issues the code (`consent=allow`) or declines it (`consent=deny`, `access_denied` to the
 redirect), so a page elsewhere, whose cross-site POST carries no cookie and whose top-level GET
@@ -761,7 +766,8 @@ refresh grant answer a refresh token; `client_credentials` answers an access tok
 with the secret.
 
 §agui-oauth-revocation **Revocation reaches what is open.** Revoking a family, by the revocation
-endpoint, by refresh-token reuse or by a code presented twice, ends every Run admitted under that
+endpoint, by refresh-token reuse, by a code presented twice or by ending a browser's session, which
+for a module's own client is the same family ({§agui-oauth-session}), ends every Run admitted under that
 family with the 401 `credential-revoked` Problem and `RUN_ERROR`, exactly as shutdown ends a Run
 ({§agui-shutdown}); the loops those Runs observed continue, because a revoked observer is not a
 cancelling one ({§agui-run-disconnect}). Expiry is checked at admission only: an admitted stream

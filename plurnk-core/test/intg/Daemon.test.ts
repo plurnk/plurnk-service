@@ -2198,7 +2198,7 @@ test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to
             const db2 = await openMigrated();
             const http2 = await bindListener();
             const issuing = new Daemon({ db: db2, provider: null, http: http2, nodeModulesPath });
-            issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "test-issuer");
+            issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1", signIn: () => "host" }); } }, "test-issuer");
             try {
                 await issuing.start();
                 assert.equal(issuing.credentials.face()?.issuer(), "http://127.0.0.1:1");
