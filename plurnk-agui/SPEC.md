@@ -167,7 +167,10 @@ reasoning lifecycle identified by its durable model-call id and physical-request
 sequence. A retried request gets a new reasoning message instead of appending to
 the failed request's partial reasoning. Foreign-worker and BARE reasoning never
 enter the thread. Failed or rejected requests may therefore leave honest
-transient reasoning that is not replayed.
+transient reasoning that is not replayed. A Run ended before its request, revoked
+({§agui-oauth-revocation}), stopped ({§agui-shutdown}) or failed, closes the reasoning message and
+span it opened before its `RUN_ERROR`; the request streams on to every Run still observing it. A Run
+that joins after a request's reasoning began presents none of that request's deltas.
 
 Core also derives optional complete `reasoning` on admitted SEND, NOTE and disposition
 rows from their durable packet ({§methods-readable-reasoning}). When that value

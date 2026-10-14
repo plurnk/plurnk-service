@@ -121,6 +121,20 @@ export default class Translator {
         return events;
     }
 
+    // {§agui-readable-reasoning} A Run ended before its request is (revoked, stopped, failed) still
+    // balances what it opened; the request itself streams on to the Runs still observing it.
+    fail(): AguiEvent[] {
+        const events: AguiEvent[] = [];
+        for (const { messageId } of this.#activeReasoning.values()) {
+            events.push(
+                { type: EventType.REASONING_MESSAGE_END, messageId },
+                { type: EventType.REASONING_END, messageId },
+            );
+        }
+        this.#activeReasoning.clear();
+        return [...events, ...this.finish()];
+    }
+
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
@@ -216,7 +230,9 @@ export default class Translator {
             return events;
         }
         const active = this.#activeReasoning.get(event.modelCallId);
-        if (active === undefined || active.requestSequence !== event.requestSequence) {
+        // {§agui-readable-reasoning} A Run that joined after this request began presents none of it.
+        if (active === undefined) return [];
+        if (active.requestSequence !== event.requestSequence) {
             throw new TypeError(`Reasoning model call ${event.modelCallId} request ${event.requestSequence} emitted ${event.phase} without a start.`);
         }
         if (active.turnId !== event.turnId || active.loopId !== event.loopId) {

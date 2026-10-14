@@ -3427,3 +3427,73 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         await mod.close();
     }
 });
+
+test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a Run ended mid-reasoning closes its reasoning before RUN_ERROR; a Run that joins mid-request presents none of it", async () => {
+    const { seam, emit } = mockSeam("s3cret");
+    const cancellations: number[] = [];
+    seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const controllers = Array.from({ length: 3 }, () => new AbortController());
+    const messageId = "model-call-21/request-1/reasoning";
+    const reasoning = (phase: "start" | "content" | "end", delta?: string): void => emit(3, "reasoning/event", {
+        workerId: 77, loopId: 9, turnId: 4, modelCallId: 21, requestSequence: 1, phase, ...(delta === undefined ? {} : { delta }),
+    });
+    const frames = (body: string): AguiEvent[] => body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+    const endsBalanced = (events: AguiEvent[], problemType: string): void => {
+        const order: string[] = events.map(({ type }) => type);
+        const terminal = order.indexOf("RUN_ERROR");
+        assert.equal(terminal, order.length - 1, `RUN_ERROR ends the Run: ${order.join(" ")}`);
+        const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
+        assert.ok(problem?.type === "CUSTOM" && problem.value.type === problemType, order.join(" "));
+        for (const [open, close] of [["REASONING_MESSAGE_START", "REASONING_MESSAGE_END"], ["REASONING_START", "REASONING_END"]] as const) {
+            const opened = events.filter((event) => event.type === open).map((event) => (event as { messageId: string }).messageId);
+            const closed = events.filter((event, index) => event.type === close && index < terminal).map((event) => (event as { messageId: string }).messageId);
+            assert.deepEqual(closed, opened, `every ${open} is closed before RUN_ERROR: ${order.join(" ")}`);
+        }
+    };
+    let closing: Promise<void> | undefined;
+    try {
+        const port = mod.address().port;
+        const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
+        const open = async (token: string, index: number): Promise<Response> => {
+            const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
+                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index]!.signal,
+                body: JSON.stringify(standardInput({ threadId: `reasoning-${index}`, messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
+            });
+            assert.equal(response.status, 200);
+            return response;
+        };
+        const ending = await open(revoked, 0);
+        const watching = await open(kept, 1);
+        reasoning("start");
+        reasoning("content", "Thinking");
+        const revocation = await fetch(`http://127.0.0.1:${port}/oauth/revoke`, {
+            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: revoked, client_id: "operator", client_secret: "s3cret" }).toString(),
+        });
+        assert.equal(revocation.status, 200);
+        const revokedEvents = frames(await ending.text());
+        assert.ok(revokedEvents.some((event) => event.type === "REASONING_MESSAGE_START" && event.messageId === messageId), "the revoked Run was streaming the request");
+        endsBalanced(revokedEvents, "https://problems.plurnk.xyz/agui/http/credential-revoked");
+
+        const joining = await open(kept, 2);
+        reasoning("content", " further");
+        mod.stop();
+        const bodies = Promise.all([watching.text(), joining.text()]);
+        closing = mod.close();
+        await waitForFixture(Promise.all([closing, bodies]).then(() => {}), () => "Runs holding open reasoning prevented module closure");
+        const [watched, joined] = (await bodies).map(frames);
+        assert.deepEqual(
+            watched!.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
+            ["Thinking", " further"],
+            "the request streams on to the Run still observing it",
+        );
+        endsBalanced(watched!, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        assert.ok(!joined!.some(({ type }) => type.startsWith("REASONING_")), "a Run that joined mid-request presents none of it");
+        endsBalanced(joined!, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        assert.deepEqual(cancellations, [], "ending an observing Run cancels no worker");
+    } finally {
+        for (const controller of controllers) controller.abort();
+        await (closing ?? mod.close());
+    }
+});

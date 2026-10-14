@@ -331,12 +331,25 @@ test("a prior rejected stream cannot suppress different durable reasoning, and f
     assert.equal(content?.delta, "accepted reasoning");
 });
 
+test("{§agui-readable-reasoning} a Run that joins mid-request presents none of it and receives the durable reasoning once, with its row", () => {
+    const tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 2 });
+    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), []);
+    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }), []);
+    const send = tr.logEntry(entry({
+        op: "SEND",
+        turn_id: 7,
+        coordinate: "1/7/3/SEND",
+        reasoning: "whole reasoning",
+        ...( { worker_id: 2 } as object),
+    } as never));
+    assert.deepEqual(
+        send.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
+        ["whole reasoning"],
+    );
+});
+
 test("reasoning lifecycle violations fail at the projection boundary", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
-    assert.throws(
-        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "orphan" }),
-        /without a start/,
-    );
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     assert.throws(
         () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),

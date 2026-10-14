@@ -26,6 +26,7 @@ export default class EventRouter {
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
     get reasoningOpen(): boolean { return this.#t.reasoningOpen; }
     finish(): AguiEvent[] { return this.#t.finish(); }
+    fail(): AguiEvent[] { return this.#t.fail(); }
 
     route(method: string, params: unknown): AguiEvent[] {
         return observedSync( // {§observability-boundary} — the method name only; params stay off the span.

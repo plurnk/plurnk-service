@@ -540,7 +540,7 @@ export default class Portal {
 
     failThread(thread: unknown, events: AguiEvent[]): void {
         const bound = thread as Thread;
-        bound.emit([...bound.router.finish(), ...events]);
+        bound.emit([...bound.router.fail(), ...events]);
     }
 
     // {§agui-oauth-revocation} — every Run admitted under the family ends with the given events; the
