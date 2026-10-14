@@ -3,9 +3,6 @@
 > [!IMPORTANT]
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
-> [!IMPORTANT]
-> YOU MUST emit at least one NOTE, a summary, in every turn.
-
 ## Syntax
 
 ```exampleOperation (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
@@ -14,7 +11,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Detailed Internal Working Memory Register recording your summary, finding, decision, and next actions.
+* NOTE: Internal Working Memory Register recording **every** summary, finding, decision, and next action.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -53,7 +50,7 @@ example final deliverable response
 ```
 
 > [!CAUTION]
-> The loop continues until all Open Messages receive a `[200]` or `[499]` reply and everything is resolved.
+> The loop continues until all Open Messages receive a `[200]` or `[499]` response and all Open Work is completed.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 

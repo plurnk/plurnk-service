@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Paths from "../../src/Paths.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-// {§continued-without-note} {§notice-directive} — the card's command, repeated word for word as the directive.
+// {§continued-without-note} {§notice-directive} — the notice's directive and its rendered callout.
 const COMMAND = "YOU MUST emit at least one NOTE, a summary, in every turn.";
 const NOTICE = `> [!WARNING]\n> ${COMMAND} The turn continued without a NOTE. [continued_without_note]`;
 
@@ -29,11 +27,6 @@ const conversation = async (db: Db, responses: Array<{ content: string; reasonin
         provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
     });
 };
-
-test("{§continued-without-note}: the directive is the card's own command, which the card states as an important callout", async () => {
-    const card = await readFile(Paths.instructionsSystem, "utf8");
-    assert.ok(card.includes(`> [!IMPORTANT]\n> ${COMMAND}\n`), `the card states, word for word: ${COMMAND}`);
-});
 
 test("{§continued-without-note}: a continuing turn that carried no NOTE is told so in the next packet, and only then", async () => {
     const db = await openMigrated();
