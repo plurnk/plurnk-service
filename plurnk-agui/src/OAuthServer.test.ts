@@ -10,7 +10,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { host, type Hosted } from "../test/host.ts";
 import { resolveModuleOptions } from "./config.ts";
-import type { AguiPort, ModuleOptions } from "./Module.ts";
+import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "./Module.ts";
 import OAuthServer from "./OAuthServer.ts";
 import type { AguiEvent } from "./types.ts";
 
@@ -390,6 +390,16 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
     } finally { await mod.close(); }
 });
 
+test("{§credential-authority} the face answers its issuer from publication: the listener's origin or the configured one, before the module starts", async () => {
+    // {§module-phases} — set up and never started: what another module's start may read, in either order.
+    for (const [issuer, expected] of [["", "http://127.0.0.1:4321"], ["https://plurnk.example", "https://plurnk.example"]] as const) {
+        const credentials = new Credentials({ operatorSecret: "s3cret" });
+        const setup: AguiSetupSeam = { credentials, registerScheme: async () => {}, httpAddress: () => ({ host: "127.0.0.1", port: 4321 }) };
+        await Module.create({ env: { ...FLOOR, PLURNK_AGUI_ISSUER: issuer } }).setup(setup);
+        assert.equal(credentials.face()?.issuer(), expected);
+    }
+});
+
 // {§agui-oauth-session} — the authorization server with an injected peer address, for the rows a
 // loopback test listener cannot present itself.
 const serve = async (peer: string, env: Record<string, string> = {}, setup: (credentials: Authority) => void = () => {}): Promise<{ readonly base: string; close(): Promise<void> }> => {
@@ -417,12 +427,12 @@ const sessionOf = (response: Response): string => {
 };
 
 test("{§agui-oauth-session} without a password a loopback browser is the operator: the first visit sets the session, a module's own client is authorized silently, and a session is never a bearer", async () => {
-    const redirect = "http://127.0.0.1:1/web/callback";
     let secret = "";
     const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "" }, {}, "s3cret", (credentials) => {
-        secret = credentials.registerClient({ id: "web", redirectUris: [redirect], scopes: ["agui"] }).clientSecret;
+        secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }).clientSecret;
     });
     try {
+        const redirect = `${mod.base}/web/callback`;
         const client_id = "web";
         const { verifier, challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
@@ -504,9 +514,9 @@ test("{§agui-oauth-session} a browser elsewhere is not the operator: without a 
         assert.match(await page.text(), /PLURNK_USER.*PLURNK_PASS/su);
         assert.equal(page.headers.get("set-cookie"), null, "no session for a peer elsewhere");
     } finally { await open.close(); }
-    const guarded = await serve("203.0.113.5", {}, (credentials) => { credentials.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1/web/callback"], scopes: ["agui"] }); });
+    const guarded = await serve("203.0.113.5", {}, (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }); });
     try {
-        const redirect = "http://127.0.0.1:1/web/callback";
+        const redirect = `${guarded.base}/web/callback`;
         const client_id = "web";
         const { challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui" };
@@ -529,11 +539,12 @@ test("{§agui-oauth-session} a browser elsewhere is not the operator: without a 
 // {§agui-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):
 // the token-mediating backend of RFC 10017 §6.2 authenticates at the token endpoint and brings PKCE.
 const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly string[] = ["agui"]) => {
-    const redirect = "http://127.0.0.1:1/web/callback";
     let secret = "";
+    // Registered before the listener's port is known to anyone: a path is all the module states.
     const mod = await boot({ PLURNK_USER: "", PLURNK_PASS: "", ...env }, {}, "s3cret", (credentials) => {
-        secret = credentials.registerClient({ id: "web", redirectUris: [redirect], scopes }).clientSecret;
+        secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes }).clientSecret;
     });
+    const redirect = `${env.PLURNK_AGUI_ISSUER || mod.base}/web/callback`;
     const authorize = async (extra: Record<string, string> = {}): Promise<{ readonly response: Response; readonly verifier: string; readonly cookie: string }> => {
         const { verifier, challenge } = pkce();
         const response = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
@@ -597,8 +608,14 @@ test("{§agui-oauth-clients} a module's client is refused without its secret, wi
             assert.equal(response.status, 401, label);
             assert.equal((await json(response)).error, "invalid_client", label);
         }
-        const elsewhere = await authorize({ redirect_uri: "http://127.0.0.1:1/other" });
-        assert.equal(elsewhere.response.status, 400, "a redirect the module did not register is never followed");
+        for (const [label, redirect_uri] of [
+            ["a path the module did not register", `${mod.base}/other`],
+            ["its path on another loopback port", `http://127.0.0.1:1/web/callback`],
+            ["its path on another host", "http://elsewhere.example/web/callback"],
+            ["its path with a query", `${redirect}?next=1`],
+        ] as const) {
+            assert.equal((await authorize({ redirect_uri })).response.status, 400, `${label} is never followed`);
+        }
         const bare = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({ client_id: "web", redirect_uri: redirect, response_type: "code", state: "s" })}`, { redirect: "manual" });
         assert.equal(new URL(bare.headers.get("location")!).searchParams.get("error"), "invalid_request", "PKCE is required of a confidential client too");
         const own = await post({ grant_type: "client_credentials", scope: "agui" }, basic("web", secret()));
@@ -607,6 +624,23 @@ test("{§agui-oauth-clients} a module's client is refused without its secret, wi
         const wide = await authorize({ scope: "a2a" });
         assert.equal(new URL(wide.response.headers.get("location")!).searchParams.get("error"), "invalid_scope", "a scope the module did not register");
     } finally { await mod.close(); }
+});
+
+test("{§credential-module-client} a module's redirect is its path on the issuer: the listener's origin by default, the configured public origin when one is set", async () => {
+    const local = await moduleBoot();
+    try {
+        assert.equal(local.redirect, `${local.mod.base}/web/callback`);
+        assert.ok((await local.code()).code, "answered at its path on the listener's own origin");
+    } finally { await local.mod.close(); }
+    const fronted = await moduleBoot({ PLURNK_AGUI_ISSUER: "https://plurnk.example" });
+    try {
+        const { response } = await fronted.authorize();
+        assert.equal(response.status, 302, await response.text());
+        const location = new URL(response.headers.get("location")!);
+        assert.equal(`${location.origin}${location.pathname}`, "https://plurnk.example/web/callback");
+        assert.equal((await fronted.authorize({ redirect_uri: `${fronted.mod.base}/web/callback` })).response.status, 400,
+            "under a configured issuer the listener's own origin is not the module's address");
+    } finally { await fronted.mod.close(); }
 });
 
 test("{§agui-oauth-session} silence is for a module's own client: a registered public client is shown consent even when its redirect is on this daemon's origin", async () => {
@@ -622,7 +656,7 @@ test("{§agui-oauth-session} silence is for a module's own client: a registered 
 
 test("{§agui-oauth-clients} a declared client may not take a module client's id, and a module client's scope must be one this server issues", async () => {
     await assert.rejects(boot({ PLURNK_AGUI_CLIENT_web: JSON.stringify({ secret: "x", scopes: ["agui"] }) }, {}, "s3cret", (credentials) => {
-        credentials.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1/web/callback"], scopes: ["agui"] });
+        credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] });
     }), /PLURNK_AGUI_CLIENT_web: 'web' is the id of a module's own client/u);
     const { mod, authorize } = await moduleBoot({}, ["agui", "elsewhere"]);
     const complaints: unknown[] = [];

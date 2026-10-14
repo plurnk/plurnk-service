@@ -49,8 +49,9 @@ export interface CapabilityProviderSeam {
 
 // Everything the daemon hands a module at setup: every published slice, and core's own interface.
 export type HostSetupSeam = ModuleSetupSeam
-    // {§credential-authority} — the issuing module publishes the authority's face at setup.
-    & Pick<ApplicationPort, "credentials">
+    // {§credential-authority} — the issuing module publishes the authority's face at setup, and reads
+    // there the address of the listener the host bound before any module set up ({§http-host}).
+    & Pick<ApplicationPort, "credentials" | "httpAddress">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & SchemeRegistrationSeam
     & ResourceTreeRegistrationSeam

@@ -681,7 +681,8 @@ grant exists (RFC 9700). Nothing about a credential is interpreted by a consumer
 one comes from the authority.
 
 §agui-oauth-endpoints **The endpoints live on the daemon's listener, under the issuer.** The issuer
-is `PLURNK_AGUI_ISSUER`, or the listener's own origin when that is empty. The module claims and
+is `PLURNK_AGUI_ISSUER`, or the listener's own origin when that is empty, answered from setup: the
+host has bound its listener by then ({§http-host}). The module claims and
 mounts them beside `/agui` ({§module-http-mounts}):
 
 | Path | Standard | Contract |
@@ -695,8 +696,10 @@ mounts them beside `/agui` ({§module-http-mounts}):
 | `GET`/`POST /oauth/session` | — | The browser's standing ({§agui-oauth-session}): `GET` says whether this browser holds a session; `POST` with `action=end` revokes it and clears the cookie. |
 
 Every response is uncacheable; OPTIONS answers 204 and the CORS headers follow {§agui-cors}. A redirect
-URI must match a registered one exactly, except that a loopback redirect may change its port
-(RFC 8252 §7.3). A request naming an unregistered client or redirect is answered to the person,
+URI must match a registered one exactly, except that a registered public client's loopback redirect
+may change its port (RFC 8252 §7.3). A module's own client is answered only at the issuer followed
+by a path it registered ({§credential-module-client}), with no exception: under a configured issuer
+the listener's own origin is not its address. A request naming an unregistered client or redirect is answered to the person,
 never redirected; any other malformed request is redirected with its `error` and `state`.
 
 §agui-oauth-clients **Four kinds of client.** The operator's own client, `operator`, is confidential:

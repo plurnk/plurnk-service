@@ -198,8 +198,8 @@ export interface IssuedCredential {
 
 /**
  * {§credential-authority} The issuing face of the authority, published by the module that issues:
- * the issuer origin where credentials are obtained. Published, the daemon authenticates; absent,
- * every mounted resource admits anonymously.
+ * the issuer origin where credentials are obtained, answered from the moment it is published.
+ * Published, the daemon authenticates; absent, every mounted resource admits anonymously.
  */
 export interface CredentialFace {
     readonly issuer: () => string;
@@ -207,12 +207,12 @@ export interface CredentialFace {
 
 /**
  * {§credential-module-client} The confidential client a module of this daemon registers for itself at
- * setup: its id, the exact absolute http(s) redirect addresses it may be answered at, and the scopes
- * it may ask for. What others may know of it; never its secret.
+ * setup: its id, the absolute pathnames under its own mounts it may be answered at, and the scopes
+ * it may ask for. The issuer supplies the origin of each. What others may know of it; never its secret.
  */
 export interface ModuleClient {
     readonly id: string;
-    readonly redirectUris: readonly string[];
+    readonly redirectPaths: readonly string[];
     readonly scopes: readonly string[];
 }
 

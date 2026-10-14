@@ -108,27 +108,31 @@ test("{§credential-authority} a minted secret is written beside the database, 0
 
 test("{§credential-module-client} a module registers its own confidential client once: the secret is minted here, told to the registrant alone and checked here", () => {
     const authority = new Credentials();
-    const web = authority.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1066/web/callback"], scopes: ["agui", "agui"] });
+    const web = authority.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui", "agui"] });
     assert.equal(web.clientId, "web");
     assert.match(web.clientSecret, /^[A-Za-z0-9_-]{43}$/u);
-    assert.deepEqual(authority.client("web"), { id: "web", redirectUris: ["http://127.0.0.1:1066/web/callback"], scopes: ["agui"] }, "what others may know: never the secret");
-    assert.ok(Object.isFrozen(authority.client("web")) && Object.isFrozen(authority.client("web")!.redirectUris));
+    assert.deepEqual(authority.client("web"), { id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }, "what others may know: never the secret, and no origin");
+    assert.ok(Object.isFrozen(authority.client("web")) && Object.isFrozen(authority.client("web")!.redirectPaths));
     assert.equal(authority.client("nobody"), null);
     assert.equal(authority.authenticateClient("web", web.clientSecret), true);
     assert.equal(authority.authenticateClient("web", `${web.clientSecret}x`), false);
     assert.equal(authority.authenticateClient("web", ""), false);
     assert.equal(authority.authenticateClient("nobody", web.clientSecret), false);
-    assert.throws(() => authority.registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1066/other"], scopes: ["agui"] }), /already has a module client 'web'/u);
-    const other = new Credentials().registerClient({ id: "web", redirectUris: ["http://127.0.0.1:1066/web/callback"], scopes: ["agui"] });
+    assert.throws(() => authority.registerClient({ id: "web", redirectPaths: ["/other"], scopes: ["agui"] }), /already has a module client 'web'/u);
+    const other = new Credentials().registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] });
     assert.notEqual(other.clientSecret, web.clientSecret, "every boot mints its own");
 });
 
-test("{§credential-module-client} a module client's registration is refused when its id, its redirects or its scopes are malformed", () => {
+test("{§credential-module-client} a module client's registration is refused when its id, its redirect paths or its scopes are malformed", () => {
     const authority = new Credentials();
-    const good = { id: "web", redirectUris: ["https://plurnk.example/web/callback"], scopes: ["agui"] };
+    const good = { id: "web", redirectPaths: ["/web/callback", "/"], scopes: ["agui"] };
     for (const id of ["", "operator", "no spaces", "sl/ash"]) assert.throws(() => authority.registerClient({ ...good, id }), /module client id/u, JSON.stringify(id));
-    for (const redirectUris of [[], ["/relative"], ["ftp://host/x"], ["https://host/x#fragment"], [7 as unknown as string]]) {
-        assert.throws(() => authority.registerClient({ ...good, redirectUris }), /needs redirectUris/u, JSON.stringify(redirectUris));
+    // An origin is never the module's to state, and the path is the one a URL carries, unrewritten.
+    for (const redirectPaths of [
+        [], ["relative"], ["http://127.0.0.1:1066/web/callback"], ["//elsewhere.example/web/callback"], ["/web/callback?next=1"],
+        ["/web/callback#fragment"], ["/web/../callback"], ["/web callback"], ["/web/callback", "relative"], [7 as unknown as string],
+    ]) {
+        assert.throws(() => authority.registerClient({ ...good, redirectPaths }), /needs redirectPaths/u, JSON.stringify(redirectPaths));
     }
     for (const scopes of [[], [""], ["two words"], [7 as unknown as string]]) assert.throws(() => authority.registerClient({ ...good, scopes }), /needs scopes/u, JSON.stringify(scopes));
     assert.equal(authority.client("web"), null, "a refused registration registers nothing");

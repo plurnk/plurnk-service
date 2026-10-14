@@ -73,14 +73,16 @@ interface RegisteredAction extends AguiActionContract {
     readonly execute: ActionExecutor;
 }
 
-// {§credential-authority} — at setup the module publishes the authority's issuing face, before any start.
-export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials">;
+// {§credential-authority} — at setup the module publishes the authority's issuing face, before any
+// start, and takes the listener's address so the face answers its issuer from then on ({§http-host}).
+export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials" | "httpAddress">;
 
 export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
     // authorization server's ({§agui-oauth-endpoints}).
     readonly mounts: readonly string[];
     #seam!: AguiPort;
+    #listener!: AguiSetupSeam["httpAddress"];
     readonly #opts: ResolvedModuleOptions;
     #portal!: Portal;
     #oauth: OAuthServer | null = null;
@@ -101,10 +103,11 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             : ["/agui"]);
     }
 
-    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the listener's own. The
-    // listener is read lazily, after start, which is when anything asks.
+    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the listener's own, read
+    // when asked. The host binds its listener before any module sets up ({§http-host}), so the face
+    // published at setup answers from publication.
     #issuer(): string {
-        return this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(this.#seam.httpAddress());
+        return this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(this.#listener());
     }
 
     static #origin({ host, port }: { readonly host: string; readonly port: number }): string {
@@ -174,6 +177,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
 
     async setup(seam: AguiSetupSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
+        this.#listener = () => seam.httpAddress();
         // {§agui-oauth} — under PLURNK_AUTH=1 the face says so to every mounted resource before any
         // module starts ({§module-phases}); the daemon refuses to run authenticating without one.
         if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer() });
@@ -185,6 +189,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         if (this.#activated) throw new Error("plurnk-agui: module already activated");
         seam.registerHttpRoute("/agui", (req, res) => this.#route(req, res));
         this.#seam = seam;
+        this.#listener = () => seam.httpAddress();
         this.#registerActions();
         this.#portal = new Portal(seam);
         this.#portal.start();

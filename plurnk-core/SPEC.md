@@ -202,7 +202,8 @@ early ownership introduces neither traffic nor a close/rebind race.
 §http-host **The daemon opens exactly one transport.** Core binds the HTTP
 listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
 `registerHttpRoute(prefix, handler)` and `httpAddress()` on the application port
-({§application-port}). A prefix is an absolute pathname. Each request goes to the
+({§application-port}). The listener is bound before any module sets up, so the setup seam
+offers `httpAddress()` too ({§module-host-capabilities}). A prefix is an absolute pathname. Each request goes to the
 longest mounted prefix; a prefix claims itself and the subtree beneath it, never
 a longer sibling name; `/` is the root and receives whatever nothing more
 specific claimed when a module mounts it. An admitted listener returns an HTTP
@@ -223,7 +224,8 @@ subject, its client, its scopes, its family and its expiry. A restart revokes ev
 Revocation is by family, so an access token and the refresh token that renews it fall together;
 a refresh token is consumed once, and a second presentation revokes its family and says so. The
 authority has no HTTP face and no policy of its own: the issuing module publishes the one face
-(`publish({ issuer })`, at setup) that names where credentials are obtained, an exterior adapter
+(`publish({ issuer })`, at setup) that names where credentials are obtained and answers from its
+publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter
 verifies through it ({§agui-http-authorization}), and the client protocol issues through it
 ({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
 never inferred from what else is set. Under `1` the authority holds the operator's client secret,
@@ -235,9 +237,14 @@ credential exists, no face is published and every mounted resource admits anonym
 the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
 §credential-module-client **A module of this daemon is a confidential client by registration.** At
-setup a module registers its own client on the authority, `registerClient({ id, redirectUris, scopes })`:
-an id of letters, digits, `.`, `_` or `-` other than `operator`, the exact absolute http(s) redirect
-addresses it may be answered at, and the scopes it may ask for. The authority mints the client's
+setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes })`:
+an id of letters, digits, `.`, `_` or `-` other than `operator`, the absolute pathnames under its own
+mounts it may be answered at, each as a URL carries it, with no query and no fragment, and the
+scopes it may ask for. A module states no origin: it serves only on the daemon's one listener
+({§http-host}), so its address is its path on the issuer, and registration needs nothing from the
+listener, the issuer or another module. The issuing face answers the client at exactly the issuer
+followed by a registered path ({§agui-oauth-endpoints}), and the module forms the same address from
+`credentials.face().issuer()`, from its `start` on ({§credential-authority}). The authority mints the client's
 secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and
 checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration
 without the secret. A second registration of one id and a malformed registration are faults and
@@ -4486,6 +4493,7 @@ published module contract.
 | Setup function | Contract |
 |---|---|
 | `credentials` | The {§credential-authority} on the setup seam: the issuing module publishes its face (`publish({ issuer })`) before any module starts, and every module may `verify` through it. |
+| `httpAddress()` | The address of the listener the host bound before any module set up ({§http-host}), as on the application port: the issuing module derives its issuer from it at setup, so the face it publishes answers from publication. |
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |

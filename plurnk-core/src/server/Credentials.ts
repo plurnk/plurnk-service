@@ -118,12 +118,12 @@ export default class Credentials implements CredentialAuthority {
         return () => { this.#listeners.delete(listener); };
     }
 
-    registerClient({ id, redirectUris, scopes }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
+    registerClient({ id, redirectPaths, scopes }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
         if (typeof id !== "string" || !/^[A-Za-z0-9._-]+$/u.test(id) || id === "operator") {
             throw new TypeError(`a module client id is letters, digits, '.', '_' or '-', and never "operator"; got ${JSON.stringify(id)}`);
         }
-        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || !redirectUris.every(Credentials.#redirect)) {
-            throw new TypeError(`the module client '${id}' needs redirectUris, absolute http(s) URLs without fragments`);
+        if (!Array.isArray(redirectPaths) || redirectPaths.length === 0 || !redirectPaths.every(Credentials.#pathname)) {
+            throw new TypeError(`the module client '${id}' needs redirectPaths, absolute pathnames without a query or a fragment`);
         }
         if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every((scope) => typeof scope === "string" && /^[\x21\x23-\x5B\x5D-\x7E]+$/u.test(scope))) {
             throw new TypeError(`the module client '${id}' needs scopes, a non-empty list of scope tokens`);
@@ -131,7 +131,7 @@ export default class Credentials implements CredentialAuthority {
         if (this.#clients.has(id)) throw new Error(`the credential authority already has a module client '${id}'`);
         const secret = Credentials.mint();
         this.#clients.set(id, {
-            client: Object.freeze({ id, redirectUris: Object.freeze([...redirectUris]), scopes: Object.freeze([...new Set(scopes)]) }),
+            client: Object.freeze({ id, redirectPaths: Object.freeze([...redirectPaths]), scopes: Object.freeze([...new Set(scopes)]) }),
             secret,
         });
         return { clientId: id, clientSecret: secret };
@@ -149,11 +149,13 @@ export default class Credentials implements CredentialAuthority {
         return timingSafeEqual(digest(secret), digest(held.secret));
     }
 
-    static #redirect(value: unknown): boolean {
-        if (typeof value !== "string") return false;
+    // {§credential-module-client} — a pathname exactly as a URL carries it: one leading slash, nothing
+    // a parser would rewrite, no query and no fragment, so `issuer + path` is the address itself.
+    static #pathname(value: unknown): boolean {
+        if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return false;
         try {
-            const url = new URL(value);
-            return (url.protocol === "http:" || url.protocol === "https:") && url.hash === "";
+            const url = new URL(value, "http://issuer");
+            return url.host === "issuer" && url.pathname === value && url.search === "" && url.hash === "";
         } catch { return false; }
     }
 

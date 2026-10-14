@@ -304,12 +304,22 @@ export default class OAuthServer {
 
     // {§agui-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
     // this server's. A module client naming a scope this server does not issue is a fault of the module.
+    // Its redirect addresses are its registered paths on the issuer, formed when asked.
     #client(id: string): Client | undefined {
         const registered = this.#credentials.client(id);
         if (registered === null) return this.#clients.get(id);
         const foreign = registered.scopes.find((scope) => !SCOPES.includes(scope));
         if (foreign !== undefined) throw new Error(`the module client '${id}' registered the scope '${foreign}', which this authorization server does not issue`);
-        return { id, kind: "module", secret: null, scopes: registered.scopes, redirectUris: registered.redirectUris, name: null };
+        const issuer = this.#issuer();
+        return { id, kind: "module", secret: null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
+    }
+
+    // {§agui-oauth-endpoints} — a module's client is answered only at its path on the issuer; any other
+    // client at a registered address, a loopback one on any port (RFC 8252 §7.3).
+    static #redirects(client: Client, presented: string): boolean {
+        return client.kind === "module"
+            ? client.redirectUris.includes(presented)
+            : client.redirectUris.some((registered) => redirectMatches(registered, presented));
     }
 
     async #sessionPage(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -363,7 +373,7 @@ export default class OAuthServer {
         // RFC 6749 §4.1.2.1 — a bad client or redirect is told to the person, never redirected to.
         const client = this.#client(params.get("client_id") ?? "");
         const redirectUri = params.get("redirect_uri");
-        if (client === undefined || redirectUri === null || !client.redirectUris.some((registered) => redirectMatches(registered, redirectUri))) {
+        if (client === undefined || redirectUri === null || !OAuthServer.#redirects(client, redirectUri)) {
             this.#html(res, 400, "Plurnk: request refused", "<h1>Request refused</h1><p>The client or its redirect address is not registered with this daemon.</p>");
             return;
         }
