@@ -4,11 +4,7 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU SHOULD emit NOTE operations for **EVERY** summary, finding, decision, and next (and why).
-> Your internal reasoning is NOT preserved across turns. Your NOTE is your ONLY orientation.
-
-> [!TIP]
-> All operations (except NOTE) are converted into log items.
+> YOU MUST emit at least one NOTE, a summary, in every turn.
 
 ## Syntax
 
@@ -18,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Detailed Internal Register.
+* NOTE: Persistent Detailed Internal Working Memory Register recording your summary, finding, decision, and next actions.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -33,34 +29,31 @@ body?
 ## Loop Protocol
 
 ```NOTE <!-- summary -->
-Configuration exampleLoader.py load-order bug identified; fix and regression test pending.
+example summarization note
 ```
 
 ```NOTE <!-- finding -->
-exampleLoader.py:58 reads the config before exampleInit() sets its path, so every test sees the defaults.
+example fact or finding note
 ```
 
 ```NOTE <!-- decision -->
-Move configuration reading in exampleLoader.py into exampleInit() so it uses the initialized path. Plugin dependence on the old order is still unverified.
+example decision note
 ```
 
 ```NOTE <!-- next -->
-Edit exampleLoader.py, then rerun exampleTest.py.
+example next action note
 ```
 
 ```SEND
-This is an example of a continuing progress update response.
+example continuing progress update response
 ```
 
 ```SEND [200]
-This is an example of a final deliverable response.
+example final deliverable response
 ```
 
-> [!TIP]
-> YOU SHOULD include the Open Message's (path) to complete `[200]` or cancel `[499]` specific Open Messages.
-
 > [!CAUTION]
-> The loop continues until every Open Message has a `[200]` or `[499]` reply, operation results have been observed, and work held by the loop has settled.
+> The loop continues until all Open Messages receive a `[200]` or `[499]` reply and everything is resolved.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 
@@ -156,7 +149,7 @@ Nesting can be resolved with increased outer fences.
 ```
 
 ```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->
-exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
+example distillation or summarization
 ```
 
 ## Environment (worker:///_plurnk/plurnk/env.md)

@@ -235,9 +235,12 @@ const INITIALIZATION_NEXT_NOTE: NoteStatement = {
     op: "NOTE", aside: "next", metadata: null, target: null, lineMarker: null,
     body: "Read and resolve the Open Message.", position: UNKNOWN_POSITION,
 };
+// {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
+const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
+    note: "YOU MUST emit at least one NOTE, a summary, in every turn.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
@@ -1814,6 +1817,16 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
+        // {§continued-without-note} — a turn the loop continues past or parks on, having carried no NOTE
+        // forward in its program or from its reasoning, is told so in the next packet, in the card's own
+        // words. An empty turn has its own no-operation row instead.
+        const ops = split.packetAssistant.ops;
+        if ((executed.status === 102 || executed.status === 202) && ops.length > 0
+            && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
+            });
+        }
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             progressed: executed.progressed,

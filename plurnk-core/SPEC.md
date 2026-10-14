@@ -5825,6 +5825,7 @@ retain distinct contracts and lifetimes.
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | YOU SHOULD write the canonical form. | content-offset into the model's emission |
 | `search_progress` | repository materialization/indexing lifecycle ({§persistent-search-index}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none | none |
 | `git_inspection_refused` | engine membership — automatic Git inspection refused a supplied repository whose config declares a `filter.*` program ({§membership-git-hermetic}); names the key; `level: warn`, once per workspace until the key changes or clears | none | none |
+| `continued_without_note` | engine turn — a continuing or parked model turn that admitted no NOTE ({§continued-without-note}); `level: warn` | YOU MUST emit at least one NOTE, a summary, in every turn. | none |
 | `outside_text` | engine turn — text the emission carried outside its operations, discarded ({§outside-text}); `level: warn` | YOU MUST NOT emit anything except whitespace between fenced operations. | none |
 | `invalid_emission` | engine grammar — a response rejected before dispatch; `level: error` | YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line. | content-offset of the parser diagnostic, when it has one |
 | `output_truncated` | engine capacity or turn — an emission cut at the output allowance ({§output-allowance-notice}); `level: error` when the cut response was rejected, otherwise `warn` | YOU SHOULD emit fewer or shorter operations per turn. | none |
@@ -5837,6 +5838,8 @@ retain distinct contracts and lifetimes.
 | `metadata_ignored` | engine dispatcher — `[metadata]` on an operation whose scheme takes none, run without it; `level: warn` | YOU SHOULD NOT write [metadata] on an operation that takes none. | none |
 | `scope_normalized` | engine slicer — a scope normalized to its canonical form; `level: warn` | YOU SHOULD write the normalized scope. | none |
 | `edit_merged` | engine slicer — an EDIT resolution rule applied to a batch ({§edit-batch-merges}); `level: warn` | YOU SHOULD verify the merged EDIT before building on it. | none |
+
+§continued-without-note **A continuing turn that carried no NOTE is told so, in the card's own words.** The card states its rule as one important callout, `YOU MUST emit at least one NOTE, a summary, in every turn.`, and the daemon's directive repeats it word for word. When a model turn settles at 102 or 202, so the loop continues past it or parks on it, and it admitted no NOTE in its program or from its reasoning ({§reasoning-operations}), the next packet carries one `engine:turn` notice, `continued_without_note`, `level: warn`, with that directive and the message `The turn continued without a NOTE.` It is a notice, never a failure: it mints no row, never counts toward the strike rail, and never ends or alters a loop. A turn that concludes its loop, an empty turn, which carries its own no-operation row, and every non-model turn take none.
 
 §notice-callout **A notice speaks in the card's callout form.** Each renders as one alert callout, its level choosing the callout: `> [!CAUTION]` for `error`, `> [!WARNING]` for `warn`, and `> [!NOTE]` for `info`, which no model packet carries. Inside it stand the directive ({§notice-directive}), then the message, any typed position as `@ line:column`, and the kind in brackets; a blank line separates consecutive callouts:
 
@@ -6676,6 +6679,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Nothing is in flight. Continuing. | a WAIT (or a premature terminal) with no live work ({§wait-obligation-matrix}) |
 | All Open Messages resolved. Review new results; emit no OPs if finished. | resolved messages with unobserved results ({§loop-completion}) |
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
+| YOU MUST emit at least one NOTE, a summary, in every turn. The turn continued without a NOTE. | a continuing or parked model turn without a NOTE ({§continued-without-note}) |
 | Each directive in the notice table | a notice of the model's own output ({§notice-directive}) |
 | Context window overflow: the packet cannot fit the model's window even as receipts. | the wall ({§context-wall}) |
 | No recipient implements the requested interaction. | The worker's owner is not interactive or does not declare the required client tool ({§client-interaction-routing}). |
