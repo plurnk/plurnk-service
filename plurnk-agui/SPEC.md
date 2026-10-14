@@ -695,8 +695,8 @@ grant exists (RFC 9700). Nothing about a credential is interpreted by a consumer
 one comes from the authority.
 
 §agui-oauth-endpoints **The endpoints live on the daemon's listener, under the issuer.** The issuer
-is `PLURNK_AGUI_ISSUER`, or the listener's own origin when that is empty, answered from setup: the
-host has bound its listener by then ({§http-host}). The module claims and
+is `PLURNK_AGUI_ISSUER`, or, when that is empty, the origin each request reached the daemon at
+({§http-request-origin}), answered from setup: the host has bound its listener by then ({§http-host}). The module claims and
 mounts them beside `/agui` ({§module-http-mounts}):
 
 | Path | Standard | Contract |
@@ -713,7 +713,7 @@ Every response is uncacheable; OPTIONS answers 204 and the CORS headers follow {
 URI must match a registered one exactly, except that a registered public client's loopback redirect
 may change its port (RFC 8252 §7.3). A module's own client is answered only at the issuer followed
 by a path it registered ({§credential-module-client}), with no exception: under a configured issuer
-the listener's own origin is not its address. A request naming an unregistered client or redirect is answered to the person,
+no other origin is its address. A request naming an unregistered client or redirect is answered to the person,
 never redirected; any other malformed request is redirected with its `error` and `state`.
 
 §agui-oauth-clients **Four kinds of client.** The operator's own client, `operator`, is confidential:
@@ -814,7 +814,7 @@ address is the daemon's.
 | `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | The daemon's one listener ({§http-host}); AG-UI reads neither. |
 | `PLURNK_AUTH`                      | Shared  | Invalid; the shared panel is required  | `1` or `0`                          | The daemon's posture ({§credential-authority}, {§operator-config-shared-keys}): authenticate, or admit anonymously. |
 | `PLURNK_SECRET`                    | Shared  | The daemon mints one at boot           | Any non-empty string                | The operator's client secret ({§agui-oauth-clients}), what the operator's own tools exchange for access tokens. |
-| `PLURNK_AGUI_ISSUER`               | AG-UI   | The listener's own origin              | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
+| `PLURNK_AGUI_ISSUER`               | AG-UI   | The origin each request reached ({§http-request-origin}) | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
 | `PLURNK_PASS`                      | Shared  | Empty: no browser signs in until it is set ({§agui-oauth-session}) | Any string             | The operator's browser sign-in password ({§agui-oauth-login}). |
 | `PLURNK_AGUI_ACCESS_TTL_SEC` / `PLURNK_AGUI_REFRESH_TTL_SEC` | AG-UI | Invalid; the package floor is required | Positive safe integers | Credential lifetimes ({§agui-oauth-tokens}). |
 | `PLURNK_AGUI_LOGIN_ATTEMPTS` / `PLURNK_AGUI_LOGIN_WINDOW_SEC` | AG-UI | Invalid; the package floor is required | `0` = no limit / a positive window up to `2147483` | Failed sign-ins or client secrets tolerated from one address per window ({§agui-oauth-login}). |

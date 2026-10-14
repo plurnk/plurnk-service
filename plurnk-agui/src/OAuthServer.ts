@@ -102,14 +102,6 @@ const cookieValue = (req: IncomingMessage, name: string): string | null => {
     return null;
 };
 
-// The host a request names, without its port; absent or unparsable is null.
-const requestHost = (req: IncomingMessage): string | null => {
-    const raw = req.headers.host;
-    if (raw === undefined || raw.length === 0) return null;
-    try { return new URL(`http://${raw}`).hostname; } catch { return null; }
-};
-const loopbackHost = (host: string): boolean => host === "localhost" || host === "[::1]" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
-
 const absoluteHttpUrl = (value: unknown): URL | null => {
     if (typeof value !== "string") return null;
     try {
@@ -132,7 +124,7 @@ const redirectMatches = (registered: string, presented: string): boolean => {
 export default class OAuthServer {
     readonly #credentials: CredentialAuthority;
     readonly #opts: ResolvedModuleOptions;
-    readonly #issuer: () => string;
+    readonly #issuer: (req: Pick<IncomingMessage, "headers">) => string;
     readonly #clients = new Map<string, Client>();
     readonly #codes = new Map<string, Code>();
     // {§agui-oauth-login} — failures per source address within the configured window.
@@ -143,7 +135,7 @@ export default class OAuthServer {
     constructor({ credentials, opts, issuer, now = Date.now }: {
         readonly credentials: CredentialAuthority;
         readonly opts: ResolvedModuleOptions;
-        readonly issuer: () => string;
+        readonly issuer: (req: Pick<IncomingMessage, "headers">) => string;
         readonly now?: () => number;
     }) {
         this.#credentials = credentials;
@@ -166,13 +158,12 @@ export default class OAuthServer {
         });
     }
 
-    get issuer(): string { return this.#issuer(); }
-    get resource(): string { return `${this.issuer}/agui`; }
-    get resourceMetadataUrl(): string { return `${this.issuer}/.well-known/oauth-protected-resource`; }
+    // {§http-request-origin} — every address this server advertises is answered for the request that asks.
+    resource(req: Pick<IncomingMessage, "headers">): string { return `${this.#issuer(req)}/agui`; }
 
     /** {§agui-oauth-endpoints} RFC 8414 */
-    metadata(): Record<string, unknown> {
-        const issuer = this.issuer;
+    metadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
+        const issuer = this.#issuer(req);
         return {
             issuer,
             authorization_endpoint: `${issuer}/oauth/authorize`,
@@ -190,10 +181,10 @@ export default class OAuthServer {
     }
 
     /** {§agui-oauth-endpoints} RFC 9728 */
-    resourceMetadata(): Record<string, unknown> {
+    resourceMetadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
         return {
-            resource: this.resource,
-            authorization_servers: [this.issuer],
+            resource: this.resource(req),
+            authorization_servers: [this.#issuer(req)],
             scopes_supported: [...SCOPES],
             bearer_methods_supported: ["header"],
             resource_name: "Plurnk AG-UI",
@@ -203,7 +194,7 @@ export default class OAuthServer {
     // {§agui-http-authorization} — bearer admission for the AG-UI resource (RFC 6750 §3).
     admit(req: IncomingMessage, scope: string): Admission {
         const header = req.headers.authorization;
-        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${this.resourceMetadataUrl}"`;
+        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${this.#issuer(req)}/.well-known/oauth-protected-resource"`;
         const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
         if (presented === null) {
             return {
@@ -243,9 +234,6 @@ export default class OAuthServer {
         const route = this.#routes()[pathname];
         if (route === undefined) return false;
         try {
-            // {§agui-oauth-session} — a request must name this daemon: a page that rebinds its own name
-            // to the loopback address arrives with that name and is refused before any route.
-            if (!this.#hostAllowed(req)) throw new OAuthError("invalid_request", "The request names a host this daemon does not serve.", 421);
             await route(req, res);
         } catch (cause) {
             const error = cause instanceof OAuthError ? cause : new OAuthError("server_error", "The authorization server failed.", 500);
@@ -258,21 +246,14 @@ export default class OAuthServer {
 
     #routes(): Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> {
         return {
-            "/.well-known/oauth-authorization-server": async (req, res) => this.#document(req, res, this.metadata()),
-            "/.well-known/oauth-protected-resource": async (req, res) => this.#document(req, res, this.resourceMetadata()),
+            "/.well-known/oauth-authorization-server": async (req, res) => this.#document(req, res, this.metadata(req)),
+            "/.well-known/oauth-protected-resource": async (req, res) => this.#document(req, res, this.resourceMetadata(req)),
             "/oauth/authorize": (req, res) => this.#authorize(req, res),
             "/oauth/token": (req, res) => this.#token(req, res),
             "/oauth/revoke": (req, res) => this.#revoke(req, res),
             "/oauth/register": (req, res) => this.#register(req, res),
             "/oauth/session": (req, res) => this.#sessionPage(req, res),
         };
-    }
-
-    #hostAllowed(req: IncomingMessage): boolean {
-        const host = requestHost(req);
-        if (host === null) return false;
-        if (loopbackHost(host)) return true;
-        try { return host === new URL(this.issuer).hostname; } catch { return false; }
     }
 
     // ── session ───────────────────────────────────────────────────────────
@@ -285,11 +266,11 @@ export default class OAuthServer {
         return claims !== null && claims.kind === "session" ? claims : null;
     }
 
-    #establishSession(res: ServerResponse): CredentialClaims {
+    #establishSession(req: IncomingMessage, res: ServerResponse): CredentialClaims {
         const ttlMs = this.#opts.refreshTtlSec * 1000;
         const family = randomUUID();
         const issued = this.#credentials.issue({ kind: "session", subject: OPERATOR_SUBJECT, clientId: BROWSER, scopes: SCOPES, family, ttlMs });
-        res.setHeader("set-cookie", `${SESSION_COOKIE}=${issued.token}; Path=/oauth; Max-Age=${this.#opts.refreshTtlSec}; HttpOnly; SameSite=Lax${this.issuer.startsWith("https:") ? "; Secure" : ""}`);
+        res.setHeader("set-cookie", `${SESSION_COOKIE}=${issued.token}; Path=/oauth; Max-Age=${this.#opts.refreshTtlSec}; HttpOnly; SameSite=Lax${this.#issuer(req).startsWith("https:") ? "; Secure" : ""}`);
         return { kind: "session", subject: OPERATOR_SUBJECT, clientId: BROWSER, scopes: SCOPES, family, expiresAt: issued.expiresAt };
     }
 
@@ -302,12 +283,12 @@ export default class OAuthServer {
     // {§agui-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
     // this server's. A module client naming a scope this server does not issue is a fault of the module.
     // Its redirect addresses are its registered paths on the issuer, formed when asked.
-    #client(id: string): Client | undefined {
+    #client(id: string, req: Pick<IncomingMessage, "headers">): Client | undefined {
         const registered = this.#credentials.client(id);
         if (registered === null) return this.#clients.get(id);
         const foreign = registered.scopes.find((scope) => !SCOPES.includes(scope));
         if (foreign !== undefined) throw new Error(`the module client '${id}' registered the scope '${foreign}', which this authorization server does not issue`);
-        const issuer = this.#issuer();
+        const issuer = this.#issuer(req);
         return { id, kind: "module", secret: null, stylesheet: registered.stylesheetPath ?? null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
     }
 
@@ -372,7 +353,7 @@ export default class OAuthServer {
         else throw new OAuthError("invalid_request", "Use GET, or POST a form.", 405);
 
         // RFC 6749 §4.1.2.1 — a bad client or redirect is told to the person, never redirected to.
-        const client = this.#client(params.get("client_id") ?? "");
+        const client = this.#client(params.get("client_id") ?? "", req);
         const redirectUri = params.get("redirect_uri");
         if (client === undefined || redirectUri === null || !OAuthServer.#redirects(client, redirectUri)) {
             this.#html(res, 400, AuthorizationDocuments.refused(), null);
@@ -395,7 +376,7 @@ export default class OAuthServer {
         const scopes = this.#scopes(params.get("scope"), client);
         if (scopes === null) { fail("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`); return; }
         const resource = params.get("resource");
-        if (resource !== null && resource !== this.resource) { fail("invalid_target", `The resource must be ${this.resource}.`); return; }
+        if (resource !== null && resource !== this.resource(req)) { fail("invalid_target", `The resource must be ${this.resource(req)}.`); return; }
 
         // {§agui-oauth-session} — a module's own client is authorized by the browser's sign-in and by
         // nothing else, so its grant joins that sign-in's family: ending either ends both. Any other
@@ -455,7 +436,7 @@ export default class OAuthServer {
         }
         this.#failures.delete(address);
         // A sign-in is the operator's own act, so it issues at once, and the browser keeps the session.
-        issue(this.#establishSession(res));
+        issue(this.#establishSession(req, res));
     }
 
     #scopes(requested: string | null, client: Client): readonly string[] | null {
@@ -517,7 +498,7 @@ export default class OAuthServer {
             secret = form.get("client_secret");
         }
         if (id === null || id.length === 0) throw new OAuthError("invalid_client", "The client did not identify itself.", 401);
-        const client = this.#client(id);
+        const client = this.#client(id, req);
         const address = req.socket.remoteAddress ?? "unknown";
         if (client === undefined) {
             this.#failed(address);
@@ -592,7 +573,7 @@ export default class OAuthServer {
             throw new OAuthError("unsupported_grant_type", "The grant type is not authorization_code, refresh_token or client_credentials.");
         }
         const resource = form.get("resource");
-        if (resource !== null && resource !== this.resource) throw new OAuthError("invalid_target", `The resource must be ${this.resource}.`);
+        if (resource !== null && resource !== this.resource(req)) throw new OAuthError("invalid_target", `The resource must be ${this.resource(req)}.`);
         const access = this.#credentials.issue({ kind: "access", ...issued.claims, ttlMs: this.#opts.accessTtlSec * 1000 });
         const body: Record<string, unknown> = {
             access_token: access.token,

@@ -4,12 +4,13 @@ import {
     AgentCard,
 } from "@a2a-js/sdk";
 import type { User } from "@a2a-js/sdk/server";
+import type { IncomingMessage } from "node:http";
 import {
     UserBuilder,
     agentCardHandler,
     restHandler,
 } from "@a2a-js/sdk/server/express";
-import type { ApplicationPort, CredentialClaims, HttpHost } from "@plurnk/plurnk-contracts";
+import { requestOrigin, type ApplicationPort, type CredentialClaims, type HttpHost } from "@plurnk/plurnk-contracts";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import TaskAdmission, { type AdmissionPort } from "./TaskAdmission.ts";
@@ -61,6 +62,7 @@ export default class Exposure {
     readonly #endpointUrl: string | undefined;
     readonly #handler: PlurnkRequestHandler;
     readonly #credentials: ApplicationPort["credentials"];
+    readonly #listener: HttpHost["httpAddress"];
     #closed = false;
 
     private constructor(application: ExposurePort, options: A2aExposureOptions) {
@@ -73,6 +75,7 @@ export default class Exposure {
             throw new TypeError("The A2A card cannot declare security; the adapter declares the bearer scheme it enforces.");
         }
         this.#credentials = application.credentials;
+        this.#listener = () => application.httpAddress();
         this.#card = structuredClone(options.card);
         this.#card.capabilities = {
             streaming: true,
@@ -103,8 +106,11 @@ export default class Exposure {
         // The SDK writes the provided object verbatim, so the well-known route is handed the card's
         // proto3 JSON form: a declared security scheme is a oneof, and its TypeScript discriminator
         // (`$case`) is not wire format.
-        // {§a2a-hosted-credentials} — the security section is the authority's posture at serve time.
-        app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: async () => AgentCard.toJSON(this.agentCard()) as AgentCard }));
+        // {§a2a-hosted-credentials} — the security section is the authority's posture at serve time, and
+        // every address in it the one the asking request reached ({§http-request-origin}).
+        app.use(`/${AGENT_CARD_PATH}`, (req: Request, res: Response, next: NextFunction) => {
+            agentCardHandler({ agentCardProvider: async () => AgentCard.toJSON(this.agentCard(req)) as AgentCard })(req, res, next);
+        });
         const endpoint = restHandler({
             requestHandler: this.#handler,
             userBuilder: async (req) => {
@@ -163,23 +169,22 @@ export default class Exposure {
     // {§http-host} — the exposure rides the daemon's one listener: the public card at the standard
     // well-known path and the interface at its endpoint path, both on the service address.
     #mount(host: HttpHost): void {
-        const address = host.httpAddress();
-        this.#card.supportedInterfaces[0]!.url = this.#endpointUrl ?? `http://${address.host}:${address.port}${this.#endpointPath}`;
         host.registerHttpRoute(`/${AGENT_CARD_PATH}`, this.#app);
         host.registerHttpRoute(this.#endpointPath, this.#app);
     }
 
     // {§a2a-hosted-credentials} — the card declares exactly what the endpoint enforces: with a face, one
     // oauth2 scheme, client credentials at the daemon's own token endpoint with the scope a2a; none otherwise.
-    agentCard(): AgentCard {
+    agentCard(req: Pick<IncomingMessage, "headers">): AgentCard {
         const card = structuredClone(this.#card);
+        card.supportedInterfaces[0]!.url = this.#endpointUrl ?? `${requestOrigin(req, this.#listener())}${this.#endpointPath}`;
         const face = this.#credentials.face();
         if (face === null) {
             card.securitySchemes = {};
             card.securityRequirements = [];
             return card;
         }
-        const issuer = face.issuer();
+        const issuer = face.issuer(req);
         card.securitySchemes = {
             oauth2: {
                 scheme: {

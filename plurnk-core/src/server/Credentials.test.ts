@@ -60,7 +60,7 @@ test("{§credential-authority} the authority has at most one issuing face, and n
     const authority = new Credentials();
     assert.equal(authority.face(), null);
     authority.publish({ issuer: () => "http://127.0.0.1:1" });
-    assert.equal(authority.face()?.issuer(), "http://127.0.0.1:1");
+    assert.equal(authority.face()?.issuer({ headers: {} }), "http://127.0.0.1:1");
     assert.throws(() => authority.publish({ issuer: () => "http://elsewhere" }), /already has an issuing face/u);
 });
 

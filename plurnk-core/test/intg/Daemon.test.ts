@@ -2201,7 +2201,7 @@ test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to
             issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "test-issuer");
             try {
                 await issuing.start();
-                assert.equal(issuing.credentials.face()?.issuer(), "http://127.0.0.1:1");
+                assert.equal(issuing.credentials.face()?.issuer({ headers: {} }), "http://127.0.0.1:1");
                 assert.ok(issuing.credentials.operatorSecret, "the authority holds a minted operator secret");
             } finally { await issuing.stop(); await http2.close(); await db2.close(); }
         });

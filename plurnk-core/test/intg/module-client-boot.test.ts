@@ -1,6 +1,6 @@
 // {§credential-module-client} — the composed boot: a consumer module registers its confidential
 // client at setup knowing no origin, set up before the client interface or after it, and is answered
-// at its path on the issuer, under the listener's own origin on an ephemeral port and under a
+// at its path on the issuer, under the address its request reached on an ephemeral port and under a
 // configured public one.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -25,7 +25,7 @@ const consumer = () => {
             seen.secret = seam.credentials.registerClient({ id: "consumer", redirectPaths: [CALLBACK], scopes: ["agui"], stylesheetPath: STYLESHEET }).clientSecret;
         },
         start: (port: ApplicationPort): void => {
-            seen.issuerAtStart = port.credentials.face()!.issuer();
+            seen.issuerAtStart = port.credentials.face()!.issuer({ headers: { host: `127.0.0.1:${port.httpAddress().port}` } });
             port.registerHttpRoute("/consumer", (req, res) => {
                 const url = new URL(req.url ?? "/", "http://consumer");
                 if (url.pathname === CALLBACK) seen.codes.push(url.searchParams.get("code") ?? "");
@@ -39,7 +39,7 @@ const consumer = () => {
 
 for (const order of ["the consumer set up first", "the client interface set up first"] as const) {
     for (const issuer of ["", "https://plurnk.example"] as const) {
-        const origin = issuer === "" ? "the listener's own origin on an ephemeral port" : "a configured issuer";
+        const origin = issuer === "" ? "the address the request reached, on an ephemeral port" : "a configured issuer";
         test(`{§credential-module-client} ${order}, ${origin}: a module registers at setup and is answered at its path on the issuer`, async (t) => {
             const db = await openMigrated();
             const http = await bindListener();

@@ -65,6 +65,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "isExecutionOp",
         "lifecycleOfLoopStatus",
         "renderJsonResult",
+        "requestOrigin",
         "selectWorkerLoop",
         "writtenOp",
     ]);

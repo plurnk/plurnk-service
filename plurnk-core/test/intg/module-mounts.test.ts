@@ -94,7 +94,7 @@ test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization 
     await daemon.start();
     const metadata = await get("/.well-known/oauth-authorization-server");
     assert.equal(metadata.status, 200);
-    assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the listener's own origin");
+    assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the address the request reached");
     assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}/agui`);
     assert.equal((await get("/")).status, 404);
     const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });

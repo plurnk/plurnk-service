@@ -363,7 +363,7 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
     const mod = await boot({}, {}, null);
     try {
         assert.equal(mod.module.mounts.length, 4);
-        assert.equal(mod.credentials.face()?.issuer(), mod.base);
+        assert.equal(mod.credentials.face()?.issuer({ headers: { host: new URL(mod.base).host } }), mod.base);
         assert.match((await refused(mod.base, {})).type, /\/bearer-token-required$/u, "the daemon is protected without a secret");
         const asOperator = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "" }));
         assert.equal(asOperator.status, 401);
@@ -379,19 +379,28 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
     } finally { await mod.close(); }
 });
 
-test("{§credential-authority} the face answers its issuer from publication: the listener's origin or the configured one, before the module starts", async () => {
+test("{§credential-authority} {§http-request-origin} the face answers its issuer from publication, before the module starts: the configured one, else the address the request reached, else the listener's", async () => {
     // {§module-phases} — set up and never started: what another module's start may read, in either order.
-    for (const [issuer, expected] of [["", "http://127.0.0.1:4321"], ["https://plurnk.example", "https://plurnk.example"]] as const) {
+    for (const [issuer, viaLan, unnamed] of [
+        ["", "http://192.168.1.88:1066", "http://127.0.0.1:4321"],
+        ["https://plurnk.example", "https://plurnk.example", "https://plurnk.example"],
+    ] as const) {
         const credentials = new Credentials({ operatorSecret: "s3cret" });
         const setup: AguiSetupSeam = { credentials, registerScheme: async () => {}, httpAddress: () => ({ host: "127.0.0.1", port: 4321 }) };
         await Module.create({ env: { ...FLOOR, PLURNK_AGUI_ISSUER: issuer } }).setup(setup);
-        assert.equal(credentials.face()?.issuer(), expected);
+        assert.deepEqual([credentials.face()?.issuer({ headers: { host: "192.168.1.88:1066" } }), credentials.face()?.issuer({ headers: {} })], [viaLan, unnamed]);
     }
 });
 
-const withHost = (base: string, path: string, hostHeader: string): Promise<number> => new Promise((resolve, reject) => {
+// A request to the listener at `base` naming `hostHeader`, as a browser that reached the daemon by that name sends it.
+const hosted = (base: string, path: string, hostHeader: string): Promise<{ readonly status: number; readonly body: string }> => new Promise((resolve, reject) => {
     const { hostname, port } = new URL(base);
-    const req = httpRequest({ host: hostname, port, path, method: "GET", headers: { host: hostHeader } }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+    const req = httpRequest({ host: hostname, port, path, method: "GET", headers: { host: hostHeader } }, (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => { body += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
     req.once("error", reject);
     req.end();
 });
@@ -470,19 +479,22 @@ test("{§agui-oauth-session} a client elsewhere is shown consent: allowing with 
     } finally { await mod.close(); }
 });
 
-test("{§agui-oauth-session} every request under the authorization server's paths must name this daemon: a foreign Host is refused at 421, a loopback or issuer Host is served", async () => {
+test("{§http-request-origin} {§agui-oauth-endpoints} the authorization server answers at whatever address a request reached it by; a configured issuer is the one answer", async () => {
     const mod = await boot();
     try {
-        for (const path of ["/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource", "/oauth/authorize", "/oauth/token", "/oauth/session"]) {
-            assert.equal(await withHost(mod.base, path, "attacker.example"), 421, path);
+        for (const named of ["192.168.1.88:1066", "desktop.lan:1066", "localhost:1066"]) {
+            const metadata = JSON.parse((await hosted(mod.base, "/.well-known/oauth-authorization-server", named)).body) as { issuer: string; token_endpoint: string };
+            assert.deepEqual([metadata.issuer, metadata.token_endpoint], [`http://${named}`, `http://${named}/oauth/token`]);
+            const resource = JSON.parse((await hosted(mod.base, "/.well-known/oauth-protected-resource", named)).body) as { resource: string; authorization_servers: string[] };
+            assert.deepEqual([resource.resource, resource.authorization_servers], [`http://${named}/agui`, [`http://${named}`]]);
+            assert.equal((await hosted(mod.base, "/oauth/session", named)).status, 200, `a browser that reached ${named} is served`);
         }
-        assert.equal(await withHost(mod.base, "/.well-known/oauth-authorization-server", "localhost"), 200);
-        assert.equal(await withHost(mod.base, "/.well-known/oauth-authorization-server", "127.0.0.1:1"), 200, "the port is not the name");
     } finally { await mod.close(); }
     const fronted = await boot({ PLURNK_AGUI_ISSUER: "https://plurnk.example" });
     try {
-        assert.equal(await withHost(fronted.base, "/.well-known/oauth-authorization-server", "plurnk.example"), 200, "the issuer's host is this daemon's name");
-        assert.equal(await withHost(fronted.base, "/.well-known/oauth-authorization-server", "other.example"), 421);
+        for (const named of ["plurnk.example", "192.168.1.88:1066"]) {
+            assert.equal((JSON.parse((await hosted(fronted.base, "/.well-known/oauth-authorization-server", named)).body) as { issuer: string }).issuer, "https://plurnk.example");
+        }
     } finally { await fronted.close(); }
 });
 
@@ -663,11 +675,18 @@ test("{§agui-oauth-clients} a module's client is refused without its secret, wi
     } finally { await mod.close(); }
 });
 
-test("{§credential-module-client} a module's redirect is its path on the issuer: the listener's origin by default, the configured public origin when one is set", async () => {
+test("{§credential-module-client} a module's redirect is its path on the issuer: the address the request reached by default, the configured public origin when one is set", async () => {
     const local = await moduleBoot();
     try {
         assert.equal(local.redirect, `${local.mod.base}/web/callback`);
-        assert.ok((await local.code()).code, "answered at its path on the listener's own origin");
+        assert.ok((await local.code()).code, "answered at its path on the address the request reached");
+        const { challenge } = pkce();
+        const authorizeAt = (named: string, redirect_uri: string) => hosted(local.mod.base, `/oauth/authorize?${new URLSearchParams({
+            client_id: "web", redirect_uri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s",
+        })}`, named);
+        assert.equal((await authorizeAt("192.168.1.88:1066", "http://192.168.1.88:1066/web/callback")).status, 200, "a browser on the LAN is asked to sign in");
+        assert.equal((await authorizeAt(new URL(local.mod.base).host, "http://192.168.1.88:1066/web/callback")).status, 400,
+            "the module's address is on the origin the request reached, not another");
     } finally { await local.mod.close(); }
     const fronted = await moduleBoot({ PLURNK_AGUI_ISSUER: "https://plurnk.example" });
     try {
@@ -676,7 +695,7 @@ test("{§credential-module-client} a module's redirect is its path on the issuer
         const location = new URL(response.headers.get("location")!);
         assert.equal(`${location.origin}${location.pathname}`, "https://plurnk.example/web/callback");
         assert.equal((await fronted.authorize({ redirect_uri: `${fronted.mod.base}/web/callback` })).response.status, 400,
-            "under a configured issuer the listener's own origin is not the module's address");
+            "under a configured issuer no other origin is the module's address");
     } finally { await fronted.mod.close(); }
 });
 

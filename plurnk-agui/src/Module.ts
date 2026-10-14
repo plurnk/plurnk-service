@@ -18,7 +18,7 @@ import Portal, { type PortalPort } from "./Portal.ts";
 import { aliveChildren, derivationActivity, descendantsState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { Problems, Validator, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
@@ -103,15 +103,11 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             : ["/agui"]);
     }
 
-    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the listener's own, read
-    // when asked. The host binds its listener before any module sets up ({§http-host}), so the face
-    // published at setup answers from publication.
-    #issuer(): string {
-        return this.#opts.issuer.length > 0 ? this.#opts.issuer : Module.#origin(this.#listener());
-    }
-
-    static #origin({ host, port }: { readonly host: string; readonly port: number }): string {
-        return `http://${host.includes(":") ? `[${host}]` : host}:${port}`;
+    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the origin the request
+    // reached this daemon at ({§http-request-origin}). The host binds its listener before any module
+    // sets up ({§http-host}), so the face published at setup answers from publication.
+    #issuer(req: Pick<IncomingMessage, "headers">): string {
+        return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());
     }
 
     // {§agui-configuration} — the module reads its settings from the assembled environment;
@@ -180,7 +176,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#listener = () => seam.httpAddress();
         // {§agui-oauth} — under PLURNK_AUTH=1 the face says so to every mounted resource before any
         // module starts ({§module-phases}); the daemon refuses to run authenticating without one.
-        if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer() });
+        if (this.#opts.authenticates) seam.credentials.publish({ issuer: (req) => this.#issuer(req) });
     }
 
     // {§agui-listener-admission} — the host admits traffic after every module has started.
@@ -195,7 +191,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#portal.start();
         if (this.#opts.authenticates) {
             // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
-            this.#oauth = new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: () => this.#issuer() });
+            this.#oauth = new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: (req) => this.#issuer(req) });
             for (const prefix of this.mounts) {
                 if (prefix !== "/agui") seam.registerHttpRoute(prefix, (req, res) => this.#oauthRoute(req, res));
             }

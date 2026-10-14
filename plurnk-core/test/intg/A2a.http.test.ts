@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { setImmediate } from "node:timers/promises";
 import test, { type TestContext } from "node:test";
 import { Exposure as A2aExposure, OutboundModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { requestOrigin } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, A2A_MOUNTS } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
@@ -44,7 +45,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
                     card: a2aCard(),
                     ...A2A_EXPOSURE,
                 }).start(port);
-                endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
+                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0]!.url;
                 exposure = adapter;
                 return adapter;
             },
@@ -53,7 +54,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
     expose();
     // {§a2a-hosted-credentials} — a face on the authority is the daemon's posture; this fixture plays the
     // issuing module's part so the exposure can be witnessed authenticated.
-    if (authenticated) daemon.credentials.publish({ issuer: () => serviceUrl(daemon) });
+    if (authenticated) daemon.credentials.publish({ issuer: (req) => requestOrigin(req, daemon.httpAddress()) });
     await daemon.start();
 
     // Deliberately use literal HTTP+JSON, not the adapter's client/request builders.
@@ -427,6 +428,24 @@ test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the sa
     assert.equal(calls, 1);
 });
 
+test("{§http-request-origin} {§a2a-inbound-exposure}: the card names its interface and the token endpoint at the address its request reached", async (t) => {
+    const { daemon } = await fixture(t, [], true);
+    const { host, port } = daemon.httpAddress();
+    const body = await new Promise<string>((resolve, reject) => {
+        const req = httpRequest({ host, port, path: "/.well-known/agent-card.json", headers: { host: "192.168.1.88:1066" } }, (res) => {
+            let text = "";
+            res.setEncoding("utf8");
+            res.on("data", (chunk: string) => { text += chunk; });
+            res.on("end", () => resolve(text));
+        });
+        req.once("error", reject);
+        req.end();
+    });
+    const card = JSON.parse(body) as { supportedInterfaces: Array<{ url: string }> };
+    assert.equal(card.supportedInterfaces[0]!.url, "http://192.168.1.88:1066/a2a");
+    assert.match(body, /"tokenUrl":"http:\/\/192\.168\.1\.88:1066\/oauth\/token"/u);
+});
+
 test("{§a2a-hosted-credentials}: with a face on the authority the card declares client credentials at the daemon's token endpoint and the endpoint admits only an a2a access token", async (t) => {
     const { daemon, endpoint } = await fixture(t, [], true);
     const origin = serviceUrl(daemon);
@@ -489,7 +508,7 @@ test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes stay
             mounts: A2A_MOUNTS,
             start: async (port) => {
                 const adapter = await A2aExposure.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
-                endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
+                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0]!.url;
                 return adapter;
             },
         }, "test-module");

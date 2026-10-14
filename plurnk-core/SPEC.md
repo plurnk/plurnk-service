@@ -216,6 +216,14 @@ none opens a socket of its own. The standards
 address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the
 well-known card and its endpoint path, on the same address.
 
+§http-request-origin **What the daemon advertises follows the address a caller used.** A request's
+origin is the address its `Host` names, over http, or the listener's own for a request that names
+none (`requestOrigin`). Every address the daemon advertises to a caller, the authority's issuer
+({§agui-oauth-endpoints}) and the A2A card's endpoint, is its configured public origin or the origin
+of the request that asked, so a daemon bound to every interface answers each caller at the address
+that caller used. A configured origin is for a front the daemon cannot see, such as a TLS proxy. No
+request is refused for the name it uses.
+
 §credential-authority **The daemon is one credential authority.** Every credential presented
 to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials`
 authority on the application port ({§application-port}): an opaque random token held in memory
@@ -224,8 +232,8 @@ subject, its client, its scopes, its family and its expiry. A restart revokes ev
 Revocation is by family, so an access token and the refresh token that renews it fall together;
 a refresh token is consumed once, and a second presentation revokes its family and says so. The
 authority has no HTTP face and no policy of its own: the issuing module publishes the one face
-(`publish({ issuer })`, at setup) that names where credentials are obtained and answers from its
-publication, so any module may read the issuer from its own `start` on ({§module-phases}), an
+(`publish({ issuer })`, at setup) that names where a request's caller obtains credentials
+({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an
 exterior adapter
 verifies through it ({§agui-http-authorization}), and the client protocol issues through it
 ({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is

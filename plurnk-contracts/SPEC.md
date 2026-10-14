@@ -1443,8 +1443,8 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 
 The remaining values are small pure helpers over those contracts (`isExecution`, `writtenOp`,
 `lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
-`aguiConformanceReport`) and the closed name patterns and vocabularies (`RUNTIME_TAG`,
-`SKILL_NAME`, `EFFORTS`).
+`aguiConformanceReport`, `requestOrigin` for {§http-request-origin}) and the closed name patterns
+and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`).
 
 §parser-construction-boundary Parser construction components are internal rather
 than alternate consumer entry points:

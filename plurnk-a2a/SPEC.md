@@ -68,7 +68,8 @@ The inbound HTTP+JSON exposure is an exterior adapter over the
 public Agent Card at the standard well-known path and the interface at
 `PLURNK_A2A_ENDPOINT_PATH`, both on the service address and both claimed before
 setup ({§module-http-mounts}), and it opens no
-socket of its own. The official SDK owns HTTP+JSON framing, wire types and errors;
+socket of its own. The card names the interface at `PLURNK_A2A_ENDPOINT_URL`, or else at the
+endpoint path on the origin the card's request reached ({§http-request-origin}). The official SDK owns HTTP+JSON framing, wire types and errors;
 the adapter implements its public `A2ARequestHandler` interface.
 Plurnk Workers, Loops, logs, and terminal results remain the only execution
 state. Task retrieval projects that durable state; no SDK execution manager or

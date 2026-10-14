@@ -198,11 +198,12 @@ export interface IssuedCredential {
 
 /**
  * {§credential-authority} The issuing face of the authority, published by the module that issues:
- * the issuer origin where credentials are obtained, answered from the moment it is published.
- * Published, the daemon authenticates; absent, every mounted resource admits anonymously.
+ * the issuer origin where a request's caller obtains credentials, answered from the moment it is
+ * published ({§http-request-origin}). Published, the daemon authenticates; absent, every mounted
+ * resource admits anonymously.
  */
 export interface CredentialFace {
-    readonly issuer: () => string;
+    readonly issuer: (req: Pick<IncomingMessage, "headers">) => string;
 }
 
 /**

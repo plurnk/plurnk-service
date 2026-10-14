@@ -399,7 +399,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
             "public Agent Card discovery remains passive",
         );
 
-        const endpoint = (listener as A2aExposure).agentCard().supportedInterfaces[0]!.url;
+        const endpoint = (listener as A2aExposure).agentCard({ headers: {} }).supportedInterfaces[0]!.url;
         for (const [path, expectedStatus] of [["/tasks", 200], ["/tasks/missing-task", 404]] as const) {
             const response = await fetch(`${endpoint}${path}`, { headers: { "a2a-version": "1.0" } });
             const result = await response.json();

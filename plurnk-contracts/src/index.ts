@@ -48,6 +48,7 @@ export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
+export { requestOrigin } from "./HttpOrigin.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./ApplicationPort.ts";
 export type * from "./Functionality.ts";
