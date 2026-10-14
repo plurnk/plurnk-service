@@ -742,6 +742,21 @@ daemon: a `Host` that is neither loopback nor the issuer's host is refused at 42
 so a name a page rebinds to the loopback address reaches nothing. Every page it serves carries
 `frame-ancestors 'none'`.
 
+§agui-oauth-documents **The authorization server's documents are plain semantic HTML.** Every page it
+shows a person (sign-in, a refused password, too many attempts, no password, consent, a refused
+request, and the session page) is HTML with no script and no class: a `main` holding one `article`
+whose `header` carries the `h1`, paragraphs, and native form controls each named by its `label`; a
+page that reports a fault puts a warning glyph (`role="img"`, `aria-label="Warning"`) in its heading,
+and a refused password is an alert (`role="alert"`). A page carries its own small inline style,
+readable alone in either color scheme. On a request whose `client_id` names a module client that
+registered a stylesheet ({§credential-module-client}), the page links that stylesheet in place of its
+own style, and its policy admits same-origin styles only (`style-src 'self'`); the session page takes
+an optional `client_id` for the same purpose and carries it through its sign-out. A request can name a
+registered client and nothing else: no page links a stylesheet a request supplies, and a client that
+is unknown, not a module's or registered none gets the standalone page.
+`authorizationDocumentSpecimens()` renders every one of these documents, for a consumer whose
+production CSS pruning must keep the selectors they use.
+
 §agui-oauth-login **The operator signs in at the authorization endpoint.** The sign-in page is plain
 HTML with no script: it names the client and the scopes it asks for and posts the operator's
 shared password, `PLURNK_PASS`, compared in constant time; a wrong password re-presents the form at

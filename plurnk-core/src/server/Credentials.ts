@@ -145,7 +145,7 @@ export default class Credentials implements CredentialAuthority {
             .sort((a, b) => a.createdAt - b.createdAt || a.family.localeCompare(b.family)));
     }
 
-    registerClient({ id, redirectPaths, scopes }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
+    registerClient({ id, redirectPaths, scopes, stylesheetPath }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {
         if (typeof id !== "string" || !/^[A-Za-z0-9._-]+$/u.test(id) || id === "operator") {
             throw new TypeError(`a module client id is letters, digits, '.', '_' or '-', and never "operator"; got ${JSON.stringify(id)}`);
         }
@@ -155,10 +155,13 @@ export default class Credentials implements CredentialAuthority {
         if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every((scope) => typeof scope === "string" && /^[\x21\x23-\x5B\x5D-\x7E]+$/u.test(scope))) {
             throw new TypeError(`the module client '${id}' needs scopes, a non-empty list of scope tokens`);
         }
+        if (stylesheetPath !== undefined && !Credentials.#pathname(stylesheetPath)) {
+            throw new TypeError(`the module client '${id}' gave a stylesheetPath that is not an absolute pathname without a query or a fragment`);
+        }
         if (this.#clients.has(id)) throw new Error(`the credential authority already has a module client '${id}'`);
         const secret = Credentials.mint();
         this.#clients.set(id, {
-            client: Object.freeze({ id, redirectPaths: Object.freeze([...redirectPaths]), scopes: Object.freeze([...new Set(scopes)]) }),
+            client: Object.freeze({ id, redirectPaths: Object.freeze([...redirectPaths]), scopes: Object.freeze([...new Set(scopes)]), ...(stylesheetPath === undefined ? {} : { stylesheetPath }) }),
             secret,
         });
         return { clientId: id, clientSecret: secret };

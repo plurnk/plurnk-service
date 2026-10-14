@@ -8,6 +8,7 @@ import { request as httpRequest } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { host, type Hosted } from "../test/host.ts";
+import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "./Module.ts";
 import type { AguiEvent } from "./types.ts";
 
@@ -487,7 +488,7 @@ test("{§agui-oauth-session} every request under the authorization server's path
 
 test("{§agui-oauth-session} no browser is the operator without the password: the empty password is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
     for (const [env, heading, named] of [
-        [{ PLURNK_PASS: "" }, /<h1>No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
+        [{ PLURNK_PASS: "" }, /<h1><span role="img" aria-label="Warning">⚠<\/span> No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
     ] as const) {
         const mod = await boot(env, {}, "s3cret", (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }); });
         try {
@@ -525,6 +526,47 @@ test("{§agui-oauth-login} the password selects no account: whatever password si
         } finally { await mod.close(); }
     }
     assert.equal(subjects[0], subjects[1], "a new password changes who can sign in, never who they are");
+});
+
+test("{§agui-oauth-documents} every document is a main article under a header heading, with no script, no class and a label for every visible control", () => {
+    const specimens = authorizationDocumentSpecimens();
+    assert.ok(specimens.length >= 8);
+    for (const body of specimens) {
+        assert.match(body, /^<main><article><header><h1>/u, body);
+        assert.doesNotMatch(body, /<script|\sclass=/u, body);
+        for (const [input] of body.matchAll(/<input [^>]*>/gu)) {
+            if (input.startsWith('<input type="hidden"')) continue;
+            const id = /\bid="([^"]+)"/u.exec(input)?.[1];
+            assert.ok(id !== undefined && body.includes(`<label for="${id}">`), `${input} is named by a label`);
+        }
+    }
+});
+
+test("{§agui-oauth-documents} a module client's registered stylesheet replaces the standalone style on its pages; any other client, or none, gets the standalone page", async () => {
+    for (const password of ["lovelace", ""]) {
+        const mod = await boot({ PLURNK_PASS: password }, {}, "s3cret", (credentials) => {
+            credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"], stylesheetPath: "/web/assets/authority.css" });
+            credentials.registerClient({ id: "plain", redirectPaths: ["/plain/callback"], scopes: ["agui"] });
+        });
+        try {
+            const authorize = (client: string): Promise<Response> => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
+                client_id: client, redirect_uri: `${mod.base}/${client}/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "agui",
+            })}`, { redirect: "manual" });
+            const styled = async (response: Response): Promise<boolean> => {
+                const html = await response.text();
+                const linked = html.includes('<link rel="stylesheet" href="/web/assets/authority.css">');
+                assert.equal(html.includes("<style>"), !linked, "the registered stylesheet replaces the standalone style, never overrides it");
+                assert.match(response.headers.get("content-security-policy")!, linked ? /style-src 'self';/u : /style-src 'unsafe-inline';/u);
+                return linked;
+            };
+            assert.equal(await styled(await authorize("web")), true, `the module's own page (${password === "" ? "no password" : "sign-in"})`);
+            assert.equal(await styled(await authorize("plain")), false, "a module client that registered none");
+            assert.equal(await styled(await authorize("nobody")), false, "an unknown client's refusal");
+            assert.equal(await styled(await fetch(`${mod.base}/oauth/session?client_id=web`)), true, "the session page names the client it is shown for");
+            assert.equal(await styled(await fetch(`${mod.base}/oauth/session?client_id=nobody`)), false);
+            assert.equal(await styled(await fetch(`${mod.base}/oauth/session`)), false);
+        } finally { await mod.close(); }
+    }
 });
 
 // {§agui-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):

@@ -220,13 +220,16 @@ export interface CredentialSession {
 
 /**
  * {§credential-module-client} The confidential client a module of this daemon registers for itself at
- * setup: its id, the absolute pathnames under its own mounts it may be answered at, and the scopes
- * it may ask for. The issuer supplies the origin of each. What others may know of it; never its secret.
+ * setup: its id, the absolute pathnames under its own mounts it may be answered at, the scopes it may
+ * ask for and, optionally, the pathname of a stylesheet it serves for the authority's documents shown
+ * to its requests ({§agui-oauth-documents}). The issuer supplies the origin of each. What others may
+ * know of it; never its secret.
  */
 export interface ModuleClient {
     readonly id: string;
     readonly redirectPaths: readonly string[];
     readonly scopes: readonly string[];
+    readonly stylesheetPath?: string;
 }
 
 /**

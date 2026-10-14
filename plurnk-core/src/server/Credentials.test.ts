@@ -168,6 +168,11 @@ test("{§credential-module-client} a module client's registration is refused whe
         assert.throws(() => authority.registerClient({ ...good, redirectPaths }), /needs redirectPaths/u, JSON.stringify(redirectPaths));
     }
     for (const scopes of [[], [""], ["two words"], [7 as unknown as string]]) assert.throws(() => authority.registerClient({ ...good, scopes }), /needs scopes/u, JSON.stringify(scopes));
+    // {§agui-oauth-documents} — a stylesheet is a path the module serves, in the form its redirect paths take.
+    for (const stylesheetPath of ["", "relative.css", "https://elsewhere.example/a.css", "//elsewhere.example/a.css", "/a.css?v=1", "/a.css#x", 7 as unknown as string]) {
+        assert.throws(() => authority.registerClient({ ...good, stylesheetPath }), /stylesheetPath/u, JSON.stringify(stylesheetPath));
+    }
     assert.equal(authority.client("web"), null, "a refused registration registers nothing");
-    assert.equal(authority.registerClient(good).clientId, "web");
+    assert.equal(authority.registerClient({ ...good, stylesheetPath: "/web/assets/authority.css" }).clientId, "web");
+    assert.equal(authority.client("web")?.stylesheetPath, "/web/assets/authority.css");
 });

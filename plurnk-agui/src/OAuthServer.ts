@@ -6,6 +6,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialAuthority, CredentialClaims, ProblemDetails } from "@plurnk/plurnk-contracts";
+import { AuthorizationDocuments, renderAuthorizationDocument, type AuthorizationDocument, type AuthorizationRequest } from "./AuthorizationDocuments.ts";
 import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
 import { httpProblem } from "./run-events.ts";
 
@@ -33,6 +34,8 @@ interface Client {
     readonly kind: "public" | "declared" | "module";
     /** The secret of a `declared` client; null for the other two kinds. */
     readonly secret: string | null;
+    /** {§agui-oauth-documents} A `module` client's registered stylesheet path; null for every other client. */
+    readonly stylesheet: string | null;
     readonly scopes: readonly string[];
     readonly redirectUris: readonly string[];
     readonly name: string | null;
@@ -68,8 +71,6 @@ class OAuthError extends Error {
 const sha256 = (value: string): Buffer => createHash("sha256").update(value).digest();
 // Constant-time equality over digests: lengths never leak, and a secret compares in fixed time.
 const same = (a: string, b: string): boolean => timingSafeEqual(sha256(a), sha256(b));
-const escape = (value: string): string => value
-    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
 const mint = (): string => randomBytes(32).toString("base64url");
 
 const readBody = (req: IncomingMessage): Promise<string> => new Promise((resolve, reject) => {
@@ -153,10 +154,10 @@ export default class OAuthServer {
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
         const operatorSecret = credentials.operatorSecret;
-        if (operatorSecret !== null) this.#clients.set(OPERATOR_CLIENT, { id: OPERATOR_CLIENT, kind: "declared", secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
+        if (operatorSecret !== null) this.#clients.set(OPERATOR_CLIENT, { id: OPERATOR_CLIENT, kind: "declared", secret: operatorSecret, stylesheet: null, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
             if (credentials.client(id) !== null) throw new Error(`PLURNK_AGUI_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
-            this.#clients.set(id, { id, kind: "declared", secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
+            this.#clients.set(id, { id, kind: "declared", secret: declared.secret, stylesheet: null, scopes: declared.scopes, redirectUris: [], name: null });
         }
         // {§agui-oauth-session} — a code not yet exchanged ends with the family it would issue into, so
         // a sign-in ended between authorization and exchange stays ended.
@@ -307,7 +308,7 @@ export default class OAuthServer {
         const foreign = registered.scopes.find((scope) => !SCOPES.includes(scope));
         if (foreign !== undefined) throw new Error(`the module client '${id}' registered the scope '${foreign}', which this authorization server does not issue`);
         const issuer = this.#issuer();
-        return { id, kind: "module", secret: null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
+        return { id, kind: "module", secret: null, stylesheet: registered.stylesheetPath ?? null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
     }
 
     // {§agui-oauth-endpoints} — a module's client is answered only at its path on the issuer; any other
@@ -323,15 +324,21 @@ export default class OAuthServer {
             const form = await this.#form(req);
             if (form.get("action") !== "end") throw new OAuthError("invalid_request", "POST action=end to sign this browser out.");
             this.#endSession(req, res);
-            this.#html(res, 200, "Plurnk: signed out", "<h1>Signed out</h1><p>This browser no longer holds a session with this daemon.</p>");
+            this.#html(res, 200, AuthorizationDocuments.signedOut(), this.#stylesheet(form.get("client_id")));
             return;
         }
         if (req.method !== "GET") throw new OAuthError("invalid_request", "Use GET, or POST a form.", 405);
-        const session = this.#session(req);
-        this.#html(res, 200, session === null ? "Plurnk: not signed in" : "Plurnk: signed in", session === null
-            ? "<h1>Not signed in</h1><p>This browser holds no session with this daemon.</p>"
-            : "<h1>Signed in</h1><p>This browser is signed in to this daemon as the operator.</p>"
-                + `<form method="post" action="/oauth/session"><button type="submit" name="action" value="end">Sign out</button></form>`);
+        const clientId = new URL(req.url ?? "/", "http://host").searchParams.get("client_id");
+        const stylesheet = this.#stylesheet(clientId);
+        this.#html(res, 200, this.#session(req) === null
+            ? AuthorizationDocuments.notSignedIn()
+            : AuthorizationDocuments.signedIn(stylesheet === null ? {} : { client_id: clientId! }), stylesheet);
+    }
+
+    // {§agui-oauth-documents} — a stylesheet is a module client's registration, which the request can
+    // only name, never supply.
+    #stylesheet(clientId: string | null): string | null {
+        return clientId === null ? null : this.#credentials.client(clientId)?.stylesheetPath ?? null;
     }
 
     async #document(req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>): Promise<void> {
@@ -344,18 +351,16 @@ export default class OAuthServer {
         res.end(JSON.stringify(body));
     }
 
-    #html(res: ServerResponse, status: number, title: string, body: string, headers: Record<string, string> = {}): void {
+    #html(res: ServerResponse, status: number, document: AuthorizationDocument, stylesheet: string | null, headers: Record<string, string> = {}): void {
+        const { html, policy } = renderAuthorizationDocument(document, stylesheet);
         res.writeHead(status, {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
-            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+            "content-security-policy": policy,
             "x-frame-options": "DENY",
             ...headers,
         });
-        res.end(`<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`
-            + `<title>${escape(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:28rem;padding:0 1rem}`
-            + `label{display:block;margin:.75rem 0 .25rem}input{width:100%;box-sizing:border-box;padding:.5rem}button{margin-top:1rem;padding:.5rem 1rem}`
-            + `p.error{color:#8b0000}</style></head><body>${body}</body></html>\n`);
+        res.end(html);
     }
 
     // ── authorization ───────────────────────────────────────────────────────────────────────────
@@ -370,7 +375,7 @@ export default class OAuthServer {
         const client = this.#client(params.get("client_id") ?? "");
         const redirectUri = params.get("redirect_uri");
         if (client === undefined || redirectUri === null || !OAuthServer.#redirects(client, redirectUri)) {
-            this.#html(res, 400, "Plurnk: request refused", "<h1>Request refused</h1><p>The client or its redirect address is not registered with this daemon.</p>");
+            this.#html(res, 400, AuthorizationDocuments.refused(), null);
             return;
         }
         const state = params.get("state");
@@ -406,10 +411,12 @@ export default class OAuthServer {
             res.writeHead(302, { location: target.toString(), "cache-control": "no-store" });
             res.end();
         };
-        const hidden = ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]
-            .filter((name) => params.has(name))
-            .map((name) => `<input type="hidden" name="${name}" value="${escape(params.get(name)!)}">`).join("");
-        const asks = `<p><strong>${escape(client.name ?? client.id)}</strong> asks to use this daemon (scope: ${escape(scopes.join(" "))}).</p>`;
+        const request: AuthorizationRequest = {
+            client: client.name ?? client.id,
+            scopes,
+            hidden: Object.fromEntries(["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "scope", "state", "resource"]
+                .filter((name) => params.has(name)).map((name) => [name, params.get(name)!])),
+        };
 
         // {§agui-oauth-session} — a browser is the operator only once it has signed in. A consent
         // decision counts only with the session the request carries, which a cross-site POST cannot.
@@ -420,40 +427,30 @@ export default class OAuthServer {
             const decision = req.method === "POST" ? params.get("consent") : null;
             if (decision === "allow") { issue(session); return; }
             if (decision === "deny") { fail("access_denied", "The operator declined."); return; }
-            this.#html(res, 200, "Plurnk: allow access?", `<h1>Allow access?</h1>${asks}`
-                + `<form method="post" action="/oauth/authorize">${hidden}`
-                + `<button type="submit" name="consent" value="allow">Allow</button> <button type="submit" name="consent" value="deny">Deny</button></form>`);
+            this.#html(res, 200, AuthorizationDocuments.consent(request), client.stylesheet);
             return;
         }
 
         // {§agui-oauth-login} — the operator signs in here. Without a password no browser can: the page
         // says the password is empty and where to set it, and issues nothing.
         if (this.#opts.password.length === 0) {
-            this.#html(res, 503, "Plurnk: no password is set", "<h1>No password is set</h1>"
-                + "<p>A browser signs in to this daemon with the operator's password, and <code>PLURNK_PASS</code> is empty.</p>"
-                + "<p>Set it in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is <code>~/.config/plurnk/.env</code> by default, and restart the daemon.</p>"
-                + "<p>Until then no browser can sign in. The terminal client and your other tools sign in with the operator's secret and are unaffected.</p>");
+            this.#html(res, 503, AuthorizationDocuments.noPassword(), client.stylesheet);
             return;
         }
-        const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>${asks}`
-            + (message === null ? "" : `<p class="error">${escape(message)}</p>`)
-            + `<form method="post" action="/oauth/authorize">${hidden}`
-            + `<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>`
-            + `<button type="submit">Continue</button></form>`;
         const password = params.get("password");
         if (req.method === "GET" || password === null) {
-            this.#html(res, 200, "Plurnk: sign in", form(null));
+            this.#html(res, 200, AuthorizationDocuments.signIn(request, null), client.stylesheet);
             return;
         }
         const address = req.socket.remoteAddress ?? "unknown";
         const retryAfter = this.#limited(address);
         if (retryAfter !== null) {
-            this.#html(res, 429, "Plurnk: too many attempts", `<h1>Too many attempts</h1><p>Try again in ${retryAfter} seconds.</p>`, { "retry-after": String(retryAfter) });
+            this.#html(res, 429, AuthorizationDocuments.tooManyAttempts(retryAfter), client.stylesheet, { "retry-after": String(retryAfter) });
             return;
         }
         if (!same(password, this.#opts.password)) {
             this.#failed(address);
-            this.#html(res, 401, "Plurnk: sign in", form("The password is wrong."));
+            this.#html(res, 401, AuthorizationDocuments.signIn(request, "The password is wrong."), client.stylesheet);
             return;
         }
         this.#failures.delete(address);
@@ -650,13 +647,13 @@ export default class OAuthServer {
         if (!Array.isArray(responseTypes) || responseTypes.some((type) => type !== "code")) {
             throw new OAuthError("invalid_client_metadata", "response_types may name code.");
         }
-        const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", kind: "public", secret: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
+        const scopes = typeof metadata.scope === "string" ? this.#scopes(metadata.scope, { id: "", kind: "public", secret: null, stylesheet: null, scopes: SCOPES, redirectUris: [], name: null }) : SCOPES;
         if (scopes === null) throw new OAuthError("invalid_client_metadata", `scope must be from ${SCOPES.join(" ")}.`);
         const name = typeof metadata.client_name === "string" && metadata.client_name.length > 0 ? metadata.client_name : null;
         if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
         const id = mint();
         this.#registered += 1;
-        this.#clients.set(id, { id, kind: "public", secret: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
+        this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
         this.#json(res, 201, {
             client_id: id,
             client_id_issued_at: Math.floor(this.#now() / 1000),

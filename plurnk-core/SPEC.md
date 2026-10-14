@@ -238,10 +238,12 @@ credential exists, no face is published and every mounted resource admits anonym
 the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
 §credential-module-client **A module of this daemon is a confidential client by registration.** At
-setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes })`:
+setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes, stylesheetPath })`:
 an id of letters, digits, `.`, `_` or `-` other than `operator`, the absolute pathnames under its own
-mounts it may be answered at, each as a URL carries it, with no query and no fragment, and the
-scopes it may ask for. A module states no origin: it serves only on the daemon's one listener
+mounts it may be answered at, each as a URL carries it, with no query and no fragment, the scopes it
+may ask for and, optionally, the pathname in the same form of a stylesheet under its own mounts,
+which the issuing face links on the documents it serves that client's requests
+({§agui-oauth-documents}). A module states no origin: it serves only on the daemon's one listener
 ({§http-host}), so its address is its path on the issuer, and registration needs nothing from the
 listener, the issuer or another module. The issuing face answers the client at exactly the issuer
 followed by a registered path ({§agui-oauth-endpoints}), and the module forms the same address from
