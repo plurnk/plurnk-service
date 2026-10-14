@@ -53,7 +53,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
     expose();
     // {§a2a-hosted-credentials} — a face on the authority is the daemon's posture; this fixture plays the
     // issuing module's part so the exposure can be witnessed authenticated.
-    if (authenticated) daemon.credentials.publish({ issuer: () => serviceUrl(daemon), signIn: () => "host" });
+    if (authenticated) daemon.credentials.publish({ issuer: () => serviceUrl(daemon) });
     await daemon.start();
 
     // Deliberately use literal HTTP+JSON, not the adapter's client/request builders.

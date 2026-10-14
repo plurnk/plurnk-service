@@ -198,14 +198,11 @@ export interface IssuedCredential {
 
 /**
  * {§credential-authority} The issuing face of the authority, published by the module that issues:
- * the issuer origin where credentials are obtained, answered from the moment it is published, and
- * how a browser signs in there ({§agui-oauth-session}): by the operator's `password`, or by being
- * on the daemon's own `host`, where ending a session cannot keep that browser signed out.
+ * the issuer origin where credentials are obtained, answered from the moment it is published.
  * Published, the daemon authenticates; absent, every mounted resource admits anonymously.
  */
 export interface CredentialFace {
     readonly issuer: () => string;
-    readonly signIn: () => "password" | "host";
 }
 
 /**

@@ -91,13 +91,6 @@ const isForm = (req: IncomingMessage): boolean =>
 const isJson = (req: IncomingMessage): boolean =>
     (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
 
-// {§agui-oauth-session} — a peer on the daemon's own host: the loopback range, in either family.
-const loopbackAddress = (address: string | undefined): boolean => {
-    if (address === undefined) return false;
-    const bare = address.startsWith("::ffff:") ? address.slice(7) : address;
-    return bare === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(bare);
-};
-
 const cookieValue = (req: IncomingMessage, name: string): string | null => {
     for (const part of (req.headers.cookie ?? "").split(";")) {
         const separator = part.indexOf("=");
@@ -142,22 +135,18 @@ export default class OAuthServer {
     // {§agui-oauth-login} — failures per source address within the configured window.
     readonly #failures = new Map<string, { count: number; windowStart: number }>();
     readonly #now: () => number;
-    // The address a request arrives from; a witness substitutes a remote one.
-    readonly #peer: (req: IncomingMessage) => string | undefined;
     #registered = 0;
 
-    constructor({ credentials, opts, issuer, now = Date.now, peer = (req) => req.socket.remoteAddress }: {
+    constructor({ credentials, opts, issuer, now = Date.now }: {
         readonly credentials: CredentialAuthority;
         readonly opts: ResolvedModuleOptions;
         readonly issuer: () => string;
         readonly now?: () => number;
-        readonly peer?: (req: IncomingMessage) => string | undefined;
     }) {
         this.#credentials = credentials;
         this.#opts = opts;
         this.#issuer = issuer;
         this.#now = now;
-        this.#peer = peer;
         // {§agui-oauth-clients} — the operator's own client holds the authority's operator secret,
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
@@ -420,20 +409,13 @@ export default class OAuthServer {
             .map((name) => `<input type="hidden" name="${name}" value="${escape(params.get(name)!)}">`).join("");
         const asks = `<p><strong>${escape(client.name ?? client.id)}</strong> asks to use this daemon (scope: ${escape(scopes.join(" "))}).</p>`;
 
-        // {§agui-oauth-session} — a browser from the same host is the operator unless a password is
-        // configured: its first visit establishes the session. A consent decision counts only with a
-        // session that preceded this request, since a cross-site POST carries no cookie.
-        const passwordConfigured = this.#opts.signIn === "password";
-        let session = this.#session(req);
-        let established = false;
-        if (session === null && !passwordConfigured && loopbackAddress(this.#peer(req))) {
-            session = this.#establishSession(res);
-            established = true;
-        }
+        // {§agui-oauth-session} — a browser is the operator only once it has signed in. A consent
+        // decision counts only with the session the request carries, which a cross-site POST cannot.
+        const session = this.#session(req);
         if (session !== null) {
             // A module of this daemon registered this client: the operator's session authorizes it.
             if (client.kind === "module") { issue(session); return; }
-            const decision = req.method === "POST" && !established ? params.get("consent") : null;
+            const decision = req.method === "POST" ? params.get("consent") : null;
             if (decision === "allow") { issue(session); return; }
             if (decision === "deny") { fail("access_denied", "The operator declined."); return; }
             this.#html(res, 200, "Plurnk: allow access?", `<h1>Allow access?</h1>${asks}`
@@ -442,10 +424,14 @@ export default class OAuthServer {
             return;
         }
 
-        // {§agui-oauth-login} — the operator signs in here; an unconfigured login explains itself and issues nothing.
-        if (!passwordConfigured) {
-            this.#html(res, 503, "Plurnk: sign-in not configured", "<h1>Sign-in is not configured</h1>"
-                + "<p>Set <code>PLURNK_USER</code> and <code>PLURNK_PASS</code> in the operator's configuration file and restart the daemon.</p>");
+        // {§agui-oauth-login} — the operator signs in here. Without a password no browser can: the page
+        // says which setting is empty and where to set it, and issues nothing.
+        const unset = [["PLURNK_USER", this.#opts.user], ["PLURNK_PASS", this.#opts.password]].filter(([, value]) => value!.length === 0).map(([key]) => key!);
+        if (unset.length > 0) {
+            this.#html(res, 503, "Plurnk: no password is set", `<h1>${unset.includes("PLURNK_PASS") ? "No password is set" : "No user is set"}</h1>`
+                + `<p>A browser signs in to this daemon with <code>PLURNK_USER</code> and <code>PLURNK_PASS</code>, and ${unset.map((key) => `<code>${key}</code>`).join(" and ")} ${unset.length > 1 ? "are" : "is"} empty.</p>`
+                + `<p>Set ${unset.length > 1 ? "them" : "it"} in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is <code>~/.config/plurnk/.env</code> by default, and restart the daemon.</p>`
+                + "<p>Until then no browser can sign in. The terminal client and your other tools sign in with the operator's secret and are unaffected.</p>");
             return;
         }
         const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>${asks}`

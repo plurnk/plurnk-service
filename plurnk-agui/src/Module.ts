@@ -180,7 +180,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#listener = () => seam.httpAddress();
         // {§agui-oauth} — under PLURNK_AUTH=1 the face says so to every mounted resource before any
         // module starts ({§module-phases}); the daemon refuses to run authenticating without one.
-        if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer(), signIn: () => this.#opts.signIn });
+        if (this.#opts.authenticates) seam.credentials.publish({ issuer: () => this.#issuer() });
     }
 
     // {§agui-listener-admission} — the host admits traffic after every module has started.

@@ -33,8 +33,6 @@ export interface ResolvedModuleOptions {
     readonly issuer: string;
     readonly user: string;
     readonly password: string;
-    /** {§agui-oauth-session} How a browser signs in: by the configured user and password, else by being on the daemon's host. */
-    readonly signIn: "password" | "host";
     readonly accessTtlSec: number;
     readonly refreshTtlSec: number;
     readonly loginAttempts: number;
@@ -110,17 +108,12 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
     }
     if (options.auth !== undefined && typeof options.auth !== "boolean") throw new Error(`ModuleOptions.auth must be a boolean; got ${JSON.stringify(options.auth)}.`);
-    // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
-    const authenticates = options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth;
-    const issuer = floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER");
-    const user = floorString(options, env, "user", "PLURNK_USER");
-    const password = floorString(options, env, "password", "PLURNK_PASS");
     return {
-        authenticates,
-        issuer,
-        user,
-        password,
-        signIn: user.length > 0 && password.length > 0 ? "password" : "host",
+        // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
+        authenticates: options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth,
+        issuer: floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER"),
+        user: floorString(options, env, "user", "PLURNK_USER"),
+        password: floorString(options, env, "password", "PLURNK_PASS"),
         accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),
         loginAttempts: number("loginAttempts", "PLURNK_AGUI_LOGIN_ATTEMPTS", 0),

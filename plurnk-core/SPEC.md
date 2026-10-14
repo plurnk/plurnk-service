@@ -224,10 +224,9 @@ subject, its client, its scopes, its family and its expiry. A restart revokes ev
 Revocation is by family, so an access token and the refresh token that renews it fall together;
 a refresh token is consumed once, and a second presentation revokes its family and says so. The
 authority has no HTTP face and no policy of its own: the issuing module publishes the one face
-(`publish({ issuer, signIn })`, at setup) that names where credentials are obtained and how a browser
-signs in there, by the operator's `password` or by being on the daemon's own `host`
-({§agui-oauth-session}), and answers from its publication, so any module may read it from its own
-`start` on ({§module-phases}), an exterior adapter
+(`publish({ issuer })`, at setup) that names where credentials are obtained and answers from its
+publication, so any module may read the issuer from its own `start` on ({§module-phases}), an
+exterior adapter
 verifies through it ({§agui-http-authorization}), and the client protocol issues through it
 ({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
 never inferred from what else is set. Under `1` the authority holds the operator's client secret,

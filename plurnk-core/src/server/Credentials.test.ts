@@ -59,9 +59,9 @@ test("{§credential-authority} revocation is by family and reaches every listene
 test("{§credential-authority} the authority has at most one issuing face, and none means the daemon authenticates nothing", () => {
     const authority = new Credentials();
     assert.equal(authority.face(), null);
-    authority.publish({ issuer: () => "http://127.0.0.1:1", signIn: () => "host" });
+    authority.publish({ issuer: () => "http://127.0.0.1:1" });
     assert.equal(authority.face()?.issuer(), "http://127.0.0.1:1");
-    assert.throws(() => authority.publish({ issuer: () => "http://elsewhere", signIn: () => "host" }), /already has an issuing face/u);
+    assert.throws(() => authority.publish({ issuer: () => "http://elsewhere" }), /already has an issuing face/u);
 });
 
 test("{§credential-authority} a credential needs a positive lifetime and its three names", () => {

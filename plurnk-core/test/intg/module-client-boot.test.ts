@@ -49,7 +49,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
                 await db.close();
             });
             const { module, seen } = consumer();
-            const client = AguiModule.create({ auth: true, issuer });
+            const client = AguiModule.create({ auth: true, issuer, user: "admin", password: "composed" });
             if (order === "the consumer set up first") {
                 daemon.registerModule(module, "@acme/consumer");
                 daemon.registerModule(client, "@plurnk/plurnk-agui");
@@ -66,10 +66,15 @@ for (const order of ["the consumer set up first", "the client interface set up f
 
             const redirect = `${expected}${CALLBACK}`;
             const verifier = randomBytes(32).toString("base64url");
-            const authorized = await fetch(`${base}/oauth/authorize?${new URLSearchParams({
-                client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", state: "s",
-                code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256",
-            })}`, { redirect: "manual" });
+            // The operator signs in at the authorization endpoint, which answers the consumer's client at once.
+            const authorized = await fetch(`${base}/oauth/authorize`, {
+                method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", state: "s",
+                    code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256",
+                    username: "admin", password: "composed",
+                }).toString(),
+            });
             assert.equal(authorized.status, 302, await authorized.text());
             const location = new URL(authorized.headers.get("location")!);
             assert.equal(`${location.origin}${location.pathname}`, redirect, "answered at the module's path on the issuer");
