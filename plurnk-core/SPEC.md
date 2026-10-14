@@ -221,8 +221,9 @@ origin is the address its `Host` names, over http, or the listener's own for a r
 none (`requestOrigin`). Every address the daemon advertises to a caller, the authority's issuer
 ({§agui-oauth-endpoints}) and the A2A card's endpoint, is its configured public origin or the origin
 of the request that asked, so a daemon bound to every interface answers each caller at the address
-that caller used. A configured origin is for a front the daemon cannot see, such as a TLS proxy. No
-request is refused for the name it uses.
+that caller used; a module that asks with no request in hand, as one reading the issuer at its
+start does, is answered with the configured origin or the listener's own. A configured origin is for
+a front the daemon cannot see, such as a TLS proxy. No request is refused for the name it uses.
 
 §credential-authority **The daemon is one credential authority.** Every credential presented
 to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials`

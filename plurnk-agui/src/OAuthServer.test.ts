@@ -388,7 +388,8 @@ test("{§credential-authority} {§http-request-origin} the face answers its issu
         const credentials = new Credentials({ operatorSecret: "s3cret" });
         const setup: AguiSetupSeam = { credentials, registerScheme: async () => {}, httpAddress: () => ({ host: "127.0.0.1", port: 4321 }) };
         await Module.create({ env: { ...FLOOR, PLURNK_AGUI_ISSUER: issuer } }).setup(setup);
-        assert.deepEqual([credentials.face()?.issuer({ headers: { host: "192.168.1.88:1066" } }), credentials.face()?.issuer({ headers: {} })], [viaLan, unnamed]);
+        assert.deepEqual([credentials.face()?.issuer({ headers: { host: "192.168.1.88:1066" } }), credentials.face()?.issuer({ headers: {} }), credentials.face()?.issuer()],
+            [viaLan, unnamed, unnamed], "a request's address, else the listener's, as for a module asking at its start");
     }
 });
 

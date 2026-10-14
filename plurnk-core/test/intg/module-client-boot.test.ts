@@ -25,7 +25,7 @@ const consumer = () => {
             seen.secret = seam.credentials.registerClient({ id: "consumer", redirectPaths: [CALLBACK], scopes: ["agui"], stylesheetPath: STYLESHEET }).clientSecret;
         },
         start: (port: ApplicationPort): void => {
-            seen.issuerAtStart = port.credentials.face()!.issuer({ headers: { host: `127.0.0.1:${port.httpAddress().port}` } });
+            seen.issuerAtStart = port.credentials.face()!.issuer();
             port.registerHttpRoute("/consumer", (req, res) => {
                 const url = new URL(req.url ?? "/", "http://consumer");
                 if (url.pathname === CALLBACK) seen.codes.push(url.searchParams.get("code") ?? "");

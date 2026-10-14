@@ -104,9 +104,10 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     }
 
     // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the origin the request
-    // reached this daemon at ({§http-request-origin}). The host binds its listener before any module
-    // sets up ({§http-host}), so the face published at setup answers from publication.
-    #issuer(req: Pick<IncomingMessage, "headers">): string {
+    // reached this daemon at, else, with no request in hand, the listener's own ({§http-request-origin}).
+    // The host binds its listener before any module sets up ({§http-host}), so the face published at
+    // setup answers from publication.
+    #issuer(req: Pick<IncomingMessage, "headers"> = { headers: {} }): string {
         return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());
     }
 
