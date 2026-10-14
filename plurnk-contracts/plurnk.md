@@ -4,7 +4,8 @@
 > YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
 
 > [!IMPORTANT]
-> YOU MUST record at least one NOTE along with other operations.
+> YOU SHOULD emit NOTE operations for every summary, finding, decision, and next (and why).
+> Your internal reasoning is NOT preserved across turns. Your NOTE is your ONLY orientation.
 
 > [!TIP]
 > All operations (except NOTE) are converted into log items.
@@ -17,7 +18,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Persistent Detailed Internal Register. Emit NOTE for every summary, finding, decision, and plan (and why).
+* NOTE: Persistent Detailed Internal Register. Emit NOTE for every summary, finding, decision, and next (and why).
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -26,7 +27,7 @@ body?
 * KILL: Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams. You may include `[60]` to check in after 60 seconds. Not for awaiting user input.
+* WAIT: Yield to child workers or streams. You may include `[60]` to check in after 60 seconds. Not for awaiting user input.
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
@@ -43,7 +44,7 @@ exampleLoader.py:58 reads the config before exampleInit() sets its path, so ever
 Move configuration reading in exampleLoader.py into exampleInit() so it uses the initialized path. Plugin dependence on the old order is still unverified.
 ```
 
-```NOTE <!-- plan -->
+```NOTE <!-- next -->
 Edit exampleLoader.py, then rerun exampleTest.py.
 ```
 
@@ -151,7 +152,7 @@ Nesting can be resolved with increased outer fences.
 
 ## Context Curation
 
-```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks to not exceed budget -->
+```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks if budget constrained -->
 ```
 
 ```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->

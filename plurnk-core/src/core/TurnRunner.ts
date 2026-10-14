@@ -225,21 +225,19 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
 // ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§worker-initialization-entry} — the one NOTE that leads the initialization surveys, labelled as the
-// card's own first NOTE example is.
+// {§worker-initialization-entry} — the two NOTEs that open and close the initialization surveys, labelled
+// as the card's own first and last NOTE examples are.
 const INITIALIZATION_NOTE: NoteStatement = {
     op: "NOTE", aside: "summary", metadata: null, target: null, lineMarker: null,
     body: "Surveyed tooling, documentation, extended context, and project root.", position: UNKNOWN_POSITION,
 };
-// {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
-const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
-// Trial (#1073): a continuing turn that carried NOTEs and no other operation is told so under the same
-// per-turn rule; it is a notice, never a strike.
-const NOTED_WITHOUT_OPERATION = "The turn carried NOTEs and no other operation.";
+const INITIALIZATION_NEXT_NOTE: NoteStatement = {
+    op: "NOTE", aside: "next", metadata: null, target: null, lineMarker: null,
+    body: "Read and resolve the Open Message.", position: UNKNOWN_POSITION,
+};
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST record at least one NOTE along with other operations.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
@@ -853,11 +851,11 @@ export default class TurnRunner {
             await Turn.complete(this.#db, initializationTurn.id, 200);
             return;
         }
-        // {§worker-initialization-entry} — the example turn keeps the NOTE contract the card teaches:
-        // when the surveys run, one NOTE leads them.
+        // {§worker-initialization-entry} — the example turn shows the NOTE practice the card teaches:
+        // when the surveys run, one NOTE opens them and one closes them.
         const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "FIND")
-                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements]
+                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_NEXT_NOTE]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -1816,22 +1814,6 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        // {§continued-without-note} — a turn the loop continues past or parks on, having carried no NOTE
-        // forward in its program or from its reasoning, is told so in the next packet. An empty turn has
-        // its own no-operation row instead.
-        const ops = split.packetAssistant.ops;
-        if ((executed.status === 102 || executed.status === 202) && ops.length > 0
-            && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
-            this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
-            });
-        }
-        const annotationOnly = ops.length > 0 && ops.every((statement) => "op" in statement && statement.op === "NOTE");
-        if ((executed.status === 102 || executed.status === 202) && annotationOnly) {
-            this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn", kind: "noted_without_operation", level: "warn", directive: DIRECTIVE.note, message: NOTED_WITHOUT_OPERATION,
-            });
-        }
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             progressed: executed.progressed,

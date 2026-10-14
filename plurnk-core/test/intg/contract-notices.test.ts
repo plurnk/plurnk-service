@@ -19,7 +19,6 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
 // {§notice-callout} {§pinned-wording-core}: the exact callouts these witnesses expect.
-const CONTINUED = "> [!WARNING]\n> YOU MUST record at least one NOTE along with other operations. The turn continued without a NOTE. [continued_without_note]";
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 const scope = (requested: string, canonical: string): string =>
     `> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <${requested}> was normalized to <${canonical}>. [scope_normalized]`;
@@ -103,7 +102,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            `${UNACCOUNTED}\n\n${CONTINUED}`,
+            UNACCOUNTED,
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -221,7 +220,7 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
         const read = logEntries(packet).find(({ logPath, body }) => String(logPath).endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
         assert.equal(packetSection(packet, "notices"),
-            `${scope("0,120", "1,120")}\n\n${CONTINUED}`);
+            scope("0,120", "1,120"));
         const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
         assert.deepEqual(receipts.filter(({ op }) => op === "READ").map(({ status_rx }) => status_rx), [200]);
         assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
@@ -483,7 +482,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            `${UNACCOUNTED}\n\n${CONTINUED}`,
+            UNACCOUNTED,
         );
     } finally { await db.close(); }
 });

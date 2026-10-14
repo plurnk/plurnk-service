@@ -1478,8 +1478,8 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
 
 test("{§notice-callout} a notice is one callout: the level picks it, the directive leads, the kind closes", () => {
     const out = PacketWire.renderNotices([
-        { source: "engine:turn", kind: "continued_without_note", level: "warn",
-            directive: "YOU MUST record at least one NOTE along with other operations.", message: "The turn continued without a NOTE." },
+        { source: "engine:slicer", kind: "scope_normalized", level: "warn",
+            directive: "YOU SHOULD write the normalized scope.", message: "Scope <0,120> was normalized to <1,120>." },
         { source: "engine:grammar", kind: "invalid_emission", level: "error",
             directive: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
             message: "Response rejected before dispatch;\n no operations were performed.", position: { type: "content-offset", line: 2, column: 4 } },
@@ -1487,7 +1487,7 @@ test("{§notice-callout} a notice is one callout: the level picks it, the direct
             message: "5000 output tokens billed; 1 visible across content and reasoning.", position: { type: "content-offset", line: 1, column: 0 } },
     ]);
     assert.equal(out, [
-        "> [!WARNING]\n> YOU MUST record at least one NOTE along with other operations. The turn continued without a NOTE. [continued_without_note]",
+        "> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <0,120> was normalized to <1,120>. [scope_normalized]",
         "> [!CAUTION]\n> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
         "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning. @ 1:0 [output_unaccounted]",
     ].join("\n\n"), "an environment notice carries no directive; whitespace is normalized; a blank line separates callouts");
