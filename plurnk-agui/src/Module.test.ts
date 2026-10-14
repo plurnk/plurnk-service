@@ -26,6 +26,10 @@ const FLOOR = {
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
 // carry only what the module under test reads.
 const logRows = (rows: readonly Record<string, unknown>[]): LogEntryWire[] => rows as unknown as LogEntryWire[];
+// What a reader sees of a snapshot: arrivals and speech as text, an operation as its calls.
+type Replayed = { id: string; role: string; content?: unknown; toolCalls?: ReadonlyArray<{ function: { name: string } }> };
+const transcript = (messages: readonly Replayed[] | undefined): Array<Record<string, unknown>> => (messages ?? []).map(({ id, role, content, toolCalls }) =>
+    toolCalls === undefined ? { id, role, content } : { id, role, calls: toolCalls.map(({ function: { name } }) => name) });
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
@@ -2265,9 +2269,10 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
             messages: [{ id: "current-user", role: "user", content: "continue" }],
             forwardedProps: { plurnk: { workspace: "workspace" } },
         });
-        const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
-        assert.deepEqual(snapshot?.messages, [
+        const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: Replayed[] } | undefined;
+        assert.deepEqual(transcript(snapshot?.messages), [
             { id: "1/1/0/SEND", role: "user", content: "original question" },
+            { id: "1/1/1/NOTE", role: "assistant", calls: ["NOTE"] },
             { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
             { id: "current-user", role: "user", content: "continue" },
         ]);
@@ -2306,14 +2311,71 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
             "MESSAGES_SNAPSHOT",
             "RUN_FINISHED",
         ]);
-        const snapshot = events[2] as { messages?: unknown[] };
-        assert.deepEqual(snapshot.messages, [
+        const snapshot = events[2] as { messages?: Replayed[] };
+        assert.deepEqual(transcript(snapshot.messages), [
             { id: "1/1/1/SEND", role: "user", content: "Prior question." },
+            { id: "1/1/2/NOTE", role: "assistant", calls: ["NOTE"] },
             { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
         ]);
         // Sync asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
         assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: Number.MAX_SAFE_INTEGER }]);
         assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-snapshot} {§agui-conversation-sync} through the official client, synchronization rebuilds the conversation the live Run built and drops none of it", async () => {
+    const { seam, emit } = mockSeam();
+    const threadId = "rebuilt";
+    const question = `agui://anonymous/threads/${threadId}/messages/u1`;
+    const rows = [
+        { id: 1, worker_id: 20, loop_id: 9, turn_id: 1, sequence: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk",
+            source: question, attrs: { kind: "message" }, tx: { body: { raw: "What does the witness say?" } } },
+        { id: 2, worker_id: 20, loop_id: 9, turn_id: 2, sequence: 1, coordinate: "1/2/1/READ", op: "READ", status_rx: 200, origin: "model",
+            scheme: "worker", pathname: "/witness.txt", tx: { body: null }, rx: { status: 200, content: "hello" }, reasoning: "Read the witness first." },
+        { id: 3, worker_id: 20, loop_id: 9, turn_id: 3, sequence: 1, coordinate: "1/3/1/SEND", op: "SEND", status_rx: 200, origin: "model",
+            tx: { body: "The witness says hello." }, rx: { status: 200, answers: [question] }, reasoning: "Answer from the receipt." },
+    ];
+    let runs = 0;
+    seam.listWorkspaces = async () => [workspaceRow(3, threadId)];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: threadId, projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.listWorkers = async () => [workerRow(10, "client-1", "client"), workerRow(20, threadId, "model", 10)];
+    seam.readLog = async () => logRows(runs === 0 ? [] : rows.toReversed());
+    seam.runLoop = async () => {
+        runs++;
+        setImmediate(() => {
+            for (const entry of rows) emit(3, "log/entry", { entry });
+            emit(3, "loop/terminated", termination({ workerId: 20, loopId: 9, result: { status: 200 }, turnIds: [1, 2, 3],
+                usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
+        });
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await host(seam);
+    try {
+        const url = `http://127.0.0.1:${mod.address().port}/agui`;
+        const live = new HttpAgent({ url, threadId });
+        live.messages = [{ id: "u1", role: "user", content: "What does the witness say?" }];
+        await live.runAgent({ forwardedProps: { plurnk: { workspace: threadId } } });
+        const built = structuredClone(live.messages);
+        assert.deepEqual(transcript(built).map(({ id, role }) => [id, role]), [
+            ["u1", "user"],
+            ["1/2/1/READ/reasoning", "reasoning"],
+            ["1/2/1/READ", "assistant"],
+            ["1/2/1/READ/result", "tool"],
+            ["1/3/1/SEND/reasoning", "reasoning"],
+            ["1/3/1/SEND", "assistant"],
+        ], "the live Run built the reasoning of both turns, the READ's call and result, and the answer");
+
+        // The SDK keeps of a client's messages only those a snapshot names, so a snapshot equal to the
+        // live conversation is what keeps a reconnecting client whole, as it rebuilds a reloaded one.
+        const fresh = new HttpAgent({ url, threadId });
+        await fresh.runAgent({ forwardedProps: { plurnk: { workspace: threadId, mode: "sync" } } });
+        assert.deepEqual(fresh.messages.map(({ id }) => id), built.map(({ id }) => id), "the snapshot names every message the live Run built, in order");
+        assert.deepEqual(fresh.messages.filter(({ role }) => role !== "user"), built.filter(({ role }) => role !== "user"),
+            "reasoning, calls, results and speech are the live ones");
+        assert.deepEqual(transcript(fresh.messages.filter(({ role }) => role === "user")), transcript(built.filter(({ role }) => role === "user")));
+        assert.equal(runs, 1, "synchronization starts no model work");
     } finally {
         await mod.close();
     }

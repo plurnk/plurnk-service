@@ -22,6 +22,13 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
         tx: { target: null, body: { raw: "message" } }, rx, coordinate: "1/1/3/READ", turn_id: 1, ...over } };
 };
 
+// What a reader sees of a snapshot: its speech, and its operations as their calls.
+type Replayed = { role: string; content?: unknown; toolCalls?: ReadonlyArray<{ id: string; function: { name: string } }> };
+const speech = (messages: readonly Replayed[]): unknown[] =>
+    messages.filter(({ role, content }) => role === "assistant" && typeof content === "string").map(({ content }) => content);
+const calls = (messages: readonly Replayed[]): Array<[string, string]> =>
+    messages.flatMap(({ toolCalls }) => (toolCalls ?? []).map((call): [string, string] => [call.id, call.function.name]));
+
 test("{§agui-replay} successful conversation replies are assistant responses in live and replay", () => {
     const tr = t();
     const messages = [
@@ -36,8 +43,9 @@ test("{§agui-replay} successful conversation replies are assistant responses in
     const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) throw new Error("missing snapshot");
-    assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["First.", "Second."]);
+    assert.deepEqual(speech(snapshot.messages), ["First.", "Second."]);
     assert.ok(live.some((event) => event.type === EventType.TOOL_CALL_START && event.toolCallId === "1/1/2/SEND"), "directed messages remain real operations, not missing events");
+    assert.deepEqual(calls(snapshot.messages), [["1/1/2/SEND", "SEND"], ["1/1/3/SEND", "SEND"]], "and replay as the operations they were live");
 });
 
 test("{§agui-replay} a SEND without a delivered recipient is an operation in live and replay", () => {
@@ -49,7 +57,9 @@ test("{§agui-replay} a SEND without a delivered recipient is an operation in li
     const [snapshot] = translator.replay([message.entry]);
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
-    assert.equal(snapshot.messages.some(({ role }) => role === "assistant"), false);
+    assert.deepEqual(speech(snapshot.messages), []);
+    assert.deepEqual(calls(snapshot.messages), [["1/1/3/READ", "SEND"]]);
+    assert.ok(snapshot.messages.some((replayed) => replayed.role === "tool" && replayed.toolCallId === "1/1/3/READ"), "its receipt replays as the call's result");
 });
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
@@ -85,7 +95,7 @@ test("{§message-completion}: delivered completion replies enter live and replay
     const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
-    assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["Cancelled this request.", "The answer is **42**."]);
+    assert.deepEqual(speech(snapshot.messages), ["Cancelled this request.", "The answer is **42**."]);
 });
 
 test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT conveys lifecycle alone and fabricates none", () => {
@@ -140,7 +150,7 @@ test("{§agui-projection} addressed replies project by conversation, including a
         assert.equal((row.value as { tx: { body: { raw: string } } }).tx.body.raw, native);
         const [snapshot] = t().replay([record.entry]);
         assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
-        if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages.map((message) => message.content), expected);
+        if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(speech(snapshot.messages), expected);
     }
 });
 
@@ -560,7 +570,7 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
-test("the newest-first workspace log replays user prompts, WAIT and SEND chronologically without rejected attempts", () => {
+test("the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
@@ -576,8 +586,10 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND chronol
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
         { id: "1/1/0/SEND", role: "user", content: "What is the answer?" },
+        { id: "1/1/1/WAIT", role: "assistant", content: "orient" },
         { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
         { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
+        { id: "1/2/1/WAIT", role: "assistant", content: "finish" },
         { id: "1/2/2/SEND", role: "assistant", content: "And done." },
         { id: "current-user", role: "user", content: "Continue." },
     ]);

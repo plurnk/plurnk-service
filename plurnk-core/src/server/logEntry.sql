@@ -1,4 +1,5 @@
--- Log-entry hydration for wire surfacing.
+-- Log-entry hydration for wire surfacing. {§methods-readable-reasoning}: a turn's admitted readable
+-- reasoning rides its first model operation row, derived from the packet, never stored on a row.
 
 -- PREP: log_entry_by_id
 -- loop_seq / turn_seq are the loop+turn ordinals (the logical coordinate clients
@@ -6,7 +7,9 @@
 SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
-            AND le.op IN ('SEND', 'KILL', 'NOTE', 'WAIT')
+            AND le.op IS NOT NULL
+            AND le.sequence = (SELECT MIN(f.sequence) FROM log_entries f
+                               WHERE f.turn_id = le.turn_id AND f.origin = 'model' AND f.op IS NOT NULL)
             AND json_type(t.packet, '$.assistant.reasoning') = 'text'
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')
@@ -22,7 +25,9 @@ WHERE le.id = $id;
 SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
-            AND le.op IN ('SEND', 'KILL', 'NOTE', 'WAIT')
+            AND le.op IS NOT NULL
+            AND le.sequence = (SELECT MIN(f.sequence) FROM log_entries f
+                               WHERE f.turn_id = le.turn_id AND f.origin = 'model' AND f.op IS NOT NULL)
             AND json_type(t.packet, '$.assistant.reasoning') = 'text'
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')

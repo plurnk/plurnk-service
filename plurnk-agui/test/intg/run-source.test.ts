@@ -13,6 +13,10 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { AguiEvent } from "../../src/types.ts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
+// The speech a snapshot replays: assistant messages that carry text, not the operations' calls.
+const speech = (messages: ReadonlyArray<{ role: string; content?: unknown }> | undefined): unknown[] =>
+    (messages ?? []).filter(({ role, content }) => role === "assistant" && typeof content === "string").map(({ content }) => content);
+
 const post = async (port: number, input: Readonly<Record<string, unknown>>): Promise<AguiEvent[]> => {
     const response = await fetch(`http://127.0.0.1:${port}/agui`, {
         method: "POST",
@@ -57,7 +61,7 @@ for (const final of ["Four, precisely.", ""]) {
             });
             const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ role: string; content: string }> } | undefined;
             assert.ok(snapshot);
-            assert.deepEqual(snapshot.messages.filter(({ role }) => role === "assistant").map(({ content }) => content), expected, "replay matches live delivery without a blank completion message");
+            assert.deepEqual(speech(snapshot.messages), expected, "replay matches live delivery without a blank completion message");
         } finally {
             await daemon.stop();
             await http.close();
@@ -150,7 +154,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
             { id: "opening", content: "Start the work." },
             { id: envelope.message.id, content: message.body },
         ]);
-        assert.deepEqual(snapshot.messages.filter(({ role }) => role === "assistant").map(({ content }) => content),
+        assert.deepEqual(speech(snapshot.messages),
             ["Initial request answered.", "Injected requirement answered."]);
     } finally {
         release.resolve();
@@ -213,7 +217,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
             forwardedProps: { plurnk: { workspace: "collaborative-reply", mode: "sync" } },
         });
         const snapshot = replay.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: Array<{ role: string; content: string }> } | undefined;
-        assert.deepEqual(snapshot?.messages?.filter(({ role }) => role === "assistant").map(({ content }) => content), ["A collaborator found 42."]);
+        assert.deepEqual(speech(snapshot?.messages), ["A collaborator found 42."]);
     } finally {
         release.resolve();
         await daemon.stop();
@@ -317,7 +321,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         assert.ok(snapshot, "reconnecting obtains standard AG-UI message history");
         assert.deepEqual(snapshot.messages?.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
             [{ id: "message 1", content: "Name your sender." }], "curation preserves the original client message and its ID");
-        assert.deepEqual(snapshot.messages?.filter(({ role }) => role === "assistant").map(({ content }) => content), ["Named."],
+        assert.deepEqual(speech(snapshot.messages), ["Named."],
             "the exact-address response replays once");
 
         const duplicate = await post(port, {

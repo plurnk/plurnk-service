@@ -5258,9 +5258,9 @@ preserve causal `source` and parse the row's JSON `attrs` into structured data.
 Client interfaces do not reconstruct these fields from operation or origin.
 
 §methods-readable-reasoning **Readable provider reasoning remains derived
-provider evidence.** On model SEND and disposition rows, `readLog` and `log/entry`
-project a nonempty admitted `packet.assistant.reasoning` as the optional
-`reasoning` field. The durable packet remains the sole stored representation;
+provider evidence.** On a turn's first model operation row, `readLog` and `log/entry`
+project the turn's nonempty admitted `packet.assistant.reasoning` as the optional
+`reasoning` field, from the row's first announcement; no other row repeats it. The durable packet remains the sole stored representation;
 core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 

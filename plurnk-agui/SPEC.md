@@ -134,7 +134,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is `CUSTOM plurnk.send` alone. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this conversation, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
+| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
@@ -158,7 +158,7 @@ or ACP plan is inferred from prose.
 | WAIT | Durable row and lifecycle signal; its text does not become a response |
 | SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
 | Completion | Standard run lifecycle without an invented message |
-| Replay | Delivered messages in chronological order |
+| Replay | The live projection's messages, in log order {§agui-snapshot} |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
@@ -172,11 +172,10 @@ transient reasoning that is not replayed. A Run ended before its request, revoke
 span it opened before its `RUN_ERROR`; the request streams on to every Run still observing it. A Run
 that joins after a request's reasoning began presents none of that request's deltas.
 
-Core also derives optional complete `reasoning` on admitted SEND, NOTE and disposition
-rows from their durable packet ({§methods-readable-reasoning}). When that value
-was not already delivered by the completed live stream, projection emits it
-atomically before the turn's first corresponding row under `<OP identity>/reasoning`.
-Subsequent rows in the same turn do not repeat it. A standard interrupt may divide one durable Loop across consecutive
+Core also derives a turn's optional complete `reasoning` onto its first model operation
+row from the durable packet ({§methods-readable-reasoning}). When that value was not
+already delivered by the completed live stream, projection emits it atomically before
+that row under `<OP identity>/reasoning`. A standard interrupt may divide one durable Loop across consecutive
 AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
 before the stopped operation is released. Reattach replaces transient attempt presentation with the durable
 accepted `ReasoningMessage` once per turn in
@@ -273,13 +272,10 @@ every other daemon surface.
 
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
-  to its existing workspace by name→id and opens ORIENTED: durable
-  arrival rows replay as user messages, named by their source when another actor caused them ({§message-causal-source}), the model worker's SEND speech
-  replays chronologically, and the one validated current Run user message follows them under a
-  Run-owned identity in the authoritative `MESSAGES_SNAPSHOT`. Client-claimed earlier history is not
-  imported. A client already carrying any durable assistant identity receives no repeated snapshot.
-  Everything else stays
-  reachable via live `plurnk.row`. Pending proposals and client interactions remain durable while
+  to its existing workspace by name→id and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
+  carries the conversation ({§agui-snapshot}) and then the one validated current Run user message
+  under a Run-owned identity. Client-claimed earlier history is not imported. A client already
+  carrying any durable assistant identity receives no repeated snapshot. Pending proposals and client interactions remain durable while
   their operation owners are live and are presented as interrupts when the owning conversation is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
 
@@ -287,11 +283,27 @@ every other daemon surface.
   `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
   management action, or interrupt resume. It binds the named workspace and conversation,
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
-  `MESSAGES_SNAPSHOT` from the daemon-owned log. A durable pending interrupt is re-presented
+  `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). A durable pending interrupt is re-presented
   through the standard terminate-resume contract; an active Loop remains observed through its
   terminal; an idle conversation emits `RUN_FINISHED`. Synchronization admits no prompt,
   creates no turn, and performs no model inference. Disconnecting this observer never cancels
   independently-owned work.
+
+§agui-snapshot **A snapshot is the conversation the live projection built**, in log order and under
+the live identities, so a client that applies it keeps every message it built live and a reloaded
+client rebuilds them:
+
+| Durable row | Snapshot messages |
+|---|---|
+| Arrival | `user`, named by its source ({§message-causal-source}) |
+| A turn's first model operation, carrying the turn's reasoning | `reasoning` `<coordinate>/reasoning`, before that row's own messages ({§agui-readable-reasoning}) |
+| SEND or KILL replying to this conversation; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
+| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one |
+| Bodiless WAIT, emission attempt, ambient row | No message of its own |
+
+Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,
+and a settled one's evidence is its operation's receipt. Transient reasoning of failed or rejected
+requests is not retained ({§agui-readable-reasoning}).
 
 ## §agui-first-party-client-conformance First-party client conformance
 

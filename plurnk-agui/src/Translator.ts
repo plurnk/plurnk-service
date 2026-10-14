@@ -26,6 +26,7 @@ import {
     type ReasoningEventNotification,
     type ReasoningMessage,
     type TerminatedNotification,
+    type ToolMessage,
     type UserMessage,
 } from "./types.ts";
 import { derivationActivity } from "./AguiPlus.ts";
@@ -159,36 +160,36 @@ export default class Translator {
             return events;
         }
         // A family client renders the SEND from plurnk.row rather than duplicating
-        // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
-        // lifecycle so both generic and family clients observe reasoning before speech.
+        // TEXT_MESSAGE. Delay that mirror, and the mirror of the row carrying its turn's
+        // reasoning, until after the standard reasoning lifecycle so both generic and
+        // family clients observe reasoning first.
         const response = Translator.isResponse(e, this.#threadId);
         const lifecycle = typeof e.op === "string" && TurnDisposition.isOp(e.op);
-        const reasoningRow = response || lifecycle || e.op === "NOTE";
-        const delayedSendRow = e.origin === "model" && reasoningRow;
-        if (!delayedSendRow) events.push(row);
+        const carriesReasoning = e.op !== null && typeof e.reasoning === "string" && e.reasoning.length > 0;
+        const delayedRow = e.origin === "model" && (response || lifecycle || e.op === "NOTE" || carriesReasoning);
+        if (!delayedRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model" && !response) {
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
         const id = e.coordinate ?? String(e.id);
-        if (reasoningRow) {
-            const text = Translator.#txBody(e.tx);
+        if (e.op !== null) {
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
-            if (delayedSendRow) events.push(row);
-            // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
-            // teaches both as the worker's words to the user. A bodiless WAIT is lifecycle alone.
-            const waitSpeech = e.op === "WAIT" && e.origin === "model" && text.trim().length > 0;
-            if (response || waitSpeech) {
-                events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
-                events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
-                events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
-            }
-            if (response || lifecycle) {
-                events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
-                return events;
-            }
+        }
+        if (delayedRow) events.push(row);
+        // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
+        // teaches both as the worker's words to the user. A bodiless WAIT is lifecycle alone.
+        const text = Translator.#txBody(e.tx);
+        if (response || Translator.#waitSpeech(e, text)) {
+            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
+            events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
+            events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
+        }
+        if (response || lifecycle) {
+            events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
+            return events;
         }
         if (e.op === null) {
             const kind = Translator.#modelArtifactKind(e.attrs);
@@ -310,11 +311,11 @@ export default class Translator {
         return events;
     }
 
-    // {§agui-replay} — delivered model responses become assistant messages. Everything else
-    // stays reachable through live plurnk.row rendering. Wire rows arrive as the
-    // log.read projection (tx parsed).
+    // {§agui-replay} {§agui-snapshot} — the conversation as the live projection built it: arrivals, each turn's
+    // reasoning, speech, and every other model operation as its tool call and result, under the
+    // live identities. Wire rows arrive as the log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
-        const messages: Array<AssistantMessage | ReasoningMessage | UserMessage> = [];
+        const messages: Array<AssistantMessage | ReasoningMessage | ToolMessage | UserMessage> = [];
         const deliveredReasoning = new Map<number, string[]>();
         const chronological = entries.toSorted((left, right) => {
             const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
@@ -332,20 +333,21 @@ export default class Translator {
             }
             const response = Translator.isResponse(e, this.#threadId);
             if (e.origin !== "model" && !response) continue;
-            const text = Translator.#txBody(e.tx);
-            if (response || e.op === "SEND" || e.op === "NOTE" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
-                const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
-                if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
-            }
-            if (response) {
-                const message: AssistantMessage = { id, role: "assistant", content: text };
-                messages.push(message);
-            }
-            if (e.op === null) {
+            if (typeof e.op !== "string") {
                 if (Translator.#modelArtifactKind(e.attrs) === null) {
                     throw new TypeError("An actionless model-origin replay row must carry attrs.kind=emissionAttempt.");
                 }
+                continue;
             }
+            const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
+            if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
+            const text = Translator.#txBody(e.tx);
+            if (response || Translator.#waitSpeech(e, text)) messages.push({ id, role: "assistant", content: text });
+            if (response || TurnDisposition.isOp(e.op)) continue;
+            const entry = e as LogEntryNotification["entry"];
+            messages.push({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] });
+            const result = Translator.#asText(e.rx);
+            if (result.length > 0) messages.push({ id: `${id}/result`, role: "tool", toolCallId: id, content: result });
         }
         if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
             messages.push(currentUser);
@@ -480,6 +482,10 @@ export default class Translator {
         if (typeof body === "string") return body;
         if (body !== null && typeof body === "object" && typeof (body as { raw?: unknown }).raw === "string") return (body as { raw: string }).raw;
         return "";
+    }
+
+    static #waitSpeech(e: { op?: unknown; origin?: unknown }, text: string): boolean {
+        return e.op === "WAIT" && e.origin === "model" && text.trim().length > 0;
     }
 
     // A wire value (object or string) as display text.
