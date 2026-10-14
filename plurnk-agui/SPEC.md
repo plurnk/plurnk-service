@@ -269,8 +269,7 @@ every other daemon surface.
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
   daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth, then
-  `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
-  up IS the abort signal; no worker is orphaned unwatched.
+  `STATE_DELTA`s.
 
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
