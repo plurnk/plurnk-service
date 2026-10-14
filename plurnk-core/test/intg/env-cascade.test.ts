@@ -434,7 +434,8 @@ for (const built of [false, true]) {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, mode: "sync" } },
+                // {§agui-conversation-sync} A client attaches to the conversation it owns, as the terminal client does.
+                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, mode: "sync", control: true } },
             }),
         });
         assert.equal(sync.status, 200);
@@ -487,7 +488,7 @@ for (const built of [false, true]) {
                     };
                 });
         };
-        const sync = await request({ mode: "sync" });
+        const sync = await request({ mode: "sync", control: true });
         assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
         assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
         const snapshot = sync.find(({ type }) => type === "STATE_SNAPSHOT")?.snapshot;
