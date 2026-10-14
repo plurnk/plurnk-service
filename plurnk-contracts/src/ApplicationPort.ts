@@ -100,6 +100,9 @@ export interface ApplicationLoopProjection {
     readonly status: number;
     readonly prompt: string;
     readonly promptSource: string | null;
+    /** When the loop first ran ({§loop-claim-latency}), ISO 8601 UTC; null until it has. */
+    readonly claimedAt: string | null;
+    /** When the loop concluded, ISO 8601 UTC; null while it is unfinished. */
     readonly terminatedAt: string | null;
     readonly terminalResult: OperationResult | null;
     /** Exact count of durable packet-bearing turns; retries and administrative turns do not contribute. */

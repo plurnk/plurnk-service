@@ -1729,7 +1729,9 @@ in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §application-loop-observation Loop observation exposes the durable scheduler
 state of work loops (excluding maintenance-only administrative loops), nullable
-`waitUntil` (the durable observation deadline in Unix milliseconds), exact terminal `OperationResult`, and exact count of packet-bearing
+`waitUntil` (the durable observation deadline in Unix milliseconds), the times a loop first
+ran (`claimedAt`, {§loop-claim-latency}) and concluded (`terminatedAt`), ISO 8601 UTC and null
+until they happen, exact terminal `OperationResult`, and exact count of packet-bearing
 Turns for one owned Worker. Packetless producer Turns and physical provider
 retries do not contribute to `packetCount`. Exterior
 adapters consume this projection instead of reconstructing lifecycle from

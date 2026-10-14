@@ -1262,6 +1262,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             status: number;
             prompt: string;
             promptSource: string | null;
+            claimedAt: string | null;
             terminatedAt: string | null;
             terminalResult: string | null;
             packetCount: number;
@@ -1274,6 +1275,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             status: row.status,
             prompt: row.prompt,
             promptSource: row.promptSource,
+            claimedAt: row.claimedAt,
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
             waitUntil: row.waitUntil,

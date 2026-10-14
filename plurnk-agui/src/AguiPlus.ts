@@ -159,7 +159,16 @@ export interface AguiStatusState {
     readonly children: number;
     // {§agui-status-spend} — what the bound Worker and its descendants have spent since it began.
     readonly spend: AguiSpendState;
+    // {§agui-status-timing} — when the latest Loop first ran and when it concluded, Unix milliseconds.
+    readonly claimedAt: number | null;
+    readonly terminatedAt: number | null;
 }
+
+// {§agui-status-timing} — the Loop's durable stamps as the gauge carries them.
+export const loopTiming = (loop: ApplicationLoopProjection | null): Pick<AguiStatusState, "claimedAt" | "terminatedAt"> => ({
+    claimedAt: loop?.claimedAt == null ? null : Date.parse(loop.claimedAt),
+    terminatedAt: loop?.terminatedAt == null ? null : Date.parse(loop.terminatedAt),
+});
 
 // {§agui-status-spend} — the daemon's {§provider-accounting} projection over the Worker and its
 // descendants, without its request list: how many settled requests, their usage, their cost. Numbers
@@ -205,6 +214,7 @@ export const statusState = (
     loopId: loop?.id ?? null,
     packetCount: loop?.packetCount ?? 0,
     waitUntil: loop?.status === 202 ? loop.waitUntil : null,
+    ...loopTiming(loop),
     activity,
     children,
     spend,

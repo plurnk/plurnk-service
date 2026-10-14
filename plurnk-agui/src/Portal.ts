@@ -6,7 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, spendState, stateDelta, type AguiSpendState, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, loopTiming, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
 import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -44,9 +44,9 @@ interface Thread {
     tree: ReadonlyMap<number, Descendant> | null;
     introduced: Set<number>;
     unrelated: Set<number>;
-    // {§agui-status-children} {§agui-status-spend} — the children and spend this Run's client holds: its
+    // {§agui-status-children} {§agui-status-spend} {§agui-status-timing} — what this Run's client holds: its
     // snapshot's, its latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
-    gauge: { children: number; spend: AguiSpendState } | null;
+    gauge: Pick<AguiStatusState, "children" | "spend" | "claimedAt" | "terminatedAt"> | null;
     // A refresh was asked for before the snapshot was presented; it runs once the snapshot is.
     staleGauge: boolean;
     // The latest refresh begun: an earlier one that completes after it publishes nothing.
@@ -176,19 +176,20 @@ export default class Portal {
         }
     }
 
-    // {§agui-status-children} {§agui-status-spend} — the events after which the bound Worker's alive
-    // direct children or its spend may differ: another worker's loop concluded or began (it may be a
-    // child), a turn settled its spend (its own or another worker's), or the bound Worker's own
-    // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
+    // {§agui-status-children} {§agui-status-spend} {§agui-status-timing} — the events after which the bound
+    // Worker's alive children, its spend or its latest Loop's timing may differ: a loop concluded or began
+    // (a child's, or its own), a turn settled its spend (its own or another worker's), the bound Worker's
+    // own lifecycle beat moved its Loop, or its own WORK/FORK/KILL row landed (it spawned or killed one).
+    // The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "conversation") return false;
         const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown }; notice?: { source?: unknown; kind?: unknown } };
-        if (method === "loop/terminated" || method === "loop/packet") {
-            return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
-        }
+        if (method === "loop/terminated" || method === "loop/packet") return typeof payload.workerId === "number";
         if (method === "notice/event") {
-            return typeof payload.workerId === "number"
-                && payload.notice?.source === "engine:turn" && payload.notice.kind === "turn_generated";
+            if (typeof payload.workerId !== "number") return false;
+            const { source, kind } = payload.notice ?? {};
+            return source === "engine:turn" && kind === "turn_generated"
+                || payload.workerId === thread.workerId && source === "engine:lifecycle" && kind === "loop_status";
         }
         if (method === "log/entry") {
             return payload.entry?.worker_id === thread.workerId
@@ -204,9 +205,10 @@ export default class Portal {
             return;
         }
         const refresh = ++thread.gaugeRefresh;
-        const [rows, accounting] = await Promise.all([
+        const [rows, accounting, loops] = await Promise.all([
             this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: thread.workerId }),
             this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId: thread.workerId }),
+            this.#seam.listWorkerLoops({ workspaceId: thread.workspaceId, workerId: thread.workerId }),
         ]);
         if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
         if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
@@ -219,14 +221,17 @@ export default class Portal {
         if (JSON.stringify(spend) !== JSON.stringify(thread.gauge.spend)) {
             delta.push({ op: "replace", path: "/plurnk/status/spend", value: spend });
         }
-        thread.gauge = { children, spend };
+        const { claimedAt, terminatedAt } = loopTiming(selectWorkerLoop(loops));
+        if (claimedAt !== thread.gauge.claimedAt) delta.push({ op: "replace", path: "/plurnk/status/claimedAt", value: claimedAt });
+        if (terminatedAt !== thread.gauge.terminatedAt) delta.push({ op: "replace", path: "/plurnk/status/terminatedAt", value: terminatedAt });
+        thread.gauge = { children, spend, claimedAt, terminatedAt };
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
     }
 
     // The client now holds this status. A refresh asked for before, or racing, its reads runs after it.
     #presentGauge(thread: Thread, status: AguiStatusState): void {
         const stale = thread.staleGauge || thread.gauge !== null;
-        thread.gauge = { children: status.children, spend: status.spend };
+        thread.gauge = { children: status.children, spend: status.spend, claimedAt: status.claimedAt, terminatedAt: status.terminatedAt };
         thread.staleGauge = false;
         thread.gaugeRefresh += 1;
         if (stale) void this.#refreshStatus(thread);

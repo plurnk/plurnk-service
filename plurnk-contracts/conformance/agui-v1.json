@@ -71,6 +71,8 @@
                                 "loopId": null,
                                 "packetCount": 0,
                                 "waitUntil": null,
+                                "claimedAt": null,
+                                "terminatedAt": null,
                                 "preparation": [],
                                 "activity": null,
                                 "children": 0,
