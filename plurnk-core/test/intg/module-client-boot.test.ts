@@ -49,7 +49,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
                 await db.close();
             });
             const { module, seen } = consumer();
-            const client = AguiModule.create({ auth: true, issuer, user: "admin", password: "composed" });
+            const client = AguiModule.create({ auth: true, issuer, password: "composed" });
             if (order === "the consumer set up first") {
                 daemon.registerModule(module, "@acme/consumer");
                 daemon.registerModule(client, "@plurnk/plurnk-agui");
@@ -72,7 +72,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
                 body: new URLSearchParams({
                     client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", state: "s",
                     code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256",
-                    username: "admin", password: "composed",
+                    password: "composed",
                 }).toString(),
             });
             assert.equal(authorized.status, 302, await authorized.text());

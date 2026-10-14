@@ -14,7 +14,6 @@ export interface ModuleOptions {
     /** {§credential-authority} The daemon's posture, `PLURNK_AUTH`: authenticate, or admit anonymously. */
     readonly auth?: boolean;
     readonly issuer?: string;
-    readonly user?: string;
     readonly password?: string;
     readonly accessTtlSec?: number;
     readonly refreshTtlSec?: number;
@@ -31,7 +30,6 @@ export interface ResolvedModuleOptions {
     /** {§agui-oauth} The daemon authenticates when `PLURNK_AUTH` says so, never by inference. */
     readonly authenticates: boolean;
     readonly issuer: string;
-    readonly user: string;
     readonly password: string;
     readonly accessTtlSec: number;
     readonly refreshTtlSec: number;
@@ -44,7 +42,8 @@ export interface ResolvedModuleOptions {
 }
 
 const CLIENT_KEY = /^PLURNK_AGUI_CLIENT_([A-Za-z0-9._-]+)$/u;
-const OPERATOR_CLIENT = "operator";
+// The operator's own built-in client, which their tools use with PLURNK_SECRET ({§agui-oauth-clients}).
+export const OPERATOR_CLIENT = "operator";
 
 const safeInteger = (
     raw: unknown,
@@ -112,7 +111,6 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
         authenticates: options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth,
         issuer: floorString(options, env, "issuer", "PLURNK_AGUI_ISSUER"),
-        user: floorString(options, env, "user", "PLURNK_USER"),
         password: floorString(options, env, "password", "PLURNK_PASS"),
         accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),

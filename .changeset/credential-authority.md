@@ -18,10 +18,10 @@ server. `PLURNK_AGUI_TOKEN` is gone: the operator's client secret is the
 shared `PLURNK_SECRET`, and when it is unset the daemon mints one at every
 boot into the file `secret` beside its database (0600), where the operator's
 own tools read it, so a fresh install authenticates with nothing configured.
-`PLURNK_USER`, which ships as `admin`, and `PLURNK_PASS`, which ships empty,
-sign the operator in from a browser, and a browser is the operator only once
-it signs in; while either is empty, the sign-in page says which and where to
-set it and admits nobody ({§agui-oauth-session}). A module of this daemon
+`PLURNK_PASS`, which ships empty, signs the one local operator in from a
+browser, and a browser is the operator only once it signs in; while it is
+empty, the sign-in page says so and where to set it and admits nobody
+({§agui-oauth-session}). A module of this daemon
 registers its own confidential client on the authority at setup, by the
 callback paths under its own mounts, with a secret the authority mints per
 boot and tells only that module ({§credential-module-client}; the confidential

@@ -6,7 +6,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialAuthority, CredentialClaims, ProblemDetails } from "@plurnk/plurnk-contracts";
-import { SCOPES, type ResolvedModuleOptions } from "./config.ts";
+import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
 import { httpProblem } from "./run-events.ts";
 
 // Mechanism, not choices ({§operator-config-only-home}); each is registered in the root's mechanism list.
@@ -14,7 +14,9 @@ const CODE_TTL_MS = 60_000;
 const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
-const OPERATOR = "operator";
+// {§agui-oauth-login} — the one local operator, the subject of every grant made for them whatever password
+// signed them in. Their built-in client shares the spelling; a client id is not a subject.
+const OPERATOR_SUBJECT = "operator";
 // {§agui-oauth-session} — the browser session's cookie, scoped to the authorization server's paths.
 const SESSION_COOKIE = "plurnk_session";
 const BROWSER = "browser";
@@ -151,7 +153,7 @@ export default class OAuthServer {
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
         const operatorSecret = credentials.operatorSecret;
-        if (operatorSecret !== null) this.#clients.set(OPERATOR, { id: OPERATOR, kind: "declared", secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
+        if (operatorSecret !== null) this.#clients.set(OPERATOR_CLIENT, { id: OPERATOR_CLIENT, kind: "declared", secret: operatorSecret, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
             if (credentials.client(id) !== null) throw new Error(`PLURNK_AGUI_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, scopes: declared.scopes, redirectUris: [], name: null });
@@ -285,9 +287,9 @@ export default class OAuthServer {
     #establishSession(res: ServerResponse): CredentialClaims {
         const ttlMs = this.#opts.refreshTtlSec * 1000;
         const family = randomUUID();
-        const issued = this.#credentials.issue({ kind: "session", subject: OPERATOR, clientId: BROWSER, scopes: SCOPES, family, ttlMs });
+        const issued = this.#credentials.issue({ kind: "session", subject: OPERATOR_SUBJECT, clientId: BROWSER, scopes: SCOPES, family, ttlMs });
         res.setHeader("set-cookie", `${SESSION_COOKIE}=${issued.token}; Path=/oauth; Max-Age=${this.#opts.refreshTtlSec}; HttpOnly; SameSite=Lax${this.issuer.startsWith("https:") ? "; Secure" : ""}`);
-        return { kind: "session", subject: OPERATOR, clientId: BROWSER, scopes: SCOPES, family, expiresAt: issued.expiresAt };
+        return { kind: "session", subject: OPERATOR_SUBJECT, clientId: BROWSER, scopes: SCOPES, family, expiresAt: issued.expiresAt };
     }
 
     #endSession(req: IncomingMessage, res: ServerResponse): void {
@@ -425,24 +427,21 @@ export default class OAuthServer {
         }
 
         // {§agui-oauth-login} — the operator signs in here. Without a password no browser can: the page
-        // says which setting is empty and where to set it, and issues nothing.
-        const unset = [["PLURNK_USER", this.#opts.user], ["PLURNK_PASS", this.#opts.password]].filter(([, value]) => value!.length === 0).map(([key]) => key!);
-        if (unset.length > 0) {
-            this.#html(res, 503, "Plurnk: no password is set", `<h1>${unset.includes("PLURNK_PASS") ? "No password is set" : "No user is set"}</h1>`
-                + `<p>A browser signs in to this daemon with <code>PLURNK_USER</code> and <code>PLURNK_PASS</code>, and ${unset.map((key) => `<code>${key}</code>`).join(" and ")} ${unset.length > 1 ? "are" : "is"} empty.</p>`
-                + `<p>Set ${unset.length > 1 ? "them" : "it"} in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is <code>~/.config/plurnk/.env</code> by default, and restart the daemon.</p>`
+        // says the password is empty and where to set it, and issues nothing.
+        if (this.#opts.password.length === 0) {
+            this.#html(res, 503, "Plurnk: no password is set", "<h1>No password is set</h1>"
+                + "<p>A browser signs in to this daemon with the operator's password, and <code>PLURNK_PASS</code> is empty.</p>"
+                + "<p>Set it in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is <code>~/.config/plurnk/.env</code> by default, and restart the daemon.</p>"
                 + "<p>Until then no browser can sign in. The terminal client and your other tools sign in with the operator's secret and are unaffected.</p>");
             return;
         }
         const form = (message: string | null): string => `<h1>Sign in to Plurnk</h1>${asks}`
             + (message === null ? "" : `<p class="error">${escape(message)}</p>`)
             + `<form method="post" action="/oauth/authorize">${hidden}`
-            + `<label for="username">User</label><input id="username" name="username" autocomplete="username" required>`
             + `<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>`
             + `<button type="submit">Continue</button></form>`;
-        const username = params.get("username");
         const password = params.get("password");
-        if (req.method === "GET" || username === null || password === null) {
+        if (req.method === "GET" || password === null) {
             this.#html(res, 200, "Plurnk: sign in", form(null));
             return;
         }
@@ -452,9 +451,9 @@ export default class OAuthServer {
             this.#html(res, 429, "Plurnk: too many attempts", `<h1>Too many attempts</h1><p>Try again in ${retryAfter} seconds.</p>`, { "retry-after": String(retryAfter) });
             return;
         }
-        if (!(same(username, this.#opts.user) && same(password, this.#opts.password))) {
+        if (!same(password, this.#opts.password)) {
             this.#failed(address);
-            this.#html(res, 401, "Plurnk: sign in", form("The user or password is wrong."));
+            this.#html(res, 401, "Plurnk: sign in", form("The password is wrong."));
             return;
         }
         this.#failures.delete(address);
@@ -565,7 +564,7 @@ export default class OAuthServer {
                 throw new OAuthError("invalid_grant", "The code_verifier does not match the code_challenge.");
             }
             if (form.get("redirect_uri") !== code.redirectUri) throw new OAuthError("invalid_grant", "The redirect_uri differs from the authorization request's.");
-            issued = { claims: { subject: OPERATOR, clientId: client.id, scopes: code.scopes, family: code.family }, refresh: true };
+            issued = { claims: { subject: OPERATOR_SUBJECT, clientId: client.id, scopes: code.scopes, family: code.family }, refresh: true };
         } else if (grant === "refresh_token") {
             const presented = form.get("refresh_token") ?? "";
             // Read before consuming: a refused scope leaves the token usable; a reuse is told as such.
@@ -591,7 +590,7 @@ export default class OAuthServer {
             if (client.kind === "module") throw new OAuthError("unauthorized_client", "A module's client obtains tokens through the operator's authorization.");
             const scopes = this.#scopes(form.get("scope"), client);
             if (scopes === null) throw new OAuthError("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`);
-            issued = { claims: { subject: client.id === OPERATOR ? OPERATOR : client.id, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
+            issued = { claims: { subject: client.id === OPERATOR_CLIENT ? OPERATOR_SUBJECT : client.id, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
         } else {
             throw new OAuthError("unsupported_grant_type", "The grant type is not authorization_code, refresh_token or client_credentials.");
         }

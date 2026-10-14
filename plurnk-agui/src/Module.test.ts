@@ -19,7 +19,7 @@ import type { Interrupt } from "@ag-ui/core";
 // {§credential-authority} — the daemon's own authority on the mock seam; the module issues through it.
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 const FLOOR = {
-    PLURNK_AUTH: "0", PLURNK_USER: "", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
+    PLURNK_AUTH: "0", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
 };
 

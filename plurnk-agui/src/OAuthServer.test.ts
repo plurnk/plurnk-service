@@ -15,7 +15,7 @@ const { default: Credentials } = await import("../../plurnk-core/src/server/Cred
 type Authority = ApplicationPort["credentials"];
 
 const FLOOR = {
-    PLURNK_AUTH: "1", PLURNK_USER: "ada", PLURNK_PASS: "lovelace", PLURNK_AGUI_ISSUER: "",
+    PLURNK_AUTH: "1", PLURNK_PASS: "lovelace", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
     PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_MAX_TURNS: "", PLURNK_AGUI_HEARTBEAT_MS: "0",
 };
@@ -84,7 +84,7 @@ const register = async (base: string, redirect: string, extra: Record<string, un
 };
 
 // Signs in through the authorization endpoint as a browser would and returns the code it was redirected with.
-const signIn = async (base: string, query: Record<string, string>, credentials: { username: string; password: string }): Promise<Response> => {
+const signIn = async (base: string, query: Record<string, string>, password: string): Promise<Response> => {
     const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams(query)}`);
     assert.equal(page.status, 200);
     const html = await page.text();
@@ -92,7 +92,7 @@ const signIn = async (base: string, query: Record<string, string>, credentials: 
     for (const [name, value] of Object.entries(query)) {
         assert.ok(html.includes(`name="${name}" value="${value.replaceAll("&", "&amp;")}"`), `the form carries ${name}`);
     }
-    return fetch(`${base}/oauth/authorize`, { ...form({ ...query, ...credentials }), redirect: "manual" });
+    return fetch(`${base}/oauth/authorize`, { ...form({ ...query, password }), redirect: "manual" });
 };
 
 test("{§agui-oauth-endpoints} discovery names the issuer's endpoints, grants and PKCE method, and the resource names its authorization server", async () => {
@@ -161,7 +161,7 @@ test("{§agui-oauth-clients} the operator's secret is a client secret: client_cr
         const unknown = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "nobody", client_secret: "x" }));
         assert.equal(unknown.status, 401);
         assert.equal(unknown.headers.get("www-authenticate"), null, "no Basic challenge for a client that posted its credentials");
-        const unsupported = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "password", client_id: "operator", client_secret: "s3cret", username: "ada", password: "lovelace" }));
+        const unsupported = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "password", client_id: "operator", client_secret: "s3cret", password: "lovelace" }));
         assert.equal(unsupported.status, 400);
         assert.equal((await json(unsupported)).error, "unsupported_grant_type", "RFC 9700: no password grant");
         const scope = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "root" }));
@@ -206,11 +206,11 @@ test("{§agui-oauth-login} authorization code with PKCE: a registered public cli
         assert.match(client_id, /^[A-Za-z0-9_-]{43}$/u);
         const { verifier, challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "xyz&1", scope: "agui" };
-        const wrong = await signIn(mod.base, query, { username: "ada", password: "wrong" });
+        const wrong = await signIn(mod.base, query, "wrong");
         assert.equal(wrong.status, 401);
-        assert.match(await wrong.text(), /The user or password is wrong\./u);
+        assert.match(await wrong.text(), /The password is wrong\./u);
         const code = async (): Promise<string> => {
-            const redirected = await signIn(mod.base, query, { username: "ada", password: "lovelace" });
+            const redirected = await signIn(mod.base, query, "lovelace");
             assert.equal(redirected.status, 302);
             const location = new URL(redirected.headers.get("location")!);
             assert.equal(`${location.origin}${location.pathname}`, redirect);
@@ -279,7 +279,7 @@ test("{§agui-oauth-tokens} a refresh token rotates on every use, narrows but ne
         const redirect = "http://127.0.0.1:4000/callback";
         const { client_id } = await register(mod.base, redirect);
         const { verifier, challenge } = pkce();
-        const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, { username: "ada", password: "lovelace" });
+        const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, "lovelace");
         const code = new URL(redirected.headers.get("location")!).searchParams.get("code")!;
         const first = await json<{ access_token: string; refresh_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
         const refresh = (token: string, extra: Record<string, string> = {}): Promise<Response> =>
@@ -330,7 +330,7 @@ test("{§agui-oauth-login} failed sign-ins and client secrets from one address a
         const redirect = "http://127.0.0.1:4000/callback";
         const { client_id } = await register(mod.base, redirect);
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" };
-        const attempt = (password: string): Promise<Response> => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password }), redirect: "manual" });
+        const attempt = (password: string): Promise<Response> => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password }), redirect: "manual" });
         assert.equal((await attempt("no")).status, 401);
         assert.equal((await attempt("no")).status, 401);
         const limited = await attempt("lovelace");
@@ -370,7 +370,7 @@ test("{§agui-oauth} an authority without an operator secret still authenticates
         const redirect = "http://127.0.0.1:4000/callback";
         const { client_id } = await register(mod.base, redirect);
         const { verifier, challenge } = pkce();
-        const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, { username: "ada", password: "lovelace" });
+        const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, "lovelace");
         assert.equal(redirected.status, 302);
         const code = new URL(redirected.headers.get("location")!).searchParams.get("code")!;
         const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
@@ -415,7 +415,7 @@ test("{§agui-oauth-session} a browser is the operator only once it signs in: th
         assert.equal(before.status, 200, "a browser on the daemon's own host meets the sign-in form too");
         assert.match(await before.text(), /Sign in to Plurnk/u);
         assert.equal(before.headers.get("set-cookie"), null, "and is given no session");
-        const first = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password: "lovelace" }), redirect: "manual" });
+        const first = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
         assert.equal(first.status, 302, await first.text());
         assert.match(first.headers.get("set-cookie") ?? "", /^plurnk_session=[A-Za-z0-9_-]{43}; Path=\/oauth; Max-Age=2592000; HttpOnly; SameSite=Lax$/u);
         const session = sessionOf(first);
@@ -445,7 +445,7 @@ test("{§agui-oauth-session} a client elsewhere is shown consent: allowing with 
         const { client_id } = await register(mod.base, redirect);
         const { challenge } = pkce();
         const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
-        const signed = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password: "lovelace" }), redirect: "manual" });
+        const signed = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
         assert.equal(signed.status, 302, "signing in is the operator's own act and issues at once");
         const session = sessionOf(signed);
         const page = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
@@ -485,18 +485,16 @@ test("{§agui-oauth-session} every request under the authorization server's path
     } finally { await fronted.close(); }
 });
 
-test("{§agui-oauth-session} no browser is the operator without the password: each empty setting is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
+test("{§agui-oauth-session} no browser is the operator without the password: the empty password is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
     for (const [env, heading, named] of [
         [{ PLURNK_PASS: "" }, /<h1>No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
-        [{ PLURNK_USER: "" }, /<h1>No user is set<\/h1>/u, /<code>PLURNK_USER<\/code> is empty/u],
-        [{ PLURNK_USER: "", PLURNK_PASS: "" }, /<h1>No password is set<\/h1>/u, /<code>PLURNK_USER<\/code> and <code>PLURNK_PASS<\/code> are empty/u],
     ] as const) {
         const mod = await boot(env, {}, "s3cret", (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }); });
         try {
             const query = { client_id: "web", redirect_uri: `${mod.base}/web/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "agui" };
             for (const attempt of [
                 () => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual" }),
-                () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password: "" }), redirect: "manual" }),
+                () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "" }), redirect: "manual" }),
             ]) {
                 const page = await attempt();
                 assert.equal(page.status, 503, JSON.stringify(env));
@@ -510,6 +508,23 @@ test("{§agui-oauth-session} no browser is the operator without the password: ea
             await pinged(mod.base, { authorization: `Bearer ${minted.access_token}` });
         } finally { await mod.close(); }
     }
+});
+
+test("{§agui-oauth-login} the password selects no account: whatever password signed them in, the browser's grants name the same operator", async () => {
+    const subjects: string[] = [];
+    for (const password of ["lovelace", "babbage"]) {
+        const mod = await boot({ PLURNK_PASS: password });
+        try {
+            const redirect = "http://127.0.0.1:4000/callback";
+            const { client_id } = await register(mod.base, redirect);
+            const { verifier, challenge } = pkce();
+            const redirected = await signIn(mod.base, { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" }, password);
+            const code = new URL(redirected.headers.get("location")!).searchParams.get("code")!;
+            const tokens = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
+            subjects.push(mod.credentials.verify(tokens.access_token)!.subject);
+        } finally { await mod.close(); }
+    }
+    assert.equal(subjects[0], subjects[1], "a new password changes who can sign in, never who they are");
 });
 
 // {§agui-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):
@@ -527,7 +542,7 @@ const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly str
         const { verifier, challenge } = pkce();
         const query = { client_id: "web", redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s", ...extra };
         const response = session === ""
-            ? await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password: "lovelace" }), redirect: "manual" })
+            ? await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" })
             : await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query)}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
         session = /plurnk_session=([^;]+)/u.exec(response.headers.get("set-cookie") ?? "")?.[1] ?? session;
         return { response, verifier, cookie: session };
@@ -628,7 +643,7 @@ test("{§credential-module-client} a module's redirect is its path on the issuer
 const moduleSignIn = async (m: Awaited<ReturnType<typeof moduleBoot>>) => {
     const { verifier, challenge } = pkce();
     const query = { client_id: "web", redirect_uri: m.redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s" };
-    const response = await fetch(`${m.mod.base}/oauth/authorize`, { ...form({ ...query, username: "ada", password: "lovelace" }), redirect: "manual" });
+    const response = await fetch(`${m.mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
     if (response.status !== 302) assert.fail(`${response.status}: ${await response.text()}`);
     const cookie = sessionOf(response);
     const exchanged = await fetch(`${m.mod.base}/oauth/token`, {

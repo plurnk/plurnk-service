@@ -726,9 +726,9 @@ The browser's standing is a `session` credential of the authority ({§credential
 presented as the cookie `plurnk_session` (`HttpOnly`, `SameSite=Lax`, `Path=/oauth`, `Secure` under
 an https issuer), living as long as a refresh token and revoked by `POST /oauth/session` with
 `action=end`, which also clears the cookie; a session is never a bearer. Signing in with
-`PLURNK_USER` and `PLURNK_PASS` ({§agui-oauth-login}) is the only way a session is established,
-wherever the browser runs: with either empty, every browser is told which and where to set it at
-503 and no session exists. A module's own client ({§agui-oauth-clients}) is this daemon's by
+`PLURNK_PASS` ({§agui-oauth-login}) is the only way a session is established, wherever the browser
+runs: while it is empty, every browser is told so, and where to set it, at 503 and no session
+exists. A module's own client ({§agui-oauth-clients}) is this daemon's by
 registration, and the operator's session authorizes it silently; having no standing apart from that
 sign-in, its grant joins the session's family, so revoking the family from either side, by
 `/oauth/session` or by the module's own sign-out, ends the browser's standing here and the module's
@@ -744,11 +744,13 @@ so a name a page rebinds to the loopback address reaches nothing. Every page it 
 
 §agui-oauth-login **The operator signs in at the authorization endpoint.** The sign-in page is plain
 HTML with no script: it names the client and the scopes it asks for and posts the operator's
-shared `PLURNK_USER` and `PLURNK_PASS`, compared in constant time; a wrong pair re-presents the
-form at 401; the right pair establishes the browser's session ({§agui-oauth-session}) and redirects
-with the code and the `state`. `PLURNK_USER` ships as `admin` and `PLURNK_PASS` empty: while either
-is empty, every browser is told which, and the operator's configuration file to set it in, at 503
-and issued nothing, and client credentials are unaffected. Failed
+shared password, `PLURNK_PASS`, compared in constant time; a wrong password re-presents the form at
+401; the right one establishes the browser's session ({§agui-oauth-session}) and redirects with the
+code and the `state`. There is one local operator: the password selects no account, and the
+session's subject is the operator's whatever the password is, so changing it changes who can sign
+in, never who they are or what they own. `PLURNK_PASS` ships empty: while it is empty, every
+browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing,
+and client credentials are unaffected. Failed
 sign-ins and failed client secrets from one source address are counted together per
 `PLURNK_AGUI_LOGIN_WINDOW_SEC`; from `PLURNK_AGUI_LOGIN_ATTEMPTS` on, the window's remaining attempts
 are refused with 429 and a `Retry-After`, the right credentials included; `0` attempts is no limit.
@@ -784,7 +786,7 @@ address is the daemon's.
 | `PLURNK_AUTH`                      | Shared  | Invalid; the shared panel is required  | `1` or `0`                          | The daemon's posture ({§credential-authority}, {§operator-config-shared-keys}): authenticate, or admit anonymously. |
 | `PLURNK_SECRET`                    | Shared  | The daemon mints one at boot           | Any non-empty string                | The operator's client secret ({§agui-oauth-clients}), what the operator's own tools exchange for access tokens. |
 | `PLURNK_AGUI_ISSUER`               | AG-UI   | The listener's own origin              | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
-| `PLURNK_USER` / `PLURNK_PASS`      | Shared  | `admin` / empty: no browser signs in until a password is set ({§agui-oauth-session}) | Any strings            | The operator's browser sign-in ({§agui-oauth-login}). |
+| `PLURNK_PASS`                      | Shared  | Empty: no browser signs in until it is set ({§agui-oauth-session}) | Any string             | The operator's browser sign-in password ({§agui-oauth-login}). |
 | `PLURNK_AGUI_ACCESS_TTL_SEC` / `PLURNK_AGUI_REFRESH_TTL_SEC` | AG-UI | Invalid; the package floor is required | Positive safe integers | Credential lifetimes ({§agui-oauth-tokens}). |
 | `PLURNK_AGUI_LOGIN_ATTEMPTS` / `PLURNK_AGUI_LOGIN_WINDOW_SEC` | AG-UI | Invalid; the package floor is required | `0` = no limit / a positive window up to `2147483` | Failed sign-ins or client secrets tolerated from one address per window ({§agui-oauth-login}). |
 | `PLURNK_AGUI_CLIENT_<id>`          | AG-UI   | No declared clients                    | `{"secret": "…", "scopes": ["agui"]}` | One confidential client per line ({§agui-oauth-clients}); `operator` is reserved. |
