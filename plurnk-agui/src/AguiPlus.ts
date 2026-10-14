@@ -133,7 +133,7 @@ export const interactionResolutionFromResume = (entry: ResumeEntry): Interaction
 // The client OBSERVES this; no providers.list / workspace.list round-trips.
 export interface AguiPlusState {
     providers?: Array<{ alias: string; model: string; active: boolean; inputCapacity: number | null }>;
-    workspace?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
+    workspace?: { id: number; name: string; projectRoot?: string | null; projectLabel?: string | null; budget?: number | null };
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     status?: AguiStatusState;

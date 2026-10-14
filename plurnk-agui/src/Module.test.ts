@@ -53,12 +53,13 @@ const workspaceRow = (id: number, name: string) => ({
     id,
     name,
     project_root: null,
+    project_label: null,
     created_at: "2026-01-01T00:00:00.000Z",
 });
 // {§agui-conversation-sync} An observation watches a world that exists: here, workspace 3 named `name`.
 const existingWorld = (seam: ApplicationPort, name: string): void => {
     seam.listWorkspaces = async () => [workspaceRow(3, name)];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
 };
 const workerRow = (
     id: number,
@@ -152,7 +153,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
                 total: 1,
             };
         },
-        createWorkspace: async () => ({ workspaceId: 3, workspaceName: "agui-t", projectRoot: null, workerId: 10, workerName: "client-1" }),
+        createWorkspace: async () => ({ workspaceId: 3, workspaceName: "agui-t", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" }),
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
         listWorkers: async () => [workerRow(10, "client-1", "client")],
@@ -493,7 +494,7 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
     const releaseSecondWorker = Promise.withResolvers<void>();
     let runCalls = 0;
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => {
         if (a.name === "chat-b") await releaseSecondWorker.promise;
@@ -617,7 +618,7 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
     const { seam, modelQueries } = mockSeam();
     // loop.inject below addresses a live world; it never mints one.
     seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "t1", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "t1", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     const mod = await host(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "providers.list" } } } });
@@ -1551,6 +1552,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
         workspaceId: 3,
         workspaceName: "interrupt-ownership",
         projectRoot: null,
+        projectLabel: null,
         workerId: 10,
         workerName: "client-1",
     });
@@ -2178,6 +2180,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         workspaceId: 3,
         workspaceName: "verified-interrupt",
         projectRoot: null,
+        projectLabel: null,
         workerId: 10,
         workerName: "client-1",
     });
@@ -2273,7 +2276,7 @@ test("a workspace name is its identity; attach rebinds", async () => {
     const { seam } = mockSeam();
     const base = seam.createWorkspace.bind(seam);
     seam.createWorkspace = async (args) => { created.push(args); return { ...(await base(args)), workspaceName: args.name ?? "workspace-1" }; };
-    seam.attachWorkspace = async (args) => { attached.push(args.workspaceId); return { workspaceId: args.workspaceId, workspaceName: "alpha", projectRoot: null, workerId: 10, workerName: "client-1" }; };
+    seam.attachWorkspace = async (args) => { attached.push(args.workspaceId); return { workspaceId: args.workspaceId, workspaceName: "alpha", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" }; };
     seam.listWorkspaces = async () => [workspaceRow(4, "alpha")];
     const mod = await host(seam);
     try {
@@ -2300,7 +2303,7 @@ test("a workspace name is its identity; attach rebinds", async () => {
 test("reattach replays SEND as speech without inventing an activity from NOTE", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => logRows([
         { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
         { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
@@ -2337,6 +2340,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         workspaceId: 3,
         workspaceName: "sync-client",
         projectRoot: null,
+        projectLabel: null,
         workerId: 10,
         workerName: "client-1",
     });
@@ -2378,7 +2382,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
 test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows that reached it while the snapshot was read follow them, in order", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "busy")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "busy", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "busy", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     const row = (id: number) => ({ entry: { id, worker_id: 20, loop_id: 1, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: `1/1/${id}/READ`, tx: { body: "" }, turn_id: 1 } });
     // The observed worker is busy: two of its rows land while the Run reads the worker's status.
     seam.readWorkerModel = async () => {
@@ -2402,7 +2406,7 @@ test("{§agui-conversation-sync} an observation binds an existing workspace and 
     seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
     seam.createConversationWorker = async () => { created.push("worker"); throw new Error("an observation created a worker"); };
     seam.listWorkspaces = async () => [workspaceRow(3, "world")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.readWorker = async ({ identity }) => identity.name === "world" ? workerRow(88, "world", "model")
         : identity.name === "client-1" ? workerRow(10, "client-1", "client") : null;
     const reads: number[] = [];
@@ -2452,7 +2456,7 @@ test("{§agui-snapshot} {§agui-conversation-sync} through the official client, 
     ];
     let runs = 0;
     seam.listWorkspaces = async () => [workspaceRow(3, threadId)];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: threadId, projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: threadId, projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(10, "client-1", "client"), workerRow(20, threadId, "model", 10)];
     seam.readLog = async () => logRows(runs === 0 ? [] : rows.toReversed());
     seam.runLoop = async () => {
@@ -2513,6 +2517,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         workspaceId: 3,
         workspaceName: "sync-interrupt",
         projectRoot: null,
+        projectLabel: null,
         workerId: 10,
         workerName: "client-1",
     });
@@ -2601,7 +2606,7 @@ test("{§agui-conversation-sync}: unknown Run modes fail without echoing untrust
 test("the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => logRows([
         { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/replay-client/messages/m1"] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
@@ -2647,7 +2652,7 @@ test("the official AG-UI client keeps the accepted current user message after au
 test("a client carrying a durable assistant identity is already oriented and receives no repeated replay", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => logRows([
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/oriented-client/messages/m1"] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
@@ -2679,8 +2684,8 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     const ensured: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(7, "workspace-a")];
-    seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", workerId: 100, workerName: "client-1" }; };
-    seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, workerId: 101, workerName: "client-1" }; };
+    seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", projectLabel: "/w", workerId: 100, workerName: "client-1" }; };
+    seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, projectLabel: a.projectRoot ?? null, workerId: 101, workerName: "client-1" }; };
     seam.ensureModelWorker = async (sid) => { ensured.push(sid); return sid === 7 ? 200 : 201; };
     seam.createConversationWorker = async (a) => ({ workerId: 300, workerName: a.name ?? "x" });
     const drivenRuns: number[] = [];
@@ -2704,6 +2709,7 @@ test("{§agui-thread-binding}: the same thread name remains isolated across work
         workspaceId,
         workspaceName: workspaceId === 3 ? "workspace-a" : "workspace-b",
         projectRoot: null,
+        projectLabel: null,
         workerId: workspaceId * 10,
         workerName: "client-1",
     });
@@ -2747,7 +2753,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
-    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
+    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, projectLabel: null, workerId: 1, workerName: "c" }; };
     const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
@@ -2770,7 +2776,7 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
-    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
+    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, projectLabel: null, workerId: 1, workerName: "c" }; };
     const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
@@ -2860,11 +2866,27 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
     } finally { await mod.close(); }
 });
 
+test("{§workspace-label} the workspace list and the snapshot carry each folder's label exactly as the daemon spelled it", async () => {
+    const { seam } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "proj", project_root: "/home/u/proj", project_label: "~/proj", created_at: "2026-01-01T00:00:00.000Z" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "proj", projectRoot: "/home/u/proj", projectLabel: "~/proj", workerId: 10, workerName: "client-1" });
+    const mod = await host(seam);
+    try {
+        const listed = await post(mod.address().port, { threadId: "probe", forwardedProps: { plurnk: { action: { kind: "workspace.list" } } } });
+        const result = listed.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result") as { value: { ok: boolean; result: { workspaces: Array<{ project_label: string | null }> } } };
+        assert.equal(result.value.ok, true, "the list's output schema admits the label");
+        assert.equal(result.value.result.workspaces[0]?.project_label, "~/proj");
+        const observed = await post(mod.address().port, { threadId: "proj", runId: "observe", forwardedProps: { plurnk: { workspace: "proj", mode: "sync" } } });
+        const snapshot = observed.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: unknown } } };
+        assert.deepEqual(snapshot.snapshot.plurnk.workspace, { id: 3, name: "proj", projectRoot: "/home/u/proj", projectLabel: "~/proj" });
+    } finally { await mod.close(); }
+});
+
 test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", async () => {
     let created = 0, ensured = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(1, "a"), workspaceRow(2, "b")];
-    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c" }; };
+    seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, projectLabel: null, workerId: 1, workerName: "c" }; };
     seam.ensureModelWorker = async () => { ensured++; return 2; };
     const mod = await host(seam);
     try {
@@ -2981,7 +3003,7 @@ test("{§discovery} discover returns the exact public action and notification me
 test("workspace.create WITH a name is worldless and does NOT demand a pre-bound workspace", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
-    seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, workerId: 3, workerName: "client-1" });
+    seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, projectLabel: null, workerId: 3, workerName: "client-1" });
     const mod = await host(seam);
     try {
         // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
@@ -2996,7 +3018,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     const cancelled: Array<{ workerId: number; reason?: string }> = [];
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.cancelDrain = (workerId, reason) => {
         cancelled.push({ workerId, ...(reason === undefined ? {} : { reason }) });
@@ -3023,7 +3045,7 @@ test("a distinct threadId MINTS a conversation worker named for it, and the loop
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1")];
     seam.createConversationWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
@@ -3043,7 +3065,7 @@ test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelo
     seam.attachWorkspace = async () => {
         attached += 1;
         await new Promise<void>((resolve) => setImmediate(resolve));
-        return { workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-1" };
+        return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" };
     };
     seam.listWorkers = async () => [];
     seam.createConversationWorker = async ({ name }) => {
@@ -3078,12 +3100,12 @@ test("{§agui-thread-binding}: concurrent conversations create one world with se
         await new Promise<void>((resolve) => setImmediate(resolve));
         available = true;
         actors.push(10);
-        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: 10, workerName: "client-10" };
+        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-10" };
     };
     seam.attachWorkspace = async () => {
         const id = 10 + actors.length;
         actors.push(id);
-        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: id, workerName: `client-${id}` };
+        return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null, workerId: id, workerName: `client-${id}` };
     };
     seam.listWorkers = async () => [];
     seam.createConversationWorker = async ({ name }) => ({ workerId: ++workerId, workerName: name! });
@@ -3114,7 +3136,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         if (++calls === 1) { lookup.resolve(); await release.promise; }
         return [];
     };
-    seam.createWorkspace = async () => ({ workspaceId: 3, workspaceName: "cold", projectRoot: null, workerId: 10, workerName: "client-10" });
+    seam.createWorkspace = async () => ({ workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-10" });
     seam.runLoop = async ({ workspaceId, workerId }) => {
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -3147,7 +3169,7 @@ for (const stage of ["envelope", "conversation"] as const) {
         seam.attachWorkspace = async () => {
             attached += 1;
             if (fail && stage === "envelope") throw failure;
-            return { workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-10" };
+            return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-10" };
         };
         seam.listWorkers = async () => [];
         seam.createConversationWorker = async () => {
@@ -3175,7 +3197,7 @@ test("a threadId naming an existing worker (a fork or prior conversation) binds 
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1"), workerRow(44, "spike")];
     seam.createConversationWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
@@ -3192,7 +3214,7 @@ test("threadId == workspace name stays on the model worker (the default conversa
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.ensureModelWorker = async () => 20;
     seam.createConversationWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
@@ -3209,7 +3231,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
     const messages: Array<Parameters<ApplicationPort["runLoop"]>[0]> = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(44, "spike")];
     seam.runLoop = async (a) => { driven.push(a.workerId); messages.push(a); finish(a.workspaceId, a.workerId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
     const mod = await host(seam);
@@ -3233,7 +3255,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
 test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE listener", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 200); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
@@ -3252,7 +3274,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
 test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId, a.workerId), 100); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam, {
@@ -3268,7 +3290,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
     const observed: Array<number | undefined> = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (args) => {
         observed.push(args.maxTurns);
@@ -3357,7 +3379,7 @@ test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model sel
 test("a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     const problem = Problems.create(
         "daemon:provider",
@@ -3417,7 +3439,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
 test("an unexpected post-headers runLoop exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async () => { throw new Error("secret internal failure"); };
     const mod = await host(seam);
@@ -3442,7 +3464,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
 test("{§agui-run-authority} the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async (a) => { finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
@@ -3462,7 +3484,7 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
     const minted: string[] = [];
     const runWorkers: number[] = [];
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.listWorkers = async () => [workerRow(10, "c", "client"), workerRow(5, "_plurnk", "_plurnk"), workerRow(20, "model-1")];
     const refusals: Record<string, ReturnType<typeof Problems.create>> = {
         _plurnk: Problems.create("daemon:worker", "name-invalid", 400, "Worker name '_plurnk' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}.", { context: "worker.create", field: "name", name: "_plurnk", retryable: false }),

@@ -33,7 +33,7 @@ import type { HttpRouteHandler, PlurnkStatement, RollbackReport } from "@plurnk/
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
-import Envelope, { projectWorkerRow } from "./envelope.ts";
+import Envelope, { projectWorkerRow, type WorkspaceEnvelope } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
@@ -1181,7 +1181,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
-    listWorkspaces() { return Envelope.listWorkspaces(this.#db); }
+    async listWorkspaces() {
+        return (await Envelope.listWorkspaces(this.#db)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
+    }
+
+    // {§workspace-label} — the folder as the daemon spells it for display: the spelling a default name takes.
+    #projectLabel(projectRoot: string | null): string | null {
+        return projectRoot === null ? null : this.#hostPaths.abbreviateUserPath(projectRoot);
+    }
+
+    #labelled(envelope: WorkspaceEnvelope): ClientEnvelope {
+        return { ...envelope, projectLabel: this.#projectLabel(envelope.projectRoot) };
+    }
     listWorkers(
         workspaceId: number,
         query: ApplicationWorkerQuery = {},
@@ -1326,7 +1337,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const selected = async (): Promise<ClientEnvelope | undefined> => {
             if (derived === undefined) return undefined;
             const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name: derived });
-            return existing === undefined ? undefined : Envelope.attachToWorkspace(this.#db, existing.id);
+            return existing === undefined ? undefined : this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
         };
         return observed( // {§observability-boundary}
             "workspace.create",
@@ -1339,7 +1350,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 }
                 let envelope: ClientEnvelope;
                 try {
-                    envelope = await Envelope.createClientEnvelope(this.#db, { name: explicit ?? derived, projectRoot, settings });
+                    envelope = this.#labelled(await Envelope.createClientEnvelope(this.#db, { name: explicit ?? derived, projectRoot, settings }));
                 } catch (error) {
                     // A concurrent default launch created it first: select what it created.
                     const raced = derived !== undefined ? await selected() : undefined;
@@ -1348,7 +1359,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     return raced;
                 }
                 span.setAttribute("workspace.id", envelope.workspaceId);
-                this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
+                this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot, projectLabel: envelope.projectLabel });
                 return envelope;
             },
         );
@@ -1361,7 +1372,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             ? undefined
             : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
         const workerName = ClientInput.assertOptionalWorkerName("workspace.attach", "workerName", args.workerName);
-        return Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName });
+        return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName }));
     }
 
     // {§rollback} {§methods-workspace-rollback} — the compensations are the acting client's own

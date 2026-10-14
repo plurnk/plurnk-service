@@ -824,6 +824,41 @@ test("{§workspace-name} workspace.create with a project root and no name is nam
     });
 });
 
+test("{§workspace-label} every envelope, row and created notice carries the folder's label beside it: a default name equals it, any other name leaves it be", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const home = new HostPaths().home;
+        const inside = await mkdtemp(join(home, "label ü √ "));
+        const outside = await mkdtemp(join(tmpdir(), "plurnk-label-"));
+        const created: Array<{ name?: unknown; projectRoot?: unknown; projectLabel?: unknown }> = [];
+        const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => { if (method === "workspace/created") created.push(params as never); });
+        try {
+            const named = await daemon.createWorkspace({ projectRoot: inside });
+            const label = `~/${basename(inside)}`;
+            assert.deepEqual([named.workspaceName, named.projectRoot, named.projectLabel], [label, inside, label], "a default name is its folder's label");
+            const listed = (await daemon.listWorkspaces()).find(({ id }) => id === named.workspaceId);
+            assert.equal(listed?.project_label, label);
+            assert.equal(listed?.name, listed?.project_label, "a client compares name and label by equality");
+            assert.deepEqual(created.at(-1), { id: named.workspaceId, name: label, projectRoot: inside, projectLabel: label });
+
+            const explicit = await daemon.createWorkspace({ name: "explicit", projectRoot: inside });
+            assert.deepEqual([explicit.workspaceName, explicit.projectLabel], ["explicit", label], "an explicit name is kept; the label comes from the folder alone");
+            await daemon.renameWorkspace(named.workspaceId, "renamed");
+            const attached = await daemon.attachWorkspace({ workspaceId: named.workspaceId });
+            assert.deepEqual([attached.workspaceName, attached.projectLabel], ["renamed", label], "renaming changes no label");
+
+            const far = await daemon.createWorkspace({ projectRoot: outside });
+            assert.deepEqual([far.workspaceName, far.projectLabel], [outside, outside], "outside the home the label is the absolute spelling");
+            const headless = await daemon.createWorkspace({ name: "no-folder" });
+            assert.equal(headless.projectLabel, null);
+            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.project_label, null, "no folder, no invented label");
+        } finally {
+            unsubscribe();
+            await rm(inside, { recursive: true, force: true });
+            await rm(outside, { recursive: true, force: true });
+        }
+    });
+});
+
 test("{§workspace-name} a folderless world is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const headless = await daemon.createWorkspace({ name: "headless" });
@@ -1476,7 +1511,7 @@ test("{§methods-worker-name-admission} the client-interface seam — workspace 
         assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client worker)");
         assert.deepEqual(
             Object.keys(env).toSorted(),
-            ["projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
+            ["projectLabel", "projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
             "{§methods-rebind} #64: the envelope carries workspace/client-worker identity only",
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
@@ -1494,7 +1529,7 @@ test("{§methods-worker-name-admission} the client-interface seam — workspace 
         assert.equal(attached.workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
         assert.deepEqual(
             Object.keys(attached).toSorted(),
-            ["projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
+            ["projectLabel", "projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
             "{§methods-rebind} #64: attach does not fabricate conversation or action-loop binding",
         );
 

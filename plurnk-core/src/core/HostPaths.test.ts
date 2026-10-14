@@ -2,6 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import HostPaths from "./HostPaths.ts";
 
+test("{§workspace-label} a folder is spelled from the daemon's home: ~ for it, ~/ beneath it, absolute elsewhere", () => {
+    const paths = new HostPaths({ home: "/home/tester", env: {} });
+    for (const [folder, label] of [
+        ["/home/tester", "~"],
+        ["/home/tester/", "~"],
+        ["/home/tester/ptl/project", "~/ptl/project"],
+        ["/home/tester/ptl/../project", "~/project"],
+        ["/home/tester/a b/ü √", "~/a b/ü √"],
+        ["/home/tester2/project", "/home/tester2/project"],
+        ["/home/testerx", "/home/testerx"],
+        ["/srv/project", "/srv/project"],
+        ["/", "/"],
+    ]) assert.equal(paths.abbreviateUserPath(folder!), label, folder);
+});
+
 test("{§share-folder} an unset share folder is a stamped child of the XDG state shares folder", () => {
     const paths = new HostPaths({ home: "/home/tester", env: {} });
     const now = new Date("2026-09-26T15:04:05.678Z");

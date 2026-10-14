@@ -266,7 +266,7 @@ export default class RunHandler {
         }
         emit(this.#portal().runStarted(
             boundRun,
-            stateSnapshot({ ...(providers === undefined ? {} : { providers }), workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
+            stateSnapshot({ ...(providers === undefined ? {} : { providers }), workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot, projectLabel: env.projectLabel }, status }),
         ));
         presented = true;
         emit(held.splice(0));

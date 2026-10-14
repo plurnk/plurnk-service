@@ -53,6 +53,8 @@ export interface ClientEnvelope {
     readonly workspaceId: number;
     readonly workspaceName: string;
     readonly projectRoot: string | null;
+    /** {§workspace-label} The folder as the daemon spells it for display; null without a folder. */
+    readonly projectLabel: string | null;
     readonly workerId: number;
     readonly workerName: string;
 }
@@ -376,6 +378,8 @@ export interface ApplicationPort extends HttpHost {
         readonly id: number;
         readonly name: string;
         readonly project_root: string | null;
+        /** {§workspace-label} */
+        readonly project_label: string | null;
         readonly created_at: string;
     }>>;
     listWorkers(

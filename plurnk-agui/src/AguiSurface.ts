@@ -50,8 +50,10 @@ const workspace = object({
     id: POSITIVE,
     name: NONEMPTY,
     project_root: nullable(string()),
+    // {§workspace-label}
+    project_label: nullable(string()),
     created_at: NONEMPTY,
-}, ["id", "name", "project_root", "created_at"]);
+}, ["id", "name", "project_root", "project_label", "created_at"]);
 // {§application-worker-observation} — kind and lifecycle ride the directory row (#523).
 const worker = object({
     id: POSITIVE,

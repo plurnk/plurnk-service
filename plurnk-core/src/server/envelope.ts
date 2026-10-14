@@ -30,6 +30,9 @@ export interface WorkspaceRow {
     created_at: string;
 }
 
+// The stored envelope; the daemon adds the folder's label, which needs its home ({§workspace-label}).
+export type WorkspaceEnvelope = Omit<ClientEnvelope, "projectLabel">;
+
 export interface WorkerRow {
     id: number;
     name: string;
@@ -62,7 +65,7 @@ export default class Envelope {
         return Array.from(randomBytes(5), (byte) => Envelope.AUTO_NAME_ALPHABET[byte % 62]).join("");
     }
 
-    static async createClientEnvelope(db: Db, opts: { name?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
+    static async createClientEnvelope(db: Db, opts: { name?: string; projectRoot?: string | null; settings?: string } = {}): Promise<WorkspaceEnvelope> {
         const projectRoot = opts.projectRoot ?? null;
         const insert = (name: string) => db.envelope_insert_workspace.get<{ id: number; name: string; project_root: string | null }>({ name, project_root: projectRoot, settings: opts.settings ?? "{}" });
         let workspace = opts.name === undefined ? undefined : await insert(opts.name);
@@ -158,7 +161,7 @@ export default class Envelope {
         });
     }
 
-    static async attachToWorkspace(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string } = {}): Promise<ClientEnvelope> {
+    static async attachToWorkspace(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string } = {}): Promise<WorkspaceEnvelope> {
         const workspace = await db.envelope_get_workspace.get<{ id: number; name: string; project_root: string | null }>({ id: workspaceId });
         if (workspace === undefined) {
             throw envelopeFailure(

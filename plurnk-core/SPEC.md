@@ -3502,6 +3502,15 @@ convention, not a mapping: a renamed world is not re-selected by its old default
 carry any name over any folder. An explicit name that exists is `409 name-conflict`, never a
 selection.
 
+§workspace-label **A folder's display spelling is the daemon's.** Wherever the application port
+returns a workspace's folder it returns its label beside it: `projectLabel` on a client envelope and
+the `workspace/created` notice, `project_label` on a `listWorkspaces` row. The label is the folder as
+a default name spells it: the daemon's home is `~`, a path beneath it `~/<rest>`, and any other path,
+one that merely shares the home's prefix included, its absolute spelling. A workspace without a
+folder has a null label. It is derived from the folder on every read and never stored, and it never
+rewrites a name, so a client compares a workspace's name with its label by equality and derives
+neither from its own home.
+
 §workspace-auto-name **A world with neither name nor project root gets five anchor-alphabet characters.** Such a `workspace.create` draws five characters from the {§line-anchors} alphabet `0-9A-Za-z` (uniformly, from a cryptographic source), redrawing on the astronomically rare collision. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from, so nothing can grow load-bearing on it.
 
 §exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
@@ -5027,7 +5036,7 @@ Core's behavior behind them.
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, clientWorkerId, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as the client's own operations in `clientWorkerId` ({§rollback}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
-| Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity and derivation progress. |
+| Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder and its label ({§workspace-label}), and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. |
 | §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`conversation`, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
 | §methods-worker-loops Loop lifecycle              | `listWorkerLoops({ workspaceId, workerId })` | Ownership-checks the Worker and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists. It performs no scheduling or event replay. |
