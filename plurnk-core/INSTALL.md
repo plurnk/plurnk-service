@@ -22,6 +22,12 @@ For an explicitly shared Linux daemon, the npm package includes an example
 executable paths, environment, and logs. Installing the package never installs
 or enables the unit.
 
+To reach the daemon from other machines on your network, set `PLURNK_HOST=0.0.0.0`
+and browse to any of its addresses; nothing else is required. To serve it beyond
+a network you trust, put it behind the example [nginx front](./plurnk.nginx.conf),
+which carries TLS, security headers, sign-in throttling and an optional allow-list
+and says which two settings the daemon needs behind it.
+
 | Resource | Default location |
 | --- | --- |
 | User configuration | `$XDG_CONFIG_HOME/plurnk/.env` (`~/.config/plurnk/.env`) |

@@ -8,8 +8,6 @@ const floor: NodeJS.ProcessEnv = {
     PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600",
     PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
-    PLURNK_AGUI_LOGIN_ATTEMPTS: "5",
-    PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
     PLURNK_AGUI_ALLOW_ORIGIN: "*",
     PLURNK_AGUI_MAX_TURNS: "",
     PLURNK_AGUI_HEARTBEAT_MS: "15000",
@@ -22,8 +20,6 @@ test("[{§agui-configuration}] AG-UI consumes and validates its package-owned en
         password: "",
         accessTtlSec: 3600,
         refreshTtlSec: 2592000,
-        loginAttempts: 5,
-        loginWindowSec: 60,
         clients: {},
         allowOrigin: "*",
         maxTurns: undefined,
@@ -41,8 +37,6 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         password: "lovelace",
         accessTtlSec: 60,
         refreshTtlSec: 120,
-        loginAttempts: 0,
-        loginWindowSec: 1,
         clients: { agent: { secret: "s", scopes: ["agui"] } },
         allowOrigin: "https://portal.example",
         maxTurns: 3,
@@ -63,8 +57,6 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         password: "lovelace",
         accessTtlSec: 60,
         refreshTtlSec: 120,
-        loginAttempts: 0,
-        loginWindowSec: 1,
         clients: { agent: { secret: "s", scopes: ["agui"] } },
         allowOrigin: "https://portal.example",
         maxTurns: 3,
@@ -109,12 +101,10 @@ test("[{§agui-configuration}] missing and malformed configuration fails at the 
         delete env[key];
         assert.throws(() => resolve(env), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
     }
-    for (const key of ["PLURNK_AGUI_ACCESS_TTL_SEC", "PLURNK_AGUI_REFRESH_TTL_SEC", "PLURNK_AGUI_LOGIN_WINDOW_SEC"]) {
+    for (const key of ["PLURNK_AGUI_ACCESS_TTL_SEC", "PLURNK_AGUI_REFRESH_TTL_SEC"]) {
         assert.throws(() => resolve({ ...floor, [key]: "0" }), new RegExp(`${key} must be a safe integer from 1`, "u"));
         assert.throws(() => resolve({ ...floor, [key]: "" }), new RegExp(`${key} must be a safe integer`, "u"));
     }
-    assert.throws(() => resolve({ ...floor, PLURNK_AGUI_LOGIN_ATTEMPTS: "-1" }), /PLURNK_AGUI_LOGIN_ATTEMPTS must be a safe integer from 0/u);
-    assert.throws(() => resolve({ ...floor, PLURNK_AGUI_LOGIN_WINDOW_SEC: "2147484" }), /PLURNK_AGUI_LOGIN_WINDOW_SEC must be a safe integer from 1 through 2147483/u);
     assert.throws(() => resolve({ ...floor, PLURNK_AGUI_HEARTBEAT_MS: "many" }), /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/);
     assert.throws(() => resolve({ ...floor, PLURNK_AGUI_HEARTBEAT_MS: "-1" }), /from 0 through 2147483647/);
     assert.throws(() => resolve({ ...floor, PLURNK_AGUI_HEARTBEAT_MS: "2147483648" }), /from 0 through 2147483647/);

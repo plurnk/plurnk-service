@@ -4211,6 +4211,13 @@ systemd user unit. Installation and enablement are explicit operator actions;
 package installation performs neither. The template documents executable-path
 and environment adjustments instead of introducing a service-management command.
 
+§nginx-example The service package ships `plurnk.nginx.conf`, an example nginx front, beside
+the unit and under the same terms. Hardening belongs there, not in the daemon: TLS, security
+headers, sign-in throttling by real client address and an optional network allow-list. The
+daemon answers every caller at the address it used ({§http-request-origin}); behind TLS it is
+told the public origin (`PLURNK_AGUI_ISSUER`, and `PLURNK_A2A_ENDPOINT_URL` when it exposes A2A),
+which it cannot see.
+
 Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
 
 Each knob's value lives on its panel and nowhere else (`plurnk-service config defaults` prints them all); this table says what the service's knobs mean.

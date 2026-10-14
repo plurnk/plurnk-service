@@ -17,8 +17,6 @@ export interface ModuleOptions {
     readonly password?: string;
     readonly accessTtlSec?: number;
     readonly refreshTtlSec?: number;
-    readonly loginAttempts?: number;
-    readonly loginWindowSec?: number;
     readonly clients?: Readonly<Record<string, DeclaredClient>>;
     readonly allowOrigin?: string;
     readonly maxTurns?: number;
@@ -33,8 +31,6 @@ export interface ResolvedModuleOptions {
     readonly password: string;
     readonly accessTtlSec: number;
     readonly refreshTtlSec: number;
-    readonly loginAttempts: number;
-    readonly loginWindowSec: number;
     readonly clients: Readonly<Record<string, DeclaredClient>>;
     readonly allowOrigin: string;
     readonly maxTurns?: number;
@@ -99,8 +95,8 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
 
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "accessTtlSec" | "refreshTtlSec" | "loginAttempts" | "loginWindowSec", key: string, minimum: number, maximum?: number): number =>
-        safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum, maximum);
+    const number = (option: "accessTtlSec" | "refreshTtlSec", key: string, minimum: number): number =>
+        safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
     const clients = options.clients === undefined ? environmentClients(env) : options.clients;
     for (const [id, client] of Object.entries(clients)) {
         if (id === OPERATOR_CLIENT || !CLIENT_KEY.test(`PLURNK_AGUI_CLIENT_${id}`)) throw new Error(`ModuleOptions.clients: "${id}" is not a client id.`);
@@ -114,8 +110,6 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         password: floorString(options, env, "password", "PLURNK_PASS"),
         accessTtlSec: number("accessTtlSec", "PLURNK_AGUI_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AGUI_REFRESH_TTL_SEC", 1),
-        loginAttempts: number("loginAttempts", "PLURNK_AGUI_LOGIN_ATTEMPTS", 0),
-        loginWindowSec: number("loginWindowSec", "PLURNK_AGUI_LOGIN_WINDOW_SEC", 1, Math.floor(MAX_TIMER_MS / 1000)),
         clients,
         // {§agui-cors} — the panel states the origin; only its own empty value sends no CORS header.
         allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_AGUI_ALLOW_ORIGIN"),

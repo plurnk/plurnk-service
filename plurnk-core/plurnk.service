@@ -10,6 +10,8 @@
 # systemd does not source your interactive shell. Adjust EnvironmentFile for
 # a non-default XDG_CONFIG_HOME. Preserve the file's private permissions.
 # Logs land in the user journal: journalctl --user -u plurnk -f
+# Other machines on your network: add Environment=PLURNK_HOST=0.0.0.0 under [Service] and browse to
+# any of this machine's addresses. Beyond a network you trust, front it with plurnk.nginx.conf.
 [Unit]
 Description=PLURNK agentic-development daemon
 After=network.target

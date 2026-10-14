@@ -779,10 +779,9 @@ code and the `state`. There is one local operator: the password selects no accou
 session's subject is the operator's whatever the password is, so changing it changes who can sign
 in, never who they are or what they own. `PLURNK_PASS` ships empty: while it is empty, every
 browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing,
-and client credentials are unaffected. Failed
-sign-ins and failed client secrets from one source address are counted together per
-`PLURNK_AGUI_LOGIN_WINDOW_SEC`; from `PLURNK_AGUI_LOGIN_ATTEMPTS` on, the window's remaining attempts
-are refused with 429 and a `Retry-After`, the right credentials included; `0` attempts is no limit.
+and client credentials are unaffected. The daemon does not throttle failed attempts: limiting
+requests by their real source is the job of a front such as the example nginx configuration
+({§nginx-example}), which sees addresses a proxied daemon cannot.
 
 §agui-oauth-tokens **Credentials are opaque and bounded.** An access token lives
 `PLURNK_AGUI_ACCESS_TTL_SEC`, a refresh token `PLURNK_AGUI_REFRESH_TTL_SEC`; both are random strings the
@@ -817,7 +816,6 @@ address is the daemon's.
 | `PLURNK_AGUI_ISSUER`               | AG-UI   | The origin each request reached ({§http-request-origin}) | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
 | `PLURNK_PASS`                      | Shared  | Empty: no browser signs in until it is set ({§agui-oauth-session}) | Any string             | The operator's browser sign-in password ({§agui-oauth-login}). |
 | `PLURNK_AGUI_ACCESS_TTL_SEC` / `PLURNK_AGUI_REFRESH_TTL_SEC` | AG-UI | Invalid; the package floor is required | Positive safe integers | Credential lifetimes ({§agui-oauth-tokens}). |
-| `PLURNK_AGUI_LOGIN_ATTEMPTS` / `PLURNK_AGUI_LOGIN_WINDOW_SEC` | AG-UI | Invalid; the package floor is required | `0` = no limit / a positive window up to `2147483` | Failed sign-ins or client secrets tolerated from one address per window ({§agui-oauth-login}). |
 | `PLURNK_AGUI_CLIENT_<id>`          | AG-UI   | No declared clients                    | `{"secret": "…", "scopes": ["agui"]}` | One confidential client per line ({§agui-oauth-clients}); `operator` is reserved. |
 | `PLURNK_AGUI_ALLOW_ORIGIN`         | AG-UI   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§agui-cors}). |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |

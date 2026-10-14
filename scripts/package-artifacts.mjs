@@ -17,8 +17,9 @@ const projections = new Map([
             "dist/evidence/EvidenceReader.js",
             "dist/evidence/digest.sql",
             "INSTALL.md",
-            // {§systemd-user-unit} — available to npm consumers, not only source checkouts.
+            // {§systemd-user-unit} {§nginx-example} — available to npm consumers, not only source checkouts.
             "plurnk.service",
+            "plurnk.nginx.conf",
             "docs/copy-move.md",
             // {§service-posix-artifacts} — generated from executable help during the build.
             "dist/man/plurnk-service.1",

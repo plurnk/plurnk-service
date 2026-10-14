@@ -128,7 +128,6 @@ export default class OAuthServer {
     readonly #clients = new Map<string, Client>();
     readonly #codes = new Map<string, Code>();
     // {§agui-oauth-login} — failures per source address within the configured window.
-    readonly #failures = new Map<string, { count: number; windowStart: number }>();
     readonly #now: () => number;
     #registered = 0;
 
@@ -423,18 +422,10 @@ export default class OAuthServer {
             this.#html(res, 200, AuthorizationDocuments.signIn(request, null), client.stylesheet);
             return;
         }
-        const address = req.socket.remoteAddress ?? "unknown";
-        const retryAfter = this.#limited(address);
-        if (retryAfter !== null) {
-            this.#html(res, 429, AuthorizationDocuments.tooManyAttempts(retryAfter), client.stylesheet, { "retry-after": String(retryAfter) });
-            return;
-        }
         if (!same(password, this.#opts.password)) {
-            this.#failed(address);
             this.#html(res, 401, AuthorizationDocuments.signIn(request, "The password is wrong."), client.stylesheet);
             return;
         }
-        this.#failures.delete(address);
         // A sign-in is the operator's own act, so it issues at once, and the browser keeps the session.
         issue(this.#establishSession(req, res));
     }
@@ -444,26 +435,6 @@ export default class OAuthServer {
         const scopes = [...new Set(requested.trim().split(/\s+/u))];
         if (scopes.some((scope) => !SCOPE_TOKEN.test(scope) || !client.scopes.includes(scope))) return null;
         return Object.freeze(scopes);
-    }
-
-    #limited(address: string): number | null {
-        if (this.#opts.loginAttempts === 0) return null;
-        const record = this.#failures.get(address);
-        if (record === undefined) return null;
-        const windowMs = this.#opts.loginWindowSec * 1000;
-        if (record.windowStart + windowMs <= this.#now()) { this.#failures.delete(address); return null; }
-        if (record.count < this.#opts.loginAttempts) return null;
-        return Math.max(1, Math.ceil((record.windowStart + windowMs - this.#now()) / 1000));
-    }
-
-    #failed(address: string): void {
-        const record = this.#failures.get(address);
-        const windowMs = this.#opts.loginWindowSec * 1000;
-        if (record === undefined || record.windowStart + windowMs <= this.#now()) {
-            this.#failures.set(address, { count: 1, windowStart: this.#now() });
-            return;
-        }
-        record.count += 1;
     }
 
     #sweepCodes(): void {
@@ -499,25 +470,15 @@ export default class OAuthServer {
         }
         if (id === null || id.length === 0) throw new OAuthError("invalid_client", "The client did not identify itself.", 401);
         const client = this.#client(id, req);
-        const address = req.socket.remoteAddress ?? "unknown";
-        if (client === undefined) {
-            this.#failed(address);
-            throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
-        }
+        if (client === undefined) throw new OAuthError("invalid_client", "The client is not registered with this daemon.", 401);
         if (client.kind === "public") {
             if (secret !== null && secret.length > 0) throw new OAuthError("invalid_client", "A public client presents no secret.", 401);
             return client;
         }
-        const retryAfter = this.#limited(address);
-        if (retryAfter !== null) throw new OAuthError("invalid_client", `Too many failed attempts; retry in ${retryAfter} seconds.`, 429);
         const matches = secret !== null && (client.kind === "module"
             ? this.#credentials.authenticateClient(client.id, secret)
             : same(secret, client.secret ?? ""));
-        if (!matches) {
-            this.#failed(address);
-            throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
-        }
-        this.#failures.delete(address);
+        if (!matches) throw new OAuthError("invalid_client", "The client secret is wrong.", 401);
         return client;
     }
 

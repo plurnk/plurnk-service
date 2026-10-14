@@ -17,7 +17,7 @@ type Authority = ApplicationPort["credentials"];
 
 const FLOOR = {
     PLURNK_AUTH: "1", PLURNK_PASS: "lovelace", PLURNK_AGUI_ISSUER: "",
-    PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000", PLURNK_AGUI_LOGIN_ATTEMPTS: "5", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60",
+    PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
     PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_MAX_TURNS: "", PLURNK_AGUI_HEARTBEAT_MS: "0",
 };
 
@@ -323,31 +323,6 @@ test("{§agui-oauth-revocation} revocation is by family and by the owning client
         const asPublic = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: (await register(mod.base, "http://127.0.0.1:1/cb")).client_id }));
         assert.equal((await json(asPublic)).error, "unauthorized_client", "a public client holds nothing to present");
     } finally { await mod.close(); }
-});
-
-test("{§agui-oauth-login} failed sign-ins and client secrets from one address are limited per window", async () => {
-    const mod = await boot({ PLURNK_AGUI_LOGIN_ATTEMPTS: "2", PLURNK_AGUI_LOGIN_WINDOW_SEC: "60" });
-    try {
-        const redirect = "http://127.0.0.1:4000/callback";
-        const { client_id } = await register(mod.base, redirect);
-        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256" };
-        const attempt = (password: string): Promise<Response> => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password }), redirect: "manual" });
-        assert.equal((await attempt("no")).status, 401);
-        assert.equal((await attempt("no")).status, 401);
-        const limited = await attempt("lovelace");
-        assert.equal(limited.status, 429, "the right password after the limit is refused too");
-        assert.match(limited.headers.get("retry-after") ?? "", /^\d+$/u);
-        const secrets = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" }));
-        assert.equal(secrets.status, 429, "the same window covers client secrets");
-        assert.equal((await json(secrets)).error, "invalid_client");
-    } finally { await mod.close(); }
-    const unlimited = await boot({ PLURNK_AGUI_LOGIN_ATTEMPTS: "0" });
-    try {
-        for (let i = 0; i < 4; i += 1) {
-            assert.equal((await fetch(`${unlimited.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "no" }))).status, 401);
-        }
-        assert.equal((await fetch(`${unlimited.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" }))).status, 200, "0 attempts is no limit");
-    } finally { await unlimited.close(); }
 });
 
 test("{§agui-oauth} under PLURNK_AUTH=0 the module mounts only /agui and admits anonymously, whatever else is set", async () => {

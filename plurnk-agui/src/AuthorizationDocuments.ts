@@ -49,10 +49,6 @@ export const AuthorizationDocuments = {
             + SETTINGS
             + "<p>Until then no browser can sign in. The terminal client and your other tools sign in with the operator's secret and are unaffected.</p>", true),
     }),
-    tooManyAttempts: (retryAfterSeconds: number): AuthorizationDocument => ({
-        title: "Plurnk: too many attempts",
-        body: page("Too many attempts", `<p>Try again in ${retryAfterSeconds} seconds.</p>`, true),
-    }),
     refused: (): AuthorizationDocument => ({
         title: "Plurnk: request refused",
         body: page("Request refused", "<p>The client or its redirect address is not registered with this daemon.</p>", true),
@@ -100,7 +96,6 @@ export const authorizationDocumentSpecimens = (): readonly string[] => {
         AuthorizationDocuments.signIn(request, "The password is wrong."),
         AuthorizationDocuments.consent(request),
         AuthorizationDocuments.noPassword(),
-        AuthorizationDocuments.tooManyAttempts(60),
         AuthorizationDocuments.refused(),
         AuthorizationDocuments.signedIn({ client_id: "client" }),
         AuthorizationDocuments.notSignedIn(),
