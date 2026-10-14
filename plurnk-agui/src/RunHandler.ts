@@ -4,7 +4,7 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { stateDelta, stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
@@ -206,6 +206,18 @@ export default class RunHandler {
             }
         };
 
+        // {§agui-run-start} The Portal routes to this Run from the moment it is bound; what reaches it
+        // before RUN_STARTED and the snapshot are written follows them, in order. A terminal ends it at once.
+        let presented = false;
+        const held: AguiEvent[] = [];
+        const routed = (events: AguiEvent[]): void => {
+            if (presented) return emit(events);
+            const terminal = events.filter(({ type }) => type === EventType.RUN_ERROR || type === EventType.RUN_FINISHED);
+            if (terminal.length === 0) return void held.push(...events);
+            held.length = 0;
+            emit(terminal);
+        };
+
         const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
         const notificationScope = action === null
             ? "conversation"
@@ -222,7 +234,7 @@ export default class RunHandler {
             ...(owner === undefined ? {} : { owner }),
             family,
             descendants,
-            emit,
+            emit: routed,
             modelWorkerId: workerId,
             inputRunId: input.runId,
             cancelOnDisconnect: prompt !== null || notificationScope === "operation",
@@ -256,6 +268,8 @@ export default class RunHandler {
             boundRun,
             stateSnapshot({ ...(providers === undefined ? {} : { providers }), workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
         ));
+        presented = true;
+        emit(held.splice(0));
         if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
 
@@ -346,13 +360,7 @@ export default class RunHandler {
         });
         if (started !== null && !finished) {
             const currentStatus = await this.#workerStatus(workspaceId, workerId);
-            if (!finished) {
-                emit([stateDelta([{
-                    op: "replace",
-                    path: "/plurnk/status",
-                    value: currentStatus,
-                }])]);
-            }
+            if (!finished) emit(this.#portal().replaceStatus(boundRun, currentStatus));
         }
         } catch (err) {
             // {§agui-http-failure} After headers, the frame alone is

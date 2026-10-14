@@ -6,7 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, spendState, stateDelta, type AguiSpendState } from "./AguiPlus.ts";
+import { aliveChildren, spendState, stateDelta, type AguiSpendState, type AguiStatusState } from "./AguiPlus.ts";
 import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -20,6 +20,7 @@ import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
+    workspaceId: number;
     owner: string | null;
     // {§agui-oauth-revocation} — the credential family this Run was admitted under; null when none was.
     family: string | null;
@@ -43,10 +44,13 @@ interface Thread {
     tree: ReadonlyMap<number, Descendant> | null;
     introduced: Set<number>;
     unrelated: Set<number>;
-    // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
-    children: number | null;
-    // {§agui-status-spend} — the last spend this thread published; null until the first refresh.
-    spend: AguiSpendState | null;
+    // {§agui-status-children} {§agui-status-spend} — the children and spend this Run's client holds: its
+    // snapshot's, its latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
+    gauge: { children: number; spend: AguiSpendState } | null;
+    // A refresh was asked for before the snapshot was presented; it runs once the snapshot is.
+    staleGauge: boolean;
+    // The latest refresh begun: an earlier one that completes after it publishes nothing.
+    gaugeRefresh: number;
 }
 
 export type NotificationScope = "conversation" | "operation" | "result";
@@ -134,7 +138,7 @@ export default class Portal {
 
     #routeNotification(workspaceId: number, method: string, params: unknown): void {
         for (const thread of this.#threads.get(workspaceId) ?? []) {
-            if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(workspaceId, thread);
+            if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(thread);
             if (thread.descendants && Portal.#observedActor(thread, method, params) !== null) {
                 this.#observeDescendant(workspaceId, thread, method, params);
                 continue;
@@ -193,24 +197,39 @@ export default class Portal {
         return false;
     }
 
-    async #refreshStatus(workspaceId: number, thread: Thread): Promise<void> {
+    // Publish only what differs from the gauge this Run's client holds, and nothing before its snapshot.
+    async #refreshStatus(thread: Thread): Promise<void> {
+        if (thread.gauge === null) {
+            thread.staleGauge = true;
+            return;
+        }
+        const refresh = ++thread.gaugeRefresh;
         const [rows, accounting] = await Promise.all([
-            this.#seam.listWorkers(workspaceId, { parentWorkerId: thread.workerId }),
-            this.#seam.workerAccounting({ workspaceId, workerId: thread.workerId }),
+            this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: thread.workerId }),
+            this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId: thread.workerId }),
         ]);
-        if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+        if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
+        if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
         const delta: Parameters<typeof stateDelta>[0] = [];
         const children = aliveChildren(rows);
-        if (children !== thread.children) {
-            thread.children = children;
+        if (children !== thread.gauge.children) {
             delta.push({ op: "replace", path: "/plurnk/status/children", value: children });
         }
         const spend = spendState(accounting);
-        if (thread.spend === null || JSON.stringify(spend) !== JSON.stringify(thread.spend)) {
-            thread.spend = spend;
+        if (JSON.stringify(spend) !== JSON.stringify(thread.gauge.spend)) {
             delta.push({ op: "replace", path: "/plurnk/status/spend", value: spend });
         }
+        thread.gauge = { children, spend };
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
+    }
+
+    // The client now holds this status. A refresh asked for before, or racing, its reads runs after it.
+    #presentGauge(thread: Thread, status: AguiStatusState): void {
+        const stale = thread.staleGauge || thread.gauge !== null;
+        thread.gauge = { children: status.children, spend: status.spend };
+        thread.staleGauge = false;
+        thread.gaugeRefresh += 1;
+        if (stale) void this.#refreshStatus(thread);
     }
 
     // {§agui-delegation-observation} — the actor of a row or stream event that is neither the bound
@@ -479,6 +498,7 @@ export default class Portal {
             ...(continuation === undefined ? {} : { continuation }),
         });
         const t: Thread = {
+            workspaceId: args.workspaceId,
             owner: args.owner ?? null,
             family: args.family ?? null,
             workerId: restored?.binding.workerId ?? args.workerId,
@@ -499,8 +519,9 @@ export default class Portal {
             tree: null,
             introduced: new Set(),
             unrelated: new Set(),
-            children: null,
-            spend: null,
+            gauge: null,
+            staleGauge: false,
+            gaugeRefresh: 0,
         };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
@@ -517,8 +538,21 @@ export default class Portal {
         if (bound.cancelOnDisconnect) this.#seam.cancelDrain(bound.workerId, "client_disconnected");
     }
 
+    // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch.
     runStarted(thread: unknown, state?: AguiEvent): AguiEvent[] {
-        return (thread as Thread).router.runStarted(state);
+        const bound = thread as Thread;
+        const events = bound.router.runStarted(state);
+        const status = state?.type === EventType.STATE_SNAPSHOT
+            ? (state.snapshot as { plurnk?: { status?: AguiStatusState } }).plurnk?.status
+            : undefined;
+        if (status !== undefined) this.#presentGauge(bound, status);
+        return events;
+    }
+
+    // A whole-gauge replacement: the client's gauge is this status from here on.
+    replaceStatus(thread: unknown, status: AguiStatusState): AguiEvent[] {
+        this.#presentGauge(thread as Thread, status);
+        return [stateDelta([{ op: "replace", path: "/plurnk/status", value: status }])];
     }
 
     replay(thread: unknown, entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {

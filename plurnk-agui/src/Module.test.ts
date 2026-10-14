@@ -2371,6 +2371,27 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
     }
 });
 
+test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows that reached it while the snapshot was read follow them, in order", async () => {
+    const { seam, emit } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "busy")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "busy", projectRoot: null, workerId: 10, workerName: "client-1" });
+    const row = (id: number) => ({ entry: { id, worker_id: 20, loop_id: 1, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: `1/1/${id}/READ`, tx: { body: "" }, turn_id: 1 } });
+    // The observed worker is busy: two of its rows land while the Run reads the worker's status.
+    seam.readWorkerModel = async () => {
+        emit(3, "log/entry", row(2));
+        emit(3, "log/entry", row(3));
+        return { model: null, spawnModel: null };
+    };
+    const mod = await host(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy", mode: "sync" } } });
+        assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
+        const rows = events.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").map((event) => ((event as { value: { id: number } }).value.id));
+        assert.deepEqual(rows, [2, 3], "each row once, in arrival order, after the snapshot");
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+    } finally { await mod.close(); }
+});
+
 test("{§agui-conversation-sync} an observation binds an existing workspace and conversation, exactly as named, and creates neither", async () => {
     const { seam, loopRuns } = mockSeam();
     const created: string[] = [];

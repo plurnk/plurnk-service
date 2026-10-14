@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Portal from "./Portal.ts";
+import { spendState, stateSnapshot, statusState } from "./AguiPlus.ts";
 import type {
     ApplicationLoopProjection,
     ApplicationPort,
@@ -12,6 +13,7 @@ import type {
     ClientInteractionProjection,
     ProposalProjection,
     ProposalResolution,
+    ProviderAccounting,
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
@@ -152,6 +154,68 @@ const mockSeam = (
 };
 
 const nextTask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+test("{§agui-status-spend} {§agui-status-children}: status deltas follow the snapshot and patch only what the client does not hold; a stale read never lands", async () => {
+    const m = mockSeam();
+    const request = { provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+        cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } };
+    const accounting = (count: number): ProviderAccounting => ({
+        requests: Array.from({ length: count }, () => request),
+        usage: { inputTokens: 10 * count, outputTokens: 2 * count, totalTokens: 12 * count },
+        knownUsage: { inputTokens: 10 * count, outputTokens: 2 * count, totalTokens: 12 * count },
+        costUsd: null, knownCostUsd: null,
+    });
+    let spent = 1;
+    let hold = false;
+    const held: Array<() => void> = [];
+    const portal = new Portal({ ...m.seam, workerAccounting: async () => {
+        const count = spent;
+        if (hold) await new Promise<void>((resolve) => held.push(resolve));
+        return accounting(count);
+    } });
+    portal.start();
+    const events: AguiEvent[] = [];
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (batch) => events.push(...batch) });
+    // Another worker's turn settled: a moment the bound worker's spend may have changed, and nothing else to route.
+    const settled = () => m.fire(3, "notice/event", { workerId: 20, loopId: 5, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
+    const spends = () => events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
+        .filter((op) => op.path === "/plurnk/status/spend").map((op) => ("value" in op ? (op.value as { requests: number }).requests : null));
+    const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
+
+    spent = 2;
+    settled();
+    await drain();
+    assert.equal(events.length, 0, "nothing patches a gauge the client does not hold yet");
+    events.push(...portal.runStarted(thread, stateSnapshot({ status: statusState(null, null, spendState(accounting(1))) })));
+    await drain();
+    assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
+    assert.deepEqual(spends(), [2], "the spend that settled while the snapshot was read follows it");
+
+    settled();
+    await drain();
+    assert.deepEqual(spends(), [2], "what the client holds is not published again");
+
+    hold = true;
+    spent = 3;
+    settled();
+    spent = 4;
+    settled();
+    assert.equal(held.length, 2);
+    held[1]!();
+    await drain();
+    held[0]!();
+    await drain();
+    assert.deepEqual(spends(), [2, 4], "the later read is published; the earlier one, completing last, is not");
+    hold = false;
+
+    spent = 5;
+    events.push(...portal.replaceStatus(thread, statusState(null, null, spendState(accounting(5)))));
+    await drain();
+    settled();
+    await drain();
+    assert.deepEqual(spends(), [2, 4], "a whole-gauge replacement is what the client holds from then on");
+    portal.stop();
+});
 
 test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and rejects new binding", () => {
     const m = mockSeam();

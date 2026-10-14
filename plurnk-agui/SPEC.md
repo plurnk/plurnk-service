@@ -204,9 +204,12 @@ sequence.
 is the bound Worker's alive direct children — `queued`, `running`, or `parked` under
 {§loop-lifecycle-vocabulary}; a parked child still owes a result and is exactly the one a user
 hops to. The module computes it from `ApplicationPort.listWorkers({ parentWorkerId })` for every
-snapshot and whole-gauge replacement, and republishes `STATE_DELTA /plurnk/status/children` only
-when the count changes: after another worker's `loop/terminated` or `loop/packet`, or after the
-bound Worker's own `WORK`, `FORK`, or `KILL` row lands. Clients render the number as their child
+snapshot and whole-gauge replacement, and reads it again after another worker's `loop/terminated`
+or `loop/packet`, after any `turn_generated` notice, or after the bound Worker's own `WORK`, `FORK`,
+or `KILL` row lands. It republishes `STATE_DELTA /plurnk/status/children` only when the count
+differs from the one the Run's client holds (its snapshot's, its latest whole-gauge replacement's,
+then each delta's), and never before the snapshot: a change that raced the snapshot is published
+after it. Clients render the number as their child
 indicator and never poll the directory to keep it honest. Topology is navigation: the client
 hops to a child to speak to it; watching a child's rows is the delegation observation a Run
 asks for ({§agui-delegation-observation}).
@@ -217,10 +220,10 @@ projection over every settled request the bound Worker and its descendants have 
 began ({§methods-worker-accounting}), without its request list — `requests` counts them, so zero
 requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through
 verbatim ({§agui-numbers-passthrough}). A fresh observer therefore starts from the Worker's spend so far.
-The module reads it beside `children` for every snapshot and whole-gauge replacement, and republishes
-`STATE_DELTA /plurnk/status/spend` only when the projection changes: after another worker's
-`loop/packet` or `loop/terminated`, after any `turn_generated` notice (a turn's spend just settled), or after
-the bound Worker's own `WORK`, `FORK` or `KILL` row. Descendant notices, packets and terminals themselves
+The module reads it beside `children`, at the same moments, and republishes `STATE_DELTA
+/plurnk/status/spend` under the same rule ({§agui-status-children}): only when the projection differs
+from the one the Run's client holds, never before the snapshot; a `turn_generated` notice is the moment
+a turn's spend settles. Descendant notices, packets and terminals themselves
 are not promoted ({§agui-delegation-observation}); one loop's own `turn_generated` and `plurnk.terminated`
 accounting keep their meaning. With the lifecycle beat ({§loop-status-notice}) a parked parent's clock
 and its children's cost both move.
@@ -243,8 +246,8 @@ current gauge without clients inventing missing fields.
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | §agui-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |
 | `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park, queued on wake) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
-| `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed by the daemon for every snapshot and whole-gauge replacement, and republished as `STATE_DELTA /plurnk/status/children` only when it changes: after another worker's `loop/terminated` or `loop/packet` (it may be a child), or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands (it spawned or killed one). Clients render the number and never poll the directory for it ({§agui-status-children}). |
-| `snapshot.plurnk.status.spend` | `ApplicationPort.workerAccounting({ workspaceId, workerId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's and its descendants' settled spend since the Worker began, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/spend` only when it changes ({§agui-status-spend}). |
+| `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/children` only when it differs from what the Run's client holds, never before its snapshot ({§agui-status-children}). Clients render the number and never poll the directory for it. |
+| `snapshot.plurnk.status.spend` | `ApplicationPort.workerAccounting({ workspaceId, workerId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's and its descendants' settled spend since the Worker began, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/spend` only when it differs from what the Run's client holds, never before its snapshot ({§agui-status-spend}). |
 | `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity. Reattachment snapshots carry current derivation activity through the same projection, without polling or duplicate routine Notices. Clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |
@@ -268,9 +271,10 @@ every other daemon surface.
   operations it announces arrive as their own rows, so a client that renders operations omits it. Literal bodies follow {§agui-lifecycle-projection}; rich clients
   never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
-- **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
-  daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth, then
-  `STATE_DELTA`s.
+- §agui-run-start **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT`
+  carrying the daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth,
+  then `STATE_DELTA`s. Nothing precedes them: what reaches a Run while its snapshot is read
+  follows them, in the order it arrived; a Run that ends first ends with its terminal alone.
 
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
