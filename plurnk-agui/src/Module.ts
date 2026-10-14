@@ -50,6 +50,7 @@ export type AguiPort = Pick<
     | "listWorkerLoops"
     | "listWorkers"
     | "listWorkspaces"
+    | "readWorker"
     | "readWorkerModel"
     | "registerHttpRoute"
     | "workspaceDerivationStatus"
@@ -94,7 +95,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #activated = false;
     #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), observedWorker: this.#observedWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -357,7 +358,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             throw new HttpProblemError(httpProblem(
                 "workspace-not-found",
                 404,
-                `No workspace named ${JSON.stringify(workspace)} exists; an action never creates one.`,
+                `No workspace named ${JSON.stringify(workspace)} exists; only a conversation Run creates one.`,
                 {
                     stage: "request-validation",
                     workspace,
@@ -400,6 +401,29 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#threadWorkers.delete(key);
             throw cause;
         }
+    }
+
+    // {§agui-conversation-sync} — observation binds what exists and creates nothing: the workspace's default
+    // conversation for its own threadId, else exactly the conversation worker that
+    // forwardedProps.plurnk.worker or the threadId names, read fresh on every Run.
+    async #observedWorker(threadId: string, env: ClientEnvelope, forwarded?: Record<string, unknown>): Promise<number> {
+        const named = forwarded?.worker;
+        if (named !== undefined && (typeof named !== "string" || named.length === 0)) {
+            throw new HttpProblemError(httpProblem("worker-invalid", 400, "forwardedProps.plurnk.worker must name a worker.", {
+                stage: "request-validation", retryable: false,
+            }));
+        }
+        if (named === undefined && threadId === env.workspaceName) return await this.#seam.ensureModelWorker(env.workspaceId);
+        const name = named ?? threadId;
+        const worker = await this.#seam.readWorker({ workspaceId: env.workspaceId, identity: { name } });
+        if (worker === null || worker.origin !== "model") {
+            throw new HttpProblemError(httpProblem("conversation-not-found", 404,
+                `No conversation named ${JSON.stringify(name)} exists in workspace ${JSON.stringify(env.workspaceName)}; observing never creates one.`, {
+                    stage: "request-validation", workspace: env.workspaceName, worker: name,
+                    recovery: "Name an existing conversation worker, or start the conversation with a message Run.", retryable: false,
+                }));
+        }
+        return worker.id;
     }
 
     async #workerStatus(workspaceId: number, workerId: number): Promise<AguiStatusState> {

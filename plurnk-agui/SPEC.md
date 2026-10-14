@@ -48,10 +48,11 @@ does not recompute them.
   cache entry preventing a later retry. Explicit Core creation retains its name-conflict
   semantics; protocol binding is not a second creation request.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's conversation.
-  `loop.inject` and `loop.cancel` steer a loop already running in a world, so they attach only:
-  a workspace name that does not exist is the client's error, answered 404
-  `workspace-not-found` with nothing created — never a second world minted after the name
-  and answered there. Every other request may bring the world into being.
+  `loop.inject` and `loop.cancel` steer a loop already running in a world, and an observation
+  ({§agui-conversation-sync}) passively watches one, so they attach only: a workspace name that does not
+  exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a
+  second world minted after the name and answered there. Every other request may bring the world
+  into being.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
@@ -108,7 +109,8 @@ cancellation responsibility.
 ## §agui-owner-connection Persistent observation
 
 `POST /agui/connect` accepts the standard `RunAgentInput`, without messages, actions, or
-resumes. It uses the same snapshots, events, and interrupt representation as synchronization
+resumes. It binds as synchronization does, creating nothing unless it is the owner's control
+connection, and uses the same snapshots, events, and interrupt representation
 ({§agui-conversation-sync}), but waits when the worker is idle. New work, including owner-addressed
 child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
@@ -281,7 +283,15 @@ every other daemon surface.
 
 - §agui-conversation-sync **Conversation synchronization is an inference-free AG-UI Run.**
   `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
-  management action, or interrupt resume. It binds the named workspace and conversation,
+  management action, or interrupt resume. A passive observation, one that does not claim the
+  conversation (`forwardedProps.plurnk.control` absent or false), binds an existing workspace and
+  conversation and creates neither: the workspace's default conversation for a `threadId` equal to
+  the workspace name, else exactly the conversation worker that `forwardedProps.plurnk.worker`, or
+  else the `threadId`, names, read fresh on every Run. A missing workspace is 404
+  `workspace-not-found`; a worker that does not exist or is not a conversation is 404
+  `conversation-not-found`. An owner's control connection binds as a message Run does, except that
+  `worker` always names an existing conversation exactly. `worker` belongs to observation alone: on
+  a message or action Run, or when it is not a non-empty string, it is 400 `worker-invalid`. It
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
   `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). A durable pending interrupt is re-presented
   through the standard terminate-resume contract; an active Loop remains observed through its
@@ -911,6 +921,8 @@ reconstruct one from `RUN_ERROR`.
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
 | `invalid-sync-input` | 400 | Conversation synchronization cannot include messages, an action, or an interrupt resume. |
+| `conversation-not-found` | 404 | No conversation named *name* exists in workspace *workspace*; observing never creates one. Recovery: Name an existing conversation worker, or start the conversation with a message Run. |
+| `worker-invalid` | 400 | forwardedProps.plurnk.worker must name a worker, and names the conversation an observation binds; a message or action Run addresses its thread. |
 | `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |
 | `run-failed` | 500 | The AG-UI Run failed unexpectedly. |
 

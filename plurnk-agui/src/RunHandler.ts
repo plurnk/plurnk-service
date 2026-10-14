@@ -26,10 +26,11 @@ export default class RunHandler {
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
+    readonly #observedWorker: (threadId: string, env: ClientEnvelope, forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
 
-    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, workerStatus, action }: {
+    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, observedWorker, workerStatus, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
@@ -37,6 +38,7 @@ export default class RunHandler {
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
+        observedWorker: (threadId: string, env: ClientEnvelope, forwarded?: Record<string, unknown>) => Promise<number>;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
     }) {
@@ -47,6 +49,7 @@ export default class RunHandler {
         this.#controlRun = controlRun;
         this.#envelope = envelope;
         this.#conversationWorker = conversationWorker;
+        this.#observedWorker = observedWorker;
         this.#workerStatus = workerStatus;
         this.#action = action;
     }
@@ -134,15 +137,27 @@ export default class RunHandler {
             currentUser = lastUser;
         }
 
-        // A loop-addressed action steers a loop already running in a world; a world that does not
-        // exist has no loop to steer, so the action never mints one. Everything else may.
-        const { env, reattached } = await this.#envelope(input.threadId, forwarded, { create: action === null || !LOOP_ADDRESSED_ACTIONS.has(action.kind) });
+        // {§agui-conversation-sync} A passive observation claims nothing and creates nothing; an owner's
+        // control connection binds as a message Run does.
+        const passive = synchronize && forwarded?.control !== true;
+        if (!synchronize && forwarded?.worker !== undefined) {
+            throw new HttpProblemError(httpProblem("worker-invalid", 400,
+                "forwardedProps.plurnk.worker names the conversation an observation binds; a message or action Run addresses its thread.",
+                { stage: "request-validation", retryable: false }));
+        }
+        // A loop-addressed action steers a loop already running in a world, and an observation watches
+        // one: a world that does not exist has neither, so neither mints one. Everything else may.
+        const { env, reattached } = await this.#envelope(input.threadId, forwarded, {
+            create: !passive && (action === null || !LOOP_ADDRESSED_ACTIONS.has(action.kind)),
+        });
         const workspaceId = env.workspaceId;
         // {§agui-thread-binding} The threadId is the conversation over the
         // world. threadId == workspace name binds the model worker (the default conversation);
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
-        const workerId = await this.#conversationWorker(input.threadId, env);
+        const workerId = passive || forwarded?.worker !== undefined
+            ? await this.#observedWorker(input.threadId, env, forwarded)
+            : await this.#conversationWorker(input.threadId, env);
         const control = forwarded?.control === true || (!synchronize && action === null)
             || action?.kind === "op.exec" || action?.kind === "op.parse";
         const owner = control ? MessageAddress.owner(principal, input.threadId) : undefined;

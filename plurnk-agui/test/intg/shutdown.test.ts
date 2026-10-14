@@ -20,7 +20,7 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
                 signal: AbortSignal.any([t.signal, clients.signal]),
                 body: JSON.stringify({
                     threadId: `observer-${index}`, runId: `run-${index}`, state: {},
-                    messages: [], tools: [], context: [], forwardedProps: { plurnk: { workspace } },
+                    messages: [], tools: [], context: [], forwardedProps: { plurnk: { workspace, control: true } },
                 }),
             });
             assert.equal(response.status, 200);

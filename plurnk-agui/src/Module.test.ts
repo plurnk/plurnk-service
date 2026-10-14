@@ -55,6 +55,11 @@ const workspaceRow = (id: number, name: string) => ({
     project_root: null,
     created_at: "2026-01-01T00:00:00.000Z",
 });
+// {§agui-conversation-sync} An observation watches a world that exists: here, workspace 3 named `name`.
+const existingWorld = (seam: ApplicationPort, name: string): void => {
+    seam.listWorkspaces = async () => [workspaceRow(3, name)];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, workerId: 10, workerName: "client-1" });
+};
 const workerRow = (
     id: number,
     name: string,
@@ -151,7 +156,8 @@ const mockSeam = (operatorSecret: string | null = null) => {
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
         listWorkers: async () => [workerRow(10, "client-1", "client")],
-        readWorker: async () => null,
+        // Every conversation of this fixture's world is worker 77, as createConversationWorker mints it.
+        readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
         descendantAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         ensureModelWorker: async () => 20,
@@ -372,6 +378,7 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
 
 test("{§agui-shutdown} close ends every idle connection without cancelling workers", async () => {
     const { seam } = mockSeam();
+    existingWorld(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam);
@@ -414,12 +421,13 @@ test("{§agui-shutdown} close ends every idle connection without cancelling work
 
 test("{§agui-shutdown} preparation finishing after close cannot open a stream", async () => {
     const { seam, loopRuns } = mockSeam();
+    existingWorld(seam, "w");
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    seam.createConversationWorker = async () => {
+    seam.readWorker = async ({ identity }) => {
         entered.resolve();
         await release.promise;
-        return { workerId: 77, workerName: "late" };
+        return workerRow(77, identity.name ?? "late", "model");
     };
     const mod = await host(seam);
     const controller = new AbortController();
@@ -1707,6 +1715,7 @@ for (const origin of ["message", "action", "observer", "observer-after-message",
     for (const ending of ["disconnect", "terminal"] as const) {
         test(`{§agui-run-disconnect}: ${origin} retains its lifetime role through resume and ${ending}`, async () => {
             const { seam, emit } = mockSeam();
+            existingWorld(seam, "w");
             const action = origin === "action";
             const workerId = action ? 10 : 77;
             const gateWorkerId = action ? 10 : 88;
@@ -1827,6 +1836,7 @@ test("{§agui-run-disconnect}: a socket closed during preparation cannot start i
 
 test("{§agui-proposal-resolve}: invalid presentation sets release nothing and leave the original complete set resumable", async () => {
     const { seam, resolves } = mockSeam();
+    existingWorld(seam, "w");
     let pending: ProposalProjection[] = [41, 42].map((logEntryId) => ({
         logEntryId, workerId: 77, loopId: 1, turnId: 1, op: "EDIT",
         target: { scheme: "file", authority: null, pathname: `file-${logEntryId}` }, body: "replacement", attrs: {},
@@ -1915,6 +1925,7 @@ test("{§agui-run-disconnect}: disconnect during resume validation cancels contr
 
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
+    existingWorld(seam, "t2");
     let pending: ProposalProjection[] = [{
         logEntryId: 42,
         workerId: 77,
@@ -2320,6 +2331,48 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         // Sync asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
         assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: Number.MAX_SAFE_INTEGER }]);
         assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-conversation-sync} an observation binds an existing workspace and conversation, exactly as named, and creates neither", async () => {
+    const { seam, loopRuns } = mockSeam();
+    const created: string[] = [];
+    seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
+    seam.createConversationWorker = async () => { created.push("worker"); throw new Error("an observation created a worker"); };
+    seam.listWorkspaces = async () => [workspaceRow(3, "world")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "world", projectRoot: null, workerId: 10, workerName: "client-1" });
+    seam.readWorker = async ({ identity }) => identity.name === "world" ? workerRow(88, "world", "model")
+        : identity.name === "client-1" ? workerRow(10, "client-1", "client") : null;
+    const reads: number[] = [];
+    seam.readLog = async ({ workerId }) => { reads.push(workerId); return logRows([]); };
+    const mod = await host(seam);
+    const observe = async (threadId: string, plurnk: Record<string, unknown>, connect = false): Promise<Response> => await fetch(
+        `http://127.0.0.1:${mod.address().port}/agui${connect ? "/connect" : ""}`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({ threadId, messages: [], forwardedProps: { plurnk: connect ? plurnk : { ...plurnk, mode: "sync" } } })),
+        });
+    const refused = async (response: Response): Promise<[number, string]> => [response.status, ((await response.json()) as { type: string }).type.split("/").at(-1)!];
+    try {
+        for (const connect of [false, true]) {
+            assert.deepEqual(await refused(await observe("t", { workspace: "elsewhere" }, connect)), [404, "workspace-not-found"]);
+            assert.deepEqual(await refused(await observe("unknown", { workspace: "world" }, connect)), [404, "conversation-not-found"]);
+            assert.deepEqual(await refused(await observe("t", { workspace: "world", worker: "client-1" }, connect)), [404, "conversation-not-found"],
+                "a connection's own worker is never a conversation");
+            assert.deepEqual(await refused(await observe("t", { workspace: "world", worker: "" }, connect)), [400, "worker-invalid"]);
+        }
+        const exact = await observe("world", { workspace: "world", worker: "world" });
+        assert.equal(exact.status, 200);
+        await exact.text();
+        assert.deepEqual(reads, [88], "worker names its conversation exactly, the same-named worker rather than a default by role");
+        const message = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({ threadId: "t", messages: [{ id: "u", role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "world", worker: "world" } } })),
+        });
+        assert.deepEqual(await refused(message), [400, "worker-invalid"], "a message Run addresses its thread");
+        assert.deepEqual(created, [], "observing created nothing");
+        assert.deepEqual(loopRuns, []);
     } finally {
         await mod.close();
     }
@@ -3452,6 +3505,7 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
 
 test("{§agui-oauth-revocation} revoking a credential ends the streams admitted under it and cancels no worker; another family's stream continues", async () => {
     const { seam } = mockSeam("s3cret");
+    existingWorld(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
@@ -3492,6 +3546,7 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
 
 test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a Run ended mid-reasoning closes its reasoning before RUN_ERROR; a Run that joins mid-request presents none of it", async () => {
     const { seam, emit } = mockSeam("s3cret");
+    existingWorld(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
