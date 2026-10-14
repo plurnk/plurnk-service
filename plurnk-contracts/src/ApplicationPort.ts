@@ -387,12 +387,10 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly workerId: number;
     }): Promise<ApplicationLoopProjection[]>;
-    // {§methods-worker-descendants} — the spend of the worker's descendants on loops begun
-    // after `loopId`; `null` (no loop) is the empty projection.
-    descendantAccounting(args: {
+    // {§methods-worker-accounting} — the spend of the worker and its descendants since it began.
+    workerAccounting(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly loopId: number | null;
     }): Promise<ProviderAccounting>;
     // {§methods-workspace-prompts} — an omitted workerId lists every model worker's client-addressed seeds.
     listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]>;

@@ -1,6 +1,5 @@
-// {§methods-worker-descendants} — a worker's descendants' spend on this delegation: every
-// settled request on a loop a descendant ran after the worker's loop, nested delegation included;
-// never the worker's own loop, an unrelated worker, or a descendant's loop older than the delegation.
+// {§methods-worker-accounting} — a worker's spend since it began: every settled request on any loop
+// it or a descendant ran, nested delegation included; never an unrelated worker's.
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
@@ -25,15 +24,16 @@ const spend = async (db: Db, loopId: number, sequence: number, inputTokens: numb
     await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, accounting));
 };
 
-test("{§methods-worker-descendants}: the descendant tree's settled spend after the worker's loop, and nothing else", async () => {
+test("{§methods-worker-accounting}: the worker's own and its descendants' settled spend since it began, and nothing else", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, "descendants");
+        const workspaceId = await insertWorkspace(db, "worker-spend");
         const parent = await insertWorker(db, workspaceId, null, "parent", "model");
         const child = await insertWorker(db, workspaceId, parent, "child", "model");
         const grandchild = await insertWorker(db, workspaceId, child, "grandchild", "model");
         const stranger = await insertWorker(db, workspaceId, null, "stranger", "model");
-        // An earlier delegation of the same child: before the parent's current loop, so not this one.
+        const idle = await insertWorker(db, workspaceId, null, "idle", "model");
+        // An earlier delegation of the same child: still this worker's tree, still its spend.
         const earlier = await insertLoop(db, child, 1, "earlier");
         await spend(db, earlier, 1, 1000, "1.00");
         const parentLoop = await insertLoop(db, parent, 1, "delegate");
@@ -47,18 +47,18 @@ test("{§methods-worker-descendants}: the descendant tree's settled spend after 
         await spend(db, strangerLoop, 1, 7000, "7.00");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const accounting = await engine.descendantAccounting(parent, parentLoop);
-        assert.equal(accounting.requests.length, 3, "child's two requests and the grandchild's one");
-        assert.equal(accounting.usage?.inputTokens, 340, "nested delegation counts; the parent's own 500, the stranger's 7000 and the older 1000 do not");
-        assert.equal(accounting.costUsd, "0.34");
+        const accounting = await engine.workerAccounting(parent);
+        assert.equal(accounting.requests.length, 5, "its own request and every descendant's, the older delegation included");
+        assert.equal(accounting.usage?.inputTokens, 1840, "the stranger's 7000 never counts");
+        assert.equal(accounting.costUsd, "1.84");
 
         const own = await engine.loopUsage(parentLoop);
-        assert.equal(own.accounting.usage?.inputTokens, 500, "the worker's own loop accounting keeps its meaning");
+        assert.equal(own.accounting.usage?.inputTokens, 500, "one loop's own accounting keeps its meaning");
 
-        const none = await engine.descendantAccounting(parent, null);
+        const leaf = await engine.workerAccounting(grandchild);
+        assert.equal(leaf.usage?.inputTokens, 40, "a worker without descendants reports its own");
+        const none = await engine.workerAccounting(idle);
         assert.equal(none.requests.length, 0);
-        assert.equal(none.costUsd, "0", "no loop, no delegation: the empty set projects explicit zero");
-        const leaf = await engine.descendantAccounting(grandchild, grandchildLoop);
-        assert.equal(leaf.requests.length, 0, "a worker without descendants has nothing to report");
+        assert.equal(none.costUsd, "0", "nothing spent projects explicit zero");
     } finally { await db.close(); }
 });

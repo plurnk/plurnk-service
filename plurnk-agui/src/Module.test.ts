@@ -159,7 +159,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         // Every conversation of this fixture's world is worker 77, as createConversationWorker mints it.
         readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
-        descendantAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
+        workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
@@ -247,9 +247,9 @@ for (const status of [200, 502]) {
         seam.listWorkers = async (_workspaceId, query) => query?.parentWorkerId === 77
             ? children ? [{ ...workerRow(88, "child", "model", 77), lifecycle: "running" }] : []
             : [workerRow(77, "state-replay")];
-        // {§agui-status-descendants} — the daemon's projection over the child's settled spend, verbatim.
+        // {§agui-status-spend} — the daemon's projection over the worker's and its child's settled spend, verbatim.
         const spent = { requests: [{ provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } }], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" };
-        seam.descendantAccounting = async () => children ? spent : { requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null };
+        seam.workerAccounting = async () => children ? spent : { requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null };
         const usage = loopUsage({ curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 });
         seam.runLoop = async () => {
             setImmediate(async () => {
@@ -282,19 +282,54 @@ for (const status of [200, 502]) {
             assert.ok(patches.some(({ path }) => path === "/plurnk/status"), "the whole-gauge replacement is exercised");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/activity" && "value" in op && (op.value as { percent?: number })?.percent === 50), "derivation reaches state");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/children" && "value" in op && op.value === 1), "child activity reaches state");
-            assert.ok(patches.some((op) => op.path === "/plurnk/status/descendants" && "value" in op && (op.value as { requests?: number })?.requests === 1), "the descendants' spend reaches state without promoting the child's notice");
+            assert.ok(patches.some((op) => op.path === "/plurnk/status/spend" && "value" in op && (op.value as { requests?: number })?.requests === 1), "the spend reaches state without promoting the child's notice");
             assert.deepEqual(replayState(events), {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
                     packetCount: 2, children: 1, activity: null, preparation: [], waitUntil: null,
-                    descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
+                    spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
             });
         } finally { await mod.close(); }
     });
 }
+
+test("{§agui-status-spend} a Run's spend is its worker's since it began, republished when the worker's own turn settles", async () => {
+    const { seam, emit } = mockSeam();
+    const request = { provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+        cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } };
+    const projection = (count: number) => ({
+        requests: Array.from({ length: count }, () => request),
+        usage: { inputTokens: 10 * count, outputTokens: 2 * count, totalTokens: 12 * count },
+        knownUsage: { inputTokens: 10 * count, outputTokens: 2 * count, totalTokens: 12 * count },
+        costUsd: `0.0${count}`, knownCostUsd: `0.0${count}`,
+    });
+    // Two requests settled on its earlier loops; this Run's turn settles a third.
+    let settled = 2;
+    seam.workerAccounting = async ({ workerId }) => { assert.equal(workerId, 77); return projection(settled); };
+    seam.runLoop = async () => {
+        setImmediate(async () => {
+            settled = 3;
+            emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 10, outputTokens: 2, curationBudget: 1000 }) }));
+        });
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await host(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "spender", messages: [{ role: "user", content: "Work." }], forwardedProps: { plurnk: { workspace: "agui-t" } } });
+        const initial = events.find((event) => event.type === "STATE_SNAPSHOT");
+        assert.ok(initial?.type === "STATE_SNAPSHOT");
+        assert.equal((initial.snapshot as { plurnk: { status: { spend: { requests: number } } } }).plurnk.status.spend.requests, 2,
+            "a fresh observer starts from what the worker has already spent");
+        const spent = events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
+            .filter((op) => op.path === "/plurnk/status/spend").map((op) => ("value" in op ? (op.value as { requests: number; costUsd: string }) : null));
+        assert.deepEqual(spent.at(-1), { ...projection(3), requests: 3 }, "the worker's own settled turn republishes its spend");
+    } finally { await mod.close(); }
+});
 
 test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal bodies without mutating history", async () => {
     const { seam, loopRuns } = mockSeam();
@@ -673,7 +708,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             packetCount: 3,
             waitUntil: null,
             children: 0,
-            descendants: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
+            spend: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
             activity: {
                 kind: "derivation",
                 phase: "indexing",

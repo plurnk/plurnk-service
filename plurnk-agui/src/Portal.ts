@@ -6,7 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, descendantsState, stateDelta, type AguiDescendantsState } from "./AguiPlus.ts";
+import { aliveChildren, spendState, stateDelta, type AguiSpendState } from "./AguiPlus.ts";
 import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -45,8 +45,8 @@ interface Thread {
     unrelated: Set<number>;
     // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
     children: number | null;
-    // {§agui-status-descendants} — the last descendant accounting this thread published; null until the first refresh.
-    delegation: AguiDescendantsState | null;
+    // {§agui-status-spend} — the last spend this thread published; null until the first refresh.
+    spend: AguiSpendState | null;
 }
 
 export type NotificationScope = "conversation" | "operation" | "result";
@@ -92,7 +92,7 @@ export type PortalPort = Pick<
     | "resolveClientInteraction"
     | "listWorkers"
     | "listWorkerLoops"
-    | "descendantAccounting"
+    | "workerAccounting"
     | "runLoop"
     | "cancelDrain"
 >;
@@ -134,7 +134,7 @@ export default class Portal {
 
     #routeNotification(workspaceId: number, method: string, params: unknown): void {
         for (const thread of this.#threads.get(workspaceId) ?? []) {
-            if (Portal.#touchesChildren(thread, method, params)) void this.#refreshChildren(workspaceId, thread);
+            if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(workspaceId, thread);
             if (thread.descendants && Portal.#observedActor(thread, method, params) !== null) {
                 this.#observeDescendant(workspaceId, thread, method, params);
                 continue;
@@ -172,18 +172,18 @@ export default class Portal {
         }
     }
 
-    // {§agui-status-children} {§agui-status-descendants} — the events after which the bound Worker's
-    // alive direct children or its descendants' spend may differ: another worker's loop concluded or
-    // began (it may be a child), another worker's turn settled its spend, or the bound Worker's own
+    // {§agui-status-children} {§agui-status-spend} — the events after which the bound Worker's alive
+    // direct children or its spend may differ: another worker's loop concluded or began (it may be a
+    // child), a turn settled its spend (its own or another worker's), or the bound Worker's own
     // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
-    static #touchesChildren(thread: Thread, method: string, params: unknown): boolean {
+    static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "conversation") return false;
         const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown }; notice?: { source?: unknown; kind?: unknown } };
         if (method === "loop/terminated" || method === "loop/packet") {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
         }
         if (method === "notice/event") {
-            return typeof payload.workerId === "number" && payload.workerId !== thread.workerId
+            return typeof payload.workerId === "number"
                 && payload.notice?.source === "engine:turn" && payload.notice.kind === "turn_generated";
         }
         if (method === "log/entry") {
@@ -193,10 +193,10 @@ export default class Portal {
         return false;
     }
 
-    async #refreshChildren(workspaceId: number, thread: Thread): Promise<void> {
+    async #refreshStatus(workspaceId: number, thread: Thread): Promise<void> {
         const [rows, accounting] = await Promise.all([
             this.#seam.listWorkers(workspaceId, { parentWorkerId: thread.workerId }),
-            this.#seam.descendantAccounting({ workspaceId, workerId: thread.workerId, loopId: thread.loopId }),
+            this.#seam.workerAccounting({ workspaceId, workerId: thread.workerId }),
         ]);
         if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
         const delta: Parameters<typeof stateDelta>[0] = [];
@@ -205,10 +205,10 @@ export default class Portal {
             thread.children = children;
             delta.push({ op: "replace", path: "/plurnk/status/children", value: children });
         }
-        const delegation = descendantsState(accounting);
-        if (thread.delegation === null || JSON.stringify(delegation) !== JSON.stringify(thread.delegation)) {
-            thread.delegation = delegation;
-            delta.push({ op: "replace", path: "/plurnk/status/descendants", value: delegation });
+        const spend = spendState(accounting);
+        if (thread.spend === null || JSON.stringify(spend) !== JSON.stringify(thread.spend)) {
+            thread.spend = spend;
+            delta.push({ op: "replace", path: "/plurnk/status/spend", value: spend });
         }
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
     }
@@ -500,7 +500,7 @@ export default class Portal {
             introduced: new Set(),
             unrelated: new Set(),
             children: null,
-            delegation: null,
+            spend: null,
         };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }

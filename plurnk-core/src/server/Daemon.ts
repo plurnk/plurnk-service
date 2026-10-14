@@ -1240,13 +1240,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return projection;
     }
 
-    // {§methods-worker-descendants}
-    async descendantAccounting(args: { workspaceId: number; workerId: number; loopId: number | null }): Promise<ProviderAccounting> {
-        const workspaceId = ClientInput.assertId("worker.descendants", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.descendants", "workerId", args.workerId);
+    // {§methods-worker-accounting}
+    async workerAccounting(args: { workspaceId: number; workerId: number }): Promise<ProviderAccounting> {
+        const workspaceId = ClientInput.assertId("worker.accounting", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.accounting", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
-        const loopId = args.loopId === null ? null : ClientInput.assertId("worker.descendants", "loopId", args.loopId);
-        return this.#engine.descendantAccounting(workerId, loopId);
+        return this.#engine.workerAccounting(workerId);
     }
 
     async listWorkerLoops(args: {

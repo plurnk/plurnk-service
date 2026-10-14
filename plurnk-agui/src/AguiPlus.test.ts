@@ -27,9 +27,13 @@ import { replayState } from "../test/state-replay.ts";
 import { JSONPatchError } from "json-p3";
 
 const OWNER = "agui://anonymous/threads/tui";
+// The daemon's {§provider-accounting} projection of a Worker that has spent nothing: explicit zero.
+const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, totalTokens: 0,
+    inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokenDetails: { textTokens: 0, reasoningTokens: 0 } };
+const NOTHING_SPENT = { requests: 0, usage: ZERO_USAGE, knownUsage: ZERO_USAGE, costUsd: "0", knownCostUsd: "0" };
 
 test("{§agui-state-patches}: the replay witness refuses non-replace or undefined state paths", () => {
-    const snapshot = stateSnapshot({ status: statusState(null, null) });
+    const snapshot = stateSnapshot({ status: statusState(null, null, NOTHING_SPENT) });
     // The point of this witness is feeding operations the replayer must refuse, so the patch is
     // deliberately not a conforming JsonPatch ({§agui-state-patches}).
     for (const op of ["add", "remove"]) {
@@ -207,7 +211,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         terminalResult: null,
         packetCount: 4,
         waitUntil: 123_000,
-    }), {
+    }, NOTHING_SPENT), {
         lifecycle: "parked",
         model,
         loopId: 7,
@@ -216,9 +220,9 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         activity: null,
         preparation: [],
         children: 0,
-        descendants: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
+        spend: NOTHING_SPENT,
     });
-    assert.deepEqual(statusState(null, null), {
+    assert.deepEqual(statusState(null, null, NOTHING_SPENT), {
         lifecycle: "idle",
         model: null,
         loopId: null,
@@ -227,14 +231,14 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         activity: null,
         preparation: [],
         children: 0,
-        descendants: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
+        spend: NOTHING_SPENT,
     });
     // {§agui-status-children} — alive means still owing a result: queued, running, or parked.
     assert.equal(aliveChildren([
         { lifecycle: "queued" }, { lifecycle: "running" }, { lifecycle: "parked" },
         { lifecycle: "completed" }, { lifecycle: "failed" }, { lifecycle: "idle" },
     ]), 3);
-    assert.equal(statusState(null, null, null, 3).children, 3);
+    assert.equal(statusState(null, null, NOTHING_SPENT, null, 3).children, 3);
 });
 
 test("derivation activity carries live work into the initial status snapshot and clears completion", () => {

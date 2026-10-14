@@ -74,7 +74,7 @@
                                 "preparation": [],
                                 "activity": null,
                                 "children": 0,
-                                "descendants": { "requests": 0, "usage": null, "knownUsage": null, "costUsd": null, "knownCostUsd": null }
+                                "spend": { "requests": 0, "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "knownUsage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0", "knownCostUsd": "0" }
                             }
                         },
                         "budget": {}

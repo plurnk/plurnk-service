@@ -491,13 +491,10 @@ export default class Engine {
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 
-    // {§methods-worker-descendants} — the spend of a worker's descendants on loops begun
-    // after its loop; no loop, no delegation, and the empty set projects explicit zero
-    // ({§provider-accounting}). Never the worker's own loop: that stays its own accounting.
-    async descendantAccounting(workerId: number, loopId: number | null): Promise<ProviderAccounting> {
-        const requests = loopId === null
-            ? []
-            : await this.#db.engine_descendant_provider_requests.all<ProviderRequestStorageRow>({ worker_id: workerId, loop_id: loopId });
+    // {§methods-worker-accounting} — the spend of a worker and its descendants since the worker
+    // began; nothing spent projects explicit zero ({§provider-accounting}).
+    async workerAccounting(workerId: number): Promise<ProviderAccounting> {
+        const requests = await this.#db.engine_worker_provider_requests.all<ProviderRequestStorageRow>({ worker_id: workerId });
         return aggregateProviderAccounting(requests.map(providerRequestFromStorageRow));
     }
 

@@ -124,7 +124,7 @@ const mockSeam = (
         pendingClientInteractions: async () => pendingInteractions,
         listWorkers: async () => topology.workers ?? [worker(10)],
         listWorkerLoops: async ({ workerId }) => topology.loops?.get(workerId) ?? [],
-        descendantAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
+        workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         resolveProposal: async (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             const index = pending.findIndex((item) => item.logEntryId === logEntryId);
@@ -140,7 +140,7 @@ const mockSeam = (
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "descendantAccounting" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),

@@ -157,21 +157,20 @@ export interface AguiStatusState {
     readonly activity: AguiStatusActivity | null;
     // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
     readonly children: number;
-    // {§agui-status-descendants} — what the bound Worker's descendants have spent on this delegation.
-    readonly descendants: AguiDescendantsState;
+    // {§agui-status-spend} — what the bound Worker and its descendants have spent since it began.
+    readonly spend: AguiSpendState;
 }
 
-// {§agui-status-descendants} — the daemon's {§provider-accounting} projection over the descendant
-// tree, without its request list: how many settled requests, their usage, their cost. Numbers
+// {§agui-status-spend} — the daemon's {§provider-accounting} projection over the Worker and its
+// descendants, without its request list: how many settled requests, their usage, their cost. Numbers
 // verbatim ({§agui-numbers-passthrough}); zero requests is "nothing spent", not "unknown".
-export interface AguiDescendantsState extends Omit<ProviderAccounting, "requests"> {
+export interface AguiSpendState extends Omit<ProviderAccounting, "requests"> {
     readonly requests: number;
 }
-export const descendantsState = ({ requests, ...projection }: ProviderAccounting): AguiDescendantsState => ({
+export const spendState = ({ requests, ...projection }: ProviderAccounting): AguiSpendState => ({
     ...projection,
     requests: requests.length,
 });
-export const EMPTY_DESCENDANTS: AguiDescendantsState = Object.freeze({ requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null });
 
 // {§agui-status-children} — a child that still owes a result is alive; one that concluded is not.
 export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycle>(["queued", "running", "parked"]);
@@ -195,9 +194,9 @@ export const derivationActivity = (value: unknown): AguiStatusActivity | null =>
 export const statusState = (
     model: ModelRoute | null,
     loop: ApplicationLoopProjection | null,
+    spend: AguiSpendState,
     activity: AguiStatusActivity | null = null,
     children = 0,
-    descendants: AguiDescendantsState = EMPTY_DESCENDANTS,
     preparation: AguiStatusState["preparation"] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
@@ -208,7 +207,7 @@ export const statusState = (
     waitUntil: loop?.status === 202 ? loop.waitUntil : null,
     activity,
     children,
-    descendants,
+    spend,
     preparation,
 });
 export interface AguiBudgetState {

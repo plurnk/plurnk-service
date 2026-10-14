@@ -42,7 +42,7 @@ for (const reported of [false, true]) {
             await withDaemon(provider, async (db, daemon) => {
                 const { workspaceId } = await daemon.createWorkspace({ name: `cancellation-${stop}-${reported}` });
                 const parent = await daemon.ensureModelWorker(workspaceId);
-                const parentLoop = await insertLoop(db, parent, 1, "parent delegation");
+                await insertLoop(db, parent, 1, "parent delegation");
                 const child = await insertWorker(db, workspaceId, parent, "child", "model");
                 const observed = Promise.withResolvers<void>();
                 const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
@@ -83,11 +83,11 @@ for (const reported of [false, true]) {
                     assert.match(evidence.content, /must-not-exist.txt/);
                     assert.equal(evidence.rawBody[0].id, "cancelled-child");
                     assert.match(JSON.stringify(evidence.error), /cancel|abort|shutdown/i);
-                    const descendants = await daemon.descendantAccounting({ workspaceId, workerId: parent, loopId: parentLoop });
+                    const descendants = await daemon.workerAccounting({ workspaceId, workerId: parent });
                     assert.equal(descendants.requests.length, 1);
                     assert.equal(descendants.costUsd, reported ? "0.0123" : null);
                     assert.equal(descendants.usage?.inputTokens, reported ? 100 : undefined);
-                    assert.deepEqual(descendants, await daemon.engine.descendantAccounting(parent, parentLoop));
+                    assert.deepEqual(descendants, await daemon.engine.workerAccounting(parent));
                     assert.equal(calls, 1, "cancellation never starts a replacement request");
                     assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/must-not-exist.txt", scheme: "worker" }), undefined,
                         "a cancelled partial emission never executes");

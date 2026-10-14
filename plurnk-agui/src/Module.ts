@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
-import { aliveChildren, derivationActivity, descendantsState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, derivationActivity, spendState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -41,7 +41,7 @@ export type AguiPort = Pick<
     | "credentials"
     | "createConversationWorker"
     | "createWorkspace"
-    | "descendantAccounting"
+    | "workerAccounting"
     | "ensureModelWorker"
     | "httpAddress"
     | "invokeModuleAction"
@@ -433,13 +433,13 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
         ]);
         const loop = selectWorkerLoop(loops);
-        const descendants = await this.#seam.descendantAccounting({ workspaceId, workerId, loopId: loop?.id ?? null });
+        const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
         return statusState(
             model,
             loop,
+            spendState(spend),
             derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
             aliveChildren(children),
-            descendantsState(descendants),
             this.#seam.workspacePreparationStatus(workspaceId),
         );
     }

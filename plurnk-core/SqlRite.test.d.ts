@@ -205,7 +205,7 @@ export class SqlRiteSync {
 	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
 	engine_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_worker_provider_identity: SqlRiteSyncPreparedStatements;
-	engine_descendant_provider_requests: SqlRiteSyncPreparedStatements;
+	engine_worker_provider_requests: SqlRiteSyncPreparedStatements;
 	envelope_insert_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace_by_name: SqlRiteSyncPreparedStatements;
@@ -822,7 +822,7 @@ export default class SqlRite {
 	engine_loop_provider_requests: SqlRitePreparedStatements;
 	engine_loop_attributions: SqlRitePreparedStatements;
 	engine_worker_provider_identity: SqlRitePreparedStatements;
-	engine_descendant_provider_requests: SqlRitePreparedStatements;
+	engine_worker_provider_requests: SqlRitePreparedStatements;
 	envelope_insert_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace_by_name: SqlRitePreparedStatements;

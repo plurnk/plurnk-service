@@ -83,12 +83,12 @@ ORDER BY attribution;
 -- {§worker-provider-identity}
 SELECT provider_identity AS worker_id FROM workers WHERE id = $worker_id;
 
--- PREP: engine_descendant_provider_requests
--- {§methods-worker-descendants}: the settled requests of every loop a descendant of
--- $worker_id ran after loop $loop_id — this delegation's spend, never the bound worker's own.
--- Aggregation belongs to the shared provider accounting contract, as for one loop.
+-- PREP: engine_worker_provider_requests
+-- {§methods-worker-accounting}: the settled requests of every loop $worker_id and each of its
+-- descendants ran, since the worker began. Aggregation belongs to the shared provider accounting
+-- contract, as for one loop.
 WITH RECURSIVE tree(id) AS (
-    SELECT id FROM workers WHERE parent_worker_id = $worker_id
+    SELECT $worker_id
     UNION ALL
     SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
 )
@@ -102,5 +102,5 @@ FROM provider_requests pr
 JOIN inference_calls ic ON ic.id = pr.inference_call_id
 JOIN turns t ON t.id = ic.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id IN (SELECT id FROM tree) AND l.id > $loop_id AND pr.state = 'settled'
+WHERE l.worker_id IN (SELECT id FROM tree) AND pr.state = 'settled'
 ORDER BY l.id, t.sequence, ic.sequence, pr.sequence;
