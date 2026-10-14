@@ -24,16 +24,20 @@ PLURNK_A2A_SKILLS=[{"id":"research","name":"Research","description":"Researches 
 
 The module mounts the Agent Card at `/.well-known/agent-card.json` and the
 advertised HTTP+JSON interface at `/a2a` on the service listener
-(`PLURNK_HOST:PLURNK_PORT`); it opens no socket of its own. With
-`PLURNK_A2A_TOKEN` set, the card declares an HTTP bearer scheme and the
-interface requires that bearer; the card itself stays public. Starting the
-service or reading the card does not create or hydrate the named workspace;
-the first admitted Task does so.
+(`PLURNK_HOST:PLURNK_PORT`); it opens no socket of its own. The interface
+authenticates exactly as the daemon does: when the daemon authenticates, the
+card declares OAuth 2.0 client credentials at the daemon's token endpoint with
+the scope `a2a`, and a remote agent is a declared client
+(`PLURNK_AGUI_CLIENT_<id>`); the card itself stays public. Starting the service
+or reading the card does not create or hydrate the workspace; the first
+admitted Task does so.
 
 Restart an already-running service to load these settings. Configure its
 [model](../plurnk-providers/README.md#configure-a-model) through the ordinary
-model settings. For a new workspace, `PLURNK_A2A_PROJECT_ROOT=/absolute/project`
-selects a project folder; leaving it empty creates a headless workspace.
+model settings. Tasks run in the workspace `PLURNK_A2A_WORKSPACE` names, created
+headless when absent. Set `PLURNK_A2A_PROJECT_ROOT=/absolute/project` instead to
+run them in the workspace on that folder, the one a client opens there, or set
+both to name a workspace on that folder ({§a2a-lazy-workspace}).
 
 ### Without a declared parent
 

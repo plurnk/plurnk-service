@@ -1,6 +1,6 @@
 import { WORKER_NAME, type A2AAgentDefinition as A2aAgentDefinition, type FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import { isAbsolute } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { readDefinition } from "./definition.ts";
 import errorDetail from "./ErrorDetail.ts";
 import {
@@ -27,7 +27,7 @@ export interface HostedAgentConfiguration {
     readonly endpointPath: string;
     readonly endpointUrl?: string;
     readonly workspace: {
-        readonly name: string;
+        readonly name: string | null;
         readonly projectRoot: string | null;
     };
     readonly parentWorker: string;
@@ -156,6 +156,10 @@ export const hostedAgentConfiguration = (
     if (projectRoot !== undefined && projectRoot.length > 0 && !isAbsolute(projectRoot)) {
         throw new ConfigurationError("PLURNK_A2A_PROJECT_ROOT", "PLURNK_A2A_PROJECT_ROOT must be empty or an absolute filesystem path.");
     }
+    const workspaceName = environ.PLURNK_A2A_WORKSPACE;
+    if ((workspaceName?.length ?? 0) === 0 && (projectRoot?.length ?? 0) === 0) {
+        throw new ConfigurationError("PLURNK_A2A_WORKSPACE", "PLURNK_A2A_EXPOSE=1 needs PLURNK_A2A_PROJECT_ROOT, PLURNK_A2A_WORKSPACE or both; neither is set.");
+    }
     const providerOrganization = environ.PLURNK_A2A_PROVIDER_ORGANIZATION;
     const providerUrl = environ.PLURNK_A2A_PROVIDER_URL;
     if ((providerOrganization?.length ?? 0) > 0 !== ((providerUrl?.length ?? 0) > 0)) {
@@ -202,8 +206,9 @@ export const hostedAgentConfiguration = (
         endpointPath,
         ...(endpointUrl === undefined ? {} : { endpointUrl }),
         workspace: {
-            name: required(environ, "PLURNK_A2A_WORKSPACE"),
-            projectRoot: projectRoot === undefined || projectRoot.length === 0 ? null : projectRoot,
+            name: workspaceName === undefined || workspaceName.length === 0 ? null : workspaceName,
+            // {§a2a-lazy-workspace} — spelled as a client spells its folder, so the comparison is exact.
+            projectRoot: projectRoot === undefined || projectRoot.length === 0 ? null : resolve(projectRoot),
         },
         parentWorker: parentWorker(required(environ, "PLURNK_A2A_PARENT_WORKER")),
         card,

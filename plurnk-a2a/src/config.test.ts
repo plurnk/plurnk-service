@@ -172,6 +172,7 @@ test("{§configuration-repair-path} hosted A2A reports typed input failures inde
         ["PLURNK_A2A_EXPOSE", "yes"],
         ["PLURNK_A2A_ENDPOINT_PATH", "relative"],
         ["PLURNK_A2A_PROJECT_ROOT", "relative"],
+        ["PLURNK_A2A_WORKSPACE", ""],
         ["PLURNK_A2A_ENDPOINT_URL", "file:///agent"],
         ["PLURNK_A2A_NAME", ""],
         ["PLURNK_A2A_SKILLS", "[1]"],
@@ -181,6 +182,8 @@ test("{§configuration-repair-path} hosted A2A reports typed input failures inde
             name: "ConfigurationError", key, message: new RegExp(key!),
         });
     }
+    assert.deepEqual(hostedAgentConfiguration({ ...valid, PLURNK_A2A_WORKSPACE: "", PLURNK_A2A_PROJECT_ROOT: "/srv/research/../project/" })?.workspace,
+        { name: null, projectRoot: "/srv/project" }, "{§a2a-lazy-workspace} a folder alone, spelled as a client spells its own");
     assert.ok(hostedAgentConfiguration({ ...valid, PLURNK_A2A_invalid_ENABLED: "bad" }) !== null,
         "an invalid outbound resource does not poison the separate inbound exposure");
 });

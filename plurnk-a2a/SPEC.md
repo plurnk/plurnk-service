@@ -21,7 +21,7 @@ cards are protocol projections, not configuration files.
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound exposure | `PLURNK_A2A_EXPOSE`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. The exposure holds no credential of its own: it authenticates exactly as the daemon does ({§a2a-hosted-credentials}). |
-| Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
+| Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Where Tasks run, by name, by folder or both, resolved lazily ({§a2a-lazy-workspace}); `EXPOSE=1` needs at least one. |
 | Inbound parent | `PLURNK_A2A_PARENT_WORKER` | Existing parent for new Task workers; `_plurnk` uses the workspace runtime actor. Ownership follows {§worker-ownership}. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
 
@@ -210,11 +210,16 @@ not erase its retained source. Continuation within a Task retains that Worker's 
 §a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,
 model selection, or inference. An absent workspace yields an empty Task list or
-the standard Task-not-found result, not implicit creation. The
-first admitted Task resolves the configured workspace name, adopting the one
-existing match or creating it with the configured project root. A configured
-non-null root must match an existing workspace exactly. The resolution is
-shared across concurrent requests and a failed resolution remains retryable.
+the standard Task-not-found result, not implicit creation. The first admitted
+Task creates it. The resolution is shared across concurrent requests and a
+failed resolution remains retryable. The folder is compared exactly, spelled as
+a client spells its own: absolute and normalized.
+
+| Configured | Tasks run in | When it is absent, the first Task |
+|---|---|---|
+| Name | The workspace of that name | Creates it headless |
+| Name and folder | The workspace of that name; its root must be the folder | Creates it on the folder |
+| Folder | The one workspace whose root is the folder; several on one folder refuse until a name selects one | Creates it as a client does ({§workspace-name}); a default name already held by another folder's workspace refuses |
 
 ### §a2a-task-listing Task listing
 
