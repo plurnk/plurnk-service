@@ -14,6 +14,7 @@ export const termination = (
     turnIds: [1],
     attributions: [],
     usage: loopUsage(),
+    terminatedAt: 1_792_008_205_250,
     ...overrides,
 });
 

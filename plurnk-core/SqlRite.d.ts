@@ -256,6 +256,7 @@ export class SqlRiteSync {
 	lifecycle_parked_loops: SqlRiteSyncPreparedStatements;
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_status: SqlRiteSyncPreparedStatements;
+	lifecycle_loop_observation: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
@@ -559,6 +560,7 @@ export default class SqlRite {
 	lifecycle_parked_loops: SqlRitePreparedStatements;
 	lifecycle_finish_loop: SqlRitePreparedStatements;
 	lifecycle_loop_status: SqlRitePreparedStatements;
+	lifecycle_loop_observation: SqlRitePreparedStatements;
 	lifecycle_loop_turns: SqlRitePreparedStatements;
 	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;

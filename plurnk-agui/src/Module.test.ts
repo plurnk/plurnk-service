@@ -290,7 +290,7 @@ for (const status of [200, 502]) {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, children: 1, activity: null, preparation: [], waitUntil: null, claimedAt: null, terminatedAt: null,
+                    packetCount: 2, children: 1, activity: null, preparation: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
                     spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
@@ -298,6 +298,40 @@ for (const status of [200, 502]) {
         } finally { await mod.close(); }
     });
 }
+
+test("{§agui-status-timing} a connected observer never pairs one loop's stamp with another loop's number, and the end stamp lands before the Run's terminal", async () => {
+    const { seam, emit } = mockSeam();
+    const claimed = 1_792_008_000_000;
+    const ended = 1_792_008_205_250;
+    seam.runLoop = async () => {
+        setImmediate(async () => {
+            const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+            emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, waitUntil: null, packetCount: 0, claimedAt: claimed } });
+            await tick();
+            emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 1 });
+            await tick();
+            emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, terminatedAt: ended, usage: loopUsage({ curationBudget: 1000 }) }));
+        });
+        return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+    };
+    const mod = await host(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "timer", messages: [{ role: "user", content: "Work." }], forwardedProps: { plurnk: { workspace: "agui-t" } } });
+        type Gauge = { plurnk: { status: { lifecycle: string; loopId: number | null; packetCount: number; claimedAt: number | null; terminatedAt: number | null } } };
+        const states = events.flatMap((event, index) => event.type === "STATE_DELTA" ? [replayState(events.slice(0, index + 1)) as Gauge] : []);
+        for (const { plurnk: { status } } of states) {
+            if (status.claimedAt === claimed) assert.equal(status.loopId, 9, "the claim's stamp rides with its own loop's number");
+        }
+        const ending = events.findIndex((event) => event.type === "STATE_DELTA" && event.delta.some((op) => op.path === "/plurnk/status/terminatedAt" && "value" in op && op.value === ended));
+        const finished = events.findIndex((event) => event.type === "RUN_FINISHED");
+        assert.ok(ending >= 0 && ending < finished, "the end stamp arrives before the Run's terminal");
+        const final = replayState(events) as Gauge;
+        assert.deepEqual(
+            [final.plurnk.status.lifecycle, final.plurnk.status.loopId, final.plurnk.status.packetCount, final.plurnk.status.claimedAt, final.plurnk.status.terminatedAt],
+            ["completed", 9, 1, claimed, ended],
+        );
+    } finally { await mod.close(); }
+});
 
 test("{§agui-status-spend} a Run's spend is its worker's since it began, republished when the worker's own turn settles", async () => {
     const { seam, emit } = mockSeam();
@@ -1563,6 +1597,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             workerId: 10,
             workerName: "client-1",
         };
+    };
     seam.runLoop = async () => {
         runs += 1;
         if (runs === 1) {

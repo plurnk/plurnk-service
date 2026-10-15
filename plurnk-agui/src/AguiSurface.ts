@@ -220,7 +220,9 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             contextCapacity: nullable(POSITIVE),
             meta: { type: "object", additionalProperties: true },
         }, ["accounting", "curationWeight", "curationBudget", "contextTokens", "contextCapacity", "meta"]),
-    }, ["workerId", "loopId", "result", "hitMaxTurns", "turnIds", "attributions", "usage"])),
+        // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
+        terminatedAt: POSITIVE,
+    }, ["workerId", "loopId", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
     "loop/packet": notification(object({
         workerId: POSITIVE,
         loopId: POSITIVE,

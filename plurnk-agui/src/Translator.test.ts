@@ -443,14 +443,14 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.equal(first[0]?.type, "STEP_STARTED");
     const second = tr.logEntry(entry({ op: "WAIT", turn_id: 2, tx: { body: "second" } }));
     assert.deepEqual(second.slice(0, 2).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
 test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, including attribution outside usage", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
-    const term: TerminatedNotification = {
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 77,
         result: { status: 200 },
@@ -482,17 +482,13 @@ test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, 
 
 test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ curationWeight: 7654, curationBudget: 40000, inputTokens: 4321, outputTokens: 99, contextCapacity: 35840 }) };
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ curationWeight: 7654, curationBudget: 40000, inputTokens: 4321, outputTokens: 99, contextCapacity: 35840 }) };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
     assert.equal(delta.delta.find((d) => d.path === "/budget/curationWeight")?.value, 7654);
     assert.equal(delta.delta.find((d) => d.path === "/budget/curationBudget")?.value, 40000);
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextCapacity")?.value, 35840);
-    assert.deepEqual(delta.delta.map(({ path }) => path), [
-        "/plurnk/status/lifecycle",
-        "/plurnk/status/loopId",
-        "/plurnk/status/activity",
-        "/plurnk/status/waitUntil",
+    assert.deepEqual(delta.delta.map(({ path }) => path).filter((path) => path.startsWith("/budget/")), [
         "/budget/curationWeight",
         "/budget/curationBudget",
         "/budget/contextTokens",
@@ -509,7 +505,7 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
         detail: "The provider returned an invalid response.",
         instance: "log:///1/2/3/error",
     };
-    const term: TerminatedNotification = {
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 1,
         result: { status: 502, problem },
@@ -535,7 +531,7 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
 
 test("a failed termination without a Problem is rejected instead of synthesized from status", () => {
     const tr = t();
-    const term: TerminatedNotification = {
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 1,
         result: { status: 502 },
@@ -633,15 +629,23 @@ test("{§agui-outside-text}: outside text projects one plurnk.outside per admitt
     assert.equal(tr.outside({ ...event, turnId: 7 }).filter(({ type }) => type === EventType.STEP_STARTED).length, 0, "a second emission in the same turn opens no second step");
 });
 
-test("{§loop-status-notice} a lifecycle notice is the lifecycle gauge and nothing else", () => {
+test("{§loop-status-notice} {§agui-status-timing} a lifecycle notice is its loop's gauge, identity, count and stamps together, and nothing else", () => {
     const tr = t();
-    const beat = (status: number, waitUntil: number | null = null) => tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil });
+    const beat = (status: number, waitUntil: number | null = null, facts: Record<string, unknown> = { packetCount: 3, claimedAt: 1_792_008_000_000 }, loopId: number | null = 50) =>
+        tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil, ...facts }, loopId);
     for (const [status, lifecycle, waitUntil] of [[202, "parked", 123_000], [202, "parked", null], [100, "queued", null], [102, "running", null]] as const) {
         assert.deepEqual(beat(status, waitUntil), [{ type: EventType.STATE_DELTA, delta: [
             { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycle },
+            { op: "replace", path: "/plurnk/status/loopId", value: 50 },
+            { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
             { op: "replace", path: "/plurnk/status/waitUntil", value: waitUntil },
-        ] }], "the same status event owns the countdown, with no diagnostic duplication");
+            { op: "replace", path: "/plurnk/status/claimedAt", value: 1_792_008_000_000 },
+            { op: "replace", path: "/plurnk/status/terminatedAt", value: null },
+        ] }], "one delta: the loop it describes, never another loop's number beside its stamp, and no diagnostic duplication");
     }
     assert.throws(() => beat(200), /carries 100, 102 or 202/u, "a terminal is loop/terminated's, never a beat");
     assert.throws(() => beat(202, NaN), /nullable Unix-millisecond waitUntil/u);
+    assert.throws(() => beat(102, null, { claimedAt: 1 }), /packet count/u);
+    assert.throws(() => beat(102, null, { packetCount: 0, claimedAt: "now" }), /claimedAt/u);
+    assert.throws(() => beat(102, null, undefined, null), /names its loop/u);
 });

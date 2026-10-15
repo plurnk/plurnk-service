@@ -156,6 +156,19 @@ export default class LoopLifecycle {
             : Results.assert(JSON.parse(row.terminal_result) as SchemeResult);
     }
 
+    // {§loop-status-notice} {§notifications-loop-terminated} — Unix milliseconds, as the status gauge carries them.
+    async observation(loopId: number): Promise<{ claimedAt: number | null; terminatedAt: number | null; packetCount: number }> {
+        const row = await this.#db.lifecycle_loop_observation.get<{ claimedAt: string | null; terminatedAt: string | null; packetCount: number }>({
+            loop_id: loopId,
+        });
+        if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
+        return {
+            claimedAt: row.claimedAt === null ? null : Date.parse(row.claimedAt),
+            terminatedAt: row.terminatedAt === null ? null : Date.parse(row.terminatedAt),
+            packetCount: row.packetCount,
+        };
+    }
+
     async turnIds(loopId: number): Promise<number[]> {
         const rows = await this.#db.lifecycle_loop_turns.all<{ id: number }>({
             loop_id: loopId,

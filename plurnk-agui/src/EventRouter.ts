@@ -49,7 +49,10 @@ export default class EventRouter {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
             case "loop/packet": return this.#t.packet(params as ApplicationLoopPacket);
-            case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
+            case "notice/event": {
+                const { notice, loopId } = params as { notice?: unknown; loopId?: unknown };
+                return this.#t.notice(notice ?? params, typeof loopId === "number" ? loopId : null);
+            }
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
             case "outside/event": return this.#t.outside(params as OutsideEventNotification);
             case "stream/event":

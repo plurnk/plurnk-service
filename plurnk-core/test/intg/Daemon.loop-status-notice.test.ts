@@ -8,7 +8,7 @@ import { holdChild } from "./_db.ts";
 import { connect, rpcCall, subscribeNotifications, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-type LoopStatusNotice = { workerId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null } };
+type LoopStatusNotice = { workerId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null; packetCount: number; claimedAt: number | null } };
 
 test("{§loop-status-notice}: claim, park and wake each broadcast the loop's status as a lifecycle notice", async () => {
     const provider = new Mock({
@@ -26,6 +26,7 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
             const workerId = await daemon.ensureModelWorker(workspaceId);
             await holdChild(db, workspaceId, workerId);
             const captured = subscribeNotifications(ws, "notice/event");
+            const terminals = subscribeNotifications(ws, "loop/terminated");
             const lifecycle = (): LoopStatusNotice[] => (captured() as LoopStatusNotice[])
                 .filter(({ notice }) => notice.source === "engine:lifecycle" && notice.kind === "loop_status");
             try {
@@ -43,6 +44,10 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
                 assert.equal(lifecycle()[0]!.notice.waitUntil, null, "running has no countdown");
                 assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)?.waitUntil,
                     firstDeadline, "reattachment and live updates describe the same durable deadline");
+                // {§agui-status-timing} — every beat carries its loop's own packet count and claim stamp, the ones a snapshot reads.
+                const projected = (await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)!;
+                assert.deepEqual(lifecycle().map(({ notice }) => [notice.packetCount, notice.claimedAt]), [[0, Date.parse(projected.claimedAt!)], [projected.packetCount, Date.parse(projected.claimedAt!)]],
+                    "claimed with no packet yet, parked after its first, the same claim stamp throughout");
 
                 const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "A message wakes it." });
                 assert.equal(delivered.loopId, accepted.loopId);
@@ -55,6 +60,12 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
                 assert.ok(lifecycle().every(({ workerId: owner }) => owner === workerId), "every beat names the owning worker");
                 const packets = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: accepted.loopId });
                 assert.ok(packets.every(({ rx }) => !rx.includes("loop_status")), "the beat is transient: no log row, nothing for a packet");
+                assert.ok(lifecycle().slice(2).every(({ notice }) => notice.claimedAt === Date.parse(projected.claimedAt!)), "a woken loop keeps its first claim stamp");
+                // {§notifications-loop-terminated} — the terminal carries the stamp a snapshot reads.
+                await daemon.cancelWorker({ workspaceId, workerId });
+                await waitForDb(async () => terminals(), (events) => events.length >= 1);
+                const ended = (await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)!;
+                assert.equal((terminals()[0] as { terminatedAt: number }).terminatedAt, Date.parse(ended.terminatedAt!));
             } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
         } finally { ws.close(); }
     });

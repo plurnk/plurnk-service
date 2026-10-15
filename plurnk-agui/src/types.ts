@@ -74,6 +74,8 @@ export interface TerminatedNotification {
     hitMaxTurns: boolean;
     turnIds: number[];   // on the wire (Daemon.ts broadcast) — the turn count for a client's json record
     attributions: string[];
+    // {§notifications-loop-terminated} — when the loop concluded, Unix milliseconds.
+    terminatedAt: number;
     usage: {
         accounting: ProviderAccounting;
         curationWeight: number | null;

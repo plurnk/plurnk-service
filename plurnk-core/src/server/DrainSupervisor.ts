@@ -436,7 +436,7 @@ export default class DrainSupervisor {
                         this.#loopAttributions(loopRow.id),
                         this.#lifecycle.turnIds(loopRow.id),
                     ]);
-                    this.#publishTermination(workspaceId, {
+                    await this.#publishTermination(workspaceId, {
                         workerId,
                         loopId: loopRow.id,
                         result: result.result,
@@ -506,7 +506,7 @@ export default class DrainSupervisor {
                             this.#loopAttributions(currentLoopId),
                         ]);
                         if (cancelled !== null) {
-                            this.#publishTermination(workspaceId, {
+                            await this.#publishTermination(workspaceId, {
                                 workerId,
                                 loopId: currentLoopId,
                                 result: cancelled,
@@ -581,7 +581,7 @@ export default class DrainSupervisor {
                             this.#loopUsage(currentLoopId),
                             this.#loopAttributions(currentLoopId),
                         ]);
-                        this.#publishTermination(workspaceId, {
+                        await this.#publishTermination(workspaceId, {
                             workerId,
                             loopId: currentLoopId,
                             result: settled,
@@ -746,7 +746,7 @@ export default class DrainSupervisor {
                 this.#loopUsage(loopId),
                 this.#loopAttributions(loopId),
             ]);
-            this.#publishTermination(row.workspace_id, {
+            await this.#publishTermination(row.workspace_id, {
                 workerId: targetWorkerId,
                 loopId,
                 result,
@@ -916,8 +916,9 @@ export default class DrainSupervisor {
         const wait = status === 202 ? (await this.#lifecycle.parked(workerId)).find(({ id }) => id === loopId) : null;
         if (wait === undefined) return;
         const waitUntil = wait?.wait_poll_at ?? null;
+        const { claimedAt, packetCount } = await this.#lifecycle.observation(loopId);
         this.#emit(workspaceId, "notice/event", {
-            workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil },
+            workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil, packetCount, claimedAt },
         });
     }
 
@@ -1053,9 +1054,11 @@ export default class DrainSupervisor {
         }
     }
 
-    #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): void {
+    // {§notifications-loop-terminated} — the terminal carries the stamp a snapshot reads.
+    async #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): Promise<void> {
+        const { terminatedAt } = await this.#lifecycle.observation(event.loopId);
         this.#discardLoopNotices(event.loopId);
-        this.#emit(workspaceId, "loop/terminated", event);
+        this.#emit(workspaceId, "loop/terminated", { ...event, terminatedAt });
         this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");
     }
 

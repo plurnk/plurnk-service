@@ -275,8 +275,10 @@ export default class Translator {
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
-                { op: "replace", path: "/plurnk/status/lifecycle", value: result.status === 200 ? "completed" : "failed" },
+                // {§loop-lifecycle-vocabulary} — a loop that concluded with any result below 400 completed.
+                { op: "replace", path: "/plurnk/status/lifecycle", value: result.status < 400 ? "completed" : "failed" },
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
+                { op: "replace", path: "/plurnk/status/terminatedAt", value: n.terminatedAt },
                 { op: "replace", path: "/plurnk/status/activity", value: null },
                 { op: "replace", path: "/plurnk/status/waitUntil", value: null },
                 { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
@@ -355,20 +357,30 @@ export default class Translator {
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
-    notice(notice: unknown): AguiEvent[] {
+    notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
         const diagnostic: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.notice", value: notice };
-        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown; waitUntil?: unknown };
-        // {§loop-status-notice} — lifecycle and its durable deadline, never a diagnostic or chat message.
+        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown; waitUntil?: unknown; packetCount?: unknown; claimedAt?: unknown };
+        // {§loop-status-notice} {§agui-status-timing} — the loop's lifecycle with its identity, packet count,
+        // stamps and deadline in one delta, never a diagnostic or chat message.
         if (value.source === "engine:lifecycle" && value.kind === "loop_status") {
             if (value.status !== 100 && value.status !== 102 && value.status !== 202) throw new TypeError("A loop_status notice carries 100, 102 or 202.");
             if (value.waitUntil !== null && (typeof value.waitUntil !== "number" || !Number.isFinite(value.waitUntil) || value.waitUntil < 0)) {
                 throw new TypeError("A loop_status notice carries a nullable Unix-millisecond waitUntil.");
             }
+            if (!Number.isSafeInteger(value.packetCount) || (value.packetCount as number) < 0) throw new TypeError("A loop_status notice carries its loop's packet count.");
+            if (value.claimedAt !== null && (!Number.isSafeInteger(value.claimedAt) || (value.claimedAt as number) <= 0)) {
+                throw new TypeError("A loop_status notice carries a nullable Unix-millisecond claimedAt.");
+            }
+            if (loopId === null || loopId <= 0) throw new TypeError("A loop_status notice names its loop.");
             return [{
                 type: EventType.STATE_DELTA,
                 delta: [
                     { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(value.status) },
+                    { op: "replace", path: "/plurnk/status/loopId", value: loopId },
+                    { op: "replace", path: "/plurnk/status/packetCount", value: value.packetCount },
                     { op: "replace", path: "/plurnk/status/waitUntil", value: value.status === 202 ? value.waitUntil : null },
+                    { op: "replace", path: "/plurnk/status/claimedAt", value: value.claimedAt },
+                    { op: "replace", path: "/plurnk/status/terminatedAt", value: null },
                 ],
             }];
         }

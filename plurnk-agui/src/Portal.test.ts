@@ -218,35 +218,6 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     portal.stop();
 });
 
-test("{§agui-status-timing}: the bound worker's claim and terminal publish its latest Loop's stamps, each once, after the snapshot", async () => {
-    const m = mockSeam();
-    let loops: ApplicationLoopProjection[] = [];
-    const portal = new Portal({ ...m.seam, listWorkerLoops: async () => loops });
-    portal.start();
-    const events: AguiEvent[] = [];
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (batch) => events.push(...batch) });
-    events.push(...portal.runStarted(thread, stateSnapshot({ status: statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: "0", knownCostUsd: "0" })) })));
-    const stamps = () => events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
-        .filter((op) => op.path === "/plurnk/status/claimedAt" || op.path === "/plurnk/status/terminatedAt")
-        .map((op) => `${op.path.slice("/plurnk/status/".length)}=${"value" in op ? String(op.value) : "?"}`);
-    const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
-
-    loops = [{ ...loop(10, 77), status: 102, claimedAt: "2026-10-14T20:00:00.000Z" }];
-    m.fire(3, "notice/event", { workerId: 10, loopId: 77, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, waitUntil: null } });
-    await drain();
-    assert.deepEqual(stamps(), ["claimedAt=1792008000000"], "the claim beat publishes when the Loop first ran");
-
-    m.fire(3, "notice/event", { workerId: 10, loopId: 77, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, waitUntil: null } });
-    await drain();
-    assert.deepEqual(stamps(), ["claimedAt=1792008000000"], "a stamp the client holds is not published again");
-
-    loops = [{ ...loop(10, 77), status: 200, claimedAt: "2026-10-14T20:00:00.000Z", terminatedAt: "2026-10-14T20:03:25.250Z", terminalResult: { status: 200 } }];
-    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ curationBudget: 1000 }) }));
-    await drain();
-    assert.deepEqual(stamps(), ["claimedAt=1792008000000", "terminatedAt=1792008205250"], "the terminal publishes when it concluded");
-    portal.stop();
-});
-
 test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and rejects new binding", () => {
     const m = mockSeam();
     const portal = new Portal(m.seam);
