@@ -12,6 +12,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 import WorkerOwners from "./WorkerOwners.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
+import { outputAllowance } from "./turn-signals.ts";
 import { unconcludedEmission } from "./unconcluded-emission.ts";
 import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -285,6 +286,7 @@ export default class LoopDriver {
                     outcomes: turn.outcomes,
                     progressed: turn.progressed,
                     emptyTurn: turn.emptyTurn,
+                    cut: turn.outputCut !== null,
                     minCycles, maxCyclePeriod, maxStrikes });
                 // {§loop-terminals}: accounting cannot replace a settled loop's outcome.
                 if (await this.#lifecycle.result(loopId) !== null) continue;
@@ -296,6 +298,7 @@ export default class LoopDriver {
                     // that attempted nothing did not "fail": calling it a failed turn misreads a
                     // model that answered without the fence as one whose operations broke.
                     const because = {
+                        output_allowance: `its last emission was truncated at ${outputAllowance({ grant: turn.outputCut?.grant ?? null })}`,
                         repetition: turn.emptyTurn
                             ? "its responses repeated without performing an operation"
                             : "its operations and results repeated",

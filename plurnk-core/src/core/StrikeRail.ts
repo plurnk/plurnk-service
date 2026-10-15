@@ -22,8 +22,8 @@ export type StrikeOutcome = {
 
 type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revision: number };
 
-// {§engine-rails} — the three progress-contract sources, as a crossing terminal names them.
-export type StrikeSource = "repetition" | "operation" | "no_operation";
+// {§engine-rails} — the sources a crossing terminal names.
+export type StrikeSource = "output_allowance" | "repetition" | "operation" | "no_operation";
 
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
@@ -130,6 +130,8 @@ export default class StrikeRail {
         // {§strike-progress-immunity} — at least one operation acted on the task and succeeded.
         progressed: boolean;
         emptyTurn?: boolean;
+        // {§output-allowance-notice} — the output allowance ended the turn's final emission.
+        cut: boolean;
         minCycles: number;
         maxCyclePeriod: number;
         maxStrikes: number;
@@ -140,9 +142,11 @@ export default class StrikeRail {
         const state = await this.#state(loopId);
         // The ending turn remains in its opening wait revision. A real park
         // closes that window even if a wake already reclaimed the same drain.
-        const history: string[] = state.cycle_wait_revision === turn.waitRevision
+        // {§loop-rail-continuity} — so does a cut: the engine's ceiling, not the model, ended that
+        // turn, so it is no repetition evidence and no repetition spans it.
+        const history: string[] = !turn.cut && state.cycle_wait_revision === turn.waitRevision
             ? JSON.parse(state.cycle_history) : [];
-        history.push(turn.fingerprint);
+        if (!turn.cut) history.push(turn.fingerprint);
         const window = turn.minCycles * turn.maxCyclePeriod;
         if (history.length > window) history.splice(0, history.length - window);
         const cycle = StrikeRail.detectCycle(history, turn.minCycles, turn.maxCyclePeriod);
@@ -158,8 +162,10 @@ export default class StrikeRail {
         const streak = struck ? state.strike_streak + 1 : 0;
         // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
         // actually happened instead of calling an unfenced reply a failed operation. A turn may
-        // match more than one; the most specific wins, and repetition is the most specific fact.
+        // match more than one; the most specific wins. A cut outranks every diagnosis of the
+        // model's output ({§output-allowance-notice}), and a cut turn is never a repetition.
         const crossedBy: StrikeSource | null = !struck ? null
+            : turn.cut ? "output_allowance"
             : cycle.detected ? "repetition"
             : turn.emptyTurn === true ? "no_operation"
             : "operation";

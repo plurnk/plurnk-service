@@ -127,7 +127,7 @@ import { ProviderError, scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
-import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
+import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE, outputAllowance, type OutputCut } from "./turn-signals.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -179,6 +179,8 @@ type EngineTurnResult = {
     providerParked: boolean;
     providerFailure?: SchemeResult;
     emptyTurn: boolean;
+    // {§output-allowance-notice} — the allowance ended the turn's final emission; null when it did not.
+    outputCut: OutputCut | null;
     emissionAttempts: number;
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
@@ -253,12 +255,10 @@ const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no
 // `length` finish is the engine's own allowance ending the emission, and it
 // outranks every other diagnosis (parser symptom, rails verdict) on every
 // path. Null means the emission was not cut by the allowance.
-const allowanceCutMessage = (
-    finishReason: string | null | undefined,
-    grant: number | null,
-): string | null => finishReason !== "length"
-    ? null
-    : `Emission truncated at the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
+const outputCut = ({ split, response }: ProviderEmission, provider: Provider): OutputCut | null =>
+    split.callMetadata.finishReason !== "length"
+        ? null
+        : { grant: response.capacity.responseMax ?? provider.outputBudget };
 
 const readEmissionAttempts = (): number => Knob.integer("PLURNK_SERVICE_EMISSION_ATTEMPTS", 1);
 
@@ -402,6 +402,7 @@ const turnResult = (
     capacityHardStop: false,
     providerParked: false,
     emptyTurn: false,
+    outputCut: null,
     emissionAttempts: 0,
     emissionExhausted: false,
     ...facts,
@@ -1659,14 +1660,14 @@ export default class TurnRunner {
         // {§invalid-emission-attempts} — the informed turn carries the parser's own
         // diagnostic and position: the model sees WHY, not only that it was refused.
         const diagnostic = split.parseErrors[0];
-        const cut = allowanceCutMessage(split.callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+        const cut = outputCut(emission, provider);
         if (cut !== null) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
                 level: "error",
                 directive: DIRECTIVE.output,
-                message: `${cut}; no operations were performed.`,
+                message: `Emission truncated at ${outputAllowance(cut)}; no operations were performed.`,
             });
         } else {
             this.#notices.push(workspaceId, workerId, loopId, {
@@ -1687,6 +1688,7 @@ export default class TurnRunner {
         return turnResult(request, TURN_STATUS_IMPLICIT_CONTINUE, {
             outcomes: [{ op: null, status: 500, problemType: "https://problems.plurnk.xyz/engine/invalid-emission-exhausted" }],
             fingerprint: `frame-contract-violation:${turnId}`,
+            outputCut: cut,
             emissionAttempts: emission.emissionAttempts,
             emissionExhausted: true,
             rejectedModelEntryId,
@@ -1702,16 +1704,16 @@ export default class TurnRunner {
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, workerId, loopId, notice);
         }
-        const allowanceCut = allowanceCutMessage(callMetadata.finishReason, response.capacity.responseMax ?? provider.outputBudget);
+        const cut = outputCut(emission, provider);
         // {§empty-turn} — a response cut at the output allowance with nothing admitted names the
         // cut, so the model reads the ceiling, never a parser symptom (#478).
-        if (split.emptyTurn && allowanceCut !== null) {
+        if (split.emptyTurn && cut !== null) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:turn",
                 kind: "output_truncated",
                 level: "warn",
                 directive: DIRECTIVE.output,
-                message: `${allowanceCut}; no authored operations were performed.`,
+                message: `Emission truncated at ${outputAllowance(cut)}; no authored operations were performed.`,
             });
         }
         // Non-fatal provider transport notices on an accepted turn. Forward each
@@ -1733,12 +1735,12 @@ export default class TurnRunner {
                     : {}),
             });
         }
-        if (allowanceCut !== null) {
+        if (cut !== null) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
                 directive: DIRECTIVE.output,
-                message: `${allowanceCut}.`,
+                message: `Emission truncated at ${outputAllowance(cut)}.`,
                 level: "warn",
             });
         }
@@ -1780,7 +1782,7 @@ export default class TurnRunner {
     // Phase 6 — the admitted program runs under the workspace's command ceiling and
     // the turn settles on the executor's verdict.
     async #settleAdmittedTurn(args: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
-        const { childProvider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+        const { provider, childProvider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
         const coordinates = { workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq };
         // {§operator-config-workspace-max-commands} — workspace maxCommands
@@ -1832,6 +1834,7 @@ export default class TurnRunner {
             progressed: executed.progressed,
             fingerprint: executed.fingerprint,
             emptyTurn: executed.emptyTurn,
+            outputCut: outputCut(emission, provider),
             emissionAttempts: emission.emissionAttempts,
         });
     }

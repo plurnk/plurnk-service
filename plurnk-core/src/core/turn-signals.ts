@@ -14,6 +14,13 @@ export const ENGINE_PROBLEMS = Object.freeze({
     },
 } as const);
 
+// {§output-allowance-notice} — the engine's own allowance ended an emission. The grant is the
+// response's own per-call capacity record, null when it recorded none.
+export type OutputCut = { readonly grant: number | null };
+
+export const outputAllowance = ({ grant }: OutputCut): string =>
+    `the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
+
 // Runtime normalization for a disposition the engine refuses or resolves as a
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
 // explicit disposition ({§emission-admission}).

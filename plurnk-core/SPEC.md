@@ -1303,7 +1303,9 @@ alone are not a cycle: changing inputs or observations distinguish activity.
 A turn that executed nothing has no activity to identify, so an empty turn's
 identity is its **text** ({§empty-turn}) — the same principle, applied to the only
 output it produced. Identifying it by its absent program instead makes every empty
-turn identical, and changing words then read as a repeating one.
+turn identical, and changing words then read as a repeating one. A turn whose final emission the
+output allowance cut has no identity: the engine's ceiling, not the model, ended its output, so it
+is no repetition evidence and closes the window ({§loop-rail-continuity}).
 This is an exact-repetition backstop, not a semantic judgment of task progress;
 new asynchronous invocation identities do not prove repetition of their eventual
 effects. Ordinary contract strikes and operator budgets remain independent.
@@ -1374,12 +1376,13 @@ independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
 and cycle verdict are absent from model packets; only the concrete occurrences
 in the table are shown. The streak never leaves the daemon.
 
-A crossing terminal names the source that struck the crossing turn — `repetition`,
-`no_operation`, then `operation` — in its detail, in that order when a turn matches more
-than one. The three are not interchangeable: a turn that authored no operation did not *fail*
+A crossing terminal names the source that struck the crossing turn — `output_allowance`,
+`repetition`, `no_operation`, then `operation` — in its detail, in that order when a turn matches
+more than one. The three are not interchangeable: a turn that authored no operation did not *fail*
 one, and reporting it as a failed turn misreads a model answering without the fence as a model
 whose operations broke. A cycle of empty turns names repeated responses without operations,
-not repeated operations or results. This is the crossing turn's source, not the streak's composition; the
+not repeated operations or results. A turn whose final emission the output allowance cut names
+the allowance and its grant ({§output-allowance-notice}), whatever else it struck on. This is the crossing turn's source, not the streak's composition; the
 rail rules on the crossing and does not retain the kinds behind it. What the crossing turn
 actually said is cited, not discarded ({§terminal-evidence}). Naming the source is not the
 private accounting {§rail-accounting-private} withholds: the streak, the cycle verdict and
@@ -1395,6 +1398,7 @@ restart; curation of log evidence cannot alter them.
 | Assessed turn with a violation | Increment once. | Include its exact activity. |
 | Clean assessed turn | Reset to zero. | Include its exact activity. |
 | Actual park, including an immediate wake/reclaim in the same drain | Preserve the assessed streak. | Close the window; the next turn starts a new one. |
+| Assessed turn whose final emission the output allowance cut | As any assessed turn. | Exclude it and close the window; the next turn starts a new one. |
 | Recoverable provider outage | No assessment; preserve the streak. | Preserve until an actual park. |
 | New loop | Start at zero. | Start empty. |
 
@@ -3181,7 +3185,7 @@ accounting and model-visible failure evidence remain separately owned by
   The strike sends no notice of its own: the turn records one `_plurnk`
   error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
   any failure ({§operation-result-uniform-error-channel}); the threshold terminal still says why ({§engine-rails}).
-  An empty turn uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
+  An empty turn the output allowance did not cut uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
   different empty programs are not a repeated cycle merely because neither contained
   operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
   token or private retry is invented here.
@@ -5909,7 +5913,7 @@ the same deadline through {§application-loop-observation}, not a restarted cloc
 
 §candidate-pinned-runtime **Candidate runtime stays pinned.** At launch, after its optional build, the candidate copies every workspace's package projection (`files`) into `<state>/runtime`, links third-party dependencies, and resolves `@plurnk/*` to those copies. Its daemon and its digest export both run from that copy, never the shared checkout, so neither source edits nor a concurrent candidate's or developer's rebuild after launch changes the code a run finishes on. The copy is removed once the digest is written.
 
-§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model's grammar for a cut the engine's own ceiling made. The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
+§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model for a cut the engine's own ceiling made: a cut turn is no repetition evidence ({§engine-cycle-evidence}), and a strike threshold crossed on one names the allowance ({§engine-rails}). The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. The completion beat carries the spend ({§turn-accounting-notice}). Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 

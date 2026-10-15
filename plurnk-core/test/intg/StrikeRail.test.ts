@@ -15,7 +15,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => { await db.close(); });
 
-const base = { waitRevision: 0, fingerprint: "READ(x)", progressed: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
+const base = { waitRevision: 0, fingerprint: "READ(x)", progressed: false, cut: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
 test("a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
@@ -120,6 +120,37 @@ test("{§strike-progress-immunity}: a successful operation does not exempt a rep
     assert.equal(crossed?.cycleDetected, true);
     assert.equal(crossed?.crossedBy, "repetition");
     assert.equal(crossed?.thresholdCrossed, true);
+});
+
+test("{§loop-rail-continuity} {§output-allowance-notice}: a cut is no repetition evidence and closes the cycle window", async () => {
+    const rail = new StrikeRail(db);
+    const same = { ...base, fingerprint: "empty:", outcomes: [] };
+    const cut = async () => (await rail.assess(loopId, { ...same, cut: true })).cycleDetected;
+    assert.deepEqual([await cut(), await cut(), await cut(), await cut()], [false, false, false, false],
+        "identical cut turns never repeat: the ceiling, not the model, ended each");
+    await rail.assess(loopId, same);
+    await rail.assess(loopId, same);
+    assert.equal(await cut(), false);
+    assert.equal((await rail.assess(loopId, same)).cycleDetected, false, "no repetition spans a cut");
+    assert.equal((await rail.assess(loopId, same)).cycleDetected, false);
+    assert.equal((await rail.assess(loopId, same)).cycleDetected, true, "the window the cut opened detects its own repetition");
+});
+
+test("{§engine-rails} {§output-allowance-notice}: a cut turn's strike is the allowance's, whatever else it struck on", async () => {
+    const rail = new StrikeRail(db);
+    const sources = [
+        { emptyTurn: true, outcomes: [] },
+        { emptyTurn: false, outcomes: [outcome(null, 500)] },
+        { emptyTurn: false, outcomes: [outcome("EDIT", 400)] },
+    ];
+    const verdicts = [];
+    for (const [index, turn] of sources.entries()) verdicts.push(await rail.assess(loopId, { ...base, ...turn, fingerprint: `cut-${index}`, cut: true }));
+    assert.deepEqual(verdicts.map(({ crossedBy }) => crossedBy), ["output_allowance", "output_allowance", "output_allowance"]);
+    assert.deepEqual(verdicts.map(({ cycleDetected }) => cycleDetected), [false, false, false]);
+    assert.equal(verdicts.at(-1)?.thresholdCrossed, true, "a cut still strikes, so a model that keeps reaching the allowance stops");
+    const progressed = await rail.assess(loopId, { ...base, cut: true, progressed: true, outcomes: [outcome("READ", 200), outcome(null, 400)] });
+    assert.equal(progressed.crossedBy, null, "a cut turn that acted on the task is progress like any other");
+    assert.equal(await rail.streak(loopId), 0);
 });
 
 test("{§loop-rail-continuity}: clean recovery after a park resets only this loop's streak", async () => {

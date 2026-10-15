@@ -121,20 +121,40 @@ test("{§empty-turn}: an empty turn's fingerprint is its text — saying the sam
     } finally { await db.close(); }
 });
 
-for (const finishReason of ["stop", "length"] as const) {
-    test(`{§engine-rails}: repeated reasoning-only ${finishReason} responses are not reported as repeated operations`, async () => {
+test("{§engine-rails}: repeated reasoning-only responses are not reported as repeated operations", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        const same: MockResponse = { assistant: { content: "", reasoning: "Considering the next step.", finishReason: "stop" }, assistantRaw: null };
+        const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
+        const loop = await engine.runLoop({
+            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            messages: [{ role: "user", content: "What is two plus two?" }],
+        });
+        assert.equal(loop.result.status, 508, "the cycle and strike threshold remain enforced");
+        assert.equal(problemOf(loop).type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+        assert.match(problemOf(loop).detail as string, /its responses repeated without performing an operation\.$/);
+        assert.equal(provider.received.length, 3, "the diagnostic does not change recovery or termination");
+    } finally { await db.close(); }
+});
+
+// {§output-allowance-notice} — the ceiling cut each response, so the verdict names the ceiling: identical cut
+// responses are no repetition, whether the cut left nothing to admit or exhausted every emission attempt.
+for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "````READ (src/a", 9]] as const) {
+    test(`{§output-allowance-notice} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
         const { db, engine, workspaceId, workerId, loopId } = await setup();
         try {
-            const same: MockResponse = { assistant: { content: "", reasoning: "Considering the next step.", finishReason }, assistantRaw: null };
-            const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
+            const cut: MockResponse = { assistant: { content, reasoning: "Considering the next step.", finishReason: "length" }, assistantRaw: null };
+            const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: calls }, () => cut) });
             const loop = await engine.runLoop({
                 provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
                 messages: [{ role: "user", content: "What is two plus two?" }],
             });
-            assert.equal(loop.result.status, 508, "the cycle and strike threshold remain enforced");
-            assert.equal(problemOf(loop).type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
-            assert.match(problemOf(loop).detail as string, /its responses repeated without performing an operation\.$/);
-            assert.equal(provider.received.length, 3, "the diagnostic does not change recovery or termination");
+            const problem = problemOf(loop);
+            assert.equal(loop.result.status, 500, "a strike threshold, never Loop Detected");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+            assert.match(problem.detail as string, /its last emission was truncated at the output allowance \(\d+ tokens\)\.$/,
+                "the terminal names the ceiling and its grant");
+            assert.equal(provider.received.length, calls, "a cut still strikes: the threshold ends the loop on the third cut turn");
         } finally { await db.close(); }
     });
 }
