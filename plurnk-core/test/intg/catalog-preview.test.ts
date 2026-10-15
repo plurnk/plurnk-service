@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
+import { Shell } from "@plurnk/plurnk-execs";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -277,8 +278,8 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.aside,
-                    "```sh <!-- Run POSIX shell commands and scripts. -->\ngit status --short\n```",
-                    "Turn 0 teaches a compact executable witness with its authored aside, as plain text rather than a code span",
+                    `\`\`\`sh <!-- ${Shell.summary(Shell.current())} -->\ngit status --short\n\`\`\``,
+                    "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-shell}), as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
                 assert.equal(

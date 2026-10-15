@@ -1,14 +1,18 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Runtime from "./runtime.ts";
+import Shell from "./Shell.ts";
 
-test("empty runtime supplies the untouched command to sh -c", () => {
+// {§executor-shell} `sh` and the empty runtime run the one shell this process resolved.
+const shell = Shell.current().path;
+
+test("empty runtime supplies the untouched command to the resolved shell's -c", () => {
     const r = Runtime.resolve("", "echo hi");
-    assert.deepEqual(r, { cmd: "sh", args: ["-c", "echo hi"], useShell: false });
+    assert.deepEqual(r, { cmd: shell, args: ["-c", "echo hi"], useShell: false });
 });
 
-test("sh supplies the untouched command to its command flag", () => {
-    assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: "sh", args: ["-c", "ls -la"], useShell: false });
+test("sh supplies the untouched command to the resolved shell's command flag", () => {
+    assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: shell, args: ["-c", "ls -la"], useShell: false });
 });
 
 test("node uses its eval flag", () => {
@@ -31,7 +35,7 @@ test("an additional runtime uses the conventional command flag", () => {
 
 test("a shell target runs as the program with body on stdin", () => {
     assert.deepEqual(Runtime.resolve("sh", "piped input", "./run.sh"), {
-        cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "piped input",
+        cmd: shell, args: ["./run.sh"], useShell: false, stdin: "piped input",
     });
 });
 

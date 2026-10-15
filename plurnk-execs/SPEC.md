@@ -642,10 +642,17 @@ interface SpawnArgs {
 
 | Runtime                    | No-target spawn                                                      |
 | -------------------------- | -------------------------------------------------------------------- |
-| `sh`                       | Shell command line.                                                  |
+| `sh`                       | `<shell> -c <body>`, the environment's shell ({§executor-shell}).    |
 | `node`                     | `node -e <body>`.                                                    |
 | `python3`                  | `python3 -c <body>`.                                                 |
 | Other default-base runtime | `<runtime> -c <body>`; specialized executors override this fallback. |
+
+§executor-shell **`sh` runs the environment's shell, and says which.** The shell is `$SHELL` when it
+is an absolute path to an executable file, and `/bin/sh`, the system shell, otherwise. It is resolved
+once per daemon process, and that one resolution serves both the spawn and the declaration's summary,
+which names the program the path runs, the version its `--version` reports when it reports one, and
+the path: `Run shell commands and scripts with bash 5.2.37 (/bin/bash).` A script target runs under
+the same shell. Nothing about the dialect is promised beyond what the summary names.
 
 With a target, the target is the program and the body is its stdin. Each executor
 uses its interpreter's file form (`awk -f <target>`, for example). The working

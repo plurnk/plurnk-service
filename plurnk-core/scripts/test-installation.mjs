@@ -6,7 +6,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
@@ -32,6 +32,15 @@ const installedManifest = (packageName) => JSON.parse(readFileSync(
     resolve(sandbox, "node_modules", ...packageName.split("/"), "package.json"),
     "utf8",
 ));
+// {§executor-dynamic-runtimes} An installed package's declarations, static or from its runtimes module, as discovery reads them.
+const installedRuntimes = async (packageName) => {
+    const { plurnk } = installedManifest(packageName);
+    if (Array.isArray(plurnk?.runtimes)) return plurnk.runtimes;
+    if (typeof plurnk?.runtimesModule !== "string") return [];
+    const own = createRequire(resolve(sandbox, "node_modules", ...packageName.split("/"), "package.json"));
+    const module = await import(pathToFileURL(own.resolve(`${packageName}${plurnk.runtimesModule.slice(1)}`)).href);
+    return await (module.runtimes ?? module.default)();
+};
 
 // Probe the actual packed configuration, discovery, import, and availability
 // path in a fresh Node process. Running outside the monorepo prevents a
@@ -820,8 +829,8 @@ try {
 process.stdout.write("-- executor inventory --\n");
 // {§executor-default-inventory} {§executor-policy}: installed is not enabled.
 const defaultTags = ["sh", "node", "python3"];
-const declaredRuntimes = defaultExecPackages.flatMap((packageName) =>
-    (installedManifest(packageName).plurnk?.runtimes ?? []).map(({ name }) => [name, packageName]));
+const declaredRuntimes = (await Promise.all(defaultExecPackages.map(async (packageName) =>
+    (await installedRuntimes(packageName)).map(({ name }) => [name, packageName])))).flat();
 const packedExecs = packedExecInventory();
 ok(
     isDeepStrictEqual(Object.keys(packedExecs.owners).toSorted(), defaultTags.toSorted())

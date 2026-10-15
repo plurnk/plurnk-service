@@ -1,6 +1,8 @@
 # sh
 
-The `sh` fence runs the body via `sh -c`, character-perfect including whitespace.
+The `sh` fence runs the body with `-c` in the shell its summary names: the
+environment's `$SHELL`, or `/bin/sh` when that names no executable file. The body
+reaches it character-perfect, whitespace included; write for that shell.
 
 ```sh <!-- the body is the script itself -->
 printf 'hello\n' > hello.txt

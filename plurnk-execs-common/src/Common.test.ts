@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import Common, { RUNTIME_TAGS } from "./Common.ts";
-import type { ExecArgs, ExecResult } from "@plurnk/plurnk-execs";
+import { runtimes } from "./runtimes.ts";
+import { RuntimeDeclaration, Shell, type ExecArgs, type ExecResult } from "@plurnk/plurnk-execs";
 
 const present = (bin: string): boolean => spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin]).status === 0;
 
@@ -27,18 +28,23 @@ const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs,
     return { result, out };
 };
 
-test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
+test("the runtimes module declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
-    const manifest = pkg.plurnk.runtimes.map((r: { name: string }) => r.name);
+    assert.equal(pkg.plurnk.runtimesModule, "./runtimes", "{§executor-dynamic-runtimes} the declarations are resolved on the host");
+    const declared = runtimes();
+    for (const declaration of declared) RuntimeDeclaration.assert(declaration, declaration.name);
+    const manifest = declared.map((r) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
         "sh", "node", "python3", "perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
-    const [shell, ...alternatives] = pkg.plurnk.runtimes as Array<{
+    const [shell, ...alternatives] = declared as Array<{
         name: string;
+        summary: unknown;
         invocation: { example?: { body?: string; target?: string }; signature?: string };
     }>;
+    assert.equal(shell?.summary, Shell.summary(Shell.current()), "{§executor-shell} the shell's summary names the shell that runs");
     assert.deepEqual(shell?.invocation.example, { body: "git status --short" }, "the shell retains its ordinary command witness");
     assert.ok(
         alternatives.every(({ invocation }) => typeof invocation.example?.body === "string"
@@ -49,8 +55,7 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
 });
 
 test("{§executor-tool-document}: declared interpreter examples execute as raw inline programs", async (t) => {
-    const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-    for (const runtime of pkg.plurnk.runtimes.filter(({ name }: { name: string }) => name !== "sh")) {
+    for (const runtime of runtimes().filter(({ name }) => name !== "sh")) {
         await t.test(runtime.name, async (t) => {
             const body = runtime.invocation.example?.body;
             assert.ok(typeof body === "string" && body.length > 0, "the advertised inline example has a body");
@@ -68,7 +73,7 @@ test("{§executor-tool-document}: declared interpreter examples execute as raw i
 
 test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
     // @ts-expect-error exercise the protected hook
-    assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: "sh", args: ["-c", "echo hi"], useShell: false });
+    assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
     // @ts-expect-error
@@ -77,7 +82,7 @@ test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
 
 test("spawnArgs: a target selects the interpreter's script-file form and body is stdin", () => {
     // @ts-expect-error protected hook
-    assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: "sh", args: ["./run.sh"], useShell: false, stdin: "stdin body" });
+    assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh"], useShell: false, stdin: "stdin body" });
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
     // @ts-expect-error protected hook
