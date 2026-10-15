@@ -16,6 +16,7 @@ import { projectTarball } from "./package-projection.mjs";
 import { packRecords } from "./npm-json.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import SqlRite from "@possumtech/sqlrite";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 import Launch from "@plurnk/plurnk-service/launch";
@@ -410,7 +411,12 @@ try {
         await faultDb.test_restore_stream_close();
         tui.write("/stop\r");
         await tui.waitFor(/cancelled|final 499/);
-        const settled = await faultDb.test_stream_recovery_state.get({});
+        // {§subscription-finalization} Cancellation retries the failed close; the loop's terminal does not wait for it.
+        let settled = await faultDb.test_stream_recovery_state.get({});
+        for (const deadline = Date.now() + 10_000; settled?.closed_at === null && Date.now() < deadline;) {
+            await delay(50);
+            settled = await faultDb.test_stream_recovery_state.get({});
+        }
         if (settled?.close_status !== 200 || JSON.parse(settled.close_result).status !== 200) {
             throw new Error(`cancellation did not retain the finished producer's real outcome: ${JSON.stringify(settled)}`);
         }
