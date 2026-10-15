@@ -243,7 +243,7 @@ const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
     note: "YOU MUST emit at least one NOTE, a summary, in every turn.",
-    emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
+    emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });

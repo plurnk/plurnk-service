@@ -1,7 +1,7 @@
 # Plurnk Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.
+> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.
 
 ## Syntax
 
@@ -24,6 +24,9 @@ body?
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
+
+> [!TIP]
+> Every summary, finding, decision, and next action not recorded in a NOTE is lost.
 
 ```NOTE <!-- summary -->
 example summarization note

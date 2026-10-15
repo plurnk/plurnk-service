@@ -13,3 +13,6 @@ no NOTE is told so in the next packet by the `continued_without_note` notice,
 model worker's initialization program closes its surveys with a second NOTE,
 labelled `<!-- next -->` as the card's last NOTE example is and reading
 `Read and resolve the Open Message.` ({§worker-initialization-entry}).
+Loop Protocol opens with a tip: every summary, finding, decision and next
+action not recorded in a NOTE is lost. The card's first instruction and the
+`invalid_emission` directive both name the fenced operation line in lowercase.

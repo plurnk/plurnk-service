@@ -1481,14 +1481,14 @@ test("{§notice-callout} a notice is one callout: the level picks it, the direct
         { source: "engine:slicer", kind: "scope_normalized", level: "warn",
             directive: "YOU SHOULD write the normalized scope.", message: "Scope <0,120> was normalized to <1,120>." },
         { source: "engine:grammar", kind: "invalid_emission", level: "error",
-            directive: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line.",
+            directive: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.",
             message: "Response rejected before dispatch;\n no operations were performed.", position: { type: "content-offset", line: 2, column: 4 } },
         { source: "provider:test", kind: "output_unaccounted", level: "warn",
             message: "5000 output tokens billed; 1 visible across content and reasoning.", position: { type: "content-offset", line: 1, column: 0 } },
     ]);
     assert.equal(out, [
         "> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <0,120> was normalized to <1,120>. [scope_normalized]",
-        "> [!CAUTION]\n> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced Operation line. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
+        "> [!CAUTION]\n> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
         "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning. @ 1:0 [output_unaccounted]",
     ].join("\n\n"), "an environment notice carries no directive; whitespace is normalized; a blank line separates callouts");
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
