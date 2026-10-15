@@ -561,7 +561,7 @@ existing workspace worker in its own right.
 
 §machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its worker binding. Inspection does not inject another log into a model's packet.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a model worker), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a client-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin`, set once at creation: `model` (a model's identity) or `_plurnk` (the workspace's runtime worker, where the daemon's own work and a person's client operations journal, {§connection-lifecycle}). WORK and FORK are a model's delegation, so their child is always a model worker, and a worker that is not a model is refused `409 model-worker-required` when it would start one; WORK to a worker that exists is still its message from any worker ({§worker-scheme-spawn}). `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
 
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
@@ -5038,7 +5038,7 @@ Core's behavior behind them.
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
-| Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
+| Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. The source is a model worker, else `409 model-worker-required` ({§machine-processes-worker-origin}). |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, actor, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§rollback}, {§connection-lifecycle}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked model worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
@@ -5089,7 +5089,7 @@ mapping. A module may replace its own binding with a later create or attach resu
 without requiring a new transport; it resolves the bound worker separately, while
 each client operation allocates its own administrative loop under {§connection-lifecycle}.
 
-§methods-worker-name-admission **Client worker-name admission.** Worker
+§methods-worker-name-admission **Worker-name admission.** Worker
 creation and fork apply {§worker-name-minting} before lookup or creation. A client therefore cannot forge or resume the runtime actor (its
 name lies outside `WORKER_NAME`) or create a worker under a spelling model worker control
 could not mint.
@@ -6552,6 +6552,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. A WORK to a held name with env: WORK to the existing worker '*name*' carries env; a message takes none. |
+| `model-worker-required` | 409 | *OP* starts a child of the worker that runs it, and '*name*' is not a model worker ({§machine-processes-worker-origin}). Recovery: WORK to the address of a worker that exists delivers its prompt as a message. |
 | `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: WORK or SEND (worker://*name*) delivers a message to the live worker; FORK with a name no worker holds. ({§worker-scheme-spawn}) |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |

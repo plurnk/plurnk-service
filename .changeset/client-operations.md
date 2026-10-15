@@ -28,6 +28,16 @@ workspace's: each journals as one administrative loop in the runtime worker
   the workspace receive.
 - Shutdown cancels every client operation still dispatching and reaps every
   execution an operation started.
+- Migration 30 carries existing databases forward: each client worker's loops,
+  rows, subscriptions and events become its workspace's `_plurnk`'s (its loops
+  numbered after `_plurnk`'s own, each naming the worker's owner as
+  `promptSource`), a worker it parented becomes `_plurnk`'s child, its own
+  environment overrides go, and the client worker is removed. A worker's
+  `origin` is `model` or `_plurnk`.
+- WORK and FORK are a model's delegation: the child is always a model worker,
+  and a worker that is not a model is refused `409 model-worker-required` when
+  it would start one; WORK to a worker that exists is still its message.
+  `forkWorker` forks only a model worker ({§machine-processes-worker-origin}).
 - `cancelLoop({ workspaceId, loopId, reason? })` cancels exactly one operation:
   its dispatch while it runs, settling the loop 499 `operation-cancelled`, and
   every attached execution its rows started that still runs.

@@ -176,9 +176,7 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `reference-read-only-${layer}`);
         const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
-        const { id: workerId } = await WorkerName.claimAuto(db, {
-            workspaceId, origin: "model",
-        });
+        const { id: workerId } = await WorkerName.claimAuto(db, { workspaceId });
         if (layer === "service") process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(capabilities);
         if (layer === "workspace") await db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities }),

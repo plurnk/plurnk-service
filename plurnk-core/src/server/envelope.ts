@@ -37,7 +37,7 @@ export interface WorkerRow {
     id: number;
     name: string;
     created_at: string;
-    origin: "model" | "client" | "_plurnk";
+    origin: "model" | "_plurnk";
     owner: string;
     parentWorkerId: number | null;
     // {§application-worker-observation}

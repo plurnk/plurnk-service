@@ -331,3 +331,32 @@ test("{§worker-lifecycle-total-reap} shutdown cancels a person's operation stil
     await cancelled;
     assert.equal(await new LoopLifecycle(db).status((await loop.promise).loopId), 499, "the operation still dispatching settles cancelled");
 });
+
+test("{§machine-processes-worker-origin} a person's operation starts no worker: WORK or FORK that would create one is refused, WORK to a worker that exists is its message, and the runtime worker never forks", async (t) => {
+    serverProposals(t, "accept");
+    const provider = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\nnoted\n````")] });
+    const { daemon } = await boot(t, { provider });
+    const { workspaceId } = await daemon.createWorkspace({ name: `client-delegation-${crypto.randomUUID()}` });
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
+    const person = async (source: string) => (await daemon.dispatchClientAction({
+        workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [parseOne(source)],
+    }))[0]!;
+    const workers = async () => (await daemon.listWorkers(workspaceId)).map(({ name, origin }) => `${name}:${origin}`).sort();
+    await daemon.ensureRuntimeWorker(workspaceId);
+    const before = await workers();
+    for (const source of ["````WORK (worker://helper)\nStart.\n````", "````WORK\nStart.\n````", "````FORK (worker://branch)\nContinue.\n````"]) {
+        const refused = await person(source);
+        assert.equal(refused.status, 409, `${source}: ${JSON.stringify(refused)}`);
+        assert.equal((refused.problem as { type?: string }).type, "https://problems.plurnk.xyz/engine/dispatcher/model-worker-required");
+    }
+    assert.deepEqual(await workers(), before, "a refused delegation creates nothing");
+    const delivered = await person("````WORK (worker://main)\nA note for you.\n````");
+    assert.equal(delivered.status, 200, JSON.stringify(delivered));
+    assert.equal((delivered.attrs as { delivered?: string } | undefined)?.delivered, "message", "WORK to a worker that exists is its message");
+    await assert.rejects(daemon.forkWorker({ workspaceId, workerId: await daemon.ensureRuntimeWorker(workspaceId) }), (error: unknown) => {
+        assert.ok(error instanceof OperationFailureError, String(error));
+        assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
+        return true;
+    });
+    assert.deepEqual(await workers(), before, "the workspace keeps its one runtime worker");
+});

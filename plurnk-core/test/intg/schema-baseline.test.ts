@@ -69,7 +69,7 @@ test("{§db-migrations} {§file-snapshot-revision}: upgrade retains projections 
         before.prepare("INSERT INTO workspaces (id, name, project_root) VALUES (1, 'fileUpgrade', ?)").run(root);
         before.exec(`
             INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'writer');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'writer', 'model');
             INSERT INTO entries (id, workspace_id, scheme, authority, pathname, synced_sig, membership_origin)
                 VALUES (1, 1, 'file', '', 'doc.md', '1700000000000:9', 'constraint');
             INSERT INTO entry_channels (entry_id, name, content, mimetype)
@@ -116,7 +116,7 @@ test("{§db-migrations} {§message-completion}: upgrades preserve resolved messa
         before.exec(`
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'replyUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'requester'), (2, 1, 'responder');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'requester', 'model'), (2, 1, 'responder', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
                 VALUES (1, 1, 1, 'Retain replies', '{"proposals":"reject"}', -1),
                        (2, 2, 1, 'Reply to a peer', '{"proposals":"reject"}', -1);
@@ -175,7 +175,7 @@ test("{§db-migrations} {§packet-wire-envelope}: role evolution retains histori
         before.exec(`
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'packetUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'writer');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'writer', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
                 VALUES (1, 1, 1, 'retain evidence', '{"proposals":"reject"}', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
@@ -311,7 +311,7 @@ test("{§db-migrations} {§log-mutation-patch}: upgrading gives every settled ro
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'patchUpgrade');
             INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'editor');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'editor', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Edit', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
             INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx)
@@ -326,7 +326,7 @@ test("{§db-migrations} {§log-mutation-patch}: upgrading gives every settled ro
     } finally { await db.close(); }
 });
 
-test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag column in place, keeping each row's flag and the one-per-workspace index`, async (t) => {
+test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag column in place, keeping each row's flag`, async (t) => {
     const path = await released(V3_3_0);
     t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
     const before = new DatabaseSync(path);
@@ -345,7 +345,75 @@ test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag co
         assert.equal(columns(after, "workers").includes("default_conversation"), false);
         assert.deepEqual(after.prepare("SELECT id, default_worker FROM workers ORDER BY id").all().map((row) => ({ ...row })),
             [{ id: 1, default_worker: 1 }, { id: 2, default_worker: 0 }], "each released row keeps its flag under the new name");
-        assert.throws(() => after.exec("UPDATE workers SET default_worker = 1 WHERE id = 2"), /UNIQUE constraint failed/, "the one-per-workspace index survives the rename");
+    } finally { after.close(); }
+});
+
+test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's client workers become their runtime worker's history, losing no row anything names`, async (t) => {
+    const path = await released(V3_3_0);
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const person = "agui://anonymous/threads/first";
+    const json = "'{}', 'application/json', '{\"status\":200}', 'application/json', 200";
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'clientUpgrade'), (2, 'noRuntime');
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive)
+                VALUES (1, '_plurnk', '[]', 0), (1, '${person}', '[]', 0), (2, '_plurnk', '[]', 0);
+            INSERT INTO workers (id, workspace_id, name, origin)
+                VALUES (1, 1, 'main', 'model'), (2, 1, '_plurnk', '_plurnk'), (3, 1, 'person', 'client'), (5, 2, 'other', 'client');
+            UPDATE workers SET owner = '${person}' WHERE id = 3;
+            INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id) VALUES (4, 1, 'helper', 'model', 3);
+            INSERT INTO loops (id, worker_id, sequence, prompt, max_turns)
+                VALUES (1, 2, 1, 'narration', -1), (2, 3, 1, 'operation', -1), (3, 3, 2, 'operation', -1), (4, 1, 1, 'Work.', -1), (5, 5, 1, 'operation', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
+                (1, 2, 1, 'client', 'operation', 200), (2, 3, 1, 'client', 'operation', 200),
+                (3, 4, 1, 'model', 'inference', 200), (4, 5, 1, 'client', 'operation', 200);
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx) VALUES
+                (1, 3, 2, 1, 1, 'client', 'sh', ${json}), (2, 3, 3, 2, 1, 'client', 'SEND', ${json}), (3, 5, 5, 4, 1, 'client', 'READ', ${json});
+            INSERT INTO ambient_events (id, workspace_id, producer_worker_id, recipient_worker_id, kind, source_record_id, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, state)
+                VALUES (1, 1, 3, 1, 'reply', 2, 'SEND', ${json}, 'resolved');
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, ambient_event_id)
+                VALUES (4, 1, 4, 3, 1, 'model', 'SEND', ${json}, 1);
+            INSERT INTO log_entry_projections (log_entry_id, active) VALUES (1, 1), (2, 1), (3, 1), (4, 1);
+            INSERT INTO entries (id, workspace_id, scheme, pathname) VALUES (1, 1, 'sh', '/1234abcd');
+            INSERT INTO subscriptions (id, worker_id, entry_id, scheme, handle, source) VALUES (1, 3, 1, 'sh', 'sh: make', 'log:///1/1/1/sh');
+            INSERT INTO worker_module_state (worker_id, namespace_owner, state) VALUES (3, 'env', '{}');
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        after.exec("PRAGMA foreign_keys = ON");
+        const rows = (sql: string) => after.prepare(sql).all().map((row) => ({ ...row }));
+        assert.deepEqual(rows("SELECT id, workspace_id, name, origin, parent_worker_id FROM workers ORDER BY id"), [
+            { id: 1, workspace_id: 1, name: "main", origin: "model", parent_worker_id: null },
+            { id: 2, workspace_id: 1, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
+            { id: 4, workspace_id: 1, name: "helper", origin: "model", parent_worker_id: 2 },
+            { id: 6, workspace_id: 2, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
+        ], "no client worker remains; a worker a person started is the runtime worker's child; a workspace gains its runtime worker");
+        assert.deepEqual(rows("SELECT id, worker_id, sequence, prompt_source FROM loops ORDER BY id"), [
+            { id: 1, worker_id: 2, sequence: 1, prompt_source: null },
+            { id: 2, worker_id: 2, sequence: 2, prompt_source: person },
+            { id: 3, worker_id: 2, sequence: 3, prompt_source: person },
+            { id: 4, worker_id: 1, sequence: 1, prompt_source: null },
+            { id: 5, worker_id: 6, sequence: 1, prompt_source: null },
+        ], "each client loop follows the runtime worker's own in order, naming the person who owned its worker");
+        assert.deepEqual(rows("SELECT id, worker_id, loop_id, ambient_event_id FROM log_entries ORDER BY id"), [
+            { id: 1, worker_id: 2, loop_id: 2, ambient_event_id: null },
+            { id: 2, worker_id: 2, loop_id: 3, ambient_event_id: null },
+            { id: 3, worker_id: 6, loop_id: 5, ambient_event_id: null },
+            { id: 4, worker_id: 1, loop_id: 4, ambient_event_id: 1 },
+        ], "every row keeps its identity and its loop; the model's observed reply still names its event");
+        assert.deepEqual(rows("SELECT producer_worker_id, recipient_worker_id FROM ambient_events"), [{ producer_worker_id: 2, recipient_worker_id: 1 }]);
+        assert.deepEqual(rows("SELECT worker_id, source FROM subscriptions"), [{ worker_id: 2, source: "log:///2/1/1/sh" }],
+            "an execution's source takes its loop's new number");
+        assert.deepEqual(rows("SELECT worker_id FROM worker_module_state"), [], "a client worker's own environment goes with it");
+        assert.deepEqual(rows("PRAGMA foreign_key_check"), []);
+        assert.deepEqual(rows("SELECT name FROM sqlite_schema WHERE name = 'workers_workspace_default_worker'"), []);
+        assert.throws(() => after.exec("UPDATE log_entries SET worker_id = 1 WHERE id = 1"), /immutable/, "the row identity guard holds again");
+        assert.throws(() => after.exec("UPDATE subscriptions SET source = 'log:///9/9/9/sh' WHERE id = 1"), /immutable/, "the subscription identity guard holds again");
     } finally { after.close(); }
 });
 
@@ -442,7 +510,7 @@ test("{§db-migrations} {§target-group}: stored groups normalize without rewrit
     try {
         before.exec(`
             INSERT INTO workspaces (id, name) VALUES (1, 'astUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'witness', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
                 VALUES (1, 1, 1, 'retain evidence', '{"proposals":"reject"}', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
@@ -477,7 +545,7 @@ test("{§db-migrations} {§worker-wait-timing} {§log-history-projection}: a rel
     try {
         before.exec(`
             INSERT INTO workspaces (id, name) VALUES (1, 'logUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'witness', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'wait for work', '{}', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200), (2, 1, 2, 'model', 'inference', 200);
             INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs) VALUES
@@ -557,7 +625,7 @@ test("{§db-migrations} {§provider-request-evidence}: upgrading keeps earlier r
         before.exec(`
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'requestUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'witness', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
                 VALUES (1, 1, 1, 'retain requests', '{"proposals":"reject"}', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
@@ -589,7 +657,7 @@ test("{§db-migrations} {§proposal-decision-evidence} {§retention-policy}: upg
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'evidenceUpgrade');
             INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'witness');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'witness', 'model');
             INSERT INTO loops (id, worker_id, sequence, prompt, max_turns)
                 VALUES (1, 1, 1, 'retain the facts', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status, completed_at)
@@ -660,7 +728,7 @@ test("{§db-migrations} {§child-orientation}: upgrading retains streams without
         before.exec(`
             PRAGMA foreign_keys = ON;
             INSERT INTO workspaces (id, name) VALUES (1, 'streamUpgrade');
-            INSERT INTO workers (id, workspace_id, name) VALUES (1, 1, 'observer');
+            INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'observer', 'model');
             INSERT INTO entries (id, workspace_id, scheme, pathname) VALUES (1, 1, 'sh', '/1234abcd');
             INSERT INTO entry_channels (entry_id, name, content, mimetype, state)
                 VALUES (1, 'stdout', 'retained', 'text/stream', 'active');
@@ -701,8 +769,8 @@ test(`{§db-migrations} {§emission-row}: a ${V1_24_0.release} database migrates
         before.exec(`
             INSERT INTO workspaces (id, name) VALUES (1, 'exampleWorkspace');
             INSERT INTO model_routes (id, alias, provider, model) VALUES (1, 'example', 'deepseek', 'deepseek-chat');
-            INSERT INTO workers (id, workspace_id, name, model_route_id, effort, effort_source)
-                VALUES (1, 1, 'exampleWorkerName', 1, 'medium', 'explicit');
+            INSERT INTO workers (id, workspace_id, name, origin, model_route_id, effort, effort_source)
+                VALUES (1, 1, 'exampleWorkerName', 'model', 1, 'medium', 'explicit');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'example prompt', '{}', 3);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
             INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'ops', 'exampleProgram');
@@ -734,8 +802,8 @@ test(`{§db-migrations}: a ${V1_21_1.release} database migrates in place and kee
         before.exec(`
             INSERT INTO workspaces (id, name) VALUES (1, 'exampleWorkspace');
             INSERT INTO model_routes (id, alias, provider, model) VALUES (1, 'example', 'deepseek', 'deepseek-chat');
-            INSERT INTO workers (id, workspace_id, name, model_route_id, reasoning_policy, reasoning_source)
-                VALUES (1, 1, 'exampleWorkerName', 1, 'medium', 'explicit');
+            INSERT INTO workers (id, workspace_id, name, origin, model_route_id, reasoning_policy, reasoning_source)
+                VALUES (1, 1, 'exampleWorkerName', 'model', 1, 'medium', 'explicit');
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'example prompt', '{}', 3);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
             INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'ops', 'exampleProgram');

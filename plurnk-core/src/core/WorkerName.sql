@@ -1,13 +1,14 @@
 -- Automatic worker allocation. SPEC {§worker-auto-name}.
 
 -- PREP: worker_name_claim
--- Claiming the literal and creating its worker are one SQLite write statement.
+-- Claiming the literal and creating its worker are one SQLite write statement. Every worker it mints is a
+-- model's ({§machine-processes-worker-origin}).
 INSERT INTO workers (
     workspace_id, name, parent_worker_id, origin, owner,
     ambient_event_cursor, fork_event_boundary,
     model_route_id, spawn_model_route_id, effort
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner,
+SELECT $workspace_id, $name, $parent_worker_id, 'model', $owner,
        CASE WHEN $fork_snapshot = 1 THEN (
            SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
        ) ELSE NULL END,

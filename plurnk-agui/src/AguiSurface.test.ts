@@ -12,7 +12,7 @@ test("{§agui-action-schema-enforcement} {§worker-ownership}: worker directorie
         name: "main",
         created_at: "2026-10-07T00:00:00Z",
         owner: "agui://anonymous/threads/main",
-        origin: "client",
+        origin: "model",
         parentWorkerId: null,
         kind: "root",
         lifecycle: "idle",

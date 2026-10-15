@@ -60,7 +60,7 @@ const worker = object({
     name: NONEMPTY,
     created_at: NONEMPTY,
     owner: NONEMPTY,
-    origin: { enum: ["model", "client", "_plurnk"] },
+    origin: { enum: ["model", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
     kind: { enum: ["root", "fork", "work"] },
     lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "failed"] },

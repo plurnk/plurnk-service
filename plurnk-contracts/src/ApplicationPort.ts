@@ -57,7 +57,7 @@ export interface ClientEnvelope {
     readonly projectLabel: string | null;
 }
 
-export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
+export type ApplicationWorkerOrigin = "model" | "_plurnk";
 
 // {§application-worker-observation} — `kind` is how the worker was minted (a root worker, a FORK
 // child with a forked log, a WORK child with a fresh log); `lifecycle` projects its representative loop

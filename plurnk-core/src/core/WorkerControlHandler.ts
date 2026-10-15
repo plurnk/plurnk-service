@@ -1,7 +1,7 @@
 // WORK and FORK dispatch: the worker creation and control statements, split out of Dispatcher.
 import type { ForkStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import WorkerName, { WorkerNameError, WorkerNameConflictError, type WorkerOrigin } from "./WorkerName.ts";
+import WorkerName, { WorkerNameError, WorkerNameConflictError } from "./WorkerName.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
@@ -84,6 +84,19 @@ export default class WorkerControlHandler {
             if (held !== undefined) return this.#message(ctx, name, held.id, prompt, environment);
         }
 
+        // {§machine-processes-worker-origin} A model delegates: only a model worker starts a child.
+        const parent = await this.#db.worker_get.get<{ workspace_id: number; name: string; origin: string }>({ id: ctx.workerId });
+        if (parent?.workspace_id !== ctx.workspaceId) throw new Error("worker control: parent is absent from this workspace");
+        if (parent.origin !== "model") {
+            return this.#failure("model-worker-required", 409,
+                `${statement.op} starts a child of the worker that runs it, and '${parent.name}' is not a model worker.`, {}, {
+                    operation: statement.op,
+                    worker: parent.name,
+                    recovery: "WORK to the address of a worker that exists delivers its prompt as a message.",
+                    retryable: false,
+                });
+        }
+
         let workerId: number;
         try {
             workerId = await this.#createWorker(statement, ctx, name);
@@ -151,9 +164,7 @@ export default class WorkerControlHandler {
         name: string | undefined,
     ): Promise<number> {
         if (statement.op === "FORK") return Fork.fork(this.#db, ctx.workerId, name);
-        const parent = await this.#db.worker_get.get<{ workspace_id: number; origin: WorkerOrigin }>({ id: ctx.workerId });
-        if (parent?.workspace_id !== ctx.workspaceId) throw new Error("worker control: parent is absent from this workspace");
-        const options = { workspaceId: ctx.workspaceId, parentWorkerId: ctx.workerId, origin: parent.origin };
+        const options = { workspaceId: ctx.workspaceId, parentWorkerId: ctx.workerId };
         const row = name === undefined
             ? await WorkerName.claimAuto(this.#db, options)
             : await WorkerName.claimNamed(this.#db, name, options);

@@ -3,14 +3,14 @@
 // history inside that INSERT ({§worker-fork-trigger}, fork.sql).
 
 import type { Db } from "./Db.ts";
-import WorkerName, { type WorkerOrigin } from "./WorkerName.ts";
+import WorkerName from "./WorkerName.ts";
 
 export default class Fork {
     static async fork(db: Db, parentWorkerId: number, name: string | undefined): Promise<number> {
-        const parent = await db.worker_get.get<{ workspace_id: number; origin: WorkerOrigin }>({ id: parentWorkerId });
+        const parent = await db.worker_get.get<{ workspace_id: number }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
         // {§worker-auto-name} The same allocator serves addressless WORK and FORK.
-        const options = { workspaceId: parent.workspace_id, parentWorkerId, origin: parent.origin, forkSnapshot: true } as const;
+        const options = { workspaceId: parent.workspace_id, parentWorkerId, forkSnapshot: true } as const;
         const branch = name === undefined
             ? await WorkerName.claimAuto(db, options)
             : await WorkerName.claimNamed(db, name, options);

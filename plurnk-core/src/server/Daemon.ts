@@ -1461,29 +1461,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const workspaceId = ClientInput.assertId("run.fork", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("run.fork", "workerId", args.workerId);
         const name = ClientInput.assertOptionalWorkerName("run.fork", "name", args.name);
-        const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (owner === undefined) {
-            throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
-                404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
-            );
-        }
-        if (owner.workspace_id !== workspaceId) {
-            throw daemonFailure(
-                "daemon:worker",
-                "workspace-mismatch",
-                409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                {
-                    workerId,
-                    workspaceId,
-                    actualWorkspaceId: owner.workspace_id,
-                    retryable: false },
-            );
-        }
+        // {§machine-processes-worker-origin} A branch is a model's: only a model worker's log forks.
+        await this.#assertModelWorker(workspaceId, workerId);
         if (name !== undefined) {
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {

@@ -2,8 +2,6 @@ import { WORKER_NAME } from "@plurnk/plurnk-contracts";
 import { randomBytes } from "node:crypto";
 import type { Db } from "./Db.ts";
 
-export type WorkerOrigin = "model" | "client" | "_plurnk";
-
 export interface WorkerNameClaim {
     id: number;
     name: string;
@@ -12,7 +10,6 @@ export interface WorkerNameClaim {
 interface AutoWorkerOptions {
     workspaceId: number;
     parentWorkerId?: number;
-    origin: WorkerOrigin;
     owner?: string;
     forkSnapshot?: boolean;
 }
@@ -39,7 +36,7 @@ export class WorkerNameError extends Error {
     }
 }
 
-// {§worker-name-minting} Model/client minting only; the runtime actor
+// {§worker-name-minting} Model-worker minting only; the runtime actor
 // ({§actor-boundary-self-hosting}) and generic URI ingestion have their own contracts.
 export default class WorkerName {
     static async forId(db: Db, workerId: number): Promise<string> {
@@ -63,7 +60,6 @@ export default class WorkerName {
         const {
             workspaceId,
             parentWorkerId,
-            origin,
             forkSnapshot = false,
         } = options;
         while (true) {
@@ -71,7 +67,6 @@ export default class WorkerName {
                 workspace_id: workspaceId,
                 name: WorkerName.assert(WorkerName.short()),
                 parent_worker_id: parentWorkerId ?? null,
-                origin,
                 owner: options.owner ?? "_plurnk",
                 fork_snapshot: forkSnapshot ? 1 : 0,
             });
@@ -84,7 +79,6 @@ export default class WorkerName {
             workspace_id: options.workspaceId,
             name: WorkerName.assert(name),
             parent_worker_id: options.parentWorkerId ?? null,
-            origin: options.origin,
             owner: options.owner ?? "_plurnk",
             fork_snapshot: options.forkSnapshot ? 1 : 0,
         });
