@@ -3,6 +3,7 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { makeMockResponse } from "./_mock.ts";
 import { waitFor, withDaemon } from "./_rpc.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 
 test("{§notifications-loop-packet} {§application-loop-observation} {§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: exterior adapters observe exact topology and durable loop state", async () => {
     const provider = new Mock({
@@ -129,5 +130,20 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
         } finally {
             unsubscribe();
         }
+    });
+});
+
+test("{§methods-worker-read} {§worker-name-minting}: an exact read resolves every name a listing returns, the runtime worker's included", async () => {
+    await withDaemon(new Mock({ contextWindow: 16_384, responses: [] }), async (db, daemon) => {
+        const workspace = await daemon.createWorkspace({ name: `worker-read-${crypto.randomUUID()}`, projectRoot: null });
+        const runtimeId = await RuntimeWorker.ensure(db, workspace.workspaceId);
+        const listed = (await daemon.listWorkers(workspace.workspaceId)).find(({ id }) => id === runtimeId);
+        assert.ok(listed !== undefined, "the listing returns the runtime worker");
+        const byName = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: listed.name } });
+        assert.deepEqual(byName, await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { id: runtimeId } }),
+            "the listed name resolves the listed worker: a lookup is no minting door");
+        assert.equal(byName?.origin, "_plurnk", "and the reader sees what it is, so it can refuse to bind it");
+        assert.equal(await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: "_absent" } }), null,
+            "a name no worker carries is absent, not malformed");
     });
 });

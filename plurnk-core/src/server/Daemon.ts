@@ -1240,12 +1240,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             );
         }
         type Row = Omit<ApplicationWorkerProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
+        // {§worker-name-minting} — a lookup is no minting door: it resolves any name a listing returns,
+        // the runtime worker's `_plurnk` among them.
         const row = hasId
             ? await this.#db.envelope_get_worker_by_id.get<Row>({
                 id: ClientInput.assertId("worker.read", "id", args.identity.id) })
             : await this.#db.envelope_get_worker_by_name.get<Row>({
                 workspace_id: workspaceId,
-                name: ClientInput.assertOptionalWorkerName("worker.read", "name", args.identity.name)! });
+                name: ClientInput.assertOptionalName("worker.read", "name", args.identity.name)! });
         if (row === undefined || row.workspace_id !== workspaceId) return null;
         const { workspace_id: _workspaceId, ...projection } = projectWorkerRow(row);
         return projection;
