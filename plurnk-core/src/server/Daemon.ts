@@ -1309,7 +1309,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
-        if (this.#dbPath === undefined) throw new Error("share: this daemon was started without its database path");
+        if (this.#dbPath === undefined) throw new Error("this daemon was started without its database path");
         return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 

@@ -43,7 +43,7 @@ test("{§share}: a folder that already holds files, the database's own included,
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
     await (await openMigrated(dbPath)).close();
-    await assert.rejects(Share.write({ openEvidence: EvidenceReader.open, dbPath, folder: root }), { message: `digest: ${root} already exists and is not an empty folder; remove it first` });
+    await assert.rejects(Share.write({ openEvidence: EvidenceReader.open, dbPath, folder: root }), { message: `${root} already exists and is not an empty folder; remove it first` });
     assert.ok(existsSync(dbPath));
 });
 
@@ -65,5 +65,5 @@ test("{§share-snapshot}: a snapshot of an open WAL database keeps the commits a
     const copy = join(root, "snapshot.db");
     Share.snapshot(dbPath, copy);
     assert.deepEqual(workspacesOf(copy, join(root, "snapshot")), ["committed-in-wal"]);
-    assert.throws(() => Share.snapshot(dbPath, copy), { message: `share: ${copy} already exists; remove it first` });
+    assert.throws(() => Share.snapshot(dbPath, copy), { message: `${copy} already exists; remove it first` });
 });

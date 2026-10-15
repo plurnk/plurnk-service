@@ -36,7 +36,7 @@ export default class Digest {
         const { dbPath, digestDir } = digestPaths(opts);
         // {§share}: the digest never deletes; a caller reusing a folder removes it first.
         if (existsSync(digestDir) && (!statSync(digestDir).isDirectory() || readdirSync(digestDir).length > 0)) {
-            throw new Error(`digest: ${digestDir} already exists and is not an empty folder; remove it first`);
+            throw new Error(`${digestDir} already exists and is not an empty folder; remove it first`);
         }
         using evidence = opts.openEvidence(dbPath);
         Digest.#write(evidence, dbPath, digestDir, opts);
@@ -48,10 +48,10 @@ export default class Digest {
             logEntries, editRows, curationEffects, workerRollupRows, opMixRows } = rows;
         const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows, reasoningRows } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
-        if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
+        if (rows.storage === undefined) throw new Error("the database reported no storage facts");
         const storage = { ...rows.storage, tables: storageTables };
         let turns = rows.turns;
-        if (searchState === undefined || derivationState === undefined) throw new Error("digest: search aggregate returned no row");
+        if (searchState === undefined || derivationState === undefined) throw new Error("search aggregate returned no row");
         const dispositionCount = (value: string): number => dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? 0;
         const search = {
             ...searchState,

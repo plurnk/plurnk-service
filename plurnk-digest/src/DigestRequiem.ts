@@ -79,12 +79,12 @@ export default class DigestRequiem {
         const { dbPath, digestDir } = digestPaths(opts);
         // {§share}: a writer never deletes; an existing interview is removed by its caller first.
         for (const name of ["requiem.json", "requiem.md"]) {
-            if (existsSync(join(digestDir, name))) throw new Error(`digest: ${join(digestDir, name)} already exists; remove it first`);
+            if (existsSync(join(digestDir, name))) throw new Error(`${join(digestDir, name)} already exists; remove it first`);
         }
         mkdirSync(digestDir, { recursive: true });
 
         const provider = opts.provider;
-        if (provider === null) throw new Error("requiem: no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
+        if (provider === null) throw new Error("no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
         const maxTokens = Knob.integer("PLURNK_DIGEST_REQUIEM_MAX_TOKENS", 1);
         const retryMaxTokens = Knob.integer("PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS", 1);
         if (retryMaxTokens < maxTokens) {
@@ -205,7 +205,7 @@ export default class DigestRequiem {
             if (provider.contextWindow !== null) {
                 const allowance = provider.contextWindow - retryMaxTokens - estimateTokens(REQUIEM_SYSTEM) - 1024;
                 if (allowance <= 0) {
-                    throw new Error(`requiem: witness window ${provider.contextWindow} cannot carry the interview output allowance`);
+                    throw new Error(`witness window ${provider.contextWindow} cannot carry the interview output allowance`);
                 }
                 if (estimateTokens(userContent) > allowance) {
                     // Monotone in the drop count: binary-search the fewest elided attempts.

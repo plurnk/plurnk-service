@@ -92,8 +92,8 @@ export default class EvidenceReader implements DigestEvidence {
             storage: (db.digest_storage as SyncPrep<StorageRow>).get(),
             storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
         };
-        if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
-        if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("digest: search aggregate returned no row");
+        if (rows.storage === undefined) throw new Error("the database reported no storage facts");
+        if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("search aggregate returned no row");
         const roots = new Map(rows.workspaces.map(({ id, project_root }) => [id, project_root]));
         const workerRoots = new Map(rows.workers.map(({ id, workspace_id }) => [id, roots.get(workspace_id) ?? null]));
         return {
@@ -120,7 +120,7 @@ export default class EvidenceReader implements DigestEvidence {
         let evidence: PacketEvidence = { packet: null, packetFailure: null };
         if (turn.has_packet === 1) {
             const row = (this.#db.digest_turn_packet as SyncPrep<{ packet: string; packet_bag: string }>).get({ turn_id: turn.id });
-            if (row === undefined) throw new Error(`digest: turn ${turn.id} packet disappeared`);
+            if (row === undefined) throw new Error(`turn ${turn.id} packet disappeared`);
             try {
                 const packet = StoredPacket.parse(row.packet, `digest turn ${turn.id}`);
                 evidence = {
@@ -154,14 +154,14 @@ export default class EvidenceReader implements DigestEvidence {
 
     request(requestId: number): string | null {
         const row = (this.#db.digest_provider_request_evidence as SyncPrep<{ evidence?: string | null }>).get({ request_id: requestId });
-        if (row === undefined) throw new Error(`digest: provider request ${requestId} disappeared`);
+        if (row === undefined) throw new Error(`provider request ${requestId} disappeared`);
         return row.evidence ?? null;
     }
 
     reasoning(turn: TurnRow): string | null {
         if (turn.has_reasoning === 0) return null;
         const row = (this.#db.digest_turn_reasoning as SyncPrep<{ content: string }>).get({ turn_id: turn.id });
-        if (row === undefined) throw new Error(`digest: turn ${turn.id} reasoning source disappeared`);
+        if (row === undefined) throw new Error(`turn ${turn.id} reasoning source disappeared`);
         return row.content;
     }
 }

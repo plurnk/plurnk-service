@@ -463,7 +463,7 @@ export default class Service {
                 const dbPath = typeof positionals[1] === "string" ? positionals[1] : Service.#hostPaths.configuredDatabasePath();
                 const folder = typeof positionals[2] === "string" ? positionals[2] : Service.#hostPaths.shareFolder();
                 const provider = values.requiem === true ? await ProviderInstantiate.loadActiveProvider() : undefined;
-                if (provider === null) throw new Error("requiem: no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
+                if (provider === null) throw new Error("no active provider - set PLURNK_MODEL; a requiem needs a witness to testify");
                 const shared = await Share.write({ openEvidence: EvidenceReader.open,
                     dbPath, folder, requiem: provider,
                     ...(typeof workspace === "string" ? { workspaceId: Number(workspace) } : {}),

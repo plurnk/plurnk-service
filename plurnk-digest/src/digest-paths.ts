@@ -6,8 +6,8 @@ import type { DigestOptions } from "./digest-rows.ts";
 // writer never deletes: the digest refuses a folder that already holds files ({§share}).
 export const digestPaths = (opts: DigestOptions): { dbPath: string; digestDir: string } => {
     const dbPath = resolve(opts.dbPath);
-    if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
+    if (!existsSync(dbPath)) throw new Error(`no DB at ${dbPath}`);
     const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
-    if (digestDir.length === 0) throw new Error("digest: output directory must not be empty");
+    if (digestDir.length === 0) throw new Error("output directory must not be empty");
     return { dbPath, digestDir: resolve(digestDir) };
 };

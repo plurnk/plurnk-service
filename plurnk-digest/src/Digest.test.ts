@@ -40,7 +40,7 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
     assert.equal(opened, 1);
     assert.equal(closed, 1);
     assert.throws(() => Digest.run({ dbPath, digestDir, openEvidence }), {
-        message: `digest: ${digestDir} already exists and is not an empty folder; remove it first`,
+        message: `${digestDir} already exists and is not an empty folder; remove it first`,
     });
     assert.equal(opened, 1, "a refused destination never opens evidence");
 });

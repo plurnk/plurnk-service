@@ -70,7 +70,7 @@ export default class DigestRender {
 
     static #requestAccounting(row: ProviderRequestRow): ProviderRequestAccounting {
         if (row.state !== "settled" || row.accounting === null) {
-            throw new TypeError(`digest: provider request ${row.id} is not settled`);
+            throw new TypeError(`provider request ${row.id} is not settled`);
         }
         return row.accounting;
     }
@@ -104,14 +104,14 @@ export default class DigestRender {
         try {
             return Validator.assertOperationResult(DigestRender.parseJson(raw) as OperationResult);
         } catch (cause) {
-            throw new Error(`digest: ${subject} does not contain a valid operation result`, { cause });
+            throw new Error(`${subject} does not contain a valid operation result`, { cause });
         }
     }
 
     static #rowProblem(row: LogRow): ProblemDetails {
         const result = DigestRender.#operationResult(row.rx, `failed log entry ${row.id}`);
         if (result.problem === undefined) {
-            throw new Error(`digest: failed log entry ${row.id} does not contain Problem Details`);
+            throw new Error(`failed log entry ${row.id} does not contain Problem Details`);
         }
         return result.problem;
     }
@@ -314,7 +314,7 @@ export default class DigestRender {
         for (const turn of [...m.turns].sort((a, b) => a.id - b.id)) {
             if (turn.producer !== "model") continue;
             const workerId = loopWorker.get(turn.loop_id);
-            if (workerId === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop in scope`);
+            if (workerId === undefined) throw new TypeError(`turn ${turn.id} has no loop in scope`);
             const next = (perWorker.get(workerId) ?? 0) + 1;
             perWorker.set(workerId, next);
             ordinal.set(turn.id, next);
@@ -332,7 +332,7 @@ export default class DigestRender {
                 census.forms[form] += 1;
                 if (row.status_rx >= 400) census.refused += 1;
                 const at = ordinal.get(row.turn_id);
-                if (at === undefined) throw new TypeError(`digest: EDIT ${row.id} sits on a turn no model produced`);
+                if (at === undefined) throw new TypeError(`EDIT ${row.id} sits on a turn no model produced`);
                 if (row.pathname !== null) {
                     const previous = lastEdited.get(row.pathname);
                     if (previous !== undefined && previous < at && at - previous <= 2) { census.revisits += 1; revisitById.add(row.id); }
@@ -370,7 +370,7 @@ export default class DigestRender {
             let previousText: string | null | undefined;
             for (const request of m.requestsByLoop.get(loop.id) ?? []) {
                 const turn = turnsById.get(request.turn_id);
-                if (turn === undefined) throw new TypeError(`digest: provider request ${request.id} has no turn in scope`);
+                if (turn === undefined) throw new TypeError(`provider request ${request.id} has no turn in scope`);
                 const text = request.kind === "emission" ? promptOf(turn) : null;
                 const adjacentPrefixTokensEstimate = text === null || request.usage_input === null
                     ? null
@@ -390,7 +390,7 @@ export default class DigestRender {
             }
         }
         for (const request of m.providerRequests) {
-            if (!ledger.has(request.id)) throw new TypeError(`digest: provider request ${request.id} has no loop in scope`);
+            if (!ledger.has(request.id)) throw new TypeError(`provider request ${request.id} has no loop in scope`);
         }
         DigestRender.#cacheLedgerCache.set(m, ledger);
         return ledger;
@@ -928,10 +928,10 @@ export default class DigestRender {
         for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null || row.has_reasoning === 1).toSorted((a, b) => a.id - b.id)) {
             const loop = m.loopsById.get(turn.loop_id);
             const worker = loop === undefined ? undefined : m.workersById.get(loop.worker_id);
-            if (loop === undefined || worker === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop or worker in scope`);
+            if (loop === undefined || worker === undefined) throw new TypeError(`turn ${turn.id} has no loop or worker in scope`);
             const workspace = m.workspaces.find(({ id }) => id === worker.workspace_id);
             const stem = `${nested ? `${segment(workspace?.name ?? String(worker.workspace_id), worker.workspace_id)}/` : ""}${segment(worker.name, worker.id)}-${loop.sequence}-${turn.sequence}`;
-            if (taken.has(stem)) throw new TypeError(`digest: two turns share the packet name ${stem}`);
+            if (taken.has(stem)) throw new TypeError(`two turns share the packet name ${stem}`);
             taken.add(stem);
             stems.set(turn.id, stem);
         }
@@ -1007,7 +1007,7 @@ export default class DigestRender {
             if (reasoning !== null) files.push([`${padded}.reasoning.md`, reasoning]);
             if (packet?.assistant != null) {
                 if (source !== null && packet.assistant.content !== source) {
-                    throw new TypeError(`digest: turn ${turn.id} packet assistant differs from its turnOps source`);
+                    throw new TypeError(`turn ${turn.id} packet assistant differs from its turnOps source`);
                 }
                 files.push([`${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)]);
             } else if (packet !== null) {

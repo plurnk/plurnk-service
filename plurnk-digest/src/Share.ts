@@ -21,8 +21,8 @@ export default class Share {
     // {§share-snapshot}: a live or WAL-mode database is copied by SQLite, never by the filesystem.
     static snapshot(dbPath: string, copy: string): void {
         const source = resolve(dbPath);
-        if (!existsSync(source)) throw new Error(`share: no database at ${source}`);
-        if (existsSync(copy)) throw new Error(`share: ${resolve(copy)} already exists; remove it first`);
+        if (!existsSync(source)) throw new Error(`no database at ${source}`);
+        if (existsSync(copy)) throw new Error(`${resolve(copy)} already exists; remove it first`);
         using database = new SqlRiteSync({ path: source, dir: [import.meta.dirname] });
         database.share_snapshot.run({ path: resolve(copy) });
     }
