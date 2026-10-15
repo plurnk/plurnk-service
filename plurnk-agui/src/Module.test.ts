@@ -3094,9 +3094,7 @@ const CREATING_FORMS: Readonly<Record<string, RunForm>> = {
 // Each names the seam call that carries its effect to the worker it binds.
 const REQUIRING_FORMS: Readonly<Record<string, RunForm & { readonly effect: string }>> = {
     "a sync observation": { plurnk: { mode: "sync" }, effect: "readLog" },
-    "a sync control observation": { plurnk: { mode: "sync", control: true }, effect: "readLog" },
     "a connect observation": { path: "/agui/connect", effect: "readLog" },
-    "a connect control observation": { path: "/agui/connect", plurnk: { control: true }, effect: "readLog" },
     "loop.inject": { ...actionForm("loop.inject", { prompt: "steer" }), effect: "runLoop" },
     "loop.cancel": { ...actionForm("loop.cancel"), effect: "cancelDrain" },
     "run.fork": { ...actionForm("run.fork"), effect: "forkWorker" },
@@ -3184,6 +3182,54 @@ for (const [form, input] of Object.entries(CREATING_FORMS)) {
             assert.deepEqual(minted, present ? [] : [{ workspaceId: 3, name: "page" }],
                 present ? "a worker the workspace holds is never minted again" : "the worker is created once, named for its thread");
             assert.deepEqual(reached, [bound, bound, bound], "every Run reached the worker its thread names");
+        });
+    }
+}
+
+// {§agui-owner-connection} An owner's control observation is the owner's session attaching to its worker.
+const OWNER_OBSERVATIONS: Readonly<Record<string, RunForm>> = {
+    "a sync control observation": { plurnk: { mode: "sync", control: true } },
+    "a connect control observation": { path: "/agui/connect", plurnk: { control: true } },
+};
+
+for (const [form, input] of Object.entries(OWNER_OBSERVATIONS)) {
+    for (const present of [false, true]) {
+        test(`{§agui-action-binding} ${form} ${present ? "binds and claims the worker its thread names" : "creates the worker its thread names, once, and claims it"}`, async () => {
+            const { seam } = mockSeam();
+            existingWorld(seam, "world");
+            const workers = [workerRow(10, "client-1", "client"), workerRow(20, "elsewhere"), ...(present ? [workerRow(44, "page")] : [])];
+            directory(seam, workers);
+            const minted: Array<Parameters<ApplicationPort["createWorker"]>[0]> = [];
+            seam.createWorker = async (args) => {
+                minted.push(args);
+                workers.push(workerRow(77, args.name!));
+                return { workerId: 77, workerName: args.name! };
+            };
+            const claimed: number[] = [];
+            const claim = seam.claimWorkerOwner;
+            seam.claimWorkerOwner = async (args) => { claimed.push(args.workerId); return await claim(args); };
+            const replayed: number[] = [];
+            const attached = Promise.withResolvers<void>();
+            seam.readLog = async ({ workerId }) => { replayed.push(workerId); attached.resolve(); return logRows([]); };
+            const mod = await host(seam);
+            const controller = new AbortController();
+            try {
+                const response = await runForm(mod.address().port, "page", input, controller.signal);
+                assert.equal(response.status, 200);
+                const body = response.text().catch(() => "");
+                await waitForFixture(attached.promise, () => `${form} never replayed the worker it bound`);
+                // A connection waits while its worker is idle; what it bound is decided by now.
+                if (input.path === "/agui/connect") controller.abort();
+                await body;
+            } finally {
+                controller.abort();
+                await mod.close();
+            }
+            const bound = present ? 44 : 77;
+            assert.deepEqual(minted, present ? [] : [{ workspaceId: 3, name: "page" }],
+                present ? "a worker the workspace holds is never minted again" : "the owner's session creates the worker, named for its thread");
+            assert.deepEqual(replayed, [bound], "the observation replays the worker its thread names");
+            assert.ok(claimed.includes(bound), "the owner claims the worker it attached to");
         });
     }
 }

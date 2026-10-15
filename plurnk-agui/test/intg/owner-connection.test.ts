@@ -33,9 +33,7 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
     });
     try {
         await daemon.start();
-        // {§agui-action-binding} A connection binds the worker its thread names and never creates one.
-        const { workspaceId } = await daemon.createWorkspace({ name: "ownership" });
-        await daemon.createWorker({ workspaceId, name: "operator" });
+        // {§agui-owner-connection} The owner's connection creates the worker its thread names.
         const listening = await post("/agui/connect", "operator");
         assert.equal(listening.status, 200);
         const pendingEvents = listening.text();

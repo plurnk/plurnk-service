@@ -140,11 +140,12 @@ export default class RunHandler {
         }
 
         // {§agui-thread-binding} {§agui-action-binding} The threadId names its worker, never compared with the
-        // workspace's name; only an act addressed to the worker creates it. A Run that requires an existing
-        // worker, or creates nothing, attaches to an existing world: a world that does not exist has no worker.
-        // A resume continues the Run whose interrupt it answers: it binds the worker that Run bound, if any.
+        // workspace's name. A message, a setting, or its owner's session attaching creates it; watching passively
+        // or reading never does. A Run that requires an existing worker, or creates nothing, attaches to an
+        // existing world: a world that does not exist has no worker. A resume continues the Run whose interrupt it
+        // answers: it binds the worker that Run bound, if any.
         const binding: WorkerBinding = input.resume !== undefined ? "attach"
-            : synchronize ? "required"
+            : synchronize ? forwarded?.control === true ? "create" : "required"
             : action === null ? "create" : this.#actionBinding(action);
         const { env, reattached } = await this.#envelope(input.threadId, forwarded, {
             create: binding === "create" || binding === "none",

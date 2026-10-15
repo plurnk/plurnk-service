@@ -32,10 +32,10 @@ does not recompute them.
   compared with the workspace's name: renaming a workspace never changes which worker a thread
   means. The name resolves among model-origin workers only (forks and earlier workers are
   addressable as threads; a client connection's worker or the runtime actor `_plurnk` is never
-  bound). A worker comes into being only by an act addressed to it ({§agui-action-binding}): the
-  first such act creates the worker the thread names via `createWorker`, and a thread named after
-  a client or runtime actor fails at minting. Reading, observing or acting on the workspace never
-  creates one. A client that names no particular worker supplies its own default name. A name the
+  bound). A worker comes into being by an act addressed to it or by its owner's session attaching
+  to it ({§agui-action-binding}): the first such Run creates the worker the thread names via
+  `createWorker`, and a thread named after a client or runtime actor fails at minting. Reading it,
+  watching it passively, or acting on the workspace never creates one. A client that names no particular worker supplies its own default name. A name the
   daemon no longer holds (a fresh database, a deleted
   worker) is minted anew by the next act addressed to it, with no history; the run-start status
   gauge then reports `loopId: null` where the previous run's reported a loop, which is how a
@@ -115,8 +115,9 @@ cancellation responsibility.
 ## §agui-owner-connection Persistent observation
 
 `POST /agui/connect` accepts the standard `RunAgentInput`, without messages, actions, or
-resumes. It binds as synchronization does and creates nothing, an owner's control connection
-included, and uses the same snapshots, events, and interrupt representation
+resumes. It binds as synchronization does: an owner's control connection creates the worker the
+thread names when there is none, and a passive one creates nothing. It uses the same snapshots,
+events, and interrupt representation
 ({§agui-sync}), but waits when the worker is idle. New work, including owner-addressed
 child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
@@ -309,11 +310,11 @@ every other daemon surface.
 
 - §agui-sync **Synchronization is an inference-free AG-UI Run.**
   `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
-  management action, or interrupt resume. It binds an existing workspace and the existing worker
-  the `threadId` names, and creates neither: a missing workspace is 404
-  `workspace-not-found`, and a name that holds no model worker is 404 `worker-not-found`. A passive
-  observation (`forwardedProps.plurnk.control` absent or false) claims nothing; an owner's control
-  connection claims as a message Run does. It
+  management action, or interrupt resume. A passive observation (`forwardedProps.plurnk.control`
+  absent or false) binds an existing workspace and the existing worker the `threadId` names, creates
+  neither and claims nothing: a missing workspace is 404 `workspace-not-found`, and a name that holds
+  no model worker is 404 `worker-not-found`. An owner's control observation is the owner's session
+  attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}). It
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
   `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). A durable pending interrupt is re-presented
   through the standard terminate-resume contract; an active Loop remains observed through its
@@ -518,8 +519,8 @@ worker, or binds none, may create the world:
 
 | The thread's worker | The world | Runs and actions |
 |---|---|---|
-| Created when the workspace has none by that name | Created when absent | message Run; `worker.model.set`, `worker.child.set`, `worker.effort.set` |
-| Required: 404 `worker-not-found` when there is none | Attached only | observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` unless `workerId` names another worker |
+| Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set` |
+| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` unless `workerId` names another worker |
 | The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§agui-proposal-resolve}) |
 | Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
 | Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` naming a `workerId` |
