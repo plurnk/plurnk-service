@@ -13,6 +13,7 @@ import { answer } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import ByteView from "../../src/content/byte-view.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 const task = "````NOTE\nInspect the received media.\n````";
@@ -83,7 +84,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "a2a-media", projectRoot: null });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the remote evidence." });
         const lifecycle = new LoopLifecycle(db);
         const result = await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400, { timeoutMs: 10_000 });

@@ -57,20 +57,9 @@ export default class WorkerName {
         return randomBytes(4).toString("hex");
     }
 
-    static async #defaultWorker(
-        db: Db,
-        workspaceId: number,
-    ): Promise<WorkerNameClaim | undefined> {
-        return await db.worker_name_get_default_worker.get<WorkerNameClaim>({
-            workspace_id: workspaceId,
-        });
-    }
-
-    static async #claimAuto(
-        db: Db,
-        options: AutoWorkerOptions,
-        defaultWorker: boolean,
-    ): Promise<WorkerNameClaim> {
+    // A generated name is not minted until this atomic claim creates its worker.
+    // Competing allocators retry only after losing the claim. {§worker-auto-name}
+    static async claimAuto(db: Db, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
         const {
             workspaceId,
             parentWorkerId,
@@ -84,22 +73,10 @@ export default class WorkerName {
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
                 owner: options.owner ?? "_plurnk",
-                default_worker: defaultWorker ? 1 : 0,
                 fork_snapshot: forkSnapshot ? 1 : 0,
             });
             if (claimed !== undefined) return claimed;
-
-            if (defaultWorker) {
-                const existing = await WorkerName.#defaultWorker(db, workspaceId);
-                if (existing !== undefined) return existing;
-            }
         }
-    }
-
-    // A generated name is not minted until this atomic claim creates its worker.
-    // Competing allocators retry only after losing the claim. {§worker-auto-name}
-    static async claimAuto(db: Db, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
-        return await WorkerName.#claimAuto(db, options, false);
     }
 
     static async claimNamed(db: Db, name: string, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
@@ -109,21 +86,9 @@ export default class WorkerName {
             parent_worker_id: options.parentWorkerId ?? null,
             origin: options.origin,
             owner: options.owner ?? "_plurnk",
-            default_worker: 0,
             fork_snapshot: options.forkSnapshot ? 1 : 0,
         });
         if (claimed === undefined) throw new WorkerNameConflictError(name);
         return claimed;
-    }
-
-    // The stable default worker is both an auto-name allocation and the
-    // workspace's one durable default role; both predicates share one write.
-    static async ensureDefaultWorker(
-        db: Db,
-        options: Pick<AutoWorkerOptions, "workspaceId">,
-    ): Promise<WorkerNameClaim> {
-        const existing = await WorkerName.#defaultWorker(db, options.workspaceId);
-        if (existing !== undefined) return existing;
-        return await WorkerName.#claimAuto(db, { ...options, origin: "model" }, true);
     }
 }

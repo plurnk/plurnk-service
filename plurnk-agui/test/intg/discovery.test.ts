@@ -84,6 +84,10 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
                 `${name} output schema compiles through the installed registry`,
             );
         }
+        // {§agui-action-binding} The thread names an existing worker, so every action addressed to it
+        // reaches admission.
+        const { workspaceId } = await daemon.createWorkspace({ name: "installed-schema-admission" });
+        await daemon.createWorker({ workspaceId, name: "installed-schema-admission" });
         for (const [name, action] of Object.entries(discovery.actions)) {
             const invalid = await fetch(`http://${host}:${port}/agui`, {
                 method: "POST",

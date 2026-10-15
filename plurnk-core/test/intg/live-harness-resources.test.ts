@@ -7,6 +7,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { findStmt, readStmt } from "./_dsl.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("live fixtures obey resource publication and query contracts", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
@@ -14,7 +15,7 @@ test("live fixtures obey resource publication and query contracts", async (t) =>
     const inference = t.mock.method(provider, "generate");
     const workspace = await liveWorkspace({ name: "harness-resource-publication" });
     try {
-        const workerId = await workspace.daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
         for (const content of ["alpha\nbeta\ngamma", ""]) {
             await t.test(`{§tokenomics-agnostic-ruler} ${content.length === 0 ? "empty" : "nonempty"} fixtures have their actual curation weight`, async () => {
                 const entryId = await seedEntry(workspace.db, workspace.workspaceId, {

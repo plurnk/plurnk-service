@@ -9,6 +9,7 @@ import TerminalResult from "../../src/core/TerminalResult.ts";
 import { lastReply } from "./_packet.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const response = (content: string) => ({
     assistant: { content, reasoning: null },
@@ -104,7 +105,7 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
-        const parentId = await daemon.ensureModelWorker(workspaceId);
+        const parentId = await namedModelWorker(daemon, workspaceId, "main");
         const parentWorker = await daemon.readWorker({ workspaceId, identity: { id: parentId } });
         assert.ok(parentWorker);
         const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });

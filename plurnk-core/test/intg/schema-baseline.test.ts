@@ -14,7 +14,6 @@ import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import Envelope from "../../src/server/envelope.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 import File from "../../src/schemes/File.ts";
@@ -327,28 +326,26 @@ test("{§db-migrations} {§log-mutation-patch}: upgrading gives every settled ro
     } finally { await db.close(); }
 });
 
-test("{§db-migrations} {§methods-model-worker}: upgrading keeps each workspace's default worker and its one-per-workspace rule", async (t) => {
+test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag column in place, keeping each row's flag and the one-per-workspace index`, async (t) => {
     const path = await released(V3_3_0);
     t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
     const before = new DatabaseSync(path);
     try {
         before.exec(`
-            INSERT INTO workspaces (id, name) VALUES (1, 'defaultUpgrade');
+            INSERT INTO workspaces (id, name) VALUES (1, 'flagUpgrade');
             INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
             INSERT INTO workers (id, workspace_id, name, origin, default_conversation) VALUES (1, 1, 'ab3d5678', 'model', 1), (2, 1, 'named', 'model', 0);
         `);
     } finally { before.close(); }
     const db = await openMigrated(path);
-    try {
-        assert.equal(await Envelope.ensureModelWorker(db, 1), 1, "the released default is still the workspace's default worker");
-    } finally { await db.close(); }
+    await db.close();
     const after = new DatabaseSync(path);
     try {
         assert.ok(columns(after, "workers").includes("default_worker"));
         assert.equal(columns(after, "workers").includes("default_conversation"), false);
         assert.deepEqual(after.prepare("SELECT id, default_worker FROM workers ORDER BY id").all().map((row) => ({ ...row })),
-            [{ id: 1, default_worker: 1 }, { id: 2, default_worker: 0 }]);
-        assert.throws(() => after.exec("UPDATE workers SET default_worker = 1 WHERE id = 2"), /UNIQUE constraint failed/, "one default per workspace");
+            [{ id: 1, default_worker: 1 }, { id: 2, default_worker: 0 }], "each released row keeps its flag under the new name");
+        assert.throws(() => after.exec("UPDATE workers SET default_worker = 1 WHERE id = 2"), /UNIQUE constraint failed/, "the one-per-workspace index survives the rename");
     } finally { after.close(); }
 });
 

@@ -27,6 +27,8 @@ interface Thread {
     workerId: number;
     loopId: number | null;
     notificationScope: NotificationScope;
+    // {§agui-action-binding} The model worker this Run binds and reports the gauge of; null when it binds none.
+    modelWorkerId: number | null;
     router: EventRouter;
     emit: (events: AguiEvent[]) => void;
     threadId: string;
@@ -74,6 +76,7 @@ interface InterruptContinuation {
     readonly workspaceId: number;
     readonly gate: WorkerBinding;
     readonly binding: { readonly workerId: number; readonly loopId: number | null };
+    readonly modelWorkerId: number | null;
     readonly owner: string;
     readonly threadId: string;
     readonly notificationScope: NotificationScope;
@@ -363,6 +366,7 @@ export default class Portal {
                 owner: delivery.recipient,
                 gate: { workerId: delivery.workerId, loopId: delivery.loopId },
                 binding: { workerId: thread.workerId, loopId: controlLoopId },
+                modelWorkerId: thread.modelWorkerId,
                 threadId: thread.threadId,
                 notificationScope: thread.notificationScope,
                 state: {
@@ -470,6 +474,16 @@ export default class Portal {
         return active?.id ?? null;
     }
 
+    // {§agui-action-binding} The model worker the Run that presented these interrupts bound, which their
+    // resume binds in turn; undefined when it bound none or the set names no one presentation of this thread.
+    resumedWorker(workspaceId: number, threadId: string, resume: readonly ResumeEntry[]): number | undefined {
+        const continuations = resume.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation);
+        const first = continuations[0];
+        if (first === undefined || continuations.some((candidate) => candidate !== first)) return undefined;
+        if (first.workspaceId !== workspaceId || first.threadId !== threadId) return undefined;
+        return first.modelWorkerId ?? undefined;
+    }
+
     interruptForToolCall(toolCallId: string): Interrupt | null {
         return this.#activeInterrupts.get(toolCallId) ?? null;
     }
@@ -477,10 +491,8 @@ export default class Portal {
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the lifecycle actor
-    // (client worker for client ops, the bound worker otherwise); `modelWorkerId`
-    // binds the render (null → the router lazily
-    // adopts the first model-origin row's worker — a fresh workspace's model worker is born
-    // at the drain).
+    // (client worker for client ops, the bound worker otherwise); `modelWorkerId` is the model worker
+    // the Run binds and renders, null when it binds none ({§agui-action-binding}).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
@@ -504,6 +516,7 @@ export default class Portal {
             workerId: restored?.binding.workerId ?? args.workerId,
             loopId: restored?.binding.loopId ?? null,
             notificationScope: restored?.notificationScope ?? args.notificationScope,
+            modelWorkerId: args.modelWorkerId ?? null,
             router,
             emit: args.emit,
             threadId: args.threadId,

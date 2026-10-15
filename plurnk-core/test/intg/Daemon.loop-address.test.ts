@@ -5,12 +5,13 @@ import { withDaemon, waitForDb } from "./_rpc.ts";
 import { holdChild } from "./_db.ts";
 import { answer, makeMockResponse } from "./_mock.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked Loop, not the oldest", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("````WAIT\n````")) });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         await holdChild(db, workspaceId, workerId);
         const common = { workspaceId, workerId, providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             effort: "adaptive" as const, systemPrompt: "test system" };
@@ -36,7 +37,7 @@ test("{§loop-addressed-admission}: terminal, foreign and missing recipients cre
     const provider = new Mock({ contextWindow: 100_000, responses: [answer("finished"), makeMockResponse("````WAIT\n````")] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address-refusal" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const other = await daemon.createWorker({ workspaceId });
         const terminal = await daemon.runLoop({ workspaceId, workerId, prompt: "finish" });
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops[0]?.status === 200);

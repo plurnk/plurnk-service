@@ -18,6 +18,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -85,7 +86,7 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
     try {
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "partial-child-result" });
-            const parentId = await daemon.ensureModelWorker(workspaceId);
+            const parentId = await namedModelWorker(daemon, workspaceId, "main");
             const parentWorker = await daemon.readWorker({ workspaceId, identity: { id: parentId } });
             assert.ok(parentWorker);
             const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
@@ -137,7 +138,7 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
-        const parentId = await daemon.ensureModelWorker(workspaceId);
+        const parentId = await namedModelWorker(daemon, workspaceId, "main");
         const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
         await holdChild(db, workspaceId, childId);
         try {

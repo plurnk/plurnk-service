@@ -8,6 +8,7 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeRawMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
@@ -20,8 +21,8 @@ const refusal = async (fence: string, name: string): Promise<{ status: number; p
         try {
             await rpcCall(client, 1, "workspace.create", { name });
             const [workspace] = await daemon.listWorkspaces();
-            const workerId = await daemon.ensureModelWorker(workspace.id);
-            await runLoopToTerminal(client, 2, { prompt: "Run it." });
+            const workerId = await namedModelWorker(daemon, workspace.id, "main");
+            await runLoopToTerminal(client, 2, { prompt: "Run it.", workerId });
             const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: workerId });
             const refused = rows.find(({ op, origin }) => op === "sh" && origin === "model");
             assert.ok(refused, `the refused execution is a row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
@@ -69,12 +70,11 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
         try {
             await rpcCall(client, 1, "workspace.create", { name: "exec-lifetime-turn" });
             const [workspace] = await daemon.listWorkspaces();
-            const workerId = await daemon.ensureModelWorker(workspace.id);
-            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it." });
+            const workerId = await namedModelWorker(daemon, workspace.id, "main");
+            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it.", workerId });
             assert.equal(finalStatus, 200, "the loop concluded without waiting on a stream it no longer holds");
             const open = await db.test_count_active_subscriptions.get<{ n: number }>({});
             assert.equal(open?.n, 0, "the turn-scoped stream did not survive into the subsequent turn");
-            assert.ok(workerId > 0);
         } finally { client.close(); }
     });
 });

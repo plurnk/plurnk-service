@@ -14,6 +14,7 @@ import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { userText } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
@@ -68,7 +69,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         try {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-prompt-media" });
-            identity = { workspaceId, workerId: await daemon.ensureModelWorker(workspaceId) };
+            identity = { workspaceId, workerId: await namedModelWorker(daemon, workspaceId, "main") };
             const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP prompt media." });
             const lifecycle = new LoopLifecycle(db);
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200, { timeoutMs: 10_000 });

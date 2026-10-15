@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 class PacketCapturingMock extends Mock {
     readonly requests: string[] = [];
@@ -79,7 +80,7 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
                     name: `skills-loop-${crypto.randomUUID()}`,
                     projectRoot: root,
                 })).result as { id: number };
-                await daemon.ensureModelWorker(created.id);
+                const workerId = await namedModelWorker(daemon, created.id, "main");
 
                 const entry = async (name: string) => db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: created.id,
@@ -91,14 +92,14 @@ for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload}
                 assert.equal(await entry("grep"), undefined, "passive workspace creation does not publish capability docs");
                 assert.equal(await entry("review"), undefined);
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first" })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", workerId })).finalStatus, 200);
                 assert.notEqual(await entry("grep"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
                 await mkdir(join(skills, "review"), { recursive: true });
                 await writeFile(join(skills, "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
 
-                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second" })).finalStatus, 200);
+                assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", workerId })).finalStatus, 200);
                 assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);
 
                 assert.notEqual(await entry("review"), undefined, "turn admission republished the added skill");

@@ -13,6 +13,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -94,7 +95,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         try {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-media-composition" });
-            identity = { workspaceId, workerId: await daemon.ensureModelWorker(workspaceId) };
+            identity = { workspaceId, workerId: await namedModelWorker(daemon, workspaceId, "main") };
             const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP media." });
             const lifecycle = new LoopLifecycle(db);
             await called.promise;

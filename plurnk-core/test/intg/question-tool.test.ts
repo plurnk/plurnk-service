@@ -17,6 +17,7 @@ import { localPath } from "./_dsl.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { executionAddress } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
@@ -112,7 +113,7 @@ Waiting for your answer.
             try {
                 await withDaemon(provider, async (db, daemon) => {
                     const workspace = await daemon.createWorkspace({ name: `question-${timing}-${action}` });
-                    const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+                    const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
                     await ownWorker(db, workspace.workspaceId, workerId);
                     const run = await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId, prompt: "Ask me." });
                     const pending = await waitForDb(
@@ -161,7 +162,7 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
     )] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         await ownWorker(db, workspaceId, workerId);
         const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask me." });
         await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 1);
@@ -190,7 +191,7 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         await ownWorker(db, workspaceId, workerId);
         const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask, then cancel the question." });
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });

@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS workers (
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
-    -- {§methods-model-worker}: durable identity for the workspace's stable
-    -- default conversation; separate from its literal name.
+    -- At most one root model worker per workspace carries this flag; it is
+    -- separate from the worker's literal name.
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
     -- {§worker-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),

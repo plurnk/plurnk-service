@@ -12,6 +12,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const declaredProviderEnv = new Map<string, string | undefined>();
 test.afterEach(() => {
@@ -222,7 +223,7 @@ test("{§worker-model-selection}: worker model actions never disclose daemon end
             name: `private-route-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await daemon.ensureModelWorker(envelope.workspaceId);
+        const workerId = await namedModelWorker(daemon, envelope.workspaceId, "main");
         const selected = await daemon.setWorkerModel({
             workspaceId: envelope.workspaceId,
             workerId,
@@ -263,7 +264,7 @@ test("{§worker-effort}: effort controls seed the daemon-default model before th
                 name: `reasoning-default-${crypto.randomUUID()}`,
                 projectRoot: null,
             });
-            const inspectedWorker = await daemon.ensureModelWorker(workspace.workspaceId);
+            const inspectedWorker = await namedModelWorker(daemon, workspace.workspaceId, "main");
             assert.deepEqual(await daemon.readWorkerEffort({
                 workspaceId: workspace.workspaceId,
                 workerId: inspectedWorker,
@@ -277,7 +278,7 @@ test("{§worker-effort}: effort controls seed the daemon-default model before th
                 name: `reasoning-selected-${crypto.randomUUID()}`,
                 projectRoot: null,
             });
-            const selectedWorker = await daemon.ensureModelWorker(selectedWorkspace.workspaceId);
+            const selectedWorker = await namedModelWorker(daemon, selectedWorkspace.workspaceId, "main");
             assert.equal((await daemon.setWorkerEffort({
                 workspaceId: selectedWorkspace.workspaceId,
                 workerId: selectedWorker,
@@ -321,7 +322,7 @@ test("{§worker-effort}: alias configuration seeds once, explicit policy persist
             name: `reasoning-durable-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await first.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(first, workspace.workspaceId, "main");
         await first.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
@@ -395,7 +396,7 @@ test("{§worker-effort}: unsupported policy fails precisely and leaves durable s
             name: `reasoning-limited-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         await daemon.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
@@ -445,7 +446,7 @@ test("{§worker-model-selection}: a client-created branch copies durable generat
             name: `branch-policy-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         await daemon.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
@@ -656,7 +657,7 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         first = new Daemon({ db, provider: null });
         await first.start();
         const envelope = await first.createWorkspace({ name: `worker-model-restart-${crypto.randomUUID()}`, projectRoot: null });
-        const workerId = await first.ensureModelWorker(envelope.workspaceId);
+        const workerId = await namedModelWorker(first, envelope.workspaceId, "main");
         await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, selector: spec.alias });
         await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, selector: childSpec.alias });
         const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart" });
@@ -712,7 +713,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
 
         await withDaemon(null, async (db, daemon) => {
             const workspace = await daemon.createWorkspace({ name: `queued-${crypto.randomUUID()}`, projectRoot: null });
-            const identity = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+            const identity = { workspaceId: workspace.workspaceId, workerId: await namedModelWorker(daemon, workspace.workspaceId, "main") };
             await daemon.setWorkerModel({ ...identity, selector: spec.alias });
             const before = await daemon.readWorkerModel(identity);
             const select = () => {
@@ -765,7 +766,7 @@ test("{§worker-model-selection}: work admitted during provider validation preve
     ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
     await withDaemon(null, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `selection-race-${crypto.randomUUID()}`, projectRoot: null });
-        const identity = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+        const identity = { workspaceId: workspace.workspaceId, workerId: await namedModelWorker(daemon, workspace.workspaceId, "main") };
         await daemon.setWorkerModel({ ...identity, selector: spec.alias });
         const before = await daemon.readWorkerModel(identity);
         const validating = Promise.withResolvers<void>();
@@ -819,7 +820,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             await rpcCall(ws, 1, "workspace.create", { name: `parked-${crypto.randomUUID()}` });
             const [workspace] = await daemon.listWorkspaces();
             assert.ok(workspace !== undefined);
-            const workerId = await daemon.ensureModelWorker(workspace.id);
+            const workerId = await namedModelWorker(daemon, workspace.id, "main");
             const started = await daemon.runLoop({
                 workspaceId: workspace.id,
                 workerId,
@@ -898,7 +899,7 @@ test("{§worker-effort-source}: a model switch re-derives a default policy from 
         daemon = new Daemon({ db, provider: null });
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `source-${crypto.randomUUID()}`, projectRoot: null });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const args = { workspaceId: workspace.workspaceId, workerId };
 
         // Seeded from the first alias: default.
@@ -953,7 +954,7 @@ test("{§worker-effort}: a model and an effort it supports are chosen together; 
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `effort-${crypto.randomUUID()}`, projectRoot: null });
-        const args = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+        const args = { workspaceId: workspace.workspaceId, workerId: await namedModelWorker(daemon, workspace.workspaceId, "main") };
         await daemon.setWorkerModel({ ...args, selector: full.alias });
         await daemon.setWorkerEffort({ ...args, effort: "high" });
         await assert.rejects(daemon.setWorkerModel({ ...args, selector: limited.alias }), unsupported,
@@ -976,7 +977,7 @@ test("{§worker-effort}: an effort its model no longer supports is corrected by 
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `effort-stale-${crypto.randomUUID()}`, projectRoot: null });
-        const args = { workspaceId: workspace.workspaceId, workerId: await daemon.ensureModelWorker(workspace.workspaceId) };
+        const args = { workspaceId: workspace.workspaceId, workerId: await namedModelWorker(daemon, workspace.workspaceId, "main") };
         await daemon.setWorkerModel({ ...args, selector: full.alias });
         await daemon.setWorkerEffort({ ...args, effort: "high" });
         // The model's declaration changes beneath the stored pair.

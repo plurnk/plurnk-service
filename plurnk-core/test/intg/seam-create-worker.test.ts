@@ -6,18 +6,16 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§methods-worker-name-admission} {§methods-worker-create}: fresh named worker — empty log, runLoop accepts, stable door unaffected", async () => {
+test("{§methods-worker-name-admission} {§methods-worker-create}: fresh named worker — empty log, runLoop accepts", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\nhello from thread-2\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "threads" });
             const workspaceId = (created.result as { id: number }).id;
-            const stable = await daemon.ensureModelWorker(workspaceId);
 
-            // The fresh door: named, empty, model-origin root.
+            // A named, empty, model-origin root.
             const fresh = await daemon.createWorker({ workspaceId, name: "Thread_2" });
-            assert.notEqual(fresh.workerId, stable, "a fresh worker, not the default");
             assert.equal(fresh.workerName, "Thread_2", "the client's name IS the worker name");
             assert.equal((await daemon.readLog({ workspaceId, workerId: fresh.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
 
@@ -33,9 +31,6 @@ test("{§methods-worker-name-admission} {§methods-worker-create}: fresh named w
                 (events) => events.some(({ loopId, result }) => loopId === accepted.loopId && result.status === 200),
                 { timeoutMs: 8000 },
             );
-
-            // The stable door still finds the original root; later fresh workers never shadow it.
-            assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh workers");
 
             // Name invariants mirror forkWorker's: plurnk is an ordinary name; unmintable + taken are legible refusals.
             const plurnk = await daemon.createWorker({ workspaceId, name: "plurnk" });

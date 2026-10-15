@@ -7,6 +7,7 @@ import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { executionAddress } from "./_execs.ts";
 import { packetSection } from "./_packet.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§exec-input}: the production loop sends stdin, waits for EOF completion, and observes the real result", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -117,7 +118,7 @@ for (const action of ["cancel", "stop"] as const) {
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `stdin-${action}` });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
             const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Await input." });
             await waitForDb(() => new LoopLifecycle(db).status(loopId), (status) => status === 202, { timeoutMs: 8_000 });
             const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });

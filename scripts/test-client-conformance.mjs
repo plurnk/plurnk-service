@@ -482,9 +482,10 @@ try {
 
     await daemon.stop();
     daemon = await boot();
+    // The read takes the perspective of the worker the CLI journey created ({§agui-action-binding}).
     const persistedFiles = new AguiTransport(
         credential(),
-        "file-observer",
+        "File_Worker",
         { workspace: "installed-files", projectRoot: project },
     );
     const persistedFile = await persistedFiles.rpc("entry.read", { target: pathToFileURL(join(project, "integrity.txt")).href });

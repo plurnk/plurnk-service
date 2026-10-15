@@ -9,6 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
@@ -29,7 +30,7 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "message-export", projectRoot: null });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         // {§http-outbound-proposes} — the outbound SEND proposes; this loop states that it approves
         // its own delegation, which is what a caller that means to send is saying.
         const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report." });

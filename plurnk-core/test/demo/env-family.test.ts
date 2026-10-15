@@ -7,12 +7,13 @@
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
+import { namedModelWorker } from "../intg/_workers.ts";
 
 // Story one: a value already in the worker's environment, asked for plainly.
 test("demo: the model reads a variable already in its worker's environment", async (t) => {
     const s = await liveWorkspace({ name: `env-read-${crypto.randomUUID()}` });
     try {
-        const workerId = await s.daemon.ensureModelWorker(s.workspaceId);
+        const workerId = await namedModelWorker(s.daemon, s.workspaceId, "main");
         await s.daemon.invokeModuleAction("worker.env.add", { alias: "FOO_VERSION", definition: { value: "42" } },
             { scope: "worker", workspaceId: s.workspaceId, workerId });
         const loop = await liveLoop(s, 2, { prompt: "What's the FOO_VERSION environment variable?", workerId, maxTurns: 6 }, { signal: t.signal });

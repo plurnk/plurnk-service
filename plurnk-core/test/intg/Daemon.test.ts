@@ -17,6 +17,7 @@ import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Dsl from "./dsl.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import { OperationFailureError } from "../../src/core/results.ts";
+import { namedModelWorker } from "./_workers.ts";
 import {
     Validator,
     type ApplicationActionContext,
@@ -1295,8 +1296,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 "workspace creation does not launch semantic derivation",
             );
 
-            // {§machine-processes} — loops run in the model worker the seam resolves; a client worker is
-            // refused loudly (the module's envelope workerId is the client worker — never the loop home).
+            // {§machine-processes} — loops run in a model worker; a client worker is refused loudly
+            // (the module's envelope workerId is the client worker — never the loop home).
             const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
             const problem = await rejectedProblem(() => daemon.runLoop({
                 workspaceId: created.id,
@@ -1333,7 +1334,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required", `${surface} refuses a non-model worker`);
                 assert.equal(refused.status, 409);
             }
-            const modelWorkerId = await daemon.ensureModelWorker(created.id);
+            const modelWorkerId = await namedModelWorker(daemon, created.id, "main");
             const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
             assert.ok(res.loopId > 0, "runLoop returned the new loop id");

@@ -57,7 +57,7 @@ END;
 CREATE INDEX workers_owner ON workers (workspace_id, owner);
 
 -- {§a2a-worker-ownership} Released A2A contexts were roots. Retained causal
--- message identities distinguish them from ordinary model conversations.
+-- message identities distinguish them from ordinary root model workers.
 CREATE TEMP TABLE a2a_context_parents AS
 SELECT DISTINCT context.id, context.workspace_id
 FROM workers context

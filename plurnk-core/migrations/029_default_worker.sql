@@ -1,6 +1,6 @@
 -- MIGRATE: 29 default worker
--- {§methods-model-worker}: the workspace's durable default role is the default worker's. Renaming the
--- column rewrites its CHECK and the partial index in place; the index then takes the role's name.
+-- The column that marks a workspace's one flagged root model worker takes the worker vocabulary.
+-- Renaming it rewrites its CHECK and the partial index in place; the index then takes its name.
 ALTER TABLE workers RENAME COLUMN default_conversation TO default_worker;
 
 DROP INDEX workers_workspace_default_conversation;

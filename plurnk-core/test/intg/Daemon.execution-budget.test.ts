@@ -7,6 +7,7 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§loop-execution-allowance}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {
@@ -23,7 +24,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
         await withDaemon(provider, async (db, daemon) => {
             let activeDaemon = daemon;
             const { workspaceId } = await daemon.createWorkspace({ name: `execution-${wake}` });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
             await holdChild(db, workspaceId, workerId);
             const parked = Promise.withResolvers<void>();
             const resumed = Promise.withResolvers<AbortSignal>();

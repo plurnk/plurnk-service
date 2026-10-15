@@ -9,6 +9,7 @@ import WorkerCap from "../../src/core/worker-cap.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 for (const op of ["WORK", "FORK"]) {
     test(`{§worker-lifecycle-no-resurrection}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
@@ -24,7 +25,7 @@ Wait for the child.
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-late-${op}` });
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
             const entered = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
             const finished = Promise.withResolvers<void>();
@@ -71,7 +72,7 @@ test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion wi
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const concluding = Promise.withResolvers<void>();
         const conclude = Promise.withResolvers<void>();
         const finished = Promise.withResolvers<void>();
@@ -133,7 +134,7 @@ for (const recipientState of ["idle", "parked"]) {
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-send-${recipientState}` });
-            const sourceWorkerId = await daemon.ensureModelWorker(workspaceId);
+            const sourceWorkerId = await namedModelWorker(daemon, workspaceId, "main");
             const { workerId } = await daemon.createWorker({ workspaceId, name: "recipient" });
             await holdChild(db, workspaceId, workerId);
             if (recipientState === "parked") {

@@ -13,6 +13,7 @@ import { makeMockResponse } from "./_mock.ts";
 import { makeRawMockResponse } from "./_mock.ts";
 import type { ApplicationOperationEvent } from "@plurnk/plurnk-contracts";
 import type { HookEvent } from "../../../plurnk-hooks/src/EventProjection.ts";
+import { namedModelWorker } from "./_workers.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 
 interface TerminalEvent {
@@ -70,7 +71,7 @@ test("{§module-shutdown-order} command hooks receive real loop cancellation bef
     const hooks = await captureHooks(t, daemon);
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-lifecycle" });
-    const workerId = await daemon.ensureModelWorker(workspaceId);
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
     const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for cancellation." });
     await entered.promise;
     await daemon.stop();
@@ -104,7 +105,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
         const hooks = await captureHooks(t, daemon);
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${outcome}` });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const done = Promise.withResolvers<void>();
         const published: TerminalEvent[] = [];
         daemon.subscribeToEvents((scope, method, params) => {
@@ -150,7 +151,7 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
     const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse,PostToolUseFailure,Stop");
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-tools", projectRoot: root });
-    const workerId = await daemon.ensureModelWorker(workspaceId);
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
     await daemon.runLoop({ workspaceId, workerId, prompt: "Write and inspect the entries." });
@@ -211,7 +212,7 @@ test("{§notifications-operation-event} concurrent BARE starts precede inference
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-bare" });
-    const workerId = await daemon.ensureModelWorker(workspaceId);
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
     await daemon.runLoop({ workspaceId, workerId, prompt: "Run isolated questions." });
@@ -256,7 +257,7 @@ for (const decision of ["accept", "reject"] as const) {
         });
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${decision}-exec`, projectRoot: root });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         await ownWorker(db, workspaceId, workerId);
         await daemon.runLoop({ workspaceId, workerId, prompt: "Execute after review." });
         const proposal = await proposed.promise;
@@ -321,7 +322,7 @@ test("{§hooks-module} the discovered hooks module delivers once the operator co
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-discovered" });
-    const workerId = await daemon.ensureModelWorker(workspaceId);
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
     await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for cancellation." });
     await entered.promise;
     await daemon.stop();

@@ -8,6 +8,7 @@ import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { seedEntryWithChannel } from "./_db.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
@@ -52,7 +53,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
             name: `prompt-source-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const terminated: Array<{ loopId: number }> = [];
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number });

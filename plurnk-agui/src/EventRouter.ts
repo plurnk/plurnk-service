@@ -44,7 +44,7 @@ export default class EventRouter {
         switch (method) {
             case "workspace/preparation": return [{
                 type: EventType.STATE_DELTA,
-                delta: [{ op: "replace", path: "/plurnk/status/preparation", value: (params as { preparation: unknown }).preparation }],
+                delta: [{ op: "replace", path: "/plurnk/workspace/preparation", value: (params as { preparation: unknown }).preparation }],
             }];
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);

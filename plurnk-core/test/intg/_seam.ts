@@ -8,6 +8,7 @@ import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { ClientEnvelope } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 type Listener = (data: string) => void;
 
@@ -19,6 +20,9 @@ export default class SeamSocket {
     #modelWorkerId: number | null = null;
     #closed = false;
     static readonly owner = "test://primary";
+    // A client names the worker its runs address ({§agui-thread-binding}). A run that names no worker
+    // addresses this one, so every connection to a workspace shares it.
+    static readonly worker = "main";
 
     async #claim(workerId: number): Promise<void> {
         const { workspaceId } = this.#attached();
@@ -108,7 +112,7 @@ export default class SeamSocket {
             }
             case "loop.run": {
                 const s = this.#attached();
-                const modelWorkerId = p.workerId as number | undefined ?? this.#modelWorkerId ?? await daemon.ensureModelWorker(s.workspaceId);
+                const modelWorkerId = p.workerId as number | undefined ?? this.#modelWorkerId ?? await namedModelWorker(daemon, s.workspaceId, SeamSocket.worker);
                 this.#modelWorkerId = modelWorkerId;
                 await this.#claim(modelWorkerId);
                 const loop = await daemon.runLoop({

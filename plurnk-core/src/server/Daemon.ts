@@ -725,13 +725,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // {§methods-model-worker} — the workspace's model worker (created on first use), distinct from the client
-    // worker so the model's packets never carry client-action rows. The module binds its threads to this.
-    async ensureModelWorker(workspaceId: number): Promise<number> {
-        const checked = ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId);
-        return await Envelope.ensureModelWorker(this.#db, checked);
-    }
-
     async ensureRuntimeWorker(workspaceId: number): Promise<number> {
         const checked = ClientInput.assertId("worker.ensure-runtime", "workspaceId", workspaceId);
         if (await this.#db.envelope_get_workspace.get({ id: checked }) === undefined) {

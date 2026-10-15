@@ -144,7 +144,7 @@ WHERE NOT EXISTS (
     WHERE w.workspace_id = m.workspace_id AND answer.value = m.path
 );
 
--- {§message-reply-delivery}: notify the sender and the assigned conversation.
+-- {§message-reply-delivery}: notify the sender and the assigned worker.
 -- UNION prevents duplicate delivery when both roles belong to the same worker.
 -- {§loop-answer}: a child's answer to the very task its parent delegated is NOT delivered here;
 -- the parent receives it once, as the child's termination row, which carries that answer at

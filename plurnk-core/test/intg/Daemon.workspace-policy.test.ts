@@ -4,6 +4,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, withDaemon } from "./_rpc.ts";
 import { editStmt, readStmt, urlPath } from "./_dsl.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§capability-admission}: workspace policy changes apply to independent workers, descendants, and clients without private bounds", async () => {
     const db = await openMigrated();
@@ -11,7 +12,7 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `shared-policy-${crypto.randomUUID()}` });
-        const parent = await daemon.ensureModelWorker(workspace.workspaceId);
+        const parent = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const target = urlPath("worker", "/shared.txt");
         const source = await daemon.dispatchAsClient({ ...workspace, statement: editStmt(target, "shared content") });
@@ -99,7 +100,7 @@ test("{§workspace-capability-inspection}: existing workers reconcile their tool
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `policy-docs-${crypto.randomUUID()}` });
-        const model = await daemon.ensureModelWorker(workspace.workspaceId);
+        const model = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const reference = (workerId: number, runtime: string) => daemon.dispatchAsClient({ workspaceId: workspace.workspaceId, workerId,
             statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });

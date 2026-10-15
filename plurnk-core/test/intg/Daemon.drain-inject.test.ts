@@ -13,6 +13,7 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow } from "./_packet.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 // {§message-arrival} — an arrival row's body is its sent side.
 const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { body: { raw: string } }).body.raw;
@@ -50,7 +51,7 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
 
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: "concurrent-loop-allocation" });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
         const admitted = Promise.withResolvers<void>();
         const ensureDrain = DrainSupervisor.prototype.ensureDrain;
@@ -107,7 +108,7 @@ test("{§worker-ownership}: a fresh injection preserves the worker owner", async
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-${crypto.randomUUID()}` });
-        const workerId = await daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         await ownWorker(db, workspace.workspaceId, workerId);
         const accepted = await daemon.inject({
             workspaceId: workspace.workspaceId,

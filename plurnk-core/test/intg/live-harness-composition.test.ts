@@ -13,14 +13,15 @@ import { readStmt } from "./_dsl.ts";
 import { lastReply } from "./_packet.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
-test("{§service-worker-composition} live workspaces expose the default worker references and management families", async (t) => {
+test("{§service-worker-composition} live workspaces expose a model worker's references and the management families", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");
     const workspace = await liveWorkspace({ name: "harness-reference-composition" });
     try {
-        const workerId = await workspace.daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
         const read = (target: string) => workspace.daemon.dispatchAsClient({
             workspaceId: workspace.workspaceId,
             workerId,
@@ -83,7 +84,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
     }));
     const workspace = await liveWorkspace({ name: "harness-schedule-composition" });
     try {
-        const workerId = await workspace.daemon.ensureModelWorker(workspace.workspaceId);
+        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
         const worker = (await workspace.daemon.listWorkers(workspace.workspaceId)).find(({ id }) => id === workerId)!;
         const list = async () => Validator.assertFunctionalityListResult(await workspace.invokeWorkspaceAction("workspace.schedule.list", {}));
         const mutate = async (verb: string, params: Record<string, unknown>) => Validator.assertFunctionalityMutationResult(

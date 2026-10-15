@@ -301,9 +301,6 @@ export interface ApplicationPort extends HttpHost {
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
     readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
-    ensureModelWorker(
-        workspaceId: number,
-    ): Promise<number>;
     ensureRuntimeWorker(workspaceId: number): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;

@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 import Dsl from "./dsl.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§methods-log-read}: readLog honors per-worker journal isolation", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -12,7 +13,7 @@ test("{§methods-log-read}: readLog honors per-worker journal isolation", async 
             const created = await rpcCall(ws, 1, "workspace.create", { name: "r376" });
             const workspaceId = (created.result as { id: number }).id;
             const clientWorker = (created.result as { workerId: number }).workerId;
-            const modelWorker = await daemon.ensureModelWorker(workspaceId);
+            const modelWorker = await namedModelWorker(daemon, workspaceId, "main");
             // Seed one row in each worker via the seam dispatch.
             await daemon.dispatchAsClient({ workspaceId, workerId: clientWorker, statement: Dsl.buildEdit({ target: "worker:///client-note", content: "client row" }) });
             await daemon.dispatchAsClient({ workspaceId, workerId: modelWorker, statement: Dsl.buildEdit({ target: "worker:///model-note", content: "model row" }) });

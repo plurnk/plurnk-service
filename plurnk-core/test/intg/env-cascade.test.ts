@@ -430,6 +430,19 @@ for (const built of [false, true]) {
         const result = events.find(({ name }) => name === "plurnk.action.result")?.value as { ok: boolean; result: { actions: object } };
         assert.equal(result.ok, true);
         assert.ok("providers.list" in result.result.actions, "model selection remains discoverable without a working default model");
+        // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
+        // worker creates it, and inheriting the child model needs no model.
+        const created = await fetch(daemon.url, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, action: { kind: "worker.child.set", selector: null } } },
+            }),
+        });
+        assert.equal(created.status, 200);
+        const creation = (await created.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean } });
+        assert.equal(creation.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(creation));
         const sync = await fetch(daemon.url, {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -488,13 +501,17 @@ for (const built of [false, true]) {
                     };
                 });
         };
+        // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
+        // worker creates it, and inheriting the child model resolves no provider.
+        const created = await request({ action: { kind: "worker.child.set", selector: null } });
+        assert.equal(created.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(created));
         const sync = await request({ mode: "sync", control: true });
         assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
         assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
         const snapshot = sync.find(({ type }) => type === "STATE_SNAPSHOT")?.snapshot;
         assert.ok(snapshot);
         assert.equal(Object.hasOwn(snapshot, "providers"), false, "unavailable is not a fabricated empty catalog");
-        assert.deepEqual(requests, [], "startup and passive attachment perform no provider I/O");
+        assert.deepEqual(requests, [], "startup, creating the worker and passive attachment perform no provider I/O");
         const rejected = await request({ action: { kind: "worker.model.set", selector: "missing/model" } });
         const failure = rejected.find(({ name }) => name === "plurnk.action.result")?.value;
         assert.equal(failure?.ok, false);

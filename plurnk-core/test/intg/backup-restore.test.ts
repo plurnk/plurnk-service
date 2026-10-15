@@ -14,6 +14,7 @@ import { openMigrated } from "./_db.ts";
 import { parseDsl } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§share-snapshot}: restore preserves history, decisions and attachments without rewinding project files or service configuration", async (t) => {
     serverProposals(t, "accept");
@@ -56,7 +57,7 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
     try {
         await daemon.start();
         ({ workspaceId } = await daemon.createWorkspace({ name: "restore-witness", projectRoot }));
-        workerId = await daemon.ensureModelWorker(workspaceId);
+        workerId = await namedModelWorker(daemon, workspaceId, "main");
         await daemon.invokeModuleAction("workspace.env.add", {
             alias: "RESTORE_DURABLE", definition: { value: "workspace-owned" },
         }, { scope: "workspace", workspaceId });

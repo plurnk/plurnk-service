@@ -3479,8 +3479,7 @@ Names encode neither machine identity nor topology or role; those remain
 separate durable fields.
 Automatic names never reuse an existing literal. Name selection and worker
 creation share one atomic claim: concurrent allocations receive distinct
-addresses, while concurrent default-worker ensures converge on one root
-worker. Generated addresses appear in ordinary operation receipts and child
+addresses. Generated addresses appear in ordinary operation receipts and child
 inventory; allocation never rewrites the submitted operation's target.
 
 §workspace-name **A workspace's name is an opaque handle; its identity is its id; its folder is a
@@ -5033,7 +5032,6 @@ Core's behavior behind them.
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
-| §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-worker role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh workers and forks do not replace it. |
 | §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |

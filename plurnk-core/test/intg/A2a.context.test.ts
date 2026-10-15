@@ -9,6 +9,7 @@ import { holdChild, openMigrated } from "./_db.ts";
 import { answer, makeMockResponse, parseDsl } from "./_mock.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload } from "./_a2a.ts";
 import { waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const observe = (client: Awaited<ReturnType<typeof connectHttpJsonAgent>>, text: string, contextId?: string) => {
     const admitted = Promise.withResolvers<Task>();
@@ -416,7 +417,7 @@ test("{§a2a-context-resource}: Context history and exact attachment bytes survi
         assert.equal(refreshed.status, 200);
         assert.match(refreshed.content as string, /second-retained-answer/u, "READ refreshes completed replies without a second message store");
         const stranger = await daemon.createWorkspace({ name: "unrelated-a2a-workspace", projectRoot: null });
-        const strangerWorker = await daemon.ensureModelWorker(stranger.workspaceId);
+        const strangerWorker = await namedModelWorker(daemon, stranger.workspaceId, "main");
         const absent = await daemon.dispatchAsClient({ workspaceId: stranger.workspaceId, workerId: strangerWorker, statement: parseDsl(frame(`READ (${address})`, null))[0]! });
         assert.equal(absent.status, 404, "the retained Context belongs to the hosted workspace");
         const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });

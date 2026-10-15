@@ -7,6 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { holdChild } from "./_db.ts";
 import { connect, rpcCall, subscribeNotifications, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 type LoopStatusNotice = { workerId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null; packetCount: number; claimedAt: number | null } };
 
@@ -23,7 +24,7 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
         try {
             const { workspaceId } = await daemon.createWorkspace({ name: "loop-status-notice" });
             await rpcAttach(ws, workspaceId);
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
             await holdChild(db, workspaceId, workerId);
             const captured = subscribeNotifications(ws, "notice/event");
             const terminals = subscribeNotifications(ws, "loop/terminated");

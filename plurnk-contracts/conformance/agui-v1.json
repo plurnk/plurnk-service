@@ -65,6 +65,14 @@
                     "type": "STATE_SNAPSHOT",
                     "snapshot": {
                         "plurnk": {
+                            "workspace": {
+                                "id": 1,
+                                "name": "fixture",
+                                "projectRoot": null,
+                                "projectLabel": null,
+                                "preparation": [],
+                                "activity": null
+                            },
                             "status": {
                                 "lifecycle": "idle",
                                 "model": null,
@@ -73,8 +81,6 @@
                                 "waitUntil": null,
                                 "claimedAt": null,
                                 "terminatedAt": null,
-                                "preparation": [],
-                                "activity": null,
                                 "children": 0,
                                 "spend": { "requests": 0, "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "knownUsage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0", "knownCostUsd": "0" }
                             }
@@ -85,7 +91,7 @@
                 {
                     "type": "STATE_DELTA",
                     "delta": [
-                        { "op": "replace", "path": "/plurnk/status/preparation", "value": [
+                        { "op": "replace", "path": "/plurnk/workspace/preparation", "value": [
                             { "family": "mcp", "alias": "search", "phase": "preparing", "since": "2026-09-29T00:00:00.000Z" }
                         ] }
                     ]
@@ -93,7 +99,7 @@
                 {
                     "type": "STATE_DELTA",
                     "delta": [
-                        { "op": "replace", "path": "/plurnk/status/preparation", "value": [] },
+                        { "op": "replace", "path": "/plurnk/workspace/preparation", "value": [] },
                         { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "running" },
                         { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
                         { "op": "replace", "path": "/plurnk/status/packetCount", "value": 1 }
@@ -115,8 +121,7 @@
                     "type": "STATE_DELTA",
                     "delta": [
                         { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "completed" },
-                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
-                        { "op": "replace", "path": "/plurnk/status/activity", "value": null }
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 }
                     ]
                 },
                 {
@@ -182,6 +187,22 @@
         {
             "name": "action-problem",
             "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "action-problem" },
+                {
+                    "type": "STATE_SNAPSHOT",
+                    "snapshot": {
+                        "plurnk": {
+                            "workspace": {
+                                "id": 1,
+                                "name": "fixture",
+                                "projectRoot": null,
+                                "projectLabel": null,
+                                "preparation": [],
+                                "activity": null
+                            }
+                        }
+                    }
+                },
                 {
                     "type": "CUSTOM",
                     "name": "plurnk.action.result",

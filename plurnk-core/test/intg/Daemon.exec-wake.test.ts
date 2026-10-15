@@ -15,6 +15,7 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 // These fixtures exercise the lifecycle after a stream genuinely becomes
 // monitored. Optimistic settlement has its own matrix; disable it here so the
@@ -51,7 +52,7 @@ test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream a
         const ws = await connect(addr);
         const entries = subscribeNotifications(ws, "log/entry");
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-stream-not-worker" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const lifecycle = new LoopLifecycle(db);
         try {
             await rpcCall(ws, 1, "workspace.attach", { workspaceId });
@@ -112,7 +113,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
         const ws = await connect(addr);
         const conclusions = subscribeNotifications(ws, "stream/concluded");
         const { workspaceId } = await daemon.createWorkspace({ name: "pending-wake-publication" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const lifecycle = new LoopLifecycle(db);
         try {
             const attached = await rpcCall(ws, 1, "workspace.attach", { workspaceId });
@@ -309,7 +310,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
         first = new Daemon({ db, provider: boot });
         await first.start();
         const envelope = await first.createWorkspace({ name: "exec-wake-provider-restart", projectRoot: null });
-        const workerId = await first.ensureModelWorker(envelope.workspaceId);
+        const workerId = await namedModelWorker(first, envelope.workspaceId, "main");
         const started = await first.runLoop({
             workspaceId: envelope.workspaceId,
             workerId,

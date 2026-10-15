@@ -1,6 +1,6 @@
 // {§agui-thread-binding} TWO THREADS OVER ONE WORLD:
-// two threads name the same workspace; each gets its OWN worker (its own history), and the
-// world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
+// two threads name the same workspace; each acts through its OWN client actor (its own history), and
+// the world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
 // through thread B (the environment door). No model needed: client ops (op.parse)
 // exercise the routing and the shared world against the real daemon in the canonical
 // core workspace.
@@ -34,9 +34,9 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
     const port = http.httpAddress().port;
 
     try {
-        // Thread A (== workspace name: the default worker) dispatches one ordered
-        // multi-statement action against a shared entry. {§agui-op-parse} {§whitespace-contract}
-        const edit = await action(port, "shared-world", "shared-world", "op.parse", {
+        // Thread A dispatches one ordered multi-statement action against a shared entry.
+        // {§agui-op-parse} {§whitespace-contract}
+        const edit = await action(port, "first-thread", "shared-world", "op.parse", {
             text: "Prelude.\n````EDIT (worker:///notes.md)\nfirst\n````\n3\n````EDIT (worker:///notes.md) <1,-1>\nthe world is one\n````\nPostscript.",
         });
         assert.equal(edit.ok, true, JSON.stringify(edit.problem));
@@ -45,7 +45,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
 
         // {§agui-op-parse} {§unparsed-tail-boundary} — one real daemon action keeps the
         // valid prefix, surfaces the boundary loss once, and never mutates from recovered tail AST.
-        const tailed = await action(port, "shared-world", "shared-world", "op.parse", {
+        const tailed = await action(port, "first-thread", "shared-world", "op.parse", {
             text: "````EDIT (worker:///tail-trusted.md)\nkept\n````\n\n````EDIT (worker:///tail-untrusted.md",
         });
         assert.equal(tailed.ok, true, JSON.stringify(tailed.problem));
@@ -65,26 +65,27 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             stage: "parsing",
             retryable: false,
         });
-        const untrusted = await action(port, "shared-world", "shared-world", "op.parse", {
+        const untrusted = await action(port, "first-thread", "shared-world", "op.parse", {
             text: "````READ (worker:///tail-untrusted.md)````",
         });
         const untrustedResults = (untrusted.result as { results: Array<{ status: number }> }).results;
         assert.equal(untrustedResults[0]?.status, 404, "the statement recovered from the undefined tail never dispatched");
 
-        // Thread B names a DISTINCT worker in the SAME world.
+        // Thread B acts in the SAME world through its own client actor.
         const read = await action(port, "second-thread", "shared-world", "op.parse", { text: "````READ (worker:///notes.md)````" });
         assert.equal(read.ok, true, JSON.stringify(read.problem));
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
         assert.equal(readResults[0]?.content, "the world is one", "the action dispatched both EDITs in source order");
 
-        // The workers are DISTINCT: the workspace holds thread B's own worker,
-        // named for it, alongside the default worker — histories split, world shared.
+        // {§agui-action-binding} Workspace-level actions bind no worker, so neither thread's name was
+        // minted; each thread's operations journal in its own client actor — histories split, world shared.
         const workers = await action(port, "second-thread", "shared-world", "workspace.workers");
         assert.equal(workers.ok, true);
         const workerList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
         const names = workerList.map((worker) => worker.name);
-        assert.ok(names.includes("second-thread"), `thread B's worker exists by ITS name: ${names.join(", ")}`);
+        assert.deepEqual(names.filter((name) => name === "first-thread" || name === "second-thread"), [],
+            `no worker was minted for a thread whose Runs bind none: ${names.join(", ")}`);
 
         // The workerId filter crosses the module and real seam: the
         // client ops journaled in each thread's client worker; per-worker reads must differ.

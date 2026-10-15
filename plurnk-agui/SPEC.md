@@ -28,20 +28,20 @@ does not recompute them.
   a rename, by any client, the old name resolves afresh and the new one reaches the workspace. The
   workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
   violation the module rejects (400) - never a workspace forged from the `threadId`. The
-  `threadId` names a worker in that world, and the name is the identity at
-  BOTH levels: `threadId` == the workspace name binds the workspace's default worker
-  (`ensureModelWorker` — its durable default-worker role identifies it,
-  never a name parse or root ordering); a DISTINCT
-  `threadId` names its own worker — found by name among model-origin workers if
-  it exists (forks and earlier workers are addressable as threads; a client connection's
-  worker or the runtime actor `_plurnk` is never bound, and a thread named after one
-  fails at minting rather than binding), minted via `createWorker`
-  if it doesn't. A name the daemon no longer holds (a fresh database, a deleted worker) is minted
-  anew with no history under the same name; the run-start status gauge then reports `loopId: null`
-  where the previous run's reported a loop, which is how a client tells a new worker from a
-  resumed one. The core workspace envelope carries only the workspace and selected client
+  `threadId` names a worker in that world by its immutable name, in every Run, and is never
+  compared with the workspace's name: renaming a workspace never changes which worker a thread
+  means. The name resolves among model-origin workers only (forks and earlier workers are
+  addressable as threads; a client connection's worker or the runtime actor `_plurnk` is never
+  bound). A worker comes into being only by an act addressed to it ({§agui-action-binding}): the
+  first such act creates the worker the thread names via `createWorker`, and a thread named after
+  a client or runtime actor fails at minting. Reading, observing or acting on the workspace never
+  creates one. A client that names no particular worker supplies its own default name. A name the
+  daemon no longer holds (a fresh database, a deleted
+  worker) is minted anew by the next act addressed to it, with no history; the run-start status
+  gauge then reports `loopId: null` where the previous run's reported a loop, which is how a
+  client tells a new worker from a resumed one. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread worker binding.
-  Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names
+  Process-local bindings key on the workspace's identity and the `threadId`; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
   Concurrent first requests acquire one envelope and worker binding. Workspace
   acquisition is serialized across threads, retaining each request's create/attach contract;
@@ -50,11 +50,10 @@ does not recompute them.
   cache entry preventing a later retry. Explicit Core creation retains its name-conflict
   semantics; protocol binding is not a second creation request.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker.
-  `loop.inject` and `loop.cancel` steer a loop already running in a world, and an observation
-  ({§agui-sync}) passively watches one, so they attach only: a workspace name that does not
-  exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a
-  second world minted after the name and answered there. Every other request may bring the world
-  into being.
+  A Run that may create its worker, or that binds none, may bring the world into being; every
+  other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the
+  client's error, answered 404 `workspace-not-found` with nothing created — never a second world
+  minted after the name and answered there.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
@@ -75,7 +74,7 @@ requests.
 
 | Request | Ownership effect |
 |---|---|
-| Prompt, interrupt resume, or client operation | Control attachment for the thread's worker and its administrative actor. |
+| Prompt, interrupt resume, or client operation | Control attachment for the worker the Run binds, if any ({§agui-action-binding}), and its administrative actor. |
 | Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
 | Passive synchronization / connection; other management reads | No claim and no capability replacement. |
 
@@ -116,8 +115,8 @@ cancellation responsibility.
 ## §agui-owner-connection Persistent observation
 
 `POST /agui/connect` accepts the standard `RunAgentInput`, without messages, actions, or
-resumes. It binds as synchronization does, creating nothing unless it is the owner's control
-connection, and uses the same snapshots, events, and interrupt representation
+resumes. It binds as synchronization does and creates nothing, an owner's control connection
+included, and uses the same snapshots, events, and interrupt representation
 ({§agui-sync}), but waits when the worker is idle. New work, including owner-addressed
 child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
@@ -151,8 +150,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
-| `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/status/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
-| `workspace/preparation` | `STATE_DELTA /plurnk/status/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
+| `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/workspace/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
+| `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
@@ -252,7 +251,8 @@ state paths that could be mistaken for standard AG-UI fields.
 
 §agui-state-patches Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s.
 Deltas use RFC 6902 `replace` on existing snapshot paths; replay yields the
-current gauge without clients inventing missing fields.
+current gauge without clients inventing missing fields. `plurnk.status` and `budget` are the
+bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}).
 
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
@@ -260,16 +260,17 @@ current gauge without clients inventing missing fields.
 | `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
 | `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
-| §agui-status-preparation `snapshot.plurnk.status.preparation` | `ApplicationPort.workspacePreparationStatus(workspaceId)` | Current workspace capability preparation ({§functionality-preparation-visibility}), also sent as `STATE_DELTA /plurnk/status/preparation`. Initial and reattachment snapshots carry the same state. An empty array clears it; no polling or model inference is required. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | §agui-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |
 | `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park, queued on wake) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
 | `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/children` only when it differs from what the Run's client holds, never before its snapshot ({§agui-status-children}). Clients render the number and never poll the directory for it. |
-| `snapshot.plurnk.workspace` | the Run's client envelope | `{ id, name, projectRoot, projectLabel }`: the bound workspace, its folder and the folder's label as the daemon spells it ({§workspace-label}); both null without a folder. Clients display the label and never derive one. |
+| §agui-workspace-state `snapshot.plurnk.workspace` | the Run's client envelope | `{ id, name, projectRoot, projectLabel, preparation, activity }`: the bound workspace, its folder and the folder's label as the daemon spells it ({§workspace-label}), both null without a folder, and the activity that belongs to the workspace rather than to a Worker. Every Run bound to a workspace carries it, whether or not it binds a Worker. Clients display the label and never derive one. |
+| `snapshot.plurnk.workspace.preparation` | `ApplicationPort.workspacePreparationStatus(workspaceId)` | Current workspace capability preparation ({§functionality-preparation-visibility}), also sent as `STATE_DELTA /plurnk/workspace/preparation`. Initial and reattachment snapshots carry the same state. An empty array clears it; no polling or model inference is required. |
+| `snapshot.plurnk.workspace.activity` | `ApplicationPort.workspaceDerivationStatus(workspaceId)` | Current workspace derivation: phase, counts, percent and message while preparing, indexing or failed, and `null` when none is under way or the last pass completed. Live `search_progress` Notices replace it as `STATE_DELTA /plurnk/workspace/activity`; a Loop's terminal leaves it as derivation last reported it. Reattachment snapshots carry the current derivation through the same projection, without polling or duplicate routine Notices. |
 | `snapshot.plurnk.status.claimedAt`, `.terminatedAt` | latest `ApplicationLoopProjection.claimedAt`, `.terminatedAt` | When the latest Loop first ran and when it concluded, Unix milliseconds, null until they happen; live, the lifecycle beat and the terminal replace them in the same delta as the Loop's identity ({§agui-status-timing}). |
 | `snapshot.plurnk.status.spend` | `ApplicationPort.workerAccounting({ workspaceId, workerId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's and its descendants' settled spend since the Worker began, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/spend` only when it differs from what the Run's client holds, never before its snapshot ({§agui-status-spend}). |
-| `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity. Reattachment snapshots carry current derivation activity through the same projection, without polling or duplicate routine Notices. Clients never reconstruct packet count from row or STEP traffic. |
-| `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
+| `STATE_DELTA /plurnk/status/*`               | packet, termination, and lifecycle events | The bound Worker's replaceable lifecycle and packet chronology. Clients never reconstruct packet count from row or STEP traffic. |
+| `snapshot.budget`                            | initialization of a Run that binds a Worker | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |
 | `STATE_DELTA /budget/curationBudget`         | `loop/terminated.usage.curationBudget`    | Latest turn's provider-derived curation calibration, or `null` when capacity is unknown. |
 | `STATE_DELTA /budget/contextTokens`          | `loop/terminated.usage.contextTokens`     | Latest emission call's last physical request input occupancy, or `null` when that call issued none or reported none. |
@@ -292,8 +293,8 @@ every other daemon surface.
   never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - §agui-run-start **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT`
-  carrying the daemon's provider, bound-Worker model, latest Loop, and exact packet-count truth,
-  then `STATE_DELTA`s. Nothing precedes them: what reaches a Run while its snapshot is read
+  carrying the daemon's providers, the bound workspace and, when the Run binds a Worker, that
+  Worker's model, latest Loop, and exact packet-count truth, then `STATE_DELTA`s. Nothing precedes them: what reaches a Run while its snapshot is read
   follows them, in the order it arrived; a Run that ends first ends with its terminal alone.
 
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
@@ -307,15 +308,11 @@ every other daemon surface.
 
 - §agui-sync **Synchronization is an inference-free AG-UI Run.**
   `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
-  management action, or interrupt resume. A passive observation, one that does not claim the
-  worker (`forwardedProps.plurnk.control` absent or false), binds an existing workspace and
-  worker and creates neither: the workspace's default worker for a `threadId` equal to
-  the workspace name, else exactly the model worker that `forwardedProps.plurnk.worker`, or
-  else the `threadId`, names, read fresh on every Run. A missing workspace is 404
-  `workspace-not-found`; a name that holds no model worker is 404
-  `worker-not-found`. An owner's control connection binds as a message Run does, except that
-  `worker` always names an existing model worker exactly. `worker` belongs to observation alone: on
-  a message or action Run, or when it is not a non-empty string, it is 400 `worker-invalid`. It
+  management action, or interrupt resume. It binds an existing workspace and the existing worker
+  the `threadId` names, and creates neither: a missing workspace is 404
+  `workspace-not-found`, and a name that holds no model worker is 404 `worker-not-found`. A passive
+  observation (`forwardedProps.plurnk.control` absent or false) claims nothing; an owner's control
+  connection claims as a message Run does. It
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
   `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). A durable pending interrupt is re-presented
   through the standard terminate-resume contract; an active Loop remains observed through its
@@ -501,7 +498,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
 | `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as the client worker's own operations; returns the `RollbackReport`. |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread's bound worker by default, preserving validated {§entry-read-result}. |
-| `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and calls `ApplicationPort.dispatchClientAction` on the client worker, attached to the bound worker (`boundWorkerId`, else the workspace's default worker) for Functionality.                      |
+| `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and calls `ApplicationPort.dispatchClientAction` on the client worker.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's bound worker.                                                       |
 | `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's bound worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
@@ -512,6 +509,25 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.capabilities.get` | Workspace | none                                                | `ApplicationPort.readWorkspaceCapabilities` on the bound workspace, without creating a worker; returns the complete resolver-owned projection {§capability-policy-projection}. |
 | `workspace.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkspaceCapabilities` replaces the workspace policy and returns the complete resolver-owned projection {§capability-policy-projection}. |
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a worldless, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
+
+§agui-action-binding **What a Run binds.** A message Run and an action addressed to the thread's
+worker bind the worker the `threadId` names ({§agui-thread-binding}); a workspace-level action
+binds none. Only an act addressed to the worker creates it, and only a Run that may create its
+worker, or binds none, may create the world:
+
+| The thread's worker | The world | Runs and actions |
+|---|---|---|
+| Created when the workspace has none by that name | Created when absent | message Run; `worker.model.set`, `worker.child.set`, `worker.effort.set` |
+| Required: 404 `worker-not-found` when there is none | Attached only | observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` unless `workerId` names another worker |
+| The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§agui-proposal-resolve}) |
+| Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
+| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` naming a `workerId` |
+
+A worldless action ({§agui-module-action-scope}), and an action the module does not register or
+whose input its schema refuses, binds neither: it is answered on the control path, the refusal in
+its result. A Run that binds a worker carries that worker's gauge, `plurnk.status` and `budget`, and
+its deltas ({§agui-state-patches}); one that binds none carries neither. Every Run bound to a
+workspace carries that workspace's state ({§agui-workspace-state}).
 
 §agui-worker-model-actions **Worker model selection is server-backed.**
 `worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the
@@ -921,8 +937,7 @@ reconstruct one from `RUN_ERROR`.
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
 | `invalid-sync-input` | 400 | A sync Run cannot include messages, an action, or an interrupt resume. |
-| `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*; observing never creates one. Recovery: Name an existing model worker, or create one with a message Run. |
-| `worker-invalid` | 400 | forwardedProps.plurnk.worker must name a worker, and names the worker an observation binds; a message or action Run addresses its thread. |
+| `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*. Recovery: Name an existing model worker, or create one by sending it a message. |
 | `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |
 | `run-failed` | 500 | The AG-UI Run failed unexpectedly. |
 

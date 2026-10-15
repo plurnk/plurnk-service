@@ -6,6 +6,7 @@ import { holdChild } from "./_db.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 // A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
 // would not ({§matcher-refusal}).
@@ -37,7 +38,7 @@ Await results.
             await withDaemon(provider, async (db, daemon) => {
                 let activeDaemon = daemon;
                 const { workspaceId } = await daemon.createWorkspace({ name: `wait-strikes-${wake}` });
-                const workerId = await daemon.ensureModelWorker(workspaceId);
+                const workerId = await namedModelWorker(daemon, workspaceId, "main");
                 t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
                     if (seen.length < 2) await holdChild(db, workspaceId, workerId);
                     seen.push((args as { strikes?: number }).strikes);
@@ -106,7 +107,7 @@ test("{§engine-cycle-evidence}: actual parks end repetition windows even when w
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const childLoop = await holdChild(db, workspaceId, workerId);
         const finished = Promise.withResolvers<number>();
         const park = LoopLifecycle.prototype.park;

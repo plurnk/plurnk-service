@@ -9,6 +9,7 @@ import { readStmt, urlPath } from "./_dsl.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeRawMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"] as const) {
     test(`{§executor-js-spelling}: the daemon routes ${width}-backtick js through node with ${admission} admission`, async (t) => {
@@ -37,7 +38,7 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
             try {
                 await rpcCall(client, 1, "workspace.create", { name: `js-spelling-${admission}` });
                 const [workspace] = await daemon.listWorkspaces();
-                const workerId = await daemon.ensureModelWorker(workspace.id);
+                const workerId = await namedModelWorker(daemon, workspace.id, "main");
                 // References are workspace documents ({§worker-generated-subtree}); the model worker's run is under test.
                 const observer = await daemon.createWorker({ workspaceId: workspace.id, name: "observer" });
                 const reference = (runtime: string) => daemon.dispatchAsClient({ workspaceId: workspace.id, workerId: observer.workerId,
@@ -48,7 +49,7 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                     await daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{ runtime: "node" }] } });
                 }
                 const { finalStatus, turnIds } = await runLoopToTerminal(client, 2, {
-                    prompt: "Run the JavaScript and observe the result.",
+                    prompt: "Run the JavaScript and observe the result.", workerId,
                 });
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3);

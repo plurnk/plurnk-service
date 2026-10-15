@@ -27,6 +27,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const OWNER = "fx fixture adapter";
 
@@ -826,7 +827,7 @@ test("{§module-workspace-sharing} {§functionality-coordinator} registration, c
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
     await ownWorker(db, workspaceId, client);
     let daemon = await boot(db, log);
-    const model = await daemon.ensureModelWorker(workspaceId);
+    const model = await namedModelWorker(daemon, workspaceId, "main");
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
         daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
     const exec = (tag: string, workerId = client) =>

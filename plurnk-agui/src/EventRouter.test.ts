@@ -17,13 +17,13 @@ import {
 
 const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
-test("{§agui-status-preparation} workspace preparation is replaceable state, never model or transcript traffic", () => {
+test("{§agui-workspace-state} workspace preparation is replaceable state, never model or transcript traffic", () => {
     const r = router();
     const preparation = [{ family: "mcp", alias: "search", phase: "preparing", since: "2026-09-29T12:00:00.000Z" }];
     for (const value of [preparation, []]) {
         assert.deepEqual(r.route("workspace/preparation", { workspaceId: 3, preparation: value }), [{
             type: "STATE_DELTA",
-            delta: [{ op: "replace", path: "/plurnk/status/preparation", value }],
+            delta: [{ op: "replace", path: "/plurnk/workspace/preparation", value }],
         }]);
     }
     assert.throws(() => r.route("workspace/preparation", { workspaceId: 3, preparation: [{ ...preparation[0], phase: "active" }] }),
@@ -107,7 +107,7 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
         },
     });
     assert.equal(progress[0]?.type, "STATE_DELTA");
-    assert.equal((progress[0] as { delta: Array<{ path: string }> }).delta[0]?.path, "/plurnk/status/activity");
+    assert.equal((progress[0] as { delta: Array<{ path: string }> }).delta[0]?.path, "/plurnk/workspace/activity");
     assert.equal(progress.length, 1, "routine indexing has one state channel, not a duplicate transcript Notice");
 });
 
@@ -120,13 +120,13 @@ test("indexing completion clears activity; failures retain an explicit diagnosti
     };
     assert.deepEqual(r.route("notice/event", { workerId: 10, loopId: 4, notice }), [{
         type: "STATE_DELTA",
-        delta: [{ op: "replace", path: "/plurnk/status/activity", value: null }],
+        delta: [{ op: "replace", path: "/plurnk/workspace/activity", value: null }],
     }]);
     const failure = { ...notice, phase: "failed", level: "error", completed: 3, percent: 30,
         message: "Search indexing failed: SQLite database is locked" };
     assert.deepEqual(r.route("notice/event", { workerId: 10, loopId: 4, notice: failure }), [{
         type: "STATE_DELTA",
-        delta: [{ op: "replace", path: "/plurnk/status/activity", value: {
+        delta: [{ op: "replace", path: "/plurnk/workspace/activity", value: {
             kind: "derivation", phase: "failed", completed: 3, total: 10, percent: 30,
             message: failure.message,
         } }],

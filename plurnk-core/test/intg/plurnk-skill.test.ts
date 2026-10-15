@@ -11,6 +11,7 @@ import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { insertWorker } from "./_db.ts";
 import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable operand examples", async (t) => {
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
@@ -61,7 +62,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         t.after(() => ws.close());
         const created = await rpcCall(ws, 1, "workspace.create", { projectRoot: root });
         const workspaceId = (created.result as { id: number }).id;
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const client = await insertWorker(db, workspaceId, null, "client", "client");
         const dispatch = (statement: Parameters<typeof daemon.dispatchAsClient>[0]["statement"]) =>
             daemon.dispatchAsClient({ workspaceId, workerId: client, statement });

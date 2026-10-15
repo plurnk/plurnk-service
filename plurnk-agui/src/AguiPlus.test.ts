@@ -174,10 +174,13 @@ test("client interaction resume preserves an arbitrary resolved payload or stand
     );
 });
 
+const WORKSPACE = { id: 1, name: "agui-tui", projectRoot: "/w", projectLabel: "w", preparation: [], activity: null };
+
 test("reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
     const snap = stateSnapshot({
         providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, inputCapacity: 200000 }],
-        workspace: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
+        workspace: WORKSPACE,
+        status: statusState(null, null, NOTHING_SPENT),
     });
     assert.equal(snap.type, "STATE_SNAPSHOT");
     const snapshot = (snap as {
@@ -196,6 +199,18 @@ test("reads → STATE: snapshot owns plurnk state and initializes replaceable bu
     const delta = stateDelta([{ op: "replace", path: "/plurnk/providers/0/active", value: false }]);
     assert.equal(delta.type, "STATE_DELTA");
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");
+});
+
+test("{§agui-workspace-state} a Run that binds no worker carries its workspace and no worker gauge", () => {
+    const { snapshot } = stateSnapshot({ workspace: WORKSPACE }) as { snapshot: Record<string, unknown> & { plurnk: Record<string, unknown> } };
+    assert.deepEqual(Object.keys(snapshot), ["plurnk"], "no budget without a worker");
+    assert.deepEqual(snapshot.plurnk, { workspace: WORKSPACE }, "no status without a worker");
+    const preparing = [{ family: "mcp", alias: "fixture", phase: "preparing", since: "2026-10-15T00:00:00.000Z" }];
+    const replayed = replayState([
+        stateSnapshot({ workspace: WORKSPACE }),
+        stateDelta([{ op: "replace", path: "/plurnk/workspace/preparation", value: preparing }]),
+    ]) as { plurnk: { workspace: { preparation: unknown } } };
+    assert.deepEqual(replayed.plurnk.workspace.preparation, preparing, "workspace activity patches a worker-less Run");
 });
 
 test("{§agui-status-wait} worker status projects the durable model, packet count, and wait deadline", () => {
@@ -220,8 +235,6 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         waitUntil: 123_000,
         claimedAt: 1_792_008_000_000,
         terminatedAt: null,
-        activity: null,
-        preparation: [],
         children: 0,
         spend: NOTHING_SPENT,
     });
@@ -233,8 +246,6 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         waitUntil: null,
         claimedAt: null,
         terminatedAt: null,
-        activity: null,
-        preparation: [],
         children: 0,
         spend: NOTHING_SPENT,
     });
@@ -243,10 +254,10 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         { lifecycle: "queued" }, { lifecycle: "running" }, { lifecycle: "parked" },
         { lifecycle: "completed" }, { lifecycle: "failed" }, { lifecycle: "idle" },
     ]), 3);
-    assert.equal(statusState(null, null, NOTHING_SPENT, null, 3).children, 3);
+    assert.equal(statusState(null, null, NOTHING_SPENT, 3).children, 3);
 });
 
-test("derivation activity carries live work into the initial status snapshot and clears completion", () => {
+test("{§agui-workspace-state} derivation activity carries live work into the workspace snapshot and clears completion", () => {
     assert.deepEqual(derivationActivity({
         phase: "indexing",
         completed: 3,

@@ -6,6 +6,7 @@ import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 for (const op of ["WORK", "FORK"]) for (const inherited of ["absent", "active", "disabled"] as const)
 test(`{§env-option} ${op} replaces the child's ${inherited} inherited value before its first command`, async (approvalContext) => {
@@ -21,7 +22,7 @@ test(`{§env-option} ${op} replaces the child's ${inherited} inherited value bef
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "env-modifier" });
             const { id: workspaceId } = created.result as { id: number };
-            const workerId = await daemon.ensureModelWorker(workspaceId);
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
             const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`worker.env.${verb}`, params, { scope: "worker", workspaceId, workerId });
             if (inherited !== "absent") {
                 await invoke("add", { alias: "KID_ONLY", definition: { value: "parent" } });

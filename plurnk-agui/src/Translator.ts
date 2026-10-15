@@ -279,7 +279,6 @@ export default class Translator {
                 { op: "replace", path: "/plurnk/status/lifecycle", value: result.status < 400 ? "completed" : "failed" },
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
                 { op: "replace", path: "/plurnk/status/terminatedAt", value: n.terminatedAt },
-                { op: "replace", path: "/plurnk/status/activity", value: null },
                 { op: "replace", path: "/plurnk/status/waitUntil", value: null },
                 { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
                 { op: "replace", path: "/budget/curationBudget", value: n.usage.curationBudget },
@@ -387,7 +386,7 @@ export default class Translator {
         if (value.source !== "engine:derivation" || value.kind !== "search_progress") return [diagnostic];
         const events: AguiEvent[] = [{
             type: EventType.STATE_DELTA,
-            delta: [{ op: "replace", path: "/plurnk/status/activity", value: derivationActivity(notice) }],
+            delta: [{ op: "replace", path: "/plurnk/workspace/activity", value: derivationActivity(notice) }],
         }];
         if (value.level === "error" || value.level === "warn") events.push(diagnostic);
         return events;

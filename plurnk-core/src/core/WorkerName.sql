@@ -2,15 +2,12 @@
 
 -- PREP: worker_name_claim
 -- Claiming the literal and creating its worker are one SQLite write statement.
--- The default-worker predicate is enabled only by
--- ensureDefaultWorker; ordinary allocation passes 0 and competes solely
--- on the generated literal.
 INSERT INTO workers (
-    workspace_id, name, parent_worker_id, origin, owner, default_worker,
+    workspace_id, name, parent_worker_id, origin, owner,
     ambient_event_cursor, fork_event_boundary,
     model_route_id, spawn_model_route_id, effort
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner, $default_worker,
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner,
        CASE WHEN $fork_snapshot = 1 THEN (
            SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
        ) ELSE NULL END,
@@ -27,23 +24,9 @@ WHERE NOT EXISTS (
     WHERE workspace_id = $workspace_id AND name = $name
 )
 AND (
-    $default_worker = 0 OR NOT EXISTS (
-        SELECT 1
-        FROM workers
-        WHERE workspace_id = $workspace_id
-          AND default_worker = 1
-    )
-)
-AND (
     $fork_snapshot = 0 OR EXISTS (
         SELECT 1 FROM workers
         WHERE id = $parent_worker_id AND workspace_id = $workspace_id
     )
 )
 RETURNING id, name;
-
--- PREP: worker_name_get_default_worker
-SELECT id, name
-FROM workers
-WHERE workspace_id = $workspace_id
-  AND default_worker = 1;

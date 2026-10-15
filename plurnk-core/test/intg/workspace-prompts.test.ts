@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const send = () => makeMockResponse("````SEND [200]\nok\n````", 50);
 const addressed = (thread: string, id: string) => {
@@ -56,11 +57,11 @@ test("{§methods-workspace-prompts}: a client prompt at a forked model worker is
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "prompts-fork" });
             const workspaceId = (created.result as { id: number }).id;
-            const defaultWorker = await daemon.ensureModelWorker(workspaceId);
-            await runLoopToTerminal(ws, 2, { prompt: "default worker prompt", workerId: defaultWorker, ...addressed("prompts-fork", "1") });
+            const mainWorker = await namedModelWorker(daemon, workspaceId, "main");
+            await runLoopToTerminal(ws, 2, { prompt: "typed at main", workerId: mainWorker, ...addressed("main", "1") });
 
-            // The TUI's /worker + /attach flow: a fork of the default worker, bound by name, seeded by a human.
-            const research = await daemon.forkWorker({ workspaceId, workerId: defaultWorker, name: "research" });
+            // The TUI's /worker + /attach flow: a fork of the thread's worker, bound by name, seeded by a human.
+            const research = await daemon.forkWorker({ workspaceId, workerId: mainWorker, name: "research" });
             await runLoopToTerminal(ws, 3, { prompt: "typed at the research fork", workerId: research.workerId, ...addressed("research", "1") });
             await runLoopToTerminal(ws, 4, { prompt: "typed at the research fork again", workerId: research.workerId, ...addressed("research", "2") });
 
@@ -70,16 +71,16 @@ test("{§methods-workspace-prompts}: a client prompt at a forked model worker is
                 ["typed at the research fork again", "typed at the research fork"],
                 "the forked worker's own human prompts are its history, newest-first",
             );
-            const scopedToDefault = await rpcCall(ws, 6, "workspace.prompts", { workerId: defaultWorker });
+            const scopedToMain = await rpcCall(ws, 6, "workspace.prompts", { workerId: mainWorker });
             assert.deepEqual(
-                (scopedToDefault.result as { prompts: string[] }).prompts,
-                ["default worker prompt"],
-                "the default worker's history does not carry the fork's prompts",
+                (scopedToMain.result as { prompts: string[] }).prompts,
+                ["typed at main"],
+                "the forked worker's parent keeps its own history, without the fork's prompts",
             );
             const unscoped = await rpcCall(ws, 7, "workspace.prompts", {});
             assert.deepEqual(
                 (unscoped.result as { prompts: string[] }).prompts,
-                ["typed at the research fork again", "typed at the research fork", "default worker prompt"],
+                ["typed at the research fork again", "typed at the research fork", "typed at main"],
                 "an omitted workerId lists every model worker's client-addressed seeds",
             );
         } finally { ws.close(); }
@@ -93,15 +94,15 @@ test("{§methods-workspace-prompts}: a seed nobody addressed — a worker-issued
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "prompts-authorship" });
             const workspaceId = (created.result as { id: number }).id;
-            const defaultWorker = await daemon.ensureModelWorker(workspaceId);
-            await runLoopToTerminal(ws, 2, { prompt: "a human asked this", workerId: defaultWorker, ...addressed("prompts-authorship", "1") });
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
+            await runLoopToTerminal(ws, 2, { prompt: "a human asked this", workerId, ...addressed("main", "1") });
             // A worker-issued seed carries the issuing worker as its source and no message address
             // ({§message-arrival}); the seam admits the same shape.
-            const task = await runLoopToTerminal(ws, 3, { prompt: "a worker delegated this", workerId: defaultWorker, source: "worker://exampleWorkerName" });
+            const task = await runLoopToTerminal(ws, 3, { prompt: "a worker delegated this", workerId, source: "worker://exampleWorkerName" });
             const seed = await db.test_loop_seed_message.get<{ address: string | null; source: string | null }>({ loop_id: task.loopId });
             assert.deepEqual(seed, { address: null, source: "worker://exampleWorkerName" }, "the fixture wrote an unaddressed, worker-sourced seed");
 
-            const history = await rpcCall(ws, 4, "workspace.prompts", { workerId: defaultWorker });
+            const history = await rpcCall(ws, 4, "workspace.prompts", { workerId });
             assert.deepEqual((history.result as { prompts: string[] }).prompts, ["a human asked this"], "the delegated task is not in the worker's history");
         } finally { ws.close(); }
     });

@@ -191,22 +191,12 @@ export default class Envelope {
     // packet — rendered from the model worker — never carries the client's dispatched
     // actions. The module resolves and retains the binding.
     // {§methods-worker-create}: a fresh worker is a named, empty-log, model-origin worker,
-    // distinct from the stable default and from a history-copying fork.
+    // distinct from a history-copying fork.
     static async createModelWorker(db: Db, workspaceId: number, name?: string, parentWorkerId?: number, owner?: string): Promise<{ id: number; name: string }> {
         const options = { workspaceId, parentWorkerId, owner, origin: "model" as const };
         return name === undefined
             ? WorkerName.claimAuto(db, options)
             : WorkerName.claimNamed(db, name, options);
-    }
-
-    static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {
-        // {§methods-model-worker}: idempotence lives at the seam, not in a client's
-        // connection cache. The durable role, not root ordering or a name parse,
-        // distinguishes this default from arbitrary fresh workers.
-        const worker = await WorkerName.ensureDefaultWorker(db, {
-            workspaceId,
-        });
-        return worker.id;
     }
 
     static async listWorkersForWorkspace(

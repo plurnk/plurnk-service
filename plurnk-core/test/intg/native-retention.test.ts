@@ -14,6 +14,7 @@ import { parseDsl } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const collector = (db: Awaited<ReturnType<typeof openMigrated>>) => new Retention(db, {
@@ -118,7 +119,7 @@ test("{§native-content-lifetime}: message admission and attachment-only replies
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "native-message-retention", projectRoot: null });
-        const workerId = await daemon.ensureModelWorker(workspaceId);
+        const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const statements = (source: string) => parseDsl(source);
         await daemon.dispatchClientAction({ workspaceId, workerId, statements: statements("````EDIT (worker:///reply.txt)\nOriginal answer.\n````") });
         const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Return the attachment.",

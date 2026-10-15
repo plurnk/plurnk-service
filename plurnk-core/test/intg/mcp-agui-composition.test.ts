@@ -82,12 +82,13 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     assert.equal(provider.requests.length, 0, "the client can see startup before the provider is called");
     const during = await inspect();
     assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
-    const snapshot = during.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { status: { preparation: { family: string; alias: string | null }[] } } } };
-    assert.ok(snapshot.snapshot.plurnk.status.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
+    // {§agui-workspace-state} Preparation is the workspace's, so a Run that binds no worker carries it too.
+    const snapshot = during.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: { preparation: { family: string; alias: string | null }[] } } } };
+    assert.ok(snapshot.snapshot.plurnk.workspace.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
     release.resolve();
     await finished;
     assert.equal(provider.requests.length, 1);
-    assert.ok(events.some((event) => event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"path":"/plurnk/status/preparation","value":[]')));
+    assert.ok(events.some((event) => event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"path":"/plurnk/workspace/preparation","value":[]')));
     assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
     assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);
 });

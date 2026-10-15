@@ -133,13 +133,23 @@ export const interactionResolutionFromResume = (entry: ResumeEntry): Interaction
 // The client OBSERVES this; no providers.list / workspace.list round-trips.
 export interface AguiPlusState {
     providers?: Array<{ alias: string; model: string; active: boolean; inputCapacity: number | null }>;
-    workspace?: { id: number; name: string; projectRoot?: string | null; projectLabel?: string | null; budget?: number | null };
+    workspace?: AguiWorkspaceState;
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     status?: AguiStatusState;
 }
+// {§agui-workspace-state} — the bound workspace, its folder, and the activity that belongs to it rather
+// than to any worker: capability preparation and derivation.
+export interface AguiWorkspaceState {
+    readonly id: number;
+    readonly name: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+    readonly preparation: readonly FunctionalityPreparationActivity[];
+    readonly activity: AguiDerivationActivity | null;
+}
 export type AguiLifecycle = LoopLifecycle;
-export interface AguiStatusActivity {
+export interface AguiDerivationActivity {
     readonly kind: "derivation";
     readonly phase: "preparing" | "indexing" | "failed";
     readonly completed: number;
@@ -148,13 +158,11 @@ export interface AguiStatusActivity {
     readonly message: string;
 }
 export interface AguiStatusState {
-    readonly preparation: readonly FunctionalityPreparationActivity[];
     readonly lifecycle: AguiLifecycle;
     readonly model: ModelRoute | null;
     readonly loopId: number | null;
     readonly packetCount: number;
     readonly waitUntil: number | null;
-    readonly activity: AguiStatusActivity | null;
     // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
     readonly children: number;
     // {§agui-status-spend} — what the bound Worker and its descendants have spent since it began.
@@ -186,7 +194,7 @@ export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycl
 export const aliveChildren = (rows: readonly { readonly lifecycle: LoopLifecycle }[]): number =>
     rows.filter(({ lifecycle }) => ALIVE_LIFECYCLES.has(lifecycle)).length;
 
-export const derivationActivity = (value: unknown): AguiStatusActivity | null => {
+export const derivationActivity = (value: unknown): AguiDerivationActivity | null => {
     if (value === null) return null;
     if (typeof value !== "object") throw new TypeError("Invalid derivation activity.");
     const { phase, completed, total, percent, message } = value as Record<string, unknown>;
@@ -204,9 +212,7 @@ export const statusState = (
     model: ModelRoute | null,
     loop: ApplicationLoopProjection | null,
     spend: AguiSpendState,
-    activity: AguiStatusActivity | null = null,
     children = 0,
-    preparation: AguiStatusState["preparation"] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -215,10 +221,8 @@ export const statusState = (
     packetCount: loop?.packetCount ?? 0,
     waitUntil: loop?.status === 202 ? loop.waitUntil : null,
     ...loopTiming(loop),
-    activity,
     children,
     spend,
-    preparation,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;
@@ -234,9 +238,10 @@ const EMPTY_BUDGET: AguiBudgetState = Object.freeze({
     contextCapacity: null,
 });
 
+// {§agui-workspace-state} The worker's gauge, `status` and `budget`, rides only a Run that binds a worker.
 export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({
     type: EventType.STATE_SNAPSHOT,
-    snapshot: { plurnk: s, budget: EMPTY_BUDGET },
+    snapshot: s.status === undefined ? { plurnk: s } : { plurnk: s, budget: EMPTY_BUDGET },
 });
 // {§agui-daemon-client} — AG-UI 1.0 types STATE_DELTA as a real RFC 6902 patch, so the
 // operation union is the parameter type rather than a loose object shape.

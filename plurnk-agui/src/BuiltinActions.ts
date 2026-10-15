@@ -50,7 +50,6 @@ export type BuiltinActionsPort = Pick<
     | "cancelDrain"
     | "createWorkspace"
     | "dispatchClientAction"
-    | "ensureModelWorker"
     | "executorJsonBodyTags"
     | "executorTags"
     | "forkWorker"
@@ -75,6 +74,12 @@ export type BuiltinActionsPort = Pick<
 >;
 
 export default class BuiltinActions {
+    // {§agui-action-binding} A worker action runs only after its Run bound the thread's worker.
+    static #bound(workerId: number | undefined): number {
+        if (workerId === undefined) throw new Error("a worker action reached execution without its worker");
+        return workerId;
+    }
+
     readonly #seam: () => BuiltinActionsPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
@@ -166,7 +171,7 @@ export default class BuiltinActions {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(typeof p.id === "number" ? p.id : world.workspaceId) } };
                 case "log.read": {
                     // Default worker: the bound worker; p.workerId pins another.
-                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId);
+                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId);
                     const entries = await this.#seam().readLog({
                         workspaceId: world.workspaceId,
                         workerId: readWorkerId,
@@ -191,7 +196,7 @@ export default class BuiltinActions {
                     }
                     const ack = await this.#seam().runLoop({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                         prompt: p.prompt,
                         ...MessageAddress.submission(principal, input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
                     });
@@ -200,7 +205,7 @@ export default class BuiltinActions {
                 // The stop control (TUI /stop + Ctrl-C): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam().cancelDrain(
-                    boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                    BuiltinActions.#bound(boundWorkerId),
                     typeof p.reason === "string" ? p.reason : undefined,
                 ) } };
                 // Default worker: the bound worker; p.workerId pins another — the log.read shape.
@@ -210,7 +215,7 @@ export default class BuiltinActions {
                         prompts: await this.#seam().listPrompts(
                             world.workspaceId,
                             Object.hasOwn(p, "limit") ? p.limit as number : undefined,
-                            typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                            typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                         ),
                     },
                 };
@@ -248,7 +253,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().rollback({
                         workspaceId: world.workspaceId,
-                        workerId: typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                         clientWorkerId: world.workerId,
                         to: p.to,
                     }) };
@@ -275,7 +280,7 @@ export default class BuiltinActions {
                         workspaceId: world.workspaceId,
                         workerId: typeof p.workerId === "number"
                             ? p.workerId
-                            : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                            : BuiltinActions.#bound(boundWorkerId),
                         target: p.target,
                         ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
                         ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
@@ -360,11 +365,11 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: { results } };
                 }
-                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: BuiltinActions.#bound(boundWorkerId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 case "worker.model.get": {
                     const { model, spawnModel } = await this.#seam().readWorkerModel({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                     });
                     return { ok: true, result: { model, spawnModel } };
                 }
@@ -379,7 +384,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerModel({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                         selector: p.selector,
                         ...(p.effort === undefined ? {} : { effort: p.effort }),
                     }) };
@@ -396,14 +401,14 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerSpawnModel({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                         selector: p.selector as string | null,
                     }) };
                 }
                 case "worker.effort.get": {
                     return { ok: true, result: await this.#seam().readWorkerEffort({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                     }) };
                 }
                 case "worker.effort.set": {
@@ -417,7 +422,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerEffort({
                         workspaceId: world.workspaceId,
-                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: BuiltinActions.#bound(boundWorkerId),
                         effort: p.effort,
                     }) };
                 }

@@ -4,6 +4,7 @@ import { AiSdkProvider, type ProviderCost } from "@plurnk/plurnk-providers";
 import { insertLoop, insertWorker } from "./_db.ts";
 import Dsl from "./dsl.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 
 for (const reported of [false, true]) {
     for (const stop of ["KILL", "shutdown"] as const) {
@@ -41,7 +42,7 @@ for (const reported of [false, true]) {
             });
             await withDaemon(provider, async (db, daemon) => {
                 const { workspaceId } = await daemon.createWorkspace({ name: `cancellation-${stop}-${reported}` });
-                const parent = await daemon.ensureModelWorker(workspaceId);
+                const parent = await namedModelWorker(daemon, workspaceId, "main");
                 await insertLoop(db, parent, 1, "parent delegation");
                 const child = await insertWorker(db, workspaceId, parent, "child", "model");
                 const observed = Promise.withResolvers<void>();
