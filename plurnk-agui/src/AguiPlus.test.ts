@@ -178,7 +178,7 @@ const WORKSPACE = { id: 1, name: "agui-tui", projectRoot: "/w", projectLabel: "w
 
 test("reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
     const snap = stateSnapshot({
-        providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, inputCapacity: 200000 }],
+        providers: [{ alias: "opus", provider: "anthropic", model: "claude-opus", effort: "adaptive", effortSource: "default", active: true, inputCapacity: 200000 }],
         workspace: WORKSPACE,
         status: statusState(null, null, NOTHING_SPENT),
     });

@@ -68,6 +68,27 @@ test("{§worker-model-selection}: the configured default is selected on first us
     });
 });
 
+test("{§agui-provider-routes}: each alias lists the route a worker seeded from it reads back, its configured effort included", async () => {
+    const spec = declaredProvider("listed", "listed-model");
+    const effortKey = `PLURNK_PROVIDERS_EFFORT_${spec.alias}`;
+    for (const key of ["PLURNK_MODEL", effortKey]) declaredProviderEnv.set(key, process.env[key]);
+    process.env.PLURNK_MODEL = spec.alias;
+    process.env[effortKey] = "high";
+    ProviderInstantiate.registerInstance(new Mock({ contextWindow: 16_384, responses: [] }), spec);
+    await withDaemon(null, async (_db, daemon) => {
+        const listed = daemon.listProviders().aliases.find(({ alias }) => alias === spec.alias);
+        assert.ok(listed?.active, "the standing selection is listed active");
+        const { active: _active, inputCapacity: _capacity, ...route } = listed!;
+        assert.deepEqual(route, { alias: spec.alias, provider: "openai", model: "listed-model", effort: "high", effortSource: "default" },
+            "the alias's own effort, given rather than chosen");
+        const { workspaceId } = await daemon.createWorkspace({ name: "listed-route" });
+        const workerId = await namedModelWorker(daemon, workspaceId, "seeded");
+        await daemon.readWorkerEffort({ workspaceId, workerId });
+        assert.deepEqual((await daemon.readWorkerModel({ workspaceId, workerId })).model, route,
+            "a worker seeded from the alias reads back exactly the listed route");
+    });
+});
+
 test("{§configuration-repair-path}: an invalid default leaves client inspection and explicit model repair available", async () => {
     const spec = declaredProvider("repair", "repair-model");
     declaredProviderEnv.set("PLURNK_MODEL", process.env.PLURNK_MODEL);

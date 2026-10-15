@@ -1091,7 +1091,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
-    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }> } {
+    listProviders(): ReturnType<ApplicationPort["listProviders"]> {
         const active = process.env.PLURNK_MODEL?.toLowerCase();
         let aliases;
         try { aliases = parseAliasesFromEnv(); }
@@ -1102,8 +1102,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return {
             aliases: aliases.map((a) => {
                 const isActive = active === a.alias;
+                // {§agui-provider-routes} — the route a worker seeded from this alias gets: what it would read back.
+                let effort;
+                try { effort = ProviderInstantiate.configuredEffort(a); }
+                catch (cause) {
+                    const invalid = new ConfigurationError("PLURNK_PROVIDERS_EFFORT", cause instanceof Error ? cause.message : String(cause), { cause });
+                    throw new OperationFailureError(Results.configurationFailure(invalid), { cause });
+                }
                 return {
-                    alias: a.alias, provider: a.provider, model: a.model, active: isActive,
+                    ...projectModelRoute(a, effort, "default"), alias: a.alias, active: isActive,
                     inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null };
             }) };
     }

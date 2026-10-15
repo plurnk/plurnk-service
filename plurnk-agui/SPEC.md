@@ -256,6 +256,7 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
+| §agui-provider-routes `snapshot.plurnk.providers[*]` | `providers.list.aliases[*]` | Each declared alias as the route a worker seeded from it gets: `alias`, `provider`, `model` and, when the model has an effort dimension, the alias's configured `effort` with `effortSource: "default"`, which is what that worker reads back ({§worker-effort}); then `active` and `inputCapacity`. A client presents the active alias's route for a worker no act has created yet, and creates nothing to learn it. |
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
 | `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
 | `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
@@ -484,7 +485,7 @@ successfully transported management Run; it does not turn the Run into
 |--------------------------|-----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | `ping`                   | Worldless | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
 | `discover`               | Worldless | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
-| `providers.list`         | Worldless | none                                                 | `ApplicationPort.listProviders`.                                                                                          |
+| `providers.list`         | Worldless | none                                                 | `ApplicationPort.listProviders`: each alias as the route a worker seeded from it gets ({§agui-provider-routes}).            |
 | `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
 | `workspace.list`         | Worldless | none                                                 | `ApplicationPort.listWorkspaces`: each workspace with its folder and the folder's label ({§workspace-label}).                |
 | `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named world, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else five characters.                    |

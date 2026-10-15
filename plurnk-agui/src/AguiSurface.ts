@@ -81,11 +81,14 @@ const action = (
 export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     ping: action("worldless", EMPTY, EMPTY),
     discover: action("worldless", EMPTY, ref("AguiDiscovery")),
+    // {§agui-provider-routes} — each alias is the route a worker seeded from it gets, its configured effort included.
     "providers.list": action("worldless", EMPTY, object({
         aliases: array(object({
             alias: NONEMPTY,
             provider: NONEMPTY,
             model: NONEMPTY,
+            effort: EFFORT,
+            effortSource: { const: "default" },
             active: { type: "boolean" },
             inputCapacity: nullable(POSITIVE),
         }, ["alias", "provider", "model", "active", "inputCapacity"])),
