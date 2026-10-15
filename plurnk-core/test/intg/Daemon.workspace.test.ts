@@ -38,20 +38,6 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("{§methods-rebind}: workspace.create returns the selected client's identity", async () => {
-    await withDaemon(async (_db, addr) => {
-        const ws = await connect(addr);
-        try {
-            const r = await rpcCall(ws, 1, "workspace.create", { name: "create-shape" });
-            const result = r.result as { id: number; name: string; workerId: number; workerName: string };
-            assert.equal(typeof result.id, "number");
-            assert.equal(result.name, "create-shape");
-            assert.equal(typeof result.workerId, "number", "create must surface the worker id (no pending-dance)");
-            assert.equal(typeof result.workerName, "string", "create must surface the worker name");
-        } finally { ws.close(); }
-    });
-});
-
 test("{§methods-rebind}: a bound connection switches workspaces without reconnecting", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);

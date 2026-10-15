@@ -69,9 +69,9 @@ export const settleOutbound = async <T extends { status: number; attrs?: object 
     return handler.applyResolution({ attrs: result.attrs ?? {}, metadata }, ctx as never);
 };
 
-// {§http-outbound-proposes} — a client dispatch of an operation that proposes needs a settlement:
-// a real client answers the `loop/proposal` event it receives. A test that only means to observe
-// the operation does the same. A dispatch that never proposes passes straight through.
+// {§http-outbound-proposes} — a worker's operation that proposes needs a settlement: its owner answers
+// the `loop/proposal` event it receives. A test that only means to observe the operation does the same.
+// A dispatch that never proposes passes straight through.
 interface ProposalSettler {
     subscribeToEvents(listener: (workspaceId: number | null, method: string, params: unknown) => void): () => void;
     resolveProposal(logEntryId: number, resolution: { decision: "accept" | "reject" }, owner: ApplicationOwnerIdentity): Promise<void>;
@@ -118,8 +118,8 @@ export const seedStaticChannel = async (
     });
 };
 
-// A client READ through the real dispatch composition, read by the context's worker in the
-// surrounding test's database ({§connection-lifecycle}): an administrative loop joins that worker's log.
+// A client-tier READ through the real dispatch composition, read by the context's worker in the
+// surrounding test's database: an administrative loop joins that worker's log.
 export const readThroughScheme = async (
     name: string,
     handler: object | null,

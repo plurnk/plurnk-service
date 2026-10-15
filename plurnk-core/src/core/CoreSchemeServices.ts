@@ -14,6 +14,7 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { SchemeAddressCtx, SchemeCtx, SchemeResult, StoredEntryData } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { EntryAddressResolution } from "./EntryAddressBinding.ts";
+import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 
 export interface ExecSource {
     readonly result: SchemeResult;
@@ -91,6 +92,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         if ("db" in ctx) return ctx;
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
+        const client = SchemeCtxImpl.clientOf(ctx);
         return {
             db: services.db,
             workspaceId: ctx.workspaceId,
@@ -100,6 +102,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             writer: ctx.writer,
             signal: ctx.signal,
             ...(ctx.logEntryId === undefined ? {} : { logEntryId: ctx.logEntryId }),
+            ...(client === undefined ? {} : { client }),
             resources: "resources" in ctx ? ctx.resources : undefined,
             streamEventNotify: services.streamEventNotify,
             wakeWorkerNotify: services.wakeWorkerNotify,

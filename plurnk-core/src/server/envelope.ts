@@ -1,8 +1,8 @@
 // Envelope lifecycle helpers for module clients. SPEC {§connection-lifecycle}.
 //
 // A client-interface module receives this value from an explicit workspace create
-// or attach call. Core creates or selects the client worker but retains no transport
-// binding; each dispatched client action allocates and settles its own administrative loop.
+// or attach call. Binding a workspace mints nothing and retains no transport binding;
+// each client operation allocates and settles its own administrative loop in the runtime worker.
 
 import AdministrativeLoop from "../core/AdministrativeLoop.ts";
 import type { Db } from "../core/Db.ts";
@@ -89,79 +89,10 @@ export default class Envelope {
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
         await GitMembership.resolveGitMembership(db, workspace.id, undefined);
-        const worker = await WorkerName.claimAuto(db, {
-            workspaceId: workspace.id,
-            origin: "client",
-        });
-        return {
-            workspaceId: workspace.id, workspaceName: workspace.name,
-            projectRoot: workspace.project_root,
-            workerId: worker.id, workerName: worker.name,
-        };
+        return { workspaceId: workspace.id, workspaceName: workspace.name, projectRoot: workspace.project_root };
     }
 
-    // Resolve the worker inside a workspace. Three modes:
-    // - opts.workerId given: lookup by id, verify workspace ownership (else throw).
-    // - opts.workerName given: lookup by (workspaceId, name); reuse if found, create otherwise.
-    // - neither: create a new worker with an auto-generated name (current behavior).
-    // `workerId` and `workerName` are alternatives — passing both throws (use one).
-    static async #resolveWorker(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string }): Promise<{ id: number; name: string }> {
-        if (opts.workerId !== undefined && opts.workerName !== undefined) {
-            throw envelopeFailure(
-                "daemon:worker",
-                "worker-selector-conflict",
-                400,
-                "Workspace attachment received both a worker ID and worker name.",
-                {
-                    workerId: opts.workerId,
-                    workerName: opts.workerName,
-                    recovery: "Select the worker by either ID or name.",
-                    retryable: false,
-                },
-            );
-        }
-        if (opts.workerId !== undefined) {
-            const existing = await db.envelope_get_worker_by_id.get<{ id: number; name: string; workspace_id: number }>({ id: opts.workerId });
-            if (existing === undefined) {
-                throw envelopeFailure(
-                    "daemon:worker",
-                    "worker-not-found",
-                    404,
-                    `Worker ${opts.workerId} does not exist.`,
-                    { workerId: opts.workerId },
-                );
-            }
-            if (existing.workspace_id !== workspaceId) {
-                throw envelopeFailure(
-                    "daemon:worker",
-                    "workspace-mismatch",
-                    409,
-                    `Worker ${opts.workerId} does not belong to workspace ${workspaceId}.`,
-                    {
-                        workerId: opts.workerId,
-                        workspaceId,
-                        actualWorkspaceId: existing.workspace_id,
-                        retryable: false,
-                    },
-                );
-            }
-            return { id: existing.id, name: existing.name };
-        }
-        if (opts.workerName !== undefined) {
-            const workerName = WorkerName.assert(opts.workerName); // {§worker-name-minting}
-            const existing = await db.envelope_get_worker_by_name.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: workerName });
-            if (existing !== undefined) return existing;
-            const created = await db.envelope_insert_worker.get<{ id: number; name: string }>({ workspace_id: workspaceId, name: workerName, origin: "client" });
-            if (created === undefined) throw new Error("resolveWorker: worker insert returned no row");
-            return created;
-        }
-        return await WorkerName.claimAuto(db, {
-            workspaceId,
-            origin: "client",
-        });
-    }
-
-    static async attachToWorkspace(db: Db, workspaceId: number, opts: { workerId?: number; workerName?: string } = {}): Promise<WorkspaceEnvelope> {
+    static async attachToWorkspace(db: Db, workspaceId: number): Promise<WorkspaceEnvelope> {
         const workspace = await db.envelope_get_workspace.get<{ id: number; name: string; project_root: string | null }>({ id: workspaceId });
         if (workspace === undefined) {
             throw envelopeFailure(
@@ -172,24 +103,18 @@ export default class Envelope {
                 { workspaceId },
             );
         }
-        const worker = await Envelope.#resolveWorker(db, workspace.id, opts);
-        return {
-            workspaceId: workspace.id, workspaceName: workspace.name,
-            projectRoot: workspace.project_root,
-            workerId: worker.id, workerName: worker.name,
-        };
+        return { workspaceId: workspace.id, workspaceName: workspace.name, projectRoot: workspace.project_root };
     }
 
-    // Client action loop allocator. One action allocates one administrative
-    // loop; its statements become ordered turns and settlement closes the loop.
-    static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
-        return (await AdministrativeLoop.open(db, workerId)).id;
+    // Client operation loop allocator. One operation allocates one administrative loop, opened by its
+    // actor ({§actor-boundary-client-operations}); its statements become ordered turns and settlement closes it.
+    static async ensureClientLoop(db: Db, workerId: number, actor: string): Promise<number> {
+        return (await AdministrativeLoop.open(db, workerId, actor)).id;
     }
 
-    // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).
-    // The model works in its own worker, distinct from the client's client worker, so the
-    // packet — rendered from the model worker — never carries the client's dispatched
-    // actions. The module resolves and retains the binding.
+    // Model-worker allocator ({§machine-processes}). A person's client operations journal in the runtime
+    // worker, never here, so the packet, rendered from the model worker, never carries them
+    // ({§connection-lifecycle}). The module resolves and retains the binding.
     // {§methods-worker-create}: a fresh worker is a named, empty-log, model-origin worker,
     // distinct from a history-copying fork.
     static async createModelWorker(db: Db, workspaceId: number, name?: string, parentWorkerId?: number, owner?: string): Promise<{ id: number; name: string }> {

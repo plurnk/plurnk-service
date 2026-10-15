@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§mcp-configuration} {§functionality-hotload}
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -35,7 +35,6 @@ test("{§mcp-file-configuration} a global mcp.json supplies callable servers wit
     await writeFile(file, contents);
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-file-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client", "client");
     const daemon = new Daemon({ db, provider: null, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -45,8 +44,8 @@ test("{§mcp-file-configuration} a global mcp.json supplies callable servers wit
         alias: "fixture", origin: "service", state: "dormant",
         provenance: { kind: "file", source: file, reference: "/mcpServers/fixture" },
     }]);
-    const result = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne("````fixture (echo)\n{\"message\":\"file-backed\"}\n````") });
-    assert.equal(result.status, 200);
+    const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````fixture (echo)\n{\"message\":\"file-backed\"}\n````")] });
+    assert.equal(result!.status, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "json", after: 0 });
     assert.deepEqual(output.content, [{ type: "text", text: "file-backed" }]);
     assert.equal(await readFile(file, "utf8"), contents, "loading and invoking never rewrite operator configuration");
@@ -193,7 +192,6 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-configuration-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client", "client");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
@@ -209,7 +207,8 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const call = async (server: string, tool: string) => {
         const before = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: server, prefix: "/%" })).length;
-        const result = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(`\`\`\`\`${server} (${tool})\n{"message":"configuration"}\n\`\`\`\``) });
+        const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(`\`\`\`\`${server} (${tool})\n{"message":"configuration"}\n\`\`\`\``)] });
+        assert.ok(result !== undefined);
         if (result.status === 200) {
             const output = await awaitExecOutcome(db, { workspaceId, scheme: server, channel: "json", after: before });
             assert.deepEqual(output.content, [{ type: "text", text: "configuration" }]);
@@ -231,7 +230,8 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     assert.match(manager, /```mcp \(list\|add\|replace\|enable\|disable\|remove\) <!-- Manage MCP servers -->/u, "the summary names the verbs the family serves");
     assert.doesNotMatch(manager, /```mcp \(discover\) <!-- Return inert candidates/u, "the tool list has no discover");
     assert.equal(references.some(({ pathname }) => pathname === "/_plurnk/plurnk/mcp/discover.json"), false, "no discover schema document");
-    const unserved = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne("````mcp (discover)\n{\"query\": \"echo\"}\n````") });
+    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````mcp (discover)\n{\"query\": \"echo\"}\n````")] });
+    assert.ok(unserved !== undefined);
     assert.equal(unserved.status, 404, "a discover the family does not serve is no registered target");
     assert.match(String((unserved as { problem?: { type?: string } }).problem?.type), /\/target-not-registered$/u);
     assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "fixture" })).definition.state, "disabled");

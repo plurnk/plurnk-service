@@ -192,7 +192,6 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned wor
         await daemon.start();
         const { port } = http.httpAddress();
         const { workspaceId } = await daemon.createWorkspace({ name: "collaborative-reply", projectRoot: null });
-        const collaborator = await daemon.createWorker({ workspaceId, name: "collaborator" });
         const result = post(port, {
             threadId: "assigned", runId: "initial",
             messages: [{ id: "question", role: "user", content: "What is the result?" }],
@@ -205,7 +204,9 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned wor
         const item = parsed.items[0]!;
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("The exact-reply fixture did not parse.");
-        assert.equal((await daemon.dispatchAsClient({ workspaceId, workerId: collaborator.workerId, statement: item.statement })).status, 200);
+        // {§connection-lifecycle} The collaborator is a person replying through a client operation.
+        const [reply] = await daemon.dispatchClientAction({ workspaceId, actor: "agui://anonymous/threads/collaborator", statements: [item.statement] });
+        assert.equal(reply?.status, 200);
         release.resolve();
         const events = await result;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");

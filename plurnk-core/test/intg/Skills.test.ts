@@ -11,12 +11,17 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { crc32 } from "node:zlib";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { type ProblemDetails } from "@plurnk/plurnk-contracts";
-import { execStmt, findStmt, readStmt } from "./_dsl.ts";
+import { type PlurnkStatement, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { findStmt, readStmt } from "./_dsl.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { makeMockResponse } from "./_mock.ts";
+import { viableWindow } from "./_provider.ts";
+import { waitForDb } from "./_rpc.ts";
+import { namedModelWorker } from "./_workers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const run = promisify(execFile);
@@ -116,14 +121,16 @@ test("{§agent-skills-name} {§skills-resources}: discovery, installation and UR
     const workspace = await daemon.createWorkspace({ name: "skill-names", projectRoot: project });
     const context = { scope: "workspace" as const, workspaceId: workspace.workspaceId };
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, context);
-    const read = (target: string) => daemon.dispatchAsClient({ ...workspace, statement: readStmt(parsePath(target), { marks: [1, -1] }) });
+    const operate = async (statement: PlurnkStatement) =>
+        (await daemon.dispatchClientAction({ workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+    const read = (target: string) => operate(readStmt(parsePath(target), { marks: [1, -1] }));
     const discovered = await action("discover", { source }) as { candidates: Array<{ alias: string; definition: unknown }> };
     assert.deepEqual(new Set(discovered.candidates.map(({ alias }) => alias)), new Set(names));
     for (const candidate of discovered.candidates) {
         const result = await action("add", { alias: candidate.alias, definition: candidate.definition }) as { status: number };
         assert.equal(result.status, 201);
     }
-    const catalog = await daemon.dispatchAsClient({ ...workspace, statement: { ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } } });
+    const catalog = await operate({ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } });
     assert.equal(catalog.status, 200, JSON.stringify(catalog));
     assert.ok(Array.isArray(catalog.results));
     const paths = (catalog.results.flat() as Array<{ path: string }>).map(({ path }) => path);
@@ -156,11 +163,17 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
     await writeSkill(source, "beta", "Uninstalled beta");
     const hostPaths = new HostPaths({ home, env: {} });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null, hostPaths });
+    // A model turn whose execution waits for its owner's review keeps the workspace busy.
+    const provider = new Mock({ contextWindow: viableWindow(), responses: [
+        makeMockResponse("````sh\nprintf never\n````"),
+        makeMockResponse("````SEND [200]\nThe execution was declined.\n````"),
+    ] });
+    const daemon = new Daemon({ db, provider, hostPaths });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "skills-busy", projectRoot: project });
-    await ownWorker(db, workspace.workspaceId, workspace.workerId);
+    const model = await namedModelWorker(daemon, workspace.workspaceId, "main");
+    await ownWorker(db, workspace.workspaceId, model);
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, {
         scope: "workspace", workspaceId: workspace.workspaceId,
     });
@@ -170,7 +183,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
         if (method === "loop/proposal") proposal.resolve((params as { logEntryId: number }).logEntryId);
     });
     t.after(unsubscribe);
-    const pending = daemon.dispatchAsClient({ ...workspace, statement: execStmt("sh", "printf never") });
+    const { loopId } = await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: model, prompt: "Run the command." });
     const id = await proposal.promise;
     try {
         const originalPolicy = await daemon.readWorkspaceCapabilities({ workspaceId: workspace.workspaceId });
@@ -194,7 +207,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
         assert.ok(!after.definitions.some(({ alias }) => alias === "beta"), "refused addition creates no binding");
     } finally {
         await daemon.resolveProposal(id, { decision: "reject" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
-        await pending;
+        await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: loopId }), (row) => row?.status !== 102);
     }
 });
 
@@ -218,7 +231,6 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `skills-${crypto.randomUUID()}`);
     await db.test_set_workspace_root.run({ id: workspaceId, project_root: project });
-    const client = await insertWorker(db, workspaceId, null, "client", "client");
     let daemon = new Daemon({ db, provider: null, hostPaths });
     await daemon.start();
     const context = { scope: "workspace" as const, workspaceId };
@@ -227,8 +239,8 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
     type Listed = { alias: string; origin: string; state: string; definition: { source?: string }; detail?: { path?: string; description: string }; problem?: ProblemDetails };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const states = async (): Promise<string[]> => (await listed()).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
-    const dispatch = (statement: ReturnType<typeof readStmt> | ReturnType<typeof findStmt>) =>
-        daemon.dispatchAsClient({ workspaceId, workerId: client, statement });
+    const dispatch = async (statement: ReturnType<typeof readStmt> | ReturnType<typeof findStmt>) =>
+        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
     const document = async (name: string): Promise<string | undefined> => {
         const result = await dispatch(readStmt(parsePath(`skill://${name}/SKILL.md`), { marks: [1, -1] }));
         if (result.status === 404) return undefined;
@@ -357,14 +369,14 @@ test("{§skills-functionality} a headless workspace accepts absolute local refer
     await writeSkill(base, "alpha", "A headless reference");
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `skills-headless-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client", "client");
     const daemon = new Daemon({ db, provider: null, hostPaths });
     await daemon.start();
     const context = { scope: "workspace" as const, workspaceId };
     try {
         const list = await daemon.invokeModuleAction("workspace.skills.list", {}, context) as { definitions: Array<{ alias: string; state: string; origin: string }> };
         assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "dormant", origin: "service" }]);
-        const catalog = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: findStmt(parsePath("skill://*/SKILL.md")) });
+        const [catalog] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [findStmt(parsePath("skill://*/SKILL.md"))] });
+        assert.ok(catalog !== undefined);
         assert.equal(catalog.status, 200);
         assert.deepEqual((catalog.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"]);
         const refused = await rejectedProblem(() => daemon.invokeModuleAction("workspace.skills.add", { alias: "alpha", definition: { name: "alpha", source: "acme/kit" } }, context));
@@ -373,7 +385,8 @@ test("{§skills-functionality} a headless workspace accepts absolute local refer
             alias: "alpha", definition: { name: "alpha", source: join(base, "alpha") },
         }, context) as { status: number };
         assert.equal(added.status, 201);
-        const read = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: readStmt(parsePath("skill://alpha/SKILL.md")) });
+        const [read] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://alpha/SKILL.md"))] });
+        assert.ok(read !== undefined);
         assert.equal(read.status, 200);
         assert.equal(typeof read.content, "string");
         assert.match(read.content as string, /A headless reference/u);
@@ -431,8 +444,8 @@ const skillsWorkspace = async (t: test.TestContext, label: string) => {
     const listed = async (): Promise<Listed[]> => (await action<{ definitions: Listed[] }>("list", {})).definitions;
     // Resource access prepares the family, as a model turn does.
     const prepare = async (): Promise<void> => {
-        const result = await slot.daemon.dispatchAsClient({ ...workspace, statement: findStmt(parsePath("skill://*/SKILL.md")) });
-        assert.equal(result.status, 200, JSON.stringify(result.problem));
+        const [result] = await slot.daemon.dispatchClientAction({ workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [findStmt(parsePath("skill://*/SKILL.md"))] });
+        assert.equal(result!.status, 200, JSON.stringify(result!.problem));
     };
     const restart = async (): Promise<void> => {
         await slot.daemon.stop();

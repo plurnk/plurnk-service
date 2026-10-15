@@ -10,6 +10,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { ownWorker } from "./_approval.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { copyStmt, editStmt, findStmt, killStmt, readStmt, regex } from "./_dsl.ts";
+import { modelOperation } from "./_workers.ts";
 
 const PROBLEMS = "https://problems.plurnk.xyz";
 const env = (name: string) => parsePath(`env:///${name}`)!;
@@ -29,13 +30,14 @@ test("{§env-scheme} every effective name reads at env:///NAME; EDIT and KILL ac
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: `env-scheme-${crypto.randomUUID()}` });
-    const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+    const alice = await insertWorker(db, workspaceId, null, "alice", "model");
     await ownWorker(db, workspaceId, alice);
-    const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+    const bob = await insertWorker(db, workspaceId, null, "bob", "model");
     await ownWorker(db, workspaceId, bob);
     await daemon.invokeModuleAction("workspace.env.add", { alias: "TEAM_DEFAULT", definition: { value: "shared" } }, { scope: "workspace", workspaceId });
 
-    const as = (workerId: number) => (statement: PlurnkStatement) => daemon.dispatchAsClient({ workspaceId, workerId, statement });
+    // Each worker's own operation: an env:/// address is the dispatching Worker's registry ({§env-scheme}).
+    const as = (workerId: number) => (statement: PlurnkStatement) => modelOperation(daemon, db, { workspaceId, workerId, statement });
     const dispatch = as(alice);
     const content = async (workerId: number, name: string): Promise<string | number> => {
         const result = await as(workerId)(readStmt(env(name)));

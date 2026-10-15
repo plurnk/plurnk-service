@@ -265,6 +265,19 @@ export default class ChannelWrite {
         return ChannelWrite.#openSubsForWorkerStmt(db).all<{ id: number; scheme: string }>({ worker_id: workerId });
     }
 
+    // {§connection-lifecycle} The executions a client operation's loop started that still run, by the stream
+    // addresses its rows announced; a loop of any other worker has none.
+    static async findOpenSubscriptionsForClientLoop(
+        db: Db,
+        { workspaceId, loopId }: { workspaceId: number; loopId: number },
+    ): Promise<number[]> {
+        const candidates = await db.find_open_subscriptions_announced_in_loop.all<{ id: number; scheme: string; authority: string; pathname: string; stream: string }>({
+            workspace_id: workspaceId, loop_id: loopId });
+        return [...new Set(candidates
+            .filter(({ scheme, authority, pathname, stream }) => ChannelWrite.#targetUri(scheme, authority, pathname) === stream)
+            .map(({ id }) => id))];
+    }
+
     // The worker's open turn-scoped (`[{"lifetime":"turn"}]`) subscriptions — reaped at the worker's next
     // pre-turn so such a stream never survives into the subsequent turn ({§exec-lifetime}). Any open one at
     // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).

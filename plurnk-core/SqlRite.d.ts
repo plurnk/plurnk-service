@@ -129,6 +129,7 @@ export class SqlRiteSync {
 	subscription_published_channel_meta: SqlRiteSyncPreparedStatements;
 	find_active_subscription: SqlRiteSyncPreparedStatements;
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
+	find_open_subscriptions_announced_in_loop: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
 	find_exec_runtimes_at_pathname: SqlRiteSyncPreparedStatements;
@@ -202,7 +203,6 @@ export class SqlRiteSync {
 	envelope_get_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace_by_name: SqlRiteSyncPreparedStatements;
 	envelope_set_workspace_name: SqlRiteSyncPreparedStatements;
-	envelope_insert_worker: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_id: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_name: SqlRiteSyncPreparedStatements;
 	envelope_list_workers_for_workspace: SqlRiteSyncPreparedStatements;
@@ -432,6 +432,7 @@ export default class SqlRite {
 	subscription_published_channel_meta: SqlRitePreparedStatements;
 	find_active_subscription: SqlRitePreparedStatements;
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
+	find_open_subscriptions_announced_in_loop: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
 	find_exec_runtimes_at_pathname: SqlRitePreparedStatements;
@@ -505,7 +506,6 @@ export default class SqlRite {
 	envelope_get_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace_by_name: SqlRitePreparedStatements;
 	envelope_set_workspace_name: SqlRitePreparedStatements;
-	envelope_insert_worker: SqlRitePreparedStatements;
 	envelope_get_worker_by_id: SqlRitePreparedStatements;
 	envelope_get_worker_by_name: SqlRitePreparedStatements;
 	envelope_list_workers_for_workspace: SqlRitePreparedStatements;

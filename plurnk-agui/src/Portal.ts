@@ -24,9 +24,11 @@ interface Thread {
     owner: string | null;
     // {§agui-oauth-revocation} — the credential family this Run was admitted under; null when none was.
     family: string | null;
-    workerId: number;
+    // The Worker this Run observes: the bound worker, or an operation Run's runtime worker once its dispatch opens
+    // its Loop; null while it has none.
+    workerId: number | null;
     loopId: number | null;
-    notificationScope: NotificationScope;
+    readonly notificationScope: NotificationScope;
     // {§agui-action-binding} The model worker this Run binds and reports the gauge of; null when it binds none.
     modelWorkerId: number | null;
     router: EventRouter;
@@ -34,6 +36,9 @@ interface Thread {
     threadId: string;
     inputRunId: string;
     openStreams: Set<string>;   // stream addresses this Run owns until their stream/concluded
+    // {§agui-broadcast-fan} An operation Run's Worker stream activity no row of its Loop has announced yet: per
+    // address, the latest snapshot and the conclusion, delivered after the row that announces it.
+    unannounced: Map<string, { event: unknown; concluded: unknown }>;
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
     resolvingInterrupts: boolean;
@@ -75,11 +80,10 @@ interface InterruptContinuation {
     readonly cancelOnDisconnect: boolean;
     readonly workspaceId: number;
     readonly gate: WorkerBinding;
-    readonly binding: { readonly workerId: number; readonly loopId: number | null };
+    readonly binding: { readonly workerId: number | null; readonly loopId: number | null };
     readonly modelWorkerId: number | null;
     readonly owner: string;
     readonly threadId: string;
-    readonly notificationScope: NotificationScope;
     readonly state: TranslatorContinuation;
 }
 
@@ -102,6 +106,7 @@ export type PortalPort = Pick<
     | "workerAccounting"
     | "runLoop"
     | "cancelDrain"
+    | "cancelLoop"
 >;
 
 export default class Portal {
@@ -146,7 +151,10 @@ export default class Portal {
                 this.#observeDescendant(workspaceId, thread, method, params);
                 continue;
             }
-            if (!Portal.#ownsNotification(thread, method, params)) continue;
+            if (!Portal.#ownsNotification(thread, method, params)) {
+                Portal.#holdUnannounced(thread, method, params);
+                continue;
+            }
             if (method === "loop/packet" && thread.loopId === null) {
                 const loopId = (params as { loopId?: unknown }).loopId;
                 if (typeof loopId === "number") thread.loopId = loopId;
@@ -167,11 +175,12 @@ export default class Portal {
             if (method === "stream/concluded") thread.openStreams.delete(Portal.#streamTarget(params));
             const out = thread.router.route(method, params);
             if (out.length > 0) thread.emit(out);
+            if (method === "log/entry" && opened !== null) this.#releaseUnannounced(thread, opened);
             // {§agui-gate-deferral} — a terminal leaves the held gate durable for the next Run; any other
             // event that closed the reasoning lifecycle presents it now.
             if (method === "loop/terminated") thread.deferredDelivery = null;
             else this.#presentDeferred(workspaceId, thread);
-            if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
+            if (thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                 const deferred = thread.deferredFinish;
                 thread.deferredFinish = null;
                 this.#finishThread(thread, deferred);
@@ -206,10 +215,12 @@ export default class Portal {
             thread.staleGauge = true;
             return;
         }
+        const workerId = thread.workerId;
+        if (workerId === null) return;
         const refresh = ++thread.gaugeRefresh;
         const [rows, accounting] = await Promise.all([
-            this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: thread.workerId }),
-            this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId: thread.workerId }),
+            this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: workerId }),
+            this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId }),
         ]);
         if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
         if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
@@ -254,7 +265,7 @@ export default class Portal {
         this.#enqueueDelivery(workspaceId, async () => {
             if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
             let node = thread.tree?.get(actor);
-            if (node === undefined) {
+            if (node === undefined && thread.workerId !== null) {
                 thread.tree = await this.#descendantTree(workspaceId, thread.workerId);
                 node = thread.tree.get(actor);
             }
@@ -301,8 +312,12 @@ export default class Portal {
         return target;
     }
 
+    // {§agui-broadcast-fan} An operation Run shares its runtime Worker with every other client operation and the
+    // daemon's own work, so it owns exactly its Loop: that Loop's rows and notices, and the streams those rows
+    // announced. Its action result settles it, never the Loop's terminal.
     static #ownsNotification(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope === "result") return false;
+        const operation = thread.notificationScope === "operation";
         const payload = params as {
             workerId?: unknown;
             loopId?: unknown;
@@ -312,11 +327,13 @@ export default class Portal {
         const owns = (workerId: unknown, loopId?: unknown): boolean =>
             typeof workerId === "number"
             && workerId === thread.workerId
-            && (thread.loopId === null || typeof loopId !== "number" || loopId === thread.loopId);
+            && (operation
+                ? thread.loopId !== null && loopId === thread.loopId
+                : thread.loopId === null || typeof loopId !== "number" || loopId === thread.loopId);
         switch (method) {
             case "workspace/preparation": return true;
             case "log/entry": return owns(payload.entry?.worker_id, payload.entry?.loop_id);
-            case "loop/terminated":
+            case "loop/terminated": return !operation && owns(payload.workerId, payload.loopId);
             case "loop/packet":
             case "reasoning/event":
             case "outside/event": return owns(payload.workerId, payload.loopId);
@@ -324,8 +341,37 @@ export default class Portal {
                 ? thread.notificationScope === "worker"
                 : owns(payload.workerId, payload.loopId);
             case "stream/event":
-            case "stream/concluded": return owns(payload.workerId);
+            case "stream/concluded": return operation
+                ? payload.workerId === thread.workerId && thread.openStreams.has(Portal.#streamTarget(params))
+                : owns(payload.workerId);
             default: return false;
+        }
+    }
+
+    // A stream of an operation Run's Worker that no row of its Loop has announced: it may be this Run's own
+    // execution whose row is still to arrive, so its latest snapshot and conclusion wait for that row.
+    static #holdUnannounced(thread: Thread, method: string, params: unknown): void {
+        if (thread.notificationScope !== "operation" || thread.loopId === null) return;
+        if (method !== "stream/event" && method !== "stream/concluded") return;
+        if ((params as { workerId?: unknown }).workerId !== thread.workerId) return;
+        const target = Portal.#streamTarget(params);
+        const held = thread.unannounced.get(target) ?? { event: null, concluded: null };
+        thread.unannounced.set(target, method === "stream/event" ? { ...held, event: params } : { ...held, concluded: params });
+    }
+
+    // The row that announces a stream delivers what it held, in order; a stream already concluded stays closed.
+    #releaseUnannounced(thread: Thread, target: string): void {
+        const held = thread.unannounced.get(target);
+        if (held === undefined) return;
+        thread.unannounced.delete(target);
+        if (held.event !== null) {
+            const out = thread.router.route("stream/event", held.event);
+            if (out.length > 0) thread.emit(out);
+        }
+        if (held.concluded !== null) {
+            thread.openStreams.delete(target);
+            const out = thread.router.route("stream/concluded", held.concluded);
+            if (out.length > 0) thread.emit(out);
         }
     }
 
@@ -368,7 +414,6 @@ export default class Portal {
                 binding: { workerId: thread.workerId, loopId: controlLoopId },
                 modelWorkerId: thread.modelWorkerId,
                 threadId: thread.threadId,
-                notificationScope: thread.notificationScope,
                 state: {
                     ...paused.continuation,
                     currentTurn: paused.continuation.currentTurn
@@ -409,12 +454,13 @@ export default class Portal {
         }
     }
 
+    // {§agui-worker-owner} A gate reaches its owner's Runs that observe a worker: the one bound to its worker, else
+    // every one. An operation or result Run never presents one.
     #routeHitl(workspaceId: number, delivery: HitlDelivery): void {
         const threads = [...(this.#threads.get(workspaceId) ?? [])]
-            .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope !== "result");
+            .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope === "worker");
         const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
-        const recipients = exact.length > 0 ? exact : threads.filter((thread) => thread.notificationScope === "worker");
-        this.#emitDelivery(workspaceId, delivery, recipients);
+        this.#emitDelivery(workspaceId, delivery, exact.length > 0 ? exact : threads);
     }
 
     #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {
@@ -490,10 +536,10 @@ export default class Portal {
 
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
-    // owns notification routing; the edge owns the socket lifecycle. `workerId` is the lifecycle actor
-    // (client worker for client ops, the bound worker otherwise); `modelWorkerId` is the model worker
-    // the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+    // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
+    // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
+    // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
+    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -515,13 +561,14 @@ export default class Portal {
             family: args.family ?? null,
             workerId: restored?.binding.workerId ?? args.workerId,
             loopId: restored?.binding.loopId ?? null,
-            notificationScope: restored?.notificationScope ?? args.notificationScope,
+            notificationScope: args.notificationScope,
             modelWorkerId: args.modelWorkerId ?? null,
             router,
             emit: args.emit,
             threadId: args.threadId,
             inputRunId: args.inputRunId ?? String(args.workerId),
             openStreams: new Set(),
+            unannounced: new Map(),
             deferredFinish: null,
             pendingTerminations: [],
             resolvingInterrupts: args.resume !== undefined,
@@ -544,11 +591,33 @@ export default class Portal {
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
 
+    // {§agui-run-disconnect} A message Run cancels its bound worker; an operation Run cancels exactly its own Loop,
+    // at once when known, else when its dispatch opens it.
     disconnect(thread: unknown): void {
         const bound = thread as Thread;
         if (bound.disconnected) return;
         bound.disconnected = true;
-        if (bound.cancelOnDisconnect) this.#seam.cancelDrain(bound.workerId, "client_disconnected");
+        if (bound.cancelOnDisconnect) this.#cancelOwned(bound);
+    }
+
+    #cancelOwned(thread: Thread): void {
+        if (thread.notificationScope === "operation") {
+            const loopId = thread.loopId;
+            if (loopId === null) return;
+            void this.#seam.cancelLoop({ workspaceId: thread.workspaceId, loopId, reason: "client_disconnected" }).catch((cause: unknown) => {
+                console.error(`AG-UI: cancelling client operation loop ${loopId} failed:`, cause);
+            });
+            return;
+        }
+        if (thread.workerId !== null) this.#seam.cancelDrain(thread.workerId, "client_disconnected");
+    }
+
+    // {§agui-broadcast-fan} An operation Run observes the Loop its dispatch opened, from before any statement runs.
+    bindOperation(thread: unknown, loop: { readonly workerId: number; readonly loopId: number }): void {
+        const bound = thread as Thread;
+        bound.workerId = loop.workerId;
+        bound.loopId = loop.loopId;
+        if (bound.disconnected && bound.cancelOnDisconnect) this.#cancelOwned(bound);
     }
 
     // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch.
@@ -602,18 +671,6 @@ export default class Portal {
         }
     }
 
-    // Emit extra events + RUN_FINISHED through the resumed Run that owns the
-    // original action's worker and client thread —
-    // an action that paused on a proposal completes after the resume AG-UI Run rebound the
-    // stream, so its result must ride whichever response is live now, never the
-    // closure of the request that spawned it.
-    finishRun(workspaceId: number, workerId: number, threadId: string, events: AguiEvent[]): void {
-        for (const t of this.#threads.get(workspaceId) ?? []) {
-            if (t.notificationScope === "result" || t.workerId !== workerId || t.threadId !== threadId) continue;
-            this.finishThread(t, events);
-        }
-    }
-
     async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
         if (thread.owner === null) return false;
         const deliveries = await this.#hitl.resurface(workspaceId, thread.owner);
@@ -628,7 +685,7 @@ export default class Portal {
         if (thread.loopId === null) {
             thread.loopId = delivery.workerId === thread.workerId
                 ? delivery.loopId
-                : await this.#activeLoopId(workspaceId, thread.workerId);
+                : thread.workerId === null ? null : await this.#activeLoopId(workspaceId, thread.workerId);
         }
         this.#emitDelivery(workspaceId, delivery, [thread]);
         return true;
@@ -652,6 +709,7 @@ export default class Portal {
     // thread remains attached to independently-owned live work.
     async synchronize(workspaceId: number, thread: unknown, waitForWork = false): Promise<boolean> {
         const bound = thread as Thread;
+        if (bound.workerId === null) throw new Error("a synchronization Run reached the Portal without its worker");
         if (await this.#resurfaceControlled(workspaceId, bound)) return false;
         const loop = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
             .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
@@ -670,7 +728,7 @@ export default class Portal {
         const bound = thread as Thread;
         const ack = await this.#seam.runLoop(args);
         if (bound.disconnected) {
-            if (bound.cancelOnDisconnect) this.#seam.cancelDrain(bound.workerId, "client_disconnected");
+            if (bound.cancelOnDisconnect) this.#cancelOwned(bound);
             return null;
         }
         if (!this.#threads.get(args.workspaceId)?.has(bound)) return null;
@@ -715,7 +773,6 @@ export default class Portal {
             }
             bound.workerId = continuation.binding.workerId;
             bound.loopId = continuation.binding.loopId;
-            bound.notificationScope = continuation.notificationScope;
             bound.cancelOnDisconnect = continuation.cancelOnDisconnect;
             if (bound.disconnected) throw new HttpProblemError(Problems.create("agui:interrupt", "connection-closed", 499,
                 "The connection closed before the interrupt was resolved."));

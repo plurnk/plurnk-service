@@ -11,6 +11,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { modelOperation } from "./_workers.ts";
 
 test("{§workspace-environment-sharing}: MCP definitions belong to the workspace, not to any worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
@@ -52,7 +53,8 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     for (const workerId of [alice, bob]) {
         const docs = await daemon.engine.referenceEntries(workspaceId);
         assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every worker discovers the same enabled tool");
-        const catalog = await daemon.dispatchAsClient({ workspaceId, workerId, statement: read.statement });
+        // The worker's own READ.
+        const catalog = await modelOperation(daemon, db, { workspaceId, workerId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(String(catalog.content), /fixture:\/\/shared\/item/u);
     }

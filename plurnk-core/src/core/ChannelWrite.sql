@@ -77,6 +77,17 @@ SELECT id, scheme
 FROM subscriptions
 WHERE worker_id = $worker_id AND closed_at IS NULL;
 
+-- PREP: find_open_subscriptions_announced_in_loop
+-- {§connection-lifecycle} A client operation's executions that still run: the runtime worker's open, attached
+-- subscriptions beside each stream address its loop's rows announced. The caller keeps the pairs whose entry
+-- renders to that address; cancelling the operation reaps exactly those.
+SELECT s.id, e.scheme, e.authority, e.pathname, json_extract(le.attrs, '$.stream') AS stream
+FROM log_entries le
+JOIN workers w ON w.id = le.worker_id AND w.workspace_id = $workspace_id AND w.origin = '_plurnk'
+JOIN subscriptions s ON s.worker_id = le.worker_id AND s.closed_at IS NULL AND s.detached = 0
+JOIN entries e ON e.id = s.entry_id
+WHERE le.loop_id = $loop_id AND json_extract(le.attrs, '$.stream') IS NOT NULL;
+
 -- PREP: find_open_turn_scoped_subscriptions_for_worker
 -- The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
 -- `<0>` stream never survives into the subsequent turn; its terminal output surfaces initially visible

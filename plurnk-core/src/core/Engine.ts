@@ -548,6 +548,14 @@ export default class Engine {
         return this.#dispatcher.resolveEntryAddress(context);
     }
 
+    // {§connection-lifecycle} A client operation's loop carries its own cancellation scope, as a model loop's does;
+    // the returned function unbinds it when the operation settles.
+    bindLoopSignal(loopId: number, signal: AbortSignal): () => void {
+        if (this.#loopSignals.has(loopId)) throw new Error(`loop ${loopId} already carries a cancellation signal`);
+        this.#loopSignals.set(loopId, signal);
+        return () => { this.#loopSignals.delete(loopId); };
+    }
+
     cancelAllProposals(outcome: string): void {
         this.#proposals.cancelAll(outcome);
     }

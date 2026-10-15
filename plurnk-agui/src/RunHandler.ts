@@ -10,6 +10,7 @@ import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
 import { type ApplicationPort, type ClientEnvelope } from "@plurnk/plurnk-contracts";
 import { type ResolvedModuleOptions } from "./config.ts";
+import { type OperationLoopListener } from "./BuiltinActions.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 
@@ -30,7 +31,7 @@ export default class RunHandler {
     readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
+    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
 
     constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, boundWorker, actionBinding, workerStatus, action }: {
         seam: () => RunPort;
@@ -42,7 +43,7 @@ export default class RunHandler {
         boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
+        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -155,8 +156,7 @@ export default class RunHandler {
             ? await this.#boundWorker(input.threadId, env, binding)
             : input.resume === undefined ? undefined : this.#portal().resumedWorker(workspaceId, input.threadId, input.resume);
         // {§agui-sync} A passive observation claims nothing; an owner's control connection claims as a message Run does.
-        const control = forwarded?.control === true || (!synchronize && action === null)
-            || action?.kind === "op.exec" || action?.kind === "op.parse";
+        const control = forwarded?.control === true || (!synchronize && action === null);
         const owner = control ? MessageAddress.owner(principal, input.threadId) : undefined;
         if (owner !== undefined) {
             // {§agui-worker-owner} The Run declares the owner's capability set: the tools it
@@ -164,9 +164,7 @@ export default class RunHandler {
             await this.#seam().registerWorkerOwner(workspaceId, {
                 address: owner, tools: [...new Set(input.tools.map(({ name }) => name))], interactive: forwarded?.interactive === true,
             });
-            for (const claim of [workerId, env.workerId]) {
-                if (claim !== undefined) await this.#seam().claimWorkerOwner({ workspaceId, workerId: claim, owner });
-            }
+            if (workerId !== undefined) await this.#seam().claimWorkerOwner({ workspaceId, workerId, owner });
             // {§agui-owner-activation} — an owner's arrival is the workspace's demand: activation starts now,
             // so a first prompt finds it under way or done, and nothing waits for it here.
             void this.#seam().activateWorkspace({ workspaceId }).catch((cause: unknown) => {
@@ -220,7 +218,6 @@ export default class RunHandler {
             emit(terminal);
         };
 
-        const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId ?? env.workerId;
         const notificationScope = action === null
             ? "worker"
             : action.kind === "op.exec" || action.kind === "op.parse"
@@ -230,7 +227,8 @@ export default class RunHandler {
         const descendants = action === null && forwarded?.descendants === true;
         const boundRun = this.#portal().openThread({
             workspaceId,
-            workerId: lifecycleWorkerId,
+            // {§agui-broadcast-fan} An operation Run learns its Worker and Loop from the dispatch that opens them.
+            workerId: notificationScope === "operation" ? null : workerId ?? null,
             threadId: input.threadId,
             notificationScope,
             ...(owner === undefined ? {} : { owner }),
@@ -300,24 +298,17 @@ export default class RunHandler {
             return;
         }
 
-        // §3 — a management-action AG-UI Run (forwardedProps.plurnk.action): execute via the
-        // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
-        // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
-        // AG-UI Run and completes after the resume AG-UI Run rebinds the stream.
+        // A management-action AG-UI Run (forwardedProps.plurnk.action): executed via the seam and answered on
+        // this Run's own stream; concurrent actions share a workspace, and a result never rides another Run.
+        // A client operation's Run observes the loop its dispatch opens ({§agui-broadcast-fan}).
         if (action !== null) {
             const finishAction = (outcome: ActionOutcome): void => {
-                const events = [actionResult(action.kind, outcome)];
-                // Plain action (stream still open): answer on OUR OWN stream — concurrent
-                // actions share a workspace, and the workspace binding is whoever bound last
-                // (results would cross streams). Only a proposal-pause (this stream already
-                // terminated) hands off to the workspace binding, which the resume AG-UI Run rebinds.
-                if (!finished) {
-                    this.#portal().finishThread(boundRun, events);
-                    return;
-                }
-                this.#portal().finishRun(workspaceId, lifecycleWorkerId, input.threadId, events);
+                if (!finished) this.#portal().finishThread(boundRun, [actionResult(action.kind, outcome)]);
             };
-            void this.#action(action, input, env, workerId, principal)
+            const onLoop: OperationLoopListener | undefined = notificationScope === "operation"
+                ? (loop) => { this.#portal().bindOperation(boundRun, loop); }
+                : undefined;
+            void this.#action(action, input, env, workerId, principal, onLoop)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,

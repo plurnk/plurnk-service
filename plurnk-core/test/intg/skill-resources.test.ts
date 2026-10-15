@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,7 +8,6 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { insertWorker } from "./_db.ts";
 import { fixtureExecutors, userText } from "./_mock.ts";
 import { copyStmt, findStmt, readStmt, regex } from "./_dsl.ts";
 
@@ -27,17 +26,16 @@ const turn = (ops: string, terminal = false) => ({
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-test("{§skills-resources} independent workers concurrently discover the shared skill tree", async (t) => {
-    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
+test("{§skills-resources} concurrent operations of independent people discover the shared skill tree", async (t) => {
+    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         t.after(() => ws.close());
         const created = await rpcCall(ws, 1, "workspace.create", { name: `skill-concurrency-${crypto.randomUUID()}` });
         const workspaceId = (created.result as { id: number }).id;
-        const workers = await Promise.all(Array.from({ length: 8 }, (_, index) => insertWorker(db, workspaceId, null, `client-${index}`, "client")));
-        const results = await Promise.all(workers.map((workerId) => daemon.dispatchAsClient({
-            workspaceId, workerId,
-            statement: { ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } },
-        })));
+        const results = await Promise.all(Array.from({ length: 8 }, async (_, index) => (await daemon.dispatchClientAction({
+            workspaceId, actor: `test://person-${index}`,
+            statements: [{ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } }],
+        }))[0]!));
         for (const result of results) {
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.ok(Array.isArray(result.results));
@@ -59,13 +57,13 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         await writeFile(join(dir, "binary.bin"), Buffer.from([0, 255, 128]));
         await writeFile(join(dir, "image.png"), PNG);
     }
-    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
+    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         t.after(() => ws.close());
         const created = await rpcCall(ws, 1, "workspace.create", { name: `skill-lifecycle-${crypto.randomUUID()}`, projectRoot: root });
         const workspaceId = (created.result as { id: number }).id;
-        const client = await insertWorker(db, workspaceId, null, "client", "client");
-        const dispatch = (statement: PlurnkStatement) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement });
+        const dispatch = async (statement: PlurnkStatement) =>
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
         const find = async (target: string, body: ReturnType<typeof regex> | null = null) => {
             const result = await dispatch({ ...findStmt(parsePath(target), body), lineMarker: { marks: [1, -1] } });
             assert.equal(result.status, 200, JSON.stringify(result));

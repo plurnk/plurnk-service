@@ -60,7 +60,7 @@ export const insertWorker = async (
     workspaceId: number,
     parentWorkerId: number | null = null,
     name?: string,
-    origin: "model" | "client" | "_plurnk" = "client",
+    origin: "model" | "_plurnk" = "model",
 ): Promise<number> => {
     const row = await db.test_insert_worker.get<{ id: number }>({
         workspace_id: workspaceId,

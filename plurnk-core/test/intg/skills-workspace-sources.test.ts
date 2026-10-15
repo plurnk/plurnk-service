@@ -9,6 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { openMigrated } from "./_db.ts";
 import { readStmt } from "./_dsl.ts";
+import { TEST_OWNER } from "./_approval.ts";
 
 const document = (description: string): string => `---\nname: review\ndescription: ${description}\n---\nRead guide.md.\n`;
 
@@ -36,9 +37,9 @@ test("{§agent-plugins-hosting} plugin skills follow source precedence and works
     const action = (workspaceId: number, verb: string, params = {}) => daemon.invokeModuleAction(
         `workspace.skills.${verb}`, params, { scope: "workspace", workspaceId },
     );
-    const read = (workspace: typeof a) => daemon.dispatchAsClient({
-        ...workspace, statement: readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] }),
-    });
+    const read = async (workspace: typeof a) => (await daemon.dispatchClientAction({
+        workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] })],
+    }))[0]!;
     assert.match(String((await read(a)).content), /Project plugin/);
     assert.match(String((await read(b)).content), /Global/);
     const listed = await action(a.workspaceId, "list") as FunctionalityListResult;
@@ -76,9 +77,9 @@ test("{§skills-functionality} local additions are live, workspace-owned referen
     const action = (workspaceId: number, verb: string, params = {}) => daemon.invokeModuleAction(
         `workspace.skills.${verb}`, params, { scope: "workspace", workspaceId },
     );
-    const read = (workspace: typeof alice) => daemon.dispatchAsClient({
-        ...workspace, statement: readStmt(parsePath("skill://review/guide.md"), { marks: [1, -1] }),
-    });
+    const read = async (workspace: typeof alice) => (await daemon.dispatchClientAction({
+        workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://review/guide.md"), { marks: [1, -1] })],
+    }))[0]!;
     for (const [index, workspace] of [alice, bob].entries()) {
         const added = await action(workspace.workspaceId, "add", {
             alias: "review", definition: { name: "review", source: sources[index + 1] },
@@ -151,9 +152,9 @@ test("{§skills-configuration} environment definitions replace standard roots; i
         `workspace.skills.${verb}`, params, { scope: "workspace", workspaceId: workspace.workspaceId },
     );
     const list = async () => (await action("list") as FunctionalityListResult).definitions;
-    const read = (alias: string) => daemon.dispatchAsClient({
-        ...workspace, statement: readStmt(parsePath(`skill://${alias}/SKILL.md`), { marks: [1, -1] }),
-    });
+    const read = async (alias: string) => (await daemon.dispatchClientAction({
+        workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath(`skill://${alias}/SKILL.md`), { marks: [1, -1] })],
+    }))[0]!;
     const before = await list();
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.definition, { name: "review", source: join(sources[2], "review") });
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.provenance,

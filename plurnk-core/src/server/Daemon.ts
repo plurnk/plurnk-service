@@ -6,7 +6,7 @@ import { resolve, dirname } from "node:path";
 import { Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../core/Db.ts";
-import type { StreamEventPayload } from "../core/ChannelWrite.ts";
+import ChannelWrite, { type StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
 import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
@@ -83,6 +83,14 @@ import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
 import WorkerModelResolver from "./WorkerModelResolver.ts";
 import ClientReads from "./ClientReads.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
+
+// {§connection-lifecycle} A client operation cancelled mid-way settles its loop with what happened.
+const clientOperationCancelled = (reason: unknown): SchemeResult => {
+    const said = typeof reason === "string" ? reason : "cancelled";
+    return Results.failure("daemon:client", "operation-cancelled", 499, `The client operation was cancelled: ${said}.`, {}, {
+        reason: said, stage: "client-action", retryable: false,
+    });
+};
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -169,6 +177,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #mounted = new Set<string>();
     #moduleLifetimes: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
+    // {§connection-lifecycle} Each running client operation's loop, its own cancellation scope and its settlement.
+    readonly #clientLoops = new Map<number, {
+        readonly workspaceId: number; readonly scope: AbortController; readonly settled: Promise<void>;
+    }>();
+    // {§worker-lifecycle-total-reap} Every client operation's scope descends from this one, which shutdown aborts:
+    // an operation still dispatching, and every execution an operation started, ends with the daemon.
+    #clientOperations = new AbortController();
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
     // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
@@ -978,42 +993,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return WorkerControlAddress.render(source.name);
     }
 
-    // {§methods-op-mirror} — execute parsed ops on behalf of a client as a
-    // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
-    // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
-    // family (read/edit/copy/find/kill/move/send/exec); the module parses at its edge with the
-    // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
     // {§functionality-model-mutation} — await every queued Functionality
     // publication (a Worker's accepted mutation publishes at its turn boundary).
     async settleFunctionality(workspaceId?: number): Promise<void> {
         await this.#functionality.settle(workspaceId);
     }
 
-    async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
-        const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
-        const { statement } = args;
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        const releaseCapabilities = await this.#residency.acquire(workspaceId);
-        try {
-            const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
-            try {
-                const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
-                await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
-                return result;
-            } catch (error) {
-                await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
-                throw error;
-            }
-        } finally {
-            releaseCapabilities();
-        }
-    }
-
-    // The client-interface action contract: one AG-UI action owns one administrative
-    // loop, regardless of how many statements op.parse produced. Each statement is one
-    // ordinary operation turn; a proposal may keep that turn and loop open across
-    // interrupt/resume until settlement.
     executorTags(workspaceId: number): readonly string[] {
         return this.#engine.executorTags(workspaceId);
     }
@@ -1022,35 +1007,96 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.executorJsonBodyTags(workspaceId);
     }
 
-    async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
+    // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
+    // worker, attributed to its actor, reading `log:///` in the worker that person acts for
+    // ({§actor-boundary-client-operations}).
+    async dispatchClientAction(args: {
+        workspaceId: number;
+        actor: string;
+        contextWorkerId?: number;
+        statements: PlurnkStatement[];
+        onLoop?: (loop: { workerId: number; loopId: number }) => void;
+    }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
+        const actor = ClientInput.assertActor("operation.dispatch-batch", args.actor);
+        const contextWorkerId = args.contextWorkerId === undefined
+            ? undefined
+            : ClientInput.assertId("operation.dispatch-batch", "contextWorkerId", args.contextWorkerId);
+        if (contextWorkerId !== undefined) await this.#assertModelWorker(workspaceId, contextWorkerId);
         const { statements } = args;
         if (statements.length === 0) return [];
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        // {§actor-boundary-attached-functionality} The client retains its journal;
-        // the workspace supplies policy and the shared runtime environment.
+        return await this.#clientOperation({ workspaceId, actor, contextWorkerId, onLoop: args.onLoop }, async (dispatch) => {
+            const results: Array<{ status: number; [key: string]: unknown }> = [];
+            for (const statement of statements) results.push(await dispatch(statement));
+            return results;
+        });
+    }
+
+    // {§connection-lifecycle} One client operation: the runtime worker's administrative loop with its own
+    // cancellation scope, settled when the operation ends. Nothing else in the runtime worker shares the scope.
+    async #clientOperation<T>(
+        operation: {
+            workspaceId: number;
+            actor: string;
+            contextWorkerId: number | undefined;
+            onLoop?: (loop: { workerId: number; loopId: number }) => void;
+        },
+        body: (dispatch: (statement: PlurnkStatement) => Promise<{ status: number; [key: string]: unknown }>) => Promise<T>,
+    ): Promise<T> {
+        const { workspaceId, actor, contextWorkerId } = operation;
+        const workerId = await RuntimeWorker.ensure(this.#db, workspaceId);
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
-            const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
+            const loopId = await Envelope.ensureClientLoop(this.#db, workerId, actor);
+            const scope = new AbortController();
+            const signal = AbortSignal.any([scope.signal, this.#clientOperations.signal]);
+            const settled = Promise.withResolvers<void>();
+            this.#clientLoops.set(loopId, { workspaceId, scope, settled: settled.promise });
+            const unbind = this.#engine.bindLoopSignal(loopId, signal);
             try {
-                const results = [];
-                for (const statement of statements) {
-                    results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
-                }
-                await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
-                return results;
+                operation.onLoop?.({ workerId, loopId });
+                const result = await body(async (statement) => {
+                    signal.throwIfAborted();
+                    return await this.#dispatchClientStatement({
+                        workspaceId, workerId, loopId, statement,
+                        contextWorkerId: contextWorkerId ?? null,
+                    });
+                });
+                signal.throwIfAborted();
+                await Envelope.closeClientLoop(this.#db, loopId, { status: 200 });
+                return result;
             } catch (error) {
-                await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
-                throw error;
+                // A cancelled operation settles cancelled, however its statement in flight ended.
+                const failure = signal.aborted ? new OperationFailureError(clientOperationCancelled(signal.reason)) : error;
+                await Envelope.closeClientLoop(this.#db, loopId, clientActionFailure(failure));
+                throw failure;
+            } finally {
+                unbind();
+                this.#clientLoops.delete(loopId);
+                settled.resolve();
             }
         } finally {
             releaseCapabilities();
         }
     }
 
-    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement; onDispatch?: (logEntryId: number) => void }): Promise<{ status: number; [key: string]: unknown }> {
-        const { workspaceId, workerId, loopId, statement } = args;
+    // {§connection-lifecycle} Cancel exactly one client operation: its dispatch while it runs, and every execution its
+    // rows started that still runs. The rest of the runtime worker runs on.
+    async cancelLoop(args: { workspaceId: number; loopId: number; reason?: string }): Promise<boolean> {
+        const workspaceId = ClientInput.assertId("operation.cancel", "workspaceId", args.workspaceId);
+        const loopId = ClientInput.assertId("operation.cancel", "loopId", args.loopId);
+        const operation = this.#clientLoops.get(loopId);
+        const dispatching = operation !== undefined && operation.workspaceId === workspaceId && !operation.scope.signal.aborted;
+        if (dispatching) operation.scope.abort(args.reason ?? "user_cancelled");
+        const executions = await ChannelWrite.findOpenSubscriptionsForClientLoop(this.#db, { workspaceId, loopId });
+        const reaped = await Promise.all(executions.map((subscriptionId) => this.#engine.cancelSubscription(subscriptionId)));
+        return dispatching || reaped.includes(true);
+    }
+
+    async #dispatchClientStatement(args: {
+        workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement; contextWorkerId: number | null;
+    }): Promise<{ status: number; [key: string]: unknown }> {
+        const { workspaceId, workerId, loopId, statement, contextWorkerId } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         try {
             await this.#residency.reconcile(workspaceId);
@@ -1063,7 +1109,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 const entryIds: number[] = [];
                 const result = await this.#engine.dispatch({
                     statement, workspaceId, workerId, loopId, turnId, sequence: 1,
-                    origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); args.onDispatch?.(logEntryId); } });
+                    origin: "client", client: { contextWorkerId },
+                    onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); } });
                 await Turn.complete(this.#db, turnId, result.status);
                 turnOpen = false;
                 for (const logEntryId of entryIds) {
@@ -1337,55 +1384,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
     }
 
-    async attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope> {
-        // attachToWorkspace owns the reserved-name + worker-ownership invariants; the seam just delegates.
+    // {§connection-lifecycle} Binding a workspace mints nothing.
+    async attachWorkspace(args: { workspaceId: number }): Promise<ClientEnvelope> {
         const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
-        const workerId = args.workerId === undefined
-            ? undefined
-            : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
-        const workerName = ClientInput.assertOptionalWorkerName("workspace.attach", "workerName", args.workerName);
-        return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName }));
+        return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
     }
 
-    // {§rollback} {§methods-workspace-rollback} — the compensations are the acting client's own
-    // operations, in its worker, settled under its owner the moment they propose.
-    async rollback(args: { workspaceId: number; workerId: number; clientWorkerId: number; to: string }): Promise<RollbackReport> {
+    // {§rollback} {§methods-workspace-rollback} — the compensations are one client operation of the acting person
+    // ({§connection-lifecycle}): attributed to that person and, being that person's decision, never routed for review.
+    async rollback(args: { workspaceId: number; workerId: number; actor: string; to: string }): Promise<RollbackReport> {
         const workspaceId = ClientInput.assertId("workspace.rollback", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("workspace.rollback", "workerId", args.workerId);
-        const clientWorkerId = ClientInput.assertId("workspace.rollback", "clientWorkerId", args.clientWorkerId);
+        const actor = ClientInput.assertActor("workspace.rollback", args.actor);
         if (typeof args.to !== "string") throw daemonFailure("daemon:rollback", "coordinate-invalid", 400, "The rollback coordinate must be a string.", {});
         await this.#assertWorkerOwned(workspaceId, workerId);
-        await this.#assertWorkerOwned(workspaceId, clientWorkerId);
-        const client = await this.#db.envelope_get_worker_by_id.get<{ owner: string }>({ id: clientWorkerId });
-        if (client === undefined) throw daemonFailure("daemon:worker", "worker-not-found", 404, `Worker ${clientWorkerId} does not exist.`, { workerId: clientWorkerId });
-        const owner = { workspaceId, address: client.owner };
-        const report = await Rollback.run({
+        const report = await this.#clientOperation({ workspaceId, actor, contextWorkerId: workerId }, (dispatch) => Rollback.run({
             db: this.#db,
             projectRoot: async (id) => (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id }))?.project_root ?? null,
             executorTags: (id) => this.#engine.executorTags(id),
-            apply: async (statement) => {
-                const releaseCapabilities = await this.#residency.acquire(workspaceId);
-                try {
-                    const clientLoopId = await Envelope.ensureClientLoop(this.#db, clientWorkerId);
-                    try {
-                        const result = await this.#dispatchClientStatement({
-                            workspaceId, workerId: clientWorkerId, loopId: clientLoopId, statement,
-                            // A proposal pauses the dispatch until it is resolved; this is the owner's own act.
-                            onDispatch: (logEntryId) => setImmediate(() => {
-                                void this.resolveProposal(logEntryId, { decision: "accept" }, owner).catch(() => undefined);
-                            }),
-                        });
-                        await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
-                        return result as { status: number; problem?: { detail?: string } };
-                    } catch (error) {
-                        await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
-                        throw error;
-                    }
-                } finally {
-                    releaseCapabilities();
-                }
-            },
-        }, { workspaceId, workerId, to: args.to });
+            apply: async (statement) => await dispatch(statement) as { status: number; problem?: { detail?: string } },
+        }, { workspaceId, workerId, to: args.to }));
         return Validator.assertRollbackReport(report);
     }
 
@@ -1717,6 +1735,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration());
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
+        this.#clientOperations = new AbortController();
         this.#started = true;
         // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
         if (this.#retention !== null) {
@@ -1930,6 +1949,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#engine.cancelAllProposals("daemon_stopping");
         this.#engine.cancelDerivations(derivationAbort);
         this.#drains.beginStop("daemon_stopping");
+        this.#clientOperations.abort("daemon_stopping");
         this.#residency.beginStop();
 
         const shutdown = deadline ?? new StopDeadline();
@@ -1964,6 +1984,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // process may exit with the WAL in place (SQLite recovers) rather than
         // leak as a live-but-wedged tree.
         const drainResult = await shutdown.settle("drains idle", () => this.#drains.idle());
+        const clientResult = await shutdown.settle("client operations idle", async () => {
+            await Promise.all([...this.#clientLoops.values()].map(({ settled }) => settled));
+        });
         // A boundary publication queued behind the last turn settles before
         // modules close and before the DB goes away ({§functionality-publication}).
         const functionalityResult = await shutdown.settle("functionality publications", () => this.#functionality.settle());
@@ -1989,6 +2012,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             moduleCloseResult,
             functionalityResult,
             drainResult,
+            clientResult,
             streamingResult,
             derivationResult,
             collectResult,

@@ -11,7 +11,7 @@ import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertPacketTurn } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { parseDsl } from "./_mock.ts";
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { namedModelWorker } from "./_workers.ts";
@@ -121,7 +121,7 @@ test("{§native-content-lifetime}: message admission and attachment-only replies
         const { workspaceId } = await daemon.createWorkspace({ name: "native-message-retention", projectRoot: null });
         const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const statements = (source: string) => parseDsl(source);
-        await daemon.dispatchClientAction({ workspaceId, workerId, statements: statements("````EDIT (worker:///reply.txt)\nOriginal answer.\n````") });
+        await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: statements("````EDIT (worker:///reply.txt)\nOriginal answer.\n````") });
         const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Return the attachment.",
             attachments: [{ name: "input.bin", mediaType: "application/octet-stream", bytes: new Uint8Array([1, 2, 3, 4]) }] });
         const lifecycle = new LoopLifecycle(db);
@@ -131,7 +131,7 @@ test("{§native-content-lifetime}: message admission and attachment-only replies
         assert.deepEqual(messages.map(({ attachments }) => attachments.map(({ bytes }) => Buffer.from(bytes))),
             [[Buffer.from([1, 2, 3, 4])], [Buffer.from("Original answer.")]]);
         const input = messages[0]!.attachments[0]!.target;
-        const results = await daemon.dispatchClientAction({ workspaceId, workerId, statements: statements([
+        const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: statements([
             `\`\`\`\`KILL (${input})\n\`\`\`\``,
             "````KILL (worker:///reply.txt)\n````",
         ].join("\n\n")) });

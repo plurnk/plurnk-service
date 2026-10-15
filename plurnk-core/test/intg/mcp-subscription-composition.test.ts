@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolve } from "node:path";
@@ -60,7 +60,6 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-observation" });
     const alice = await insertWorker(db, workspaceId, null, "alice", "model");
     const bob = await insertWorker(db, workspaceId, null, "bob", "model");
-    const client = await insertWorker(db, workspaceId, null, "viewer", "client");
     const lifecycle = new LoopLifecycle(db);
     const run = async (workerId: number) => {
         const result = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the resource." });
@@ -68,13 +67,14 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
         return result;
     };
     const packet = (index: number) => provider.received[index]!.map(chatMessageText).join("\n");
-    const viewerRead = (uri: string) => {
+    const viewerRead = async (uri: string) => {
         const source = read(uri);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement");
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        return daemon.dispatchAsClient({ workspaceId, workerId: client, statement: item.statement });
+        // A person viewing the resource ({§connection-lifecycle}).
+        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0]!;
     };
     const first = await run(alice);
     assert.equal(provider.received.length, 2);

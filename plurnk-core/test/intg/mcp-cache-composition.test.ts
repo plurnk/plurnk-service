@@ -7,7 +7,8 @@ import type { FunctionalityListResult, McpServerDefinition } from "@plurnk/plurn
 import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { openMigrated } from "./_db.ts";
+import { TEST_OWNER } from "./_approval.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
@@ -43,8 +44,6 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
     await daemon.start();
     const workspaces = await Promise.all(["alpha", "beta"].map(async (name) => {
         const { workspaceId } = await daemon.createWorkspace({ name });
-        const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
-        const otherWorkerId = await insertWorker(db, workspaceId, null, "other", "client");
         const action = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         await action("env", "add", { alias: "ENV_AUTH", definition: { value: `fixture-${name}` } });
@@ -55,15 +54,16 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        const read = (reader = workerId) => daemon.dispatchAsClient({ workspaceId, workerId: reader, statement: item.statement });
-        return { name, action, read, otherWorkerId };
+        // A person's READ ({§connection-lifecycle}); two people read through one workspace attachment.
+        const read = async (reader = TEST_OWNER) => (await daemon.dispatchClientAction({ workspaceId, actor: reader, statements: [item.statement] }))[0]!;
+        return { name, action, read };
     }));
     for (const workspace of workspaces) {
         assert.equal((await workspace.read()).content, `Document for Bearer fixture-${workspace.name}.`);
-        assert.equal((await workspace.read(workspace.otherWorkerId)).content, `Document for Bearer fixture-${workspace.name}.`);
+        assert.equal((await workspace.read("test://secondary")).content, `Document for Bearer fixture-${workspace.name}.`);
     }
     assert.deepEqual(reads.toSorted(), ["Bearer fixture-alpha", "Bearer fixture-beta"],
-        "workers share their workspace cache, not another workspace's identically named authorized attachment");
+        "readers share their workspace cache, not another workspace's identically named authorized attachment");
     const [alpha, beta] = workspaces;
     assert.ok(alpha && beta);
     await alpha.action("env", "remove", { alias: "ENV_AUTH" });

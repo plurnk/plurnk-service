@@ -46,7 +46,7 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
     });
 });
 
-test("{§message-reply-delivery}: a client-authored answer wakes its assigned worker without making another request", async () => {
+test("{§message-reply-delivery} {§actor-boundary-client-operations}: a person's answer, sent as a client operation, wakes its assigned worker without making another request", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````WAIT\nA collaborator may answer the request.\n````"),
         makeMockResponse("````WAIT\nThe collaborator answered; the held child is still running.\n````"),
@@ -54,7 +54,6 @@ test("{§message-reply-delivery}: a client-authored answer wakes its assigned wo
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "client-answer-wake" });
         const { workerId } = await daemon.createWorker({ workspaceId, name: "assigned" });
-        const collaborator = await daemon.createWorker({ workspaceId, name: "collaborator" });
         await holdChild(db, workspaceId, workerId);
         const address = "message://assigned/12345678";
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "What is the result?", messageAddress: address });
@@ -64,8 +63,8 @@ test("{§message-reply-delivery}: a client-authored answer wakes its assigned wo
         const item = parsed.items[0]!;
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("The reply fixture did not parse.");
-        const result = await daemon.dispatchAsClient({ workspaceId, workerId: collaborator.workerId, statement: item.statement });
-        assert.equal(result.status, 200);
+        const [result] = await daemon.dispatchClientAction({ workspaceId, actor: "test://collaborator", statements: [item.statement] });
+        assert.equal(result!.status, 200);
         await waitForDb(async () => provider.received.length, (count) => count === 2);
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         assert.match(JSON.stringify(provider.received[1]), /The result is 42\./);

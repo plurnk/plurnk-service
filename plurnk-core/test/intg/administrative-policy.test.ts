@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import DispatchAsPlurnk from "../../src/server/dispatch-as-plurnk.ts";
 import Envelope from "../../src/server/envelope.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 import { editStmt, urlPath } from "./_dsl.ts";
 import { schemeManifest } from "./_scheme.ts";
 
@@ -44,10 +44,10 @@ test("{§worker-owner-resolution}: administrative loop creation does not read pr
     panel(t, { PLURNK_SERVICE_PROPOSALS: "invalid" });
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "client-policy");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await Envelope.ensureClientLoop(db, workerId);
+    const workerId = await RuntimeWorker.ensure(db, workspaceId);
+    const loopId = await Envelope.ensureClientLoop(db, workerId, "test://primary");
     await Envelope.closeClientLoop(db, loopId, { status: 200 });
-    assert.throws(() => ProposalPolicies.disposition([], false), (cause: unknown) => {
+    assert.throws(() => ProposalPolicies.disposition([], { maintenance: false, clientOperation: true }), (cause: unknown) => {
         const problem = Problems.fromError(cause);
         assert.equal(problem?.status, 503);
         assert.equal(problem?.key, "PLURNK_SERVICE_PROPOSALS");

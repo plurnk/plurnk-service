@@ -2,7 +2,9 @@
 // product protocol or AG-UI projection; client parsing remains AG-UI-owned.
 // {§methods} {§agui-op-parse}
 // It holds the attached envelope, lazy model-worker binding, and workspace-filtered
-// notification fan-in that integration tests need.
+// notification fan-in that integration tests need. Its operations are one person's client
+// operations ({§connection-lifecycle}): they journal in the workspace's runtime worker,
+// attributed to `owner`, and act for the bound model worker when there is one.
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
@@ -100,15 +102,13 @@ export default class SeamSocket {
                 });
                 this.#workspace = envelope;
                 this.#modelWorkerId = null;
-                await this.#claim(envelope.workerId);
-                return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
+                return { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot };
             }
             case "workspace.attach": {
-                const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number, workerId: p.workerId as number | undefined, workerName: p.workerName as string | undefined });
+                const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number });
                 this.#workspace = envelope;
                 this.#modelWorkerId = null;
-                await this.#claim(envelope.workerId);
-                return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
+                return { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot };
             }
             case "loop.run": {
                 const s = this.#attached();
@@ -172,16 +172,20 @@ export default class SeamSocket {
                 return { proposals: await daemon.pendingProposals(s.workspaceId) };
             }
             case "log.read": {
-                // Default = the connection's own client worker — {§machine-processes}; the model worker is
-                // read by explicit workerId (loop.run returns modelWorkerId for exactly that).
+                // Default = the runtime worker, where this harness's own client operations journal
+                // ({§connection-lifecycle}); a read mints nothing, so before any operation there is no log.
+                // The model worker is read by explicit workerId (loop.run returns modelWorkerId for exactly that).
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined) ?? s.workerId;
+                const workerId = (p.workerId as number | undefined)
+                    ?? (await daemon.readWorker({ workspaceId: s.workspaceId, identity: { name: "_plurnk" } }))?.id;
+                if (workerId === undefined) return { status: 200, entries: [] };
                 const entries = await daemon.readLog({ workspaceId: s.workspaceId, workerId, ...(p as object) });
                 return { status: 200, entries };
             }
             case "entry.read": {
+                // The bound model worker's perspective, else the runtime worker's.
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId ?? s.workerId;
+                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId ?? await daemon.ensureRuntimeWorker(s.workspaceId);
                 return daemon.readEntry({ workspaceId: s.workspaceId, workerId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
             }
             case "run.fork": {
@@ -218,24 +222,31 @@ export default class SeamSocket {
             }
             case "workspace.share": return daemon.shareWorkspace({ workspaceId: this.#attached().workspaceId, folder: p.folder as string });
             case "providers.list": return daemon.listProviders();
-            case "op.dispatch": {
-                const s = this.#attached();
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement: p.statement as PlurnkStatement });
-            }
+            case "op.dispatch": return this.#operate(p.statement as PlurnkStatement);
             case "op.edit": case "op.send": case "op.read": case "op.find":
             case "op.copy": case "op.move": case "op.exec": {
                 // Structured params → the Dsl builder family.
-                const s = this.#attached();
                 const build: Record<string, (q: never) => PlurnkStatement> = {
                     "op.edit": Dsl.buildEdit, "op.read": Dsl.buildRead, "op.find": Dsl.buildFind,
                     "op.send": Dsl.buildSend, "op.copy": Dsl.buildCopy, "op.move": Dsl.buildMove,
                     "op.exec": Dsl.buildExec,
                 };
-                const statement = build[method](p as never);
-                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
+                return this.#operate(build[method](p as never));
             }
             default:
                 throw new Error(`method not found: ${method}`);
         }
+    }
+
+    // One statement as one client operation of `owner`, acting for the bound model worker
+    // ({§methods-op-mirror}, {§actor-boundary-client-operations}).
+    async #operate(statement: PlurnkStatement): Promise<unknown> {
+        const { workspaceId } = this.#attached();
+        const [result] = await this.#daemon.dispatchClientAction({
+            workspaceId, actor: SeamSocket.owner,
+            ...(this.#modelWorkerId === null ? {} : { contextWorkerId: this.#modelWorkerId }),
+            statements: [statement],
+        });
+        return result;
     }
 }

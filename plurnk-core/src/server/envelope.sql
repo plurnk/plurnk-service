@@ -26,13 +26,6 @@ WHERE id = $id
   )
 RETURNING id, name;
 
--- PREP: envelope_insert_worker
--- origin is the worker's actor ({§machine-processes}): 'model' (a model worker),
--- 'client' (a connection's own worker), or '_plurnk' (the runtime self-hosting worker).
-INSERT INTO workers (workspace_id, name, origin)
-VALUES ($workspace_id, $name, $origin)
-RETURNING id, name, origin;
-
 -- {§application-worker-observation}: kind is minted lineage (fork boundary → fork, other child →
 -- work, no parent → root); loop observations feed the shared lifecycle selector in TS.
 -- PREP: envelope_get_worker_by_id
@@ -133,11 +126,11 @@ ORDER BY l.id DESC
 LIMIT $limit;
 
 -- PREP: envelope_insert_client_loop
--- sequence is auto-computed: 1 + max(existing sequence in this worker) so
--- multiple client connections attaching to the same worker get distinct loops.
--- An administrative loop runs no model turns, so no turn ceiling governs it (-1).
-INSERT INTO loops (worker_id, sequence, status, prompt, max_turns)
-VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', -1)
+-- sequence is auto-computed: 1 + max(existing sequence in this worker) so concurrent
+-- operations in one worker get distinct loops. An administrative loop runs no model turns,
+-- so no turn ceiling governs it (-1); its prompt source is the actor that opened it, if any.
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, max_turns)
+VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', $prompt_source, -1)
 RETURNING id, sequence;
 
 -- PREP: envelope_close_client_loop

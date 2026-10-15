@@ -1,13 +1,13 @@
-// {§agui-thread-binding} TWO THREADS OVER ONE WORLD:
-// two threads name the same workspace; each acts through its OWN client actor (its own history), and
-// the world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
-// through thread B (the environment door). No model needed: client ops (op.parse)
-// exercise the routing and the shared world against the real daemon in the canonical
-// core workspace.
+// {§agui-thread-binding} {§connection-lifecycle} TWO THREADS OVER ONE WORLD:
+// two threads name the same workspace and act in it. Their operations are the workspace's, journaled in its
+// runtime worker under each thread's owner address, and the world — the workspace filesystem — is SHARED: an
+// EDIT made through thread A is READable through thread B (the environment door). No model needed: client ops
+// (op.parse) exercise the routing and the shared world against the real daemon in the canonical core workspace.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import type { ApplicationLoopProjection } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "../../src/types.ts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
@@ -23,7 +23,7 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     return r.value;
 };
 
-test("two threads, one world: distinct workers, shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
+test("two threads, one world: each thread's operations under its own address, one shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
@@ -71,35 +71,35 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const untrustedResults = (untrusted.result as { results: Array<{ status: number }> }).results;
         assert.equal(untrustedResults[0]?.status, 404, "the statement recovered from the undefined tail never dispatched");
 
-        // Thread B acts in the SAME world through its own client actor.
+        // Thread B acts in the SAME world.
         const read = await action(port, "second-thread", "shared-world", "op.parse", { text: "````READ (worker:///notes.md)````" });
         assert.equal(read.ok, true, JSON.stringify(read.problem));
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
         assert.equal(readResults[0]?.content, "the world is one", "the action dispatched both EDITs in source order");
 
-        // {§agui-action-binding} Workspace-level actions bind no worker, so neither thread's name was
-        // minted; each thread's operations journal in its own client actor — histories split, world shared.
+        // {§agui-action-binding} Workspace-level actions and operations bind no worker, so neither thread's name was
+        // minted; {§connection-lifecycle} both threads' operations journal in the runtime worker, each loop naming its
+        // thread's owner ({§actor-boundary-client-operations}).
         const workers = await action(port, "second-thread", "shared-world", "workspace.workers");
         assert.equal(workers.ok, true);
-        const workerList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
+        const workerList = (workers.result as { workers: Array<{ id: number; name: string; origin: string }> }).workers;
         const names = workerList.map((worker) => worker.name);
         assert.deepEqual(names.filter((name) => name === "first-thread" || name === "second-thread"), [],
             `no worker was minted for a thread whose Runs bind none: ${names.join(", ")}`);
-
-        // The workerId filter crosses the module and real seam: the
-        // client ops journaled in each thread's client worker; per-worker reads must differ.
-        // (The service's readlog-worker-filter pin exonerates the seam in isolation; this
-        // pins the full module→seam path with live params.)
-        const perWorker = new Map<number, number>();
-        for (const worker of workerList) {
-            const read = await action(port, "second-thread", "shared-world", "log.read", { workerId: worker.id });
-            assert.equal(read.ok, true, `log.read workerId=${worker.id}: ${JSON.stringify(read.problem)}`);
-            perWorker.set(worker.id, (read.result as { entries: unknown[] }).entries.length);
-        }
-        const counts = [...perWorker.values()];
-        assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
-            `per-worker reads are distinguishable: ${JSON.stringify([...perWorker])}`);
+        const runtime = workerList.find((worker) => worker.origin === "_plurnk");
+        assert.ok(runtime !== undefined, `the runtime worker journals the operations: ${names.join(", ")}`);
+        const journal = await action(port, "second-thread", "shared-world", "log.read", { workerId: runtime.id });
+        assert.equal(journal.ok, true, JSON.stringify(journal.problem));
+        const rows = (journal.result as { entries: Array<{ origin: string; source: string | null }> }).entries;
+        assert.ok(rows.some(({ origin }) => origin === "client"), "the operations journal in the runtime worker");
+        assert.ok(rows.every(({ source }) => source === null), "an operation's rows are acts, not arrivals");
+        const [workspace] = await daemon.listWorkspaces();
+        const loops: readonly ApplicationLoopProjection[] = await daemon.listWorkerLoops({ workspaceId: workspace!.id, workerId: runtime.id });
+        assert.deepEqual([...new Set(loops.flatMap(({ promptSource }) => promptSource === null ? [] : [promptSource]))].sort(), [
+            "agui://anonymous/threads/first-thread",
+            "agui://anonymous/threads/second-thread",
+        ], "every operation's loop names the person who acted");
     } finally {
         await daemon.stop();
         await http.close();

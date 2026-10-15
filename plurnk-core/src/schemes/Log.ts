@@ -242,6 +242,19 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         textEditScopes: true,
     };
 
+    // {§actor-boundary-client-operations} A client operation reads the log of the worker its person acts for,
+    // as that worker reads it; acting for none, it addresses no log.
+    static #reading(core: PlurnkSchemeContext): PlurnkSchemeContext | null {
+        if (core.client === undefined) return core;
+        return core.client.contextWorkerId === null ? null : { ...core, workerId: core.client.contextWorkerId };
+    }
+
+    static #unaddressed(): SchemeResultBase {
+        return Results.failure("scheme:log", "log-unaddressed", 404,
+            "This client operation acts for no worker, so log:/// names no log.",
+            { content: null, mimetype: null, channel: null });
+    }
+
     #addressFailure(target: ParsedPath | null) {
         if (target?.kind !== "url" || [target.hostname, target.username, target.password, target.port, target.query]
             .every((value) => value === null || value === "")) return null;
@@ -256,7 +269,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     ): Promise<CoreRepresentationResolution> {
         const addressFailure = this.#addressFailure(target);
         if (addressFailure !== null) return { result: addressFailure };
-        const core = this.coreContext(ctx);
+        const core = Log.#reading(this.coreContext(ctx));
+        if (core === null) return { result: Log.#unaddressed() };
         const { db, workerId } = core;
         const failure = (
             code: string,
@@ -370,7 +384,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const failure = this.#addressFailure(statement.target);
         if (failure !== null) return { ...failure, ...emptyFindFields() };
-        return this.#find(statement, this.coreContext(ctx), false, null);
+        const core = Log.#reading(this.coreContext(ctx));
+        if (core === null) return { ...Log.#unaddressed(), ...emptyFindFields() };
+        return this.#find(statement, core, false, null);
     }
 
     async #find(

@@ -9,8 +9,8 @@ import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 const frames = (body: string): AguiEvent[] => body.split("\n\n")
     .filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 
-for (const kind of ["message", "action"] as const) {
-    test(`{§agui-run-disconnect}: a resumed ${kind} Run's disconnect reaps its actual executor`, { timeout: 30_000 }, async (t) => {
+{
+    test("{§agui-run-disconnect}: a resumed message Run's disconnect reaps its actual executor", { timeout: 30_000 }, async (t) => {
         await import(join(SERVICE, "test/setup.ts"));
         const [{ default: Daemon }, { makeMockResponse }, { waitForDb }] = await Promise.all([
             import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_mock.ts")),
@@ -41,9 +41,7 @@ for (const kind of ["message", "action"] as const) {
         });
         try {
             await daemon.start();
-            const initial = frames(await (await post(kind === "action" ? {
-                forwardedProps: { plurnk: { ...input.forwardedProps.plurnk, action: { kind: "op.exec", command } } },
-            } : { messages: [{ id: "start", role: "user", content: "Run the command and wait." }] }, t.signal)).text());
+            const initial = frames(await (await post({ messages: [{ id: "start", role: "user", content: "Run the command and wait." }] }, t.signal)).text());
             const terminal = initial.at(-1);
             assert.ok(terminal?.type === "RUN_FINISHED" && terminal.outcome?.type === "interrupt");
             const [workspace] = await daemon.listWorkspaces();
@@ -58,13 +56,11 @@ for (const kind of ["message", "action"] as const) {
             const stream = await concluded.promise;
             assert.equal(stream.workerId, proposal.workerId, "the original operation worker is cancelled, not one guessed from the thread's binding");
             assert.equal(stream.result.status, 499, "the executor is reaped rather than detached");
-            if (kind === "message") {
-                const loops: ApplicationLoopProjection[] = await waitForDb(() => application.listWorkerLoops({ workspaceId: workspace.id, workerId: proposal.workerId }),
-                    (rows: ApplicationLoopProjection[]) => rows.some((row) => row.terminalResult !== null));
-                const result = loops.find((loop) => loop.id === proposal.loopId)?.terminalResult;
-                assert.equal(result?.status, 499);
-                assert.equal(result?.problem?.reason, "client_disconnected");
-            }
+            const loops: ApplicationLoopProjection[] = await waitForDb(() => application.listWorkerLoops({ workspaceId: workspace.id, workerId: proposal.workerId }),
+                (rows: ApplicationLoopProjection[]) => rows.some((row) => row.terminalResult !== null));
+            const result = loops.find((loop) => loop.id === proposal.loopId)?.terminalResult;
+            assert.equal(result?.status, 499);
+            assert.equal(result?.problem?.reason, "client_disconnected");
         } finally {
             controller.abort();
             off();
@@ -74,3 +70,58 @@ for (const kind of ["message", "action"] as const) {
         }
     });
 }
+
+test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disconnect reaps the command it started, and no other operation's", { timeout: 30_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const [{ default: Daemon }, { waitForDb }] = await Promise.all([
+        import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_rpc.ts")),
+    ]);
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, http, provider: new Mock({ contextWindow: 32768, responses: [] }), nodeModulesPath: join(SERVICE, "node_modules") });
+    const application: ApplicationPort = daemon;
+    // The stream address each operation's row announced, which of them have written, and how each concluded.
+    const announced: string[] = [];
+    const writing = new Set<string>();
+    const concluded = new Map<string, OperationResult>();
+    const off = application.subscribeToEvents((_workspace, method, params) => {
+        if (method === "log/entry") {
+            const stream = (params as { entry: { attrs?: { stream?: unknown } | null } }).entry.attrs?.stream;
+            if (typeof stream === "string" && !announced.includes(stream)) announced.push(stream);
+        }
+        if (method === "stream/event" && (params as { contentLength: number }).contentLength > 0) writing.add((params as { target: string }).target);
+        if (method === "stream/concluded") concluded.set((params as { target: string }).target, (params as { result: OperationResult }).result);
+    });
+    const mine = new AbortController();
+    const theirs = new AbortController();
+    const exec = (threadId: string, signal: AbortSignal) => fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {
+        method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([signal, t.signal]),
+        body: JSON.stringify({ threadId, runId: crypto.randomUUID(), messages: [], tools: [], state: {}, context: [],
+            forwardedProps: { plurnk: { workspace: "disconnect", projectRoot: null, action: { kind: "op.exec", command: "printf ready; sleep 60" } } } }),
+    });
+    try {
+        await daemon.start();
+        const mineBody = assert.rejects((await exec("mine", mine.signal)).text(), { name: "AbortError" });
+        await waitForDb(async () => announced.filter((stream) => writing.has(stream)).length, (count: number) => count === 1);
+        const myCommand = announced[0]!;
+        const theirBody = assert.rejects((await exec("theirs", theirs.signal)).text(), { name: "AbortError" });
+        await waitForDb(async () => announced.filter((stream) => writing.has(stream)).length, (count: number) => count === 2);
+        const theirCommand = announced[1]!;
+
+        mine.abort();
+        await mineBody;
+        const reaped: OperationResult = await waitForDb(async () => concluded.get(myCommand), (result: OperationResult | undefined) => result !== undefined);
+        assert.equal(reaped.status, 499, "the command is reaped rather than detached");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert.equal(concluded.has(theirCommand), false, "another operation's command runs on");
+        theirs.abort();
+        await theirBody;
+    } finally {
+        mine.abort();
+        theirs.abort();
+        off();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    }
+});

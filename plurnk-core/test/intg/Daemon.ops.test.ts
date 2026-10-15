@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Dsl from "./dsl.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import SeamSocket from "./_seam.ts";
 
 test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
@@ -155,21 +156,21 @@ test("op.find on empty scope returns 200 with empty results", async () => {
     });
 });
 
-test("a completed client operation concludes its administrative loop", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
+test("{§connection-lifecycle} a completed client operation concludes its administrative loop", async () => {
+    await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "note-test" });
             const workspaceId = (workspace.result as { id: number }).id;
-            const clientWorker = await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: workspaceId });
 
-            // The first client operation lazily creates its administrative loop.
+            // The operation opens its own loop in the workspace's runtime worker.
             const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("````NOTE\nClient observation.\n````") });
             assert.equal((response.result as { status: number }).status, 200);
 
-            const clientLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });
-            const loop = await db.test_get_loop_status.get<{ status: number }>({ id: clientLoop?.id });
-            assert.equal(loop?.status, 200);
+            const runtime = await daemon.ensureRuntimeWorker(workspaceId);
+            const operations = (await daemon.listWorkerLoops({ workspaceId, workerId: runtime }))
+                .filter(({ promptSource }) => promptSource === SeamSocket.owner);
+            assert.deepEqual(operations.map(({ status }) => status), [200], "the one operation's loop concluded 200");
         } finally { ws.close(); }
     });
 });

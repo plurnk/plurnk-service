@@ -116,6 +116,7 @@ interface ProposalRow {
     owner_tools: string;
     owner_interactive: number;
     turn_kind: string;
+    turn_producer: string;
 }
 
 const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
@@ -344,7 +345,10 @@ export default class ProposalLifecycle {
 
     #project(row: ProposalRow, waiter: ProposalWaiter): ProposalPendingEvent {
         const owner = Validator.assertWorkerOwner({ address: row.owner, tools: JSON.parse(row.owner_tools) as string[], interactive: row.owner_interactive === 1 });
-        waiter.disposition ??= ProposalPolicies.disposition(owner.tools, row.turn_kind === "maintenance");
+        waiter.disposition ??= ProposalPolicies.disposition(owner.tools, {
+            maintenance: row.turn_kind === "maintenance",
+            clientOperation: row.turn_producer === "client",
+        });
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);

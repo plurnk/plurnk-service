@@ -63,7 +63,7 @@ test("a packet renders one worker's log; a sibling worker's log is absent", asyn
             const turnId = await insertTurn(db, loopId, 1);
             return { workerId, loopId, turnId };
         };
-        // Two sibling workers in one workspace — e.g. the model worker and a client worker.
+        // Two sibling workers in one workspace — e.g. two independent model workers.
         const a = await spawn();
         const b = await spawn();
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/from-a.md"), "a"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
@@ -80,7 +80,8 @@ test("origin is attribution (provenance), never read to hide a row at render", a
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workerId = await insertWorker(db, workspaceId);
+        // A person's client operations journal in the runtime worker ({§connection-lifecycle}).
+        const workerId = await RuntimeWorker.ensure(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertOperationTurn(db, loopId, 1, "client");
         // A CLIENT-origin row living IN this worker must still render: the renderer
@@ -114,8 +115,8 @@ test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on 
             const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
             const loopsIdle = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
-            // A delta: a client op.edit runs in the connection's own client worker — a
-            // sibling of the model worker ({§connection-lifecycle}) — touching a shared entry.
+            // A delta: a client op.edit journals in the workspace's runtime worker, never the
+            // model worker ({§connection-lifecycle}), and touches a shared entry.
             // This is the environment door; it must NOT wake the idle model worker.
             await rpcCall(ws, 3, "op.edit", { target: "worker:///shared.md", content: "a sibling edit — ambient, not addressed to the model worker" });
             const loopsAfterDelta = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;

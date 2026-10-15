@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { TEST_OWNER } from "./_approval.ts";
 // {§mcp-launch-directory}
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,6 @@ import Daemon from "../../src/server/Daemon.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { openMigrated } from "./_db.ts";
-import { waitFor } from "./_rpc.ts";
 import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
 type Placement = { cwd: string };
@@ -32,22 +31,16 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
     daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
-    const proposals: number[] = [];
-    const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
-        if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
-    });
     try {
         await daemon.start();
-        const { workspaceId, workerId } = await daemon.createWorkspace({ name: "placement", projectRoot: project });
-        await ownWorker(db, workspaceId, workerId);
+        const { workspaceId } = await daemon.createWorkspace({ name: "placement", projectRoot: project });
         const source = PlurnkParser.frame("fixture (where)", "{}");
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected the tool operation");
-        const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parsed.statement });
-        await waitFor(() => proposals, (list) => list.length > 0, { timeoutMs: 10000 });
-        await daemon.resolveProposal(proposals[0]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
-        assert.equal((await pending).status, 200);
+        // A person's operation is that person's decision already ({§proposal-disposition}).
+        const [invoked] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
+        assert.equal(invoked!.status, 200);
         const placed = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body", timeoutMs: 10000 }) as Placement;
         const directory = await daemon.workspaceStateDirectory(workspaceId, "@plurnk/plurnk-mcp/fixture");
         assert.deepEqual(placed, { cwd: await realpath(directory) });
@@ -56,7 +49,6 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
         assert.ok((await stat(directory)).isDirectory(), "disabling the connection retains its state directory");
         assert.deepEqual(await readdir(project), [], "the launch and the tool write nothing into the project");
     } finally {
-        unsubscribe();
         await daemon.stop();
         await db.close();
     }

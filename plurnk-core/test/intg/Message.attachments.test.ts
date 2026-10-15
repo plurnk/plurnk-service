@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OutboundModule } from "@plurnk/plurnk-a2a";
@@ -73,7 +73,6 @@ for (const body of ["Inspect this.", ""]) test(`{§send-resource-attachments}: $
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "worker-attachments", projectRoot: null });
-        const sender = await daemon.createWorker({ workspaceId, name: "sender" });
         const receiver = await daemon.createWorker({ workspaceId, name: "receiver" });
         const program = PlurnkParser.parseStatements([
             PlurnkParser.frame("EDIT (worker:///report.md)", "original peer report"),
@@ -82,7 +81,8 @@ for (const body of ["Inspect this.", ""]) test(`{§send-resource-attachments}: $
             PlurnkParser.frame("EDIT (worker:///report.md) <1,-1>", "changed"),
         ].join("\n\n"));
         assert.ok(program.items.every((item) => item.kind === "statement"));
-        const results = await daemon.dispatchClientAction({ workspaceId, workerId: sender.workerId,
+        // A person's operation sends to the worker ({§connection-lifecycle}).
+        const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER,
             statements: program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []) });
         assert.deepEqual(results.map(({ status }) => status), [201, 400, 200, 200], JSON.stringify(results));
         assert.match(JSON.stringify(results[1]), /attachments-invalid/u, "SEND metadata reaches its recipient for validation");

@@ -8,6 +8,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { findStmt, readStmt } from "./_dsl.ts";
 import { namedModelWorker } from "./_workers.ts";
+import { TEST_OWNER } from "./_approval.ts";
 
 test("live fixtures obey resource publication and query contracts", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
@@ -49,21 +50,23 @@ test("live fixtures obey resource publication and query contracts", async (t) =>
             assert.equal(readable.weight, contentWeight(readable.content));
         });
         await t.test("{§mimetype-query} an HTML fixture answers the live story's XPath through the real dispatcher", async () => {
-            const result = await workspace.daemon.dispatchAsClient({
-                workspaceId: workspace.workspaceId, workerId,
-                statement: readStmt(parsePath("worker:///page.html"), { marks: [1, -1] }, {
+            const [result] = await workspace.daemon.dispatchClientAction({
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
+                statements: [readStmt(parsePath("worker:///page.html"), { marks: [1, -1] }, {
                     dialect: "xpath", raw: "//h1",
-                }),
+                })],
             });
+            assert.ok(result !== undefined);
             assert.equal(result.status, 200);
             assert.equal(result.matched, 1);
             assert.match(String(result.content), /Welcome/u);
         });
         await t.test("{§readable-channel} ordinary READ keeps the fixture's source text", async () => {
-            const result = await workspace.daemon.dispatchAsClient({
-                workspaceId: workspace.workspaceId, workerId,
-                statement: readStmt(parsePath("worker:///page.html"), { marks: [1, -1] }),
+            const [result] = await workspace.daemon.dispatchClientAction({
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
+                statements: [readStmt(parsePath("worker:///page.html"), { marks: [1, -1] })],
             });
+            assert.ok(result !== undefined);
             assert.equal(result.status, 200);
             assert.equal(result.content, html);
         });
@@ -72,12 +75,13 @@ test("live fixtures obey resource publication and query contracts", async (t) =>
             await seedEntry(workspace.db, workspace.workspaceId, {
                 pathname: "answer.json", content, mimetype: "application/json",
             });
-            const result = await workspace.daemon.dispatchAsClient({
-                workspaceId: workspace.workspaceId, workerId,
-                statement: readStmt(parsePath("worker:///answer.json"), { marks: [1, -1] }, {
+            const [result] = await workspace.daemon.dispatchClientAction({
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
+                statements: [readStmt(parsePath("worker:///answer.json"), { marks: [1, -1] }, {
                     dialect: "jsonpath", raw: "$.answer",
-                }),
+                })],
             });
+            assert.ok(result !== undefined);
             assert.equal(result.status, 200);
             assert.equal(result.matched, 1);
             assert.equal(result.content, content);
@@ -86,10 +90,11 @@ test("live fixtures obey resource publication and query contracts", async (t) =>
             await seedEntry(workspace.db, workspace.workspaceId, {
                 pathname: "notes.md", content: "Checkpoint retention is working.",
             });
-            const result = await workspace.daemon.dispatchAsClient({
-                workspaceId: workspace.workspaceId, workerId,
-                statement: findStmt(parsePath("worker:///notes.md"), { dialect: "fts", raw: "~checkpoint" }),
+            const [result] = await workspace.daemon.dispatchClientAction({
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
+                statements: [findStmt(parsePath("worker:///notes.md"), { dialect: "fts", raw: "~checkpoint" })],
             });
+            assert.ok(result !== undefined);
             assert.equal(result.status, 200);
             assert.deepEqual(JSON.parse(String(result.content)), [{
                 region: "<1,1,1,11>", matched: "Checkpoint",

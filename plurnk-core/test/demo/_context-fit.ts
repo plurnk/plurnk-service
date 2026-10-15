@@ -10,6 +10,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
 import { localPath, readStmt } from "../intg/_dsl.ts";
 import { logEntries, packetSection } from "../intg/_packet.ts";
+import { TEST_OWNER } from "../intg/_approval.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 export const seedAttachmentFixture = async () => {
@@ -97,9 +98,12 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
     assert.ok(incident);
     assert.equal(incident.status_rx, 413, "the incident attachment needed recovery, not just the unrelated telemetry");
-    const recovered = await daemon.dispatchAsClient({ workspaceId, workerId, statement: readStmt(localPath("incident.txt"), { marks: [2] }) });
-    assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
-    assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
+    // A person's READ, acting for the worker ({§actor-boundary-client-operations}).
+    const [recovered] = await daemon.dispatchClientAction({
+        workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
+    });
+    assert.equal(recovered!.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
+    assert.match(String(recovered!.content), new RegExp(fixture.answer, "u"));
     if (incident.active === 0) {
         const effects = await db.test_log_curation_effects_by_worker.all<{
             operation_log_entry_id: number; target_log_entry_id: number;

@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { readFile, rm } from "node:fs/promises";
 import { parseEnv } from "node:util";
@@ -22,11 +22,13 @@ test("{§service-worker-composition} live workspaces expose a model worker's ref
     const workspace = await liveWorkspace({ name: "harness-reference-composition" });
     try {
         const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
-        const read = (target: string) => workspace.daemon.dispatchAsClient({
+        // A person's READ, acting for the model worker ({§actor-boundary-client-operations}).
+        const read = async (target: string) => (await workspace.daemon.dispatchClientAction({
             workspaceId: workspace.workspaceId,
-            workerId,
-            statement: readStmt(parsePath(target), { marks: [1, -1] }),
-        });
+            actor: TEST_OWNER,
+            contextWorkerId: workerId,
+            statements: [readStmt(parsePath(target), { marks: [1, -1] })],
+        }))[0]!;
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);

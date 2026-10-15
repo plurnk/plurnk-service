@@ -10,6 +10,7 @@ import { answer, makeMockResponse, parseDsl } from "./_mock.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload } from "./_a2a.ts";
 import { waitForDb } from "./_rpc.ts";
 import { namedModelWorker } from "./_workers.ts";
+import { TEST_OWNER } from "./_approval.ts";
 
 const observe = (client: Awaited<ReturnType<typeof connectHttpJsonAgent>>, text: string, contextId?: string) => {
     const admitted = Promise.withResolvers<Task>();
@@ -401,7 +402,10 @@ test("{§a2a-context-resource}: Context history and exact attachment bytes survi
         assert.match(packet, /intermediate-retained-reply/u);
         assert.match(packet, /first-retained-answer/u);
         assert.doesNotMatch(packet, /private-exploration-marker/u, "a Context is Task and message evidence, not an ambient log dump");
-        const read = async (target: string) => daemon.dispatchAsClient({ workspaceId, workerId: worker.id, statement: parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]! });
+        // A person's READ, acting for the Task's worker ({§actor-boundary-client-operations}).
+        const read = async (target: string) => (await daemon.dispatchClientAction({
+            workspaceId, actor: TEST_OWNER, contextWorkerId: worker.id, statements: [parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]!],
+        }))[0]!;
         const context = await read(`${address}#json`);
         assert.equal(context.status, 200);
         const json = JSON.parse(context.content as string) as { tasks: Array<{ id: string; history: Array<{ role: string; parts: Array<{ raw?: string; resource?: string; bytes?: number }> }> }> };
@@ -418,8 +422,10 @@ test("{§a2a-context-resource}: Context history and exact attachment bytes survi
         assert.match(refreshed.content as string, /second-retained-answer/u, "READ refreshes completed replies without a second message store");
         const stranger = await daemon.createWorkspace({ name: "unrelated-a2a-workspace", projectRoot: null });
         const strangerWorker = await namedModelWorker(daemon, stranger.workspaceId, "main");
-        const absent = await daemon.dispatchAsClient({ workspaceId: stranger.workspaceId, workerId: strangerWorker, statement: parseDsl(frame(`READ (${address})`, null))[0]! });
-        assert.equal(absent.status, 404, "the retained Context belongs to the hosted workspace");
+        const [absent] = await daemon.dispatchClientAction({
+            workspaceId: stranger.workspaceId, actor: TEST_OWNER, contextWorkerId: strangerWorker, statements: [parseDsl(frame(`READ (${address})`, null))[0]!],
+        });
+        assert.equal(absent!.status, 404, "the retained Context belongs to the hosted workspace");
         const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });
         assert.deepEqual(messages.filter(({ direction }) => direction === "inbound").map(({ body }) => body), ["second-retained-request"]);
     } finally { await daemon.stop(); await http.close(); await db.close(); }

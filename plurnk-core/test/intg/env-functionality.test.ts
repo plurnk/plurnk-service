@@ -18,6 +18,7 @@ import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
+import { modelOperation } from "./_workers.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
@@ -63,9 +64,9 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
     let quiescent = false;
     try {
         const workspaceId = await insertWorkspace(db, `env-family-${crypto.randomUUID()}`);
-        const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+        const alice = await insertWorker(db, workspaceId, null, "alice", "model");
         await ownWorker(db, workspaceId, alice);
-        const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        const bob = await insertWorker(db, workspaceId, null, "bob", "model");
         await ownWorker(db, workspaceId, bob);
         const invoke = <T>(workerId: number, verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
             daemon.invokeModuleAction(`worker.env.${verb}`, params, { scope: "worker", workspaceId, workerId }) as Promise<T>;
@@ -139,10 +140,10 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         // WORK owns its heading slot ({§env-option}): a key it does not take and a reserved name are
         // refused by name, before any child exists.
         const problemOf = (result: { status: number }): string => String((result as { problem?: { type?: string } }).problem?.type);
-        const foreignKey = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"nope\": 1}]\nx\n````") });
+        const foreignKey = await modelOperation(daemon, db, { workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"nope\": 1}]\nx\n````") });
         assert.equal(foreignKey.status, 400);
         assert.match(problemOf(foreignKey), /metadata-unsupported$/u);
-        const reservedName = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"env\": {\"PLURNK_SERVICE_DB_PATH\": \"x\"}}]\nx\n````") });
+        const reservedName = await modelOperation(daemon, db, { workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"env\": {\"PLURNK_SERVICE_DB_PATH\": \"x\"}}]\nx\n````") });
         assert.equal(reservedName.status, 400);
         assert.match(problemOf(reservedName), /env\/functionality\/name-reserved$/u);
         assert.equal(await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "nope" }), undefined, "nothing was created");
@@ -158,7 +159,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
 
         // Inheritance: a child of alice starts with her entries, each named for her; the child's own
         // entries carry no such name, and touching an inherited entry makes it the child's own.
-        const carol = await insertWorker(db, workspaceId, alice, "carol", "client");
+        const carol = await insertWorker(db, workspaceId, alice, "carol", "model");
         const inheritedOf = async (workerId: number, alias: string) => (await listed(workerId)).find((entry) => entry.alias === alias)?.inherited;
         assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "worker:active");
         assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Worker that set an inherited value");
@@ -177,7 +178,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "env", prefix: "/%" })).length;
         const exec = async (workerId: number, program: string) => {
             const after = await outputs();
-            const { status } = await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(program) });
+            const { status } = await modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
             return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "env", after, timeoutMs: 10_000 }) };
         };
         const aliceList = await exec(alice, "````env (list)````");
@@ -198,7 +199,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         });
         const accepted = async (workerId: number, program: string): Promise<{ status: number; logEntryId: number }> => {
             const seen = proposals.length;
-            const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(program) });
+            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
             const logEntryId = proposals[seen]!;
             await daemon.resolveProposal(logEntryId, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
@@ -300,9 +301,9 @@ test("{§functionality-scope} readWorkerEnvironment layers the Worker's override
     const daemon = await boot(db);
     try {
         const workspaceId = await insertWorkspace(db, `env-seam-${crypto.randomUUID()}`);
-        const alice = await insertWorker(db, workspaceId, null, "alice", "client");
+        const alice = await insertWorker(db, workspaceId, null, "alice", "model");
         await ownWorker(db, workspaceId, alice);
-        const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        const bob = await insertWorker(db, workspaceId, null, "bob", "model");
         await ownWorker(db, workspaceId, bob);
         await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
         await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "worker", workspaceId, workerId: alice });

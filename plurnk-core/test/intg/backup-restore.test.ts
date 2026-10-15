@@ -12,7 +12,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
 import { openMigrated } from "./_db.ts";
 import { parseDsl } from "./_mock.ts";
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
 import { namedModelWorker } from "./_workers.ts";
 
@@ -106,7 +106,7 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_DURABLE")?.definition, { value: "workspace-owned" });
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "changed" },
             "ambient configuration is taken from this startup, not replayed from the database");
-        const [changed] = await restored.dispatchClientAction({ workspaceId, workerId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [changed] = await restored.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: parseDsl("````READ (doc.md)\n````") });
         assert.equal(changed?.status, 200);
         assert.equal(changed.content, "External edit after the snapshot.\n", "startup materializes current filesystem bytes, not the old database projection");
         assert.equal(await readFile(filePath, "utf8"), "External edit after the snapshot.\n");
@@ -122,7 +122,7 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
             scope: "worker", workspaceId, workerId,
         }) as FunctionalityListResult;
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "original" });
-        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, workerId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: parseDsl("````READ (doc.md)\n````") });
         assert.equal(restoredFile?.status, 200);
         assert.equal(restoredFile.content, "Preserved project version.\n");
         assert.equal(idleProvider.received.length, 0);

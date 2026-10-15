@@ -31,22 +31,20 @@ does not recompute them.
   `threadId` names a worker in that world by its immutable name, in every Run, and is never
   compared with the workspace's name: renaming a workspace never changes which worker a thread
   means. The name resolves among model-origin workers only (forks and earlier workers are
-  addressable as threads; a client connection's worker or the runtime actor `_plurnk` is never
-  bound). A worker comes into being by an act addressed to it or by its owner's session attaching
+  addressable as threads; the runtime actor `_plurnk` is never bound). A worker comes into being by an act addressed to it or by its owner's session attaching
   to it ({§agui-action-binding}): the first such Run creates the worker the thread names via
-  `createWorker`, and a thread named after a client or runtime actor fails at minting. Reading it,
+  `createWorker`, and a thread named after the runtime actor fails at minting. Reading it,
   watching it passively, or acting on the workspace never creates one. A client that names no particular worker supplies its own default name. A name the
   daemon no longer holds (a fresh database, a deleted
   worker) is minted anew by the next act addressed to it, with no history; the run-start status
   gauge then reports `loopId: null` where the previous run's reported a loop, which is how a
-  client tells a new worker from a resumed one. The core workspace envelope carries only the workspace and selected client
-  actor ({§methods-rebind}); AG-UI owns the separate per-thread worker binding.
+  client tells a new worker from a resumed one. The core workspace envelope carries only the workspace ({§methods-rebind}); AG-UI owns
+  the per-thread worker binding.
   Process-local bindings key on the workspace's identity and the `threadId`; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
   Concurrent first requests acquire one envelope and worker binding. Workspace
   acquisition is serialized across threads, retaining each request's create/attach contract;
-  the creating request supplies settings, and other threads acquire their own
-  client actors in that world. Failed acquisitions retain their cause and leave no failed
+  the creating request supplies settings, and other threads attach that world. Failed acquisitions retain their cause and leave no failed
   cache entry preventing a later retry. Explicit Core creation retains its name-conflict
   semantics; protocol binding is not a second creation request.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker.
@@ -65,7 +63,7 @@ does not recompute them.
 ## §agui-worker-owner Approval ownership
 
 An owner is `agui://anonymous/threads/<encoded threadId>`, scoped by
-workspace. It is not a socket, Run, or client bookkeeping worker. `RunAgentInput.tools`
+workspace. It is not a socket, a Run, or a worker. `RunAgentInput.tools`
 declares its supported client-tool names, and `forwardedProps.plurnk.interactive` (a boolean)
 states whether a person attends it; unstated, nobody does. Control attachment registers that
 capability set and claims only runtime-owned work under {§worker-ownership}; observation does
@@ -74,9 +72,9 @@ requests.
 
 | Request | Ownership effect |
 |---|---|
-| Prompt, interrupt resume, or client operation | Control attachment for the worker the Run binds, if any ({§agui-action-binding}), and its administrative actor. |
+| Prompt or interrupt resume | Control attachment for the worker the Run binds, if any ({§agui-action-binding}). |
 | Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
-| Passive synchronization / connection; other management reads | No claim and no capability replacement. |
+| Passive synchronization / connection; a client operation ({§agui-client-operation}); other management Runs | No claim and no capability replacement. |
 
 §agui-owner-activation **An owner's arrival activates its workspace.** A control attachment starts the
 workspace's Functionality activation ({§methods-workspace-activate}) and does not wait for it: the Run
@@ -88,7 +86,7 @@ recipient. No connected-ancestor fallback or topology-based authority exists. An
 review an independently active child while its own worker is idle. Concurrent connections
 to one owner can see the same gate; Core settles it at most once. A matching worker's Run
 receives its own gate; only when none is connected does delivery use the owner's Runs that
-observe its worker. Unrelated operation Runs do not receive it.
+observe its worker. An operation or other management Run never receives one.
 Each presentation of a gate retains its own Run continuation. Successful resume emits
 the standard `TOOL_CALL_RESULT` for each settled interrupt before continuing; this acknowledges
 the decision, not completion of the approved operation.
@@ -100,8 +98,9 @@ Approval ownership does not confer responsibility for cancelling running work.
 
 | Connection | Unexpected disconnect |
 |---|---|
-| Message Run or executing `op.exec` / `op.parse` Run | Cancel its bound worker with `client_disconnected`. |
-| Resume of that Run's interrupt | Retain the same cancellation responsibility and worker binding. |
+| Message Run | Cancel its bound worker with `client_disconnected`. |
+| Resume of a message Run's interrupt | Retain the same cancellation responsibility and worker binding. |
+| Executing `op.exec` / `op.parse` Run | Cancel exactly its operation with `client_disconnected` ({§methods-loop-cancel}): its dispatch, and the executions it started that still run; once its dispatch opens the operation's loop if it disconnected before. |
 | Observation, including approval of independently started work | Detach; do not cancel work. |
 | Other management Run | Detach. |
 
@@ -475,8 +474,8 @@ flowchart LR
 A management-action Run carries
 `forwardedProps.plurnk.action = { kind, ...params }`. Once settled, it returns
 one `CUSTOM plurnk.action.result` shaped as `{ kind, ok, result | problem }`,
-followed by `RUN_FINISHED`. A proposal-gated action may first end with an
-interrupt and deliver that settled result on the standard resume Run. A failed
+followed by `RUN_FINISHED`, on the Run that asked; no action presents an
+interrupt ({§agui-client-operation}). A failed
 action preserves exact RFC 9457 Problem Details and is the result of a
 successfully transported management Run; it does not turn the Run into
 `RUN_ERROR` or invent a parallel error string. Unknown kinds return an honest
@@ -490,7 +489,7 @@ successfully transported management Run; it does not turn the Run into
 | `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
 | `workspace.list`         | Worldless | none                                                 | `ApplicationPort.listWorkspaces`: each workspace with its folder and the folder's label ({§workspace-label}).                |
 | `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named world, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else five characters.                    |
-| `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `ApplicationPort.attachWorkspace`; returns the selected envelope.                                                         |
+| `workspace.attach`       | Worldless | `id`                                                 | `ApplicationPort.attachWorkspace`; returns the selected workspace's `{ id, name }`.                                       |
 | `workspace.workers`      | Workspace | `id?`                                                | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace.                                              |
 | `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's bound worker.                                                  |
 | `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
@@ -498,9 +497,9 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.prompts`      | Workspace | `workerId?`, `limit?`                                | `ApplicationPort.listPrompts` scoped like `log.read`: the thread's bound worker unless `workerId` pins another.    |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
-| `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as the client worker's own operations; returns the `RollbackReport`. |
+| `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the thread's owner ({§agui-client-operation}); returns the `RollbackReport`. |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread's bound worker by default, preserving validated {§entry-read-result}. |
-| `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and calls `ApplicationPort.dispatchClientAction` on the client worker.                      |
+| `op.exec`                | Workspace | `command`                                            | Constructs one execution statement on the default `sh` runtime and dispatches it as one client operation ({§agui-client-operation}). |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's bound worker.                                                       |
 | `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's bound worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
@@ -530,6 +529,15 @@ whose input its schema refuses, binds neither: it is answered on the control pat
 its result. A Run that binds a worker carries that worker's gauge, `plurnk.status` and `budget`, and
 its deltas ({§agui-state-patches}); one that binds none carries neither. Every Run bound to a
 workspace carries that workspace's state ({§agui-workspace-state}).
+
+§agui-client-operation **`op.exec` and `op.parse` are the thread owner's client operations.** Each
+dispatches one client operation ({§connection-lifecycle}) as the thread's owner address
+({§agui-worker-owner}), acting for the model worker the thread names when one exists
+({§actor-boundary-client-operations}) and never creating it. The Run binds no worker, claims nothing and
+declares no capability set; it observes the operation's loop from the moment the dispatch opens it
+({§agui-broadcast-fan}), and a disconnect cancels exactly that operation ({§agui-run-disconnect}). A
+person's operation is never routed for review ({§proposal-disposition}), so its Run presents no
+interrupt. `workspace.rollback`'s compensations are such an operation too, without an observing Run.
 
 §agui-worker-model-actions **Worker model selection is server-backed.**
 `worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the
@@ -563,7 +571,7 @@ kinds without importing the extension owner.
 
 ### §agui-op-parse Parsed-operation projection
 
-`op.parse` dispatches all trusted-prefix statements as one client action and
+`op.parse` dispatches all trusted-prefix statements as one client operation ({§agui-client-operation}) and
 preserves the parser's source order in its `results` array:
 
 | Parser output                                  | AG-UI result                                                                                                                                         |
@@ -639,8 +647,8 @@ nor hide updates from the producer ({§notifications-stream-event-on-channel-cha
 `loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup
 abort. An action that opens a stream remains one live AG-UI Run; its result is
 held until every observed stream emits `stream/concluded`, then the result and
-`RUN_FINISHED` close that Run. Executing actions retain their cancellation
-responsibility through interrupts under {§agui-run-disconnect}.
+`RUN_FINISHED` close that Run. An executing operation Run retains its cancellation
+responsibility under {§agui-run-disconnect}.
 
 ## §agui-topology-scope Topology scope
 
@@ -690,7 +698,7 @@ this Run.
 | AG-UI Run | Core notifications admitted | Settlement owner |
 | ---------- | --------------------------- | ---------------- |
 | Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. Under {§agui-delegation-observation}, descendants' rows and streams as foreign rows. | Exact Loop terminal or interrupt. |
-| `op.exec` / `op.parse` | Client-operation Worker's log and stream events. A proposal resume retains this scope. | This action result, deferred through its owned streams. |
+| `op.exec` / `op.parse` | Its operation's Loop in the runtime Worker, from the moment the dispatch opens it: that Loop's rows and notices, and the streams those rows announce. Workspace derivation progress may carry no Worker. | This action result, deferred through its owned streams; never the Loop's terminal. |
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
 An operation Run owns an execution from the row that announces it: a started or
@@ -699,7 +707,11 @@ proposed address opens no stream. An admitted address stays open for the Run
 until its `stream/concluded`, so the action result is deferred even when the
 command writes late or never (a `stream/event` is a race the result must not
 win). A detached execution (`<-1>`) is nobody's obligation and never defers the
-result.
+result. The runtime Worker hosts every person's operations and the daemon's own work, so an
+operation Run never owns a stream its Loop did not announce. Stream activity of that Worker
+which no row of the Run's Loop has announced yet is held for it: the row that announces the
+address delivers the latest snapshot and then any conclusion, so a stream that concluded
+before its row defers nothing; activity no row of its Loop ever announces never reaches it.
 
 `workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
 `entry.loop_id`) refines it wherever the event is loop-scoped. Opening a

@@ -5,9 +5,9 @@ import type Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import Envelope from "../../src/server/envelope.ts";
 
-// A test reads a resource the way a client does ({§connection-lifecycle}): one administrative loop on
-// the reading worker, one client operation turn, one durable row. Resource identity never depends on
-// the reader ({§turn-source-resources}), so a test whose subject's log and packets must stay as they
+// An engine-level READ with the client writer tier: one administrative loop on the reading worker, one
+// client-producer operation turn, one durable row, no daemon around it. Resource identity never depends
+// on the reader ({§turn-source-resources}), so a test whose subject's log and packets must stay as they
 // were reads through another worker of the same workspace.
 export const clientRead = async (
     engine: Engine,

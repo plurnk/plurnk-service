@@ -22,7 +22,7 @@ import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscover
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
-import BuiltinActions, { type BuiltinActionsPort } from "./BuiltinActions.ts";
+import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import OAuthServer from "./OAuthServer.ts";
 import RunHandler, { type RunPort, type WorkerBinding } from "./RunHandler.ts";
@@ -67,6 +67,7 @@ type ActionExecutor = (
     env: ClientEnvelope | null,
     boundWorkerId: number | undefined,
     principal: string,
+    onLoop: OperationLoopListener | undefined,
 ) => Promise<ActionOutcome>;
 
 interface RegisteredAction extends AguiActionContract {
@@ -100,7 +101,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #actions = new Map<string, RegisteredAction>();
     #activated = false;
     #stopped = false;
-    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
 
     private constructor(opts: ModuleOptions) {
@@ -128,8 +129,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
             this.#actions.set(name, {
                 ...contract,
-                execute: (params, input, env, boundWorkerId, principal) =>
-                    this.#builtins.executeBuiltin(name, params, input, env, boundWorkerId, principal),
+                execute: (params, input, env, boundWorkerId, principal, onLoop) =>
+                    this.#builtins.executeBuiltin(name, params, input, env, boundWorkerId, principal, onLoop),
             });
         }
         for (const descriptor of this.#seam.listModuleActions()) {
@@ -318,8 +319,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // REQUIRED: a worker has no existence without a world, so its absence is a contract
     // violation the client must fix — never a workspace forged from the threadId.
     // The threadId names a worker in that world — resolved by #boundWorker ({§agui-thread-binding}); a
-    // name resolves among model-origin workers only, so a client connection's worker or the runtime actor
-    // is never bound.
+    // name resolves among model-origin workers only, so the runtime actor is never bound.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
         if (typeof workspace !== "string" || workspace.length === 0) {
@@ -412,12 +412,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         const key = JSON.stringify([env.workspaceId, threadId]);
         const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return await cached;
-        const existing = async (): Promise<number | undefined> => {
-            const worker = await this.#seam.readWorker({ workspaceId: env.workspaceId, identity: { name: threadId } });
-            return worker?.origin === "model" ? worker.id : undefined;
-        };
         if (binding === "required") {
-            const id = await existing();
+            const id = await this.#threadWorker(threadId, env);
             if (id === undefined) {
                 throw new HttpProblemError(httpProblem("worker-not-found", 404,
                     `No model worker named ${JSON.stringify(threadId)} exists in workspace ${JSON.stringify(env.workspaceName)}.`, {
@@ -428,7 +424,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#threadWorkers.set(key, Promise.resolve(id));
             return id;
         }
-        const pending = (async () => await existing()
+        const pending = (async () => await this.#threadWorker(threadId, env)
             ?? (await this.#seam.createWorker({ workspaceId: env.workspaceId, name: threadId })).workerId)();
         this.#threadWorkers.set(key, pending);
         try { return await pending; }
@@ -436,6 +432,13 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#threadWorkers.delete(key);
             throw cause;
         }
+    }
+
+    // {§agui-thread-binding} The model worker the threadId names, when it exists; reading it creates nothing. It is
+    // also the worker a person's client operation acts for ({§actor-boundary-client-operations}).
+    async #threadWorker(threadId: string, env: ClientEnvelope): Promise<number | undefined> {
+        const worker = await this.#seam.readWorker({ workspaceId: env.workspaceId, identity: { name: threadId } });
+        return worker?.origin === "model" ? worker.id : undefined;
     }
 
     // {§agui-action-binding} — what an action binds of the thread's worker. Reached only for a registered
@@ -470,7 +473,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                 emit({ type: EventType.CUSTOM, name: "plurnk.notice", value: notice });
             }
         }
-        const outcome = await this.#action(action, input, null, undefined, principal)
+        const outcome = await this.#action(action, input, null, undefined, principal, undefined)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);
                 const problem = Problems.fromError(err);
@@ -504,7 +507,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         });
     }
 
-    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined): Promise<ActionOutcome> {
         const action = this.#actions.get(a.kind);
         if (action === undefined) {
             return actionFailure(
@@ -534,7 +537,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
         try {
             if (action.scope !== "worldless") Module.#requireWorkspace(a.kind, env);
-            const outcome = await action.execute(a.params, input, env, boundWorkerId, principal);
+            const outcome = await action.execute(a.params, input, env, boundWorkerId, principal, onLoop);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
             if (!projected.valid) {

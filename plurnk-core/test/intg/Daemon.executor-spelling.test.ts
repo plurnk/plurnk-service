@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,10 +39,10 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 await rpcCall(client, 1, "workspace.create", { name: `js-spelling-${admission}` });
                 const [workspace] = await daemon.listWorkspaces();
                 const workerId = await namedModelWorker(daemon, workspace.id, "main");
-                // References are workspace documents ({§worker-generated-subtree}); the model worker's run is under test.
-                const observer = await daemon.createWorker({ workspaceId: workspace.id, name: "observer" });
-                const reference = (runtime: string) => daemon.dispatchAsClient({ workspaceId: workspace.id, workerId: observer.workerId,
-                    statement: readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`)) });
+                // References are workspace documents ({§worker-generated-subtree}): a person reads them
+                // ({§connection-lifecycle}), leaving the model worker's run under test.
+                const reference = async (runtime: string) => (await daemon.dispatchClientAction({ workspaceId: workspace.id, actor: TEST_OWNER,
+                    statements: [readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`))] }))[0]!;
                 assert.equal((await reference("node")).status, 200, "Node remains discoverable");
                 assert.equal((await reference("js")).status, 404, "the accepted spelling adds no reference document");
                 if (admission === "deny") {

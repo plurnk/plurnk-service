@@ -1,7 +1,7 @@
 import { ownWorker, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
@@ -23,6 +23,7 @@ import {
     type ApplicationActionContext,
     type ApplicationPort,
     type OperationResult,
+    type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -360,9 +361,9 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
     const tag = "workspacecap";
     const workspaceId = await insertWorkspace(db, `workspace-functionality-${crypto.randomUUID()}`);
     const peerWorkspaceId = await insertWorkspace(db, `peer-functionality-${crypto.randomUUID()}`);
-    const firstWorkerId = await insertWorker(db, workspaceId);
-    const secondWorkerId = await insertWorker(db, workspaceId);
-    const peerWorkerId = await insertWorker(db, peerWorkspaceId);
+    const firstWorkerId = await insertWorker(db, workspaceId, null, "first", "model");
+    const secondWorkerId = await insertWorker(db, workspaceId, null, "second", "model");
+    const peerWorkerId = await insertWorker(db, peerWorkspaceId, null, "peer", "model");
     await db.workspace_module_state_put.run({
         workspace_id: workspaceId, namespace_owner: owner, state: JSON.stringify({ source: "workspace" }),
     });
@@ -402,17 +403,18 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
             });
         },
     };
-    const dispatch = (daemon: Daemon, id: number, workerId: number) => daemon.dispatchAsClient({
-        workspaceId: id, workerId, statement: Dsl.buildExec({ runtime: tag, command: "fixture" }),
-    });
+    // A person's client operation acting for one of the workspace's workers ({§actor-boundary-client-operations}).
+    const dispatch = async (daemon: Daemon, id: number, workerId: number) => (await daemon.dispatchClientAction({
+        workspaceId: id, actor: TEST_OWNER, contextWorkerId: workerId, statements: [Dsl.buildExec({ runtime: tag, command: "fixture" })],
+    }))[0]!;
     const daemon = new Daemon({ db, provider: null });
     assert.throws(() => daemon.registerWorkspaceCapabilityProvider("incomplete fixture",
         { activate: async () => undefined } as never), /requires activate and deactivate functions/);
     daemon.registerModule(capabilityModule, "test-module");
     try {
         await daemon.start();
-        await daemon.attachWorkspace({ workspaceId, workerId: firstWorkerId });
-        await daemon.attachWorkspace({ workspaceId, workerId: secondWorkerId });
+        await daemon.attachWorkspace({ workspaceId });
+        await daemon.attachWorkspace({ workspaceId });
         assert.deepEqual(activated, [], "boot and attachment are passive");
 
         assert.equal((await dispatch(daemon, workspaceId, firstWorkerId)).status, 200);
@@ -426,7 +428,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
         });
         for (const workerId of [firstWorkerId, secondWorkerId]) {
             assert.equal((await dispatch(daemon, workspaceId, workerId)).status, 400,
-                "withdrawal changes every worker's tool surface in this workspace");
+                "withdrawal changes the tool surface in this workspace, whichever worker an operation acts for");
         }
         assert.equal((await dispatch(daemon, peerWorkspaceId, peerWorkerId)).status, 200,
             "a different workspace keeps its independent environment");
@@ -450,7 +452,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
         assert.deepEqual(activated, [], "restart does not hydrate dormant workspaces");
         for (const workerId of [firstWorkerId, secondWorkerId]) {
             assert.equal((await dispatch(restored, workspaceId, workerId)).status, 400,
-                "all workers see the restored workspace withdrawal");
+                "every operation in the workspace sees the restored withdrawal");
         }
         assert.equal((await dispatch(restored, peerWorkspaceId, peerWorkerId)).status, 200);
         assert.deepEqual(activated, [workspaceId, peerWorkspaceId]);
@@ -592,7 +594,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
 
     try {
         await daemon.start();
-        await daemon.attachWorkspace({ workspaceId, workerId });
+        await daemon.attachWorkspace({ workspaceId });
         assert.deepEqual(activations, [], "attachment does not establish residency");
 
         assert.deepEqual(
@@ -715,7 +717,7 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
             [],
             "dormant boot does not rewrite workspace documentation",
         );
-        await daemon.attachWorkspace({ workspaceId, workerId });
+        await daemon.attachWorkspace({ workspaceId });
         assert.equal(
             daemon.workspaceDerivationStatus(workspaceId),
             null,
@@ -750,8 +752,8 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
     }
 });
 
-test("workspace.create returns id+name and emits notification", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
+test("{§methods-workspace-create} workspace.create returns id+name, mints no worker, and emits notification", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const notifications = subscribeNotifications(ws, "workspace/created");
@@ -768,14 +770,7 @@ test("workspace.create returns id+name and emits notification", async () => {
 
             const workspaceList = await db.test_list_workspaces.all<{ name: string }>();
             assert.ok(workspaceList.some((s) => s.name === "alpha"));
-            const clientWorker = await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: result.id });
-            assert.ok((clientWorker?.id ?? 0) > 0);
-            // No client loop yet — allocation is lazy (deferred until the
-            // first client-origin op). A connection that only ran workspace.*
-            // RPCs has nothing to spend a loop sequence on, so loop.run
-            // gets sequence=1 instead of 2.
-            const loop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });
-            assert.equal(loop, undefined);
+            assert.deepEqual(await daemon.listWorkers(result.id), [], "creating a workspace mints no worker");
         } finally { ws.close(); }
     });
 });
@@ -1004,24 +999,21 @@ test("workspace.list returns workspaces most-recent-first", async () => {
     });
 });
 
-test("{§methods-workspace-attach} workspace.attach binds to existing workspace", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
+test("{§methods-workspace-attach} workspace.attach binds to an existing workspace and mints nothing", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
         const existing = await db.test_insert_workspace.get<{ id: number }>({ name: "existing" });
 
-        const ws = await connect(addr);
+        const first = await connect(addr);
+        const second = await connect(addr);
         try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: existing?.id });
-            const result = response.result as { id: number; name: string };
-            assert.equal(result.id, existing?.id);
-            assert.equal(result.name, "existing");
-
-            const clientWorker = await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: existing?.id });
-            assert.ok(clientWorker !== undefined);
-            // Client loop allocation is lazy. workspace.attach alone doesn't
-            // spend a loop sequence; the first op.* would.
-            const loop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: clientWorker?.id });
-            assert.equal(loop, undefined);
-        } finally { ws.close(); }
+            for (const ws of [first, second]) {
+                const response = await rpcCall(ws, 1, "workspace.attach", { id: existing?.id });
+                const result = response.result as { id: number; name: string };
+                assert.equal(result.id, existing?.id);
+                assert.equal(result.name, "existing");
+            }
+            assert.deepEqual(await daemon.listWorkers(existing!.id), [], "binding a workspace, from any number of connections, mints no worker");
+        } finally { first.close(); second.close(); }
     });
 });
 
@@ -1034,104 +1026,6 @@ test("workspace.attach to nonexistent workspace returns an exact Problem", async
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/workspace/workspace-not-found");
             assert.equal(problem.status, 404);
             assert.equal(problem.workspaceId, 9999);
-        } finally { ws.close(); }
-    });
-});
-
-test("workspace.attach with workerName: creates a new worker with that name", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "name-test" });
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerName: "research-task-42" });
-            const result = response.result as { id: number; workerId: number; workerName: string };
-            assert.equal(result.workerName, "research-task-42");
-            const worker = await db.test_workers_get_by_workspace.get<{ id: number; name: string }>({ workspace_id: workspace?.id });
-            assert.equal(worker?.id, result.workerId);
-            assert.equal(worker?.name, "research-task-42");
-        } finally { ws.close(); }
-    });
-});
-
-test("workspace.attach with workerName: reuses existing worker when name matches", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "reuse-test" });
-        const ws1 = await connect(addr);
-        try {
-            const r1 = await rpcCall(ws1, 1, "workspace.attach", { id: workspace?.id, workerName: "shared-worker" });
-            const result1 = r1.result as { workerId: number };
-            ws1.close();
-            const ws2 = await connect(addr);
-            try {
-                const r2 = await rpcCall(ws2, 1, "workspace.attach", { id: workspace?.id, workerName: "shared-worker" });
-                const result2 = r2.result as { workerId: number; workerName: string };
-                assert.equal(result2.workerId, result1.workerId, "second attach to same workerName reuses the worker id");
-                assert.equal(result2.workerName, "shared-worker");
-                const workerCount = await db.test_workers_count.get<{ n: number }>();
-                assert.equal(workerCount?.n, 1, "still only one worker row");
-            } finally { ws2.close(); }
-        } finally { /* ws1 already closed */ }
-    });
-});
-
-test("workspace.attach with workerId: reuses that specific worker", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "runid-test" });
-        const worker = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspace?.id, name: "pre-existing" });
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: worker?.id });
-            const result = response.result as { workerId: number; workerName: string };
-            assert.equal(result.workerId, worker?.id);
-            assert.equal(result.workerName, "pre-existing");
-        } finally { ws.close(); }
-    });
-});
-
-test("{§methods-workspace-attach} workspace.attach with workerId belonging to different workspace returns an exact Problem", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const sA = await db.test_insert_workspace.get<{ id: number }>({ name: "sA" });
-        const sB = await db.test_insert_workspace.get<{ id: number }>({ name: "sB" });
-        const runInA = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: sA?.id, name: "in-A" });
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: sB?.id, workerId: runInA?.id });
-            const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
-            assert.equal(problem.status, 409);
-            assert.equal(problem.workerId, runInA?.id);
-            assert.equal(problem.workspaceId, sB?.id);
-            assert.equal(problem.actualWorkspaceId, sA?.id);
-        } finally { ws.close(); }
-    });
-});
-
-test("workspace.attach with non-existent workerId returns an exact Problem", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "norun-test" });
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 99999 });
-            const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-not-found");
-            assert.equal(problem.status, 404);
-            assert.equal(problem.workerId, 99999);
-        } finally { ws.close(); }
-    });
-});
-
-test("workspace.attach with both workerId and workerName rejects", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "both-test" });
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "workspace.attach", { id: workspace?.id, workerId: 1, workerName: "x" });
-            const problem = rpcProblem(response);
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/worker-selector-conflict");
-            assert.equal(problem.status, 400);
-            assert.equal(problem.workerId, 1);
-            assert.equal(problem.workerName, "x");
-            assert.equal(problem.retryable, false);
         } finally { ws.close(); }
     });
 });
@@ -1183,22 +1077,6 @@ test("workspace.workers lists workers in the workspace, most-recent first", asyn
             // {§application-worker-observation} — a worker with no parent and no loop is an idle root (#523).
             assert.deepEqual(result.workers.map((r) => [r.kind, r.lifecycle]), [["root", "idle"], ["root", "idle"]]);
         } finally { ws.close(); }
-    });
-});
-
-test("multiple connections attaching to same workspace each get their own worker", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "shared" });
-
-        const ws1 = await connect(addr);
-        const ws2 = await connect(addr);
-        try {
-            await rpcCall(ws1, 1, "workspace.attach", { id: workspace?.id });
-            await rpcCall(ws2, 1, "workspace.attach", { id: workspace?.id });
-
-            const countAfter = await db.test_workers_count.get<{ n: number }>();
-            assert.equal(countAfter?.n, 2);
-        } finally { ws1.close(); ws2.close(); }
     });
 });
 
@@ -1296,39 +1174,25 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 "workspace creation does not launch semantic derivation",
             );
 
-            // {§machine-processes} — loops run in a model worker; a client worker is refused loudly
-            // (the module's envelope workerId is the client worker — never the loop home).
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            const problem = await rejectedProblem(() => daemon.runLoop({
+            // {§machine-processes} — loops run in a model worker; the runtime actor, where a person's client
+            // operations journal ({§connection-lifecycle}), is refused loudly as a loop home.
+            const runtimeWorkerId = await daemon.ensureRuntimeWorker(created.id);
+            const runtimeProblem = await rejectedProblem(() => daemon.runLoop({
                 workspaceId: created.id,
-                workerId: clientWorker.id,
+                workerId: runtimeWorkerId,
                 prompt: "go",
             }));
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(problem.status, 409);
-            assert.equal(problem.workerId, clientWorker.id);
-            const kernelWorker = await db.envelope_insert_worker.get<{ id: number }>({
-                workspace_id: created.id,
-                name: "_plurnk",
-                origin: "_plurnk",
-            });
-            if (kernelWorker === undefined) throw new Error("kernel worker insert returned no row");
-            const kernelProblem = await rejectedProblem(() => daemon.runLoop({
-                workspaceId: created.id,
-                workerId: kernelWorker.id,
-                prompt: "go",
-            }));
-            assert.equal(kernelProblem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(kernelProblem.status, 409);
-            assert.equal(kernelProblem.workerId, kernelWorker.id);
+            assert.equal(runtimeProblem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
+            assert.equal(runtimeProblem.status, 409);
+            assert.equal(runtimeProblem.workerId, runtimeWorkerId);
             // {§worker-model-selection} — the model, reasoning, and spawn-model controls are model-worker
-            // surfaces: a client or runtime actor is refused before any policy row is initialized.
+            // surfaces: the runtime actor is refused before any policy row is initialized.
             for (const [surface, call] of [
-                ["worker.model.get", () => daemon.readWorkerModel({ workspaceId: created.id, workerId: kernelWorker.id })],
-                ["worker.model.set", () => daemon.setWorkerModel({ workspaceId: created.id, workerId: clientWorker.id, selector: "mock/mocktest" })],
-                ["worker.effort.get", () => daemon.readWorkerEffort({ workspaceId: created.id, workerId: clientWorker.id })],
-                ["worker.effort.set", () => daemon.setWorkerEffort({ workspaceId: created.id, workerId: kernelWorker.id, effort: "low" })],
-                ["worker.child.set", () => daemon.setWorkerSpawnModel({ workspaceId: created.id, workerId: clientWorker.id, selector: null })],
+                ["worker.model.get", () => daemon.readWorkerModel({ workspaceId: created.id, workerId: runtimeWorkerId })],
+                ["worker.model.set", () => daemon.setWorkerModel({ workspaceId: created.id, workerId: runtimeWorkerId, selector: "mock/mocktest" })],
+                ["worker.effort.get", () => daemon.readWorkerEffort({ workspaceId: created.id, workerId: runtimeWorkerId })],
+                ["worker.effort.set", () => daemon.setWorkerEffort({ workspaceId: created.id, workerId: runtimeWorkerId, effort: "low" })],
+                ["worker.child.set", () => daemon.setWorkerSpawnModel({ workspaceId: created.id, workerId: runtimeWorkerId, selector: null })],
             ] as const) {
                 const refused = await rejectedProblem(call);
                 assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required", `${surface} refuses a non-model worker`);
@@ -1353,7 +1217,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const docEdits = (await db.test_log_entries_by_worker_op_full.all<{
                 tx: string;
                 origin: string;
-            }>({ worker_id: kernelWorker.id, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
+            }>({ worker_id: runtimeWorkerId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
             assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
             for (const { tx } of docEdits) {
                 const statement = JSON.parse(tx) as unknown;
@@ -1367,7 +1231,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 pathname: string | null;
                 status_rx: number;
                 origin: string;
-            }>({ worker_id: kernelWorker.id })).filter(({ origin, pathname }) =>
+            }>({ worker_id: runtimeWorkerId })).filter(({ origin, pathname }) =>
                 origin === "_plurnk"
                 && (pathname === "/_plurnk/AGENTS.md" || pathname?.startsWith("/_plurnk/skills/") === true));
             const publishedCount = (await publicationRows()).length;
@@ -1387,21 +1251,22 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     });
 });
 
-test("the client-interface seam — dispatchAsClient runs a client op through the engine and emits log/entry", async () => {
+test("{§methods-op-mirror} the client-interface seam — dispatchClientAction runs a client op through the engine and emits log/entry", async () => {
     // The op keystone: one seam op backs the whole op_* family. The module parses at its edge and hands
     // over the statement; the op is journaled client-origin, dispatched, and the entry emitted on the source.
-    await withDaemon(null, async (db, daemon, addr) => {
+    await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-dispatch" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
             const entries: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
+            const operate = async (statement: PlurnkStatement) =>
+                (await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [statement] }))[0]!;
 
             // WRITE then READ worker:///x through the seam — a positive roundtrip proving dispatch + journal.
-            const wrote = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "seam" }) });
+            const wrote = await operate(Dsl.buildEdit({ target: "worker:///x", content: "seam" }));
             assert.equal(wrote.status, 201, "the client EDIT created the entry through the seam (201)");
-            const read = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildRead({ target: "worker:///x" }) });
+            const read = await operate(Dsl.buildRead({ target: "worker:///x" }));
             assert.equal(read.status, 200);
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
@@ -1411,58 +1276,77 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
     });
 });
 
-test("the client-interface seam — one client action owns every statement in one administrative loop", async () => {
+test("{§connection-lifecycle} {§actor-boundary-client-operations} one client operation owns every statement in one loop of the runtime worker, attributed to its person", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-action-journal" })).result as { id: number };
-            const worker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            const before = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: worker.id });
-
-            const results = await daemon.dispatchClientAction({
-                workspaceId: created.id,
-                workerId: worker.id,
-                statements: [
-                    Dsl.buildEdit({ target: "worker:///x", content: "one action" }),
-                    Dsl.buildRead({ target: "worker:///x" }),
-                ],
+            const heard: Array<{ workerId: number; loopId: number }> = [];
+            const order: string[] = [];
+            daemon.subscribeToEvents((_s, method) => { if (method === "log/entry") order.push("entry"); });
+            const operation = (actor: string, statements: PlurnkStatement[]) => daemon.dispatchClientAction({
+                workspaceId: created.id, actor, statements,
+                onLoop: (loop) => { heard.push(loop); order.push("loop"); },
             });
 
+            const results = await operation("test://primary", [
+                Dsl.buildEdit({ target: "worker:///x", content: "one action" }),
+                Dsl.buildRead({ target: "worker:///x" }),
+            ]);
             assert.deepEqual(results.map((result) => result.status), [201, 200]);
-            const after = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: worker.id });
-            const priorIds = new Set(before.map(({ id }) => id));
-            const clientLoops: Array<{ id: number; turns: Array<{ sequence: number; producer: string }> }> = [];
-            for (const { id } of after.filter(({ id }) => !priorIds.has(id))) {
-                const turns = await db.test_list_turns_in_loop.all<{ sequence: number; producer: string }>({ loop_id: id });
-                if (turns.some(({ producer }) => producer === "client")) clientLoops.push({ id, turns });
-            }
-            assert.equal(clientLoops.length, 1, "the action created one client administrative loop, not one loop per statement");
-            const [{ id: loopId, turns }] = clientLoops;
-            assert.deepEqual(turns.map((turn) => turn.sequence), [1, 2], "each statement remains a distinct ordered operation turn");
-            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the administrative loop closes terminally");
+            assert.equal(heard.length, 1, "the operation announced exactly one loop");
+            assert.deepEqual(order, ["loop", "entry", "entry"], "the loop is announced before any statement runs");
+            const [{ workerId, loopId }] = heard;
+            const runtime = await daemon.readWorker({ workspaceId: created.id, identity: { id: workerId } });
+            assert.equal(runtime?.origin, "_plurnk", "the operation journals in the workspace's runtime worker");
+            assert.equal(runtime?.name, "_plurnk");
+
+            const turns = await db.test_list_turns_in_loop.all<{ sequence: number; producer: string; kind: string }>({ loop_id: loopId });
+            assert.deepEqual(
+                turns.map(({ sequence, producer, kind }) => [sequence, producer, kind]),
+                [[1, "client", "operation"], [2, "client", "operation"]],
+                "each statement is a distinct ordered client operation turn in the one loop",
+            );
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the loop closes 200 when the operation succeeds");
+            const rows = (await db.test_log_entries_by_worker.all<{ loop_id: number; origin: string; source: string | null }>({ worker_id: workerId }))
+                .filter((row) => row.loop_id === loopId);
+            assert.equal(rows.length, 2);
+            assert.deepEqual(rows.map(({ origin, source }) => [origin, source]), [["client", null], ["client", null]],
+                "every row the operation writes is a client-origin act, not an arrival");
+            const promptSource = async (id: number) =>
+                (await daemon.listWorkerLoops({ workspaceId: created.id, workerId })).find((loop) => loop.id === id)?.promptSource;
+            assert.equal(await promptSource(loopId), "test://primary", "the operation's loop names its person");
+
+            // A second person's operation is its own loop in the same runtime worker, attributed to that person.
+            await operation("test://secondary", [Dsl.buildRead({ target: "worker:///x" })]);
+            assert.equal(heard.length, 2);
+            assert.equal(heard[1]!.workerId, workerId, "every person's operation journals in the one runtime worker");
+            assert.notEqual(heard[1]!.loopId, loopId, "each operation owns its own loop");
+            assert.equal(await promptSource(heard[1]!.loopId), "test://secondary");
+            assert.deepEqual((await daemon.listWorkers(created.id)).map(({ origin }) => origin), ["_plurnk"],
+                "client operations mint no worker beyond the runtime worker");
         } finally { ws.close(); }
     });
 });
 
-test("the client-interface seam — readLog returns a workspace's journal, ownership-verified", async () => {
+test("{§methods-log-read} the client-interface seam — readLog returns a workspace's journal, ownership-verified", async () => {
     // The module's primary render input. Seeded here via the dispatch seam, read back via readLog, and the
     // cross-workspace invariant proven: a workspace reads only its own workers (core holds it, not the module).
-    await withDaemon(null, async (db, daemon, addr) => {
+    await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-read" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "read me" }) });
+            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "worker:///x", content: "read me" })] });
 
-            const entries = await daemon.readLog({ workspaceId: created.id, workerId: clientWorker.id });
+            const entries = await daemon.readLog({ workspaceId: created.id, workerId: await daemon.ensureRuntimeWorker(created.id) });
             assert.ok(entries.length >= 1, "readLog returned the workspace's journal entries");
             assert.ok(entries.some((e) => e.op === "EDIT"), "the client EDIT is in the journal the seam read");
 
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-read-other" })).result as { id: number };
-            const otherWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: other.id }))!;
+            const otherWorker = await daemon.ensureRuntimeWorker(other.id);
             const problem = await rejectedProblem(() => daemon.readLog({
                 workspaceId: created.id,
-                workerId: otherWorker.id,
+                workerId: otherWorker,
             }));
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.status, 409);
@@ -1486,11 +1370,12 @@ test("the client-interface seam — metadata reads surface providers, workspaces
             assert.equal(active!.alias, "mocktest");
             assert.equal(typeof active!.inputCapacity, "number", "the active alias carries resolved input capacity");
 
-            // workspaces + workers — the created workspace and its client worker are present.
+            // workspaces + workers — the created workspace and its model worker are present.
             const workspaces = await daemon.listWorkspaces();
             assert.ok(workspaces.some((s) => s.id === created.id), "listWorkspaces includes the created workspace");
+            const modelWorkerId = await namedModelWorker(daemon, created.id, "main");
             const workers = await daemon.listWorkers(created.id);
-            assert.ok(workers.length >= 1, "listWorkers returns the workspace's client worker");
+            assert.deepEqual(workers.map(({ id }) => id), [modelWorkerId], "listWorkers returns the workspace's workers");
 
             // prompts — a thin delegation; assert the wiring resolves cleanly.
             const prompts = await daemon.listPrompts(created.id);
@@ -1499,7 +1384,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
     });
 });
 
-test("{§methods-worker-name-admission} the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
+test("{§methods-workspace-create} {§methods-workspace-attach} the client-interface seam — workspace lifecycle: create/attach/rename", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
@@ -1509,30 +1394,22 @@ test("{§methods-worker-name-admission} the client-interface seam — workspace 
 
         // create — returns the envelope + emits workspace/created.
         const env = await daemon.createWorkspace({ name: "seam-life" });
-        assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client worker)");
+        assert.ok(env.workspaceId > 0, "createWorkspace returns the envelope");
         assert.deepEqual(
             Object.keys(env).toSorted(),
-            ["projectLabel", "projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
-            "{§methods-rebind} #64: the envelope carries workspace/client-worker identity only",
+            ["projectLabel", "projectRoot", "workspaceId", "workspaceName"],
+            "{§methods-rebind}: the envelope carries the workspace's identity only",
         );
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
 
-        // {§worker-name-minting}: attachment preserves case and underscores; invalid names fail.
-        const namedAttach = await daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "Approach_A" });
-        assert.equal(namedAttach.workerName, "Approach_A", "attachment preserves the exact worker name");
-        const invalidWorkerName = await rejectedProblem(() =>
-            daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "_invalid" }));
-        assert.equal(invalidWorkerName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
-        assert.equal(invalidWorkerName.status, 400);
-        assert.equal(invalidWorkerName.name, "_invalid");
-        assert.equal(invalidWorkerName.retryable, false);
         const attached = await daemon.attachWorkspace({ workspaceId: env.workspaceId });
         assert.equal(attached.workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
         assert.deepEqual(
             Object.keys(attached).toSorted(),
-            ["projectLabel", "projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
-            "{§methods-rebind} #64: attach does not fabricate a bound-worker or action-loop binding",
+            ["projectLabel", "projectRoot", "workspaceId", "workspaceName"],
+            "{§methods-rebind}: attach does not fabricate a bound-worker or action-loop binding",
         );
+        assert.deepEqual(await daemon.listWorkers(env.workspaceId), [], "neither creation nor attachment mints a worker");
 
         // rename — mutations return the applied value; a name collision is refused. (No root
         // mutation on the seam: the workspace pointer is set at workspace.create or never.)
@@ -1552,11 +1429,12 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-entry" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "hello world" }) });
+            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "worker:///x", content: "hello world" })] });
+            // A client reads entries from the perspective of a worker of its workspace.
+            const reader = await namedModelWorker(daemon, created.id, "main");
 
             // full shape — the written content is on one of the entry's channels.
-            const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x" })).entry!;
+            const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x" })).entry!;
             const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
             assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
             const [channel, chan] = found!;
@@ -1564,17 +1442,17 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             assert.equal(chan.contentLength, 11);
 
             // {§methods-entry-read}: an offset returns only that channel's remaining content.
-            const sliced = (await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", channel, offset: 6 })).entry!;
+            const sliced = (await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x", channel, offset: 6 })).entry!;
             assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
 
             // a missing entry is 404; an offset without a channel is refused.
-            const missing = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///nope" });
+            const missing = await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///nope" });
             assert.equal(missing.status, 404);
             assert.ok("problem" in missing);
             assert.equal(missing.problem.type, "https://problems.plurnk.xyz/daemon/entry/entry-not-found");
             assert.equal(missing.problem.target, "worker:///nope");
-            const offset = await daemon.readEntry({ workspaceId: created.id, workerId: clientWorker.id, target: "worker:///x", offset: 3 });
+            const offset = await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x", offset: 3 });
             assert.equal(offset.status, 400);
             assert.ok("problem" in offset);
             assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
@@ -1598,7 +1476,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             });
             const network = await daemon.readEntry({
                 workspaceId: created.id,
-                workerId: clientWorker.id,
+                workerId: reader,
                 target: "https://example.org:8443/x?b=2&a=1&a=3#body",
             });
             assert.equal(network.status, 200);
@@ -1607,7 +1485,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
 
             const userinfo = await daemon.readEntry({
                 workspaceId: created.id,
-                workerId: clientWorker.id,
+                workerId: reader,
                 target: "https://alice:secret@example.org:8443/x?b=2&a=1&a=3",
             });
             assert.equal(userinfo.status, 400);
@@ -1619,41 +1497,44 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
 });
 
 test("the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held", async () => {
-    await withDaemon(null, async (db, daemon, addr) => {
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-fork" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "branch me" }) });
+            // A model worker with a completed loop to branch.
+            const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "branch me" });
+            assert.equal(finalStatus, 200);
+            const sourceWorker = modelWorkerId!;
 
-            const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "My_branch" });
-            assert.ok(branch.workerId > 0 && branch.workerId !== clientWorker.id, "forkWorker created a new worker");
-            assert.equal(branch.parentWorkerId, clientWorker.id, "the branch is lineaged to its parent");
+            const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: sourceWorker, name: "My_branch" });
+            assert.ok(branch.workerId > 0 && branch.workerId !== sourceWorker, "forkWorker created a new worker");
+            assert.equal(branch.parentWorkerId, sourceWorker, "the branch is lineaged to its parent");
             assert.equal(branch.workerName, "My_branch");
             // {§application-worker-observation} — the directory says how it was minted (#523).
             const observed = await daemon.readWorker({ workspaceId: created.id, identity: { id: branch.workerId } });
             assert.equal(observed?.kind, "fork");
             // A fork inherits its parent's loops by snapshot, so its latest loop is the completed one it forked from.
             assert.equal(observed?.lifecycle, "completed");
-            const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: clientWorker.id } });
+            const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: sourceWorker } });
             assert.equal(parent?.kind, "root");
 
             // invariants: the runtime actor's name and a foreign worker are both refused.
-            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
+            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: sourceWorker, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
             const invalidName = await rejectedProblem(() => daemon.forkWorker({
                 workspaceId: created.id,
-                workerId: clientWorker.id,
+                workerId: sourceWorker,
                 name: "_invalid",
             }));
             assert.equal(invalidName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
             assert.equal(invalidName.status, 400);
             assert.equal(invalidName.name, "_invalid");
             assert.equal(invalidName.retryable, false);
-            const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
-            const otherWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: other.id }))!;
+            const other = (await rpcCall(ws, 3, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
+            const otherWorker = await namedModelWorker(daemon, other.id, "main");
             const problem = await rejectedProblem(() => daemon.forkWorker({
                 workspaceId: created.id,
-                workerId: otherWorker.id,
+                workerId: otherWorker,
             }));
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
             assert.equal(problem.status, 409);
@@ -1665,11 +1546,10 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
 test("the module setup seam registers a live tag, dispatchable through the engine", async () => {
     // The generic module-load hook builds the RegistryEntry with its own
     // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
-    await withDaemon(null, async (db, daemon, addr) => {
+    await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-module" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
 
             await assert.rejects(
                 () => daemon.registerRuntime({ ...fakeRegistration("ownerless"), namespaceOwner: " " }),
@@ -1678,8 +1558,8 @@ test("the module setup seam registers a live tag, dispatchable through the engin
             assert.equal(daemon.schemes.has("ownerless"), false, "invalid ownership cannot claim a scheme");
             await daemon.registerRuntime(fakeRegistration("seamtag"));
             // The tag is live — the engine dispatches to the registered executor.
-            const exec = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
-            assert.equal(exec.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
+            const [exec] = await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: "seamtag", command: "ping" })] });
+            assert.equal(exec!.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
             await assert.rejects(() => daemon.registerRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
@@ -1690,11 +1570,11 @@ test("the module setup seam registers a live tag, dispatchable through the engin
 
 test("the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
     // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
-    // the log/entry + stream/concluded. dispatchAsClient routes through engine.dispatch identically to
+    // the log/entry + stream/concluded. dispatchClientAction routes through engine.dispatch identically to
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the
     // per-chunk path can't silently regress. (A streaming stub with a DECLARED channel — the exec seeds
     // the executor's channel topology eagerly, so the write appends and the notify fires.)
-    await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (db, daemon, addr) => {
+    await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             await daemon.registerRuntime({
@@ -1722,11 +1602,10 @@ test("the client-interface seam — a dispatched execution's stdout streams as s
                 availability: { available: true, detail: "fake" },
             });
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-stream" })).result as { id: number };
-            const clientWorker = (await db.test_get_client_worker_by_workspace.get<{ id: number }>({ workspace_id: created.id }))!;
             const events: string[] = [];
             daemon.subscribeToEvents((_s, method) => { events.push(method); });
 
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: clientWorker.id, statement: Dsl.buildExec({ runtime: "streamtag", command: "go" }) });
+            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: "streamtag", command: "go" })] });
             await waitFor(() => events.filter((m) => m === "stream/event"), (s) => s.length > 0, { timeoutMs: 4000 });
             assert.ok(events.filter((m) => m === "stream/event").length > 0, "the exec's stdout arrived as stream/event on the seam — not just log/entry + stream/concluded");
         } finally { ws.close(); }
@@ -2074,13 +1953,12 @@ test("a module that acquires resources during setup is closed when later setup f
     }
 });
 
-test("{§actor-boundary-attached-functionality} clients share workspace Functionality while journaling in their own worker", async () => {
+test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a person's client operations share workspace Functionality and journal in the runtime worker", async () => {
     const db = await openMigrated();
     const owner = "attached Functionality test module";
     const tag = "attachedcap";
     const workspaceId = await insertWorkspace(db, `attached-functionality-${crypto.randomUUID()}`);
     const modelWorkerId = await insertWorker(db, workspaceId, null, "primary", "model");
-    const clientWorkerId = await insertWorker(db, workspaceId, null, "client-1", "client");
     await db.workspace_module_state_put.run({
         workspace_id: workspaceId,
         namespace_owner: owner,
@@ -2117,50 +1995,71 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
     daemon.registerModule(capabilityModule, "test-module");
     try {
         await daemon.start();
-        await daemon.attachWorkspace({ workspaceId, workerId: clientWorkerId });
+        await daemon.attachWorkspace({ workspaceId });
 
-        // The runtime belongs to the workspace; the submitted operation belongs to its actor.
-        const attached = await daemon.dispatchAsClient({
+        // The runtime belongs to the workspace; the operation belongs to the person who acted, here for the model worker.
+        const [attached] = await daemon.dispatchClientAction({
             workspaceId,
-            workerId: clientWorkerId,
-            statement: Dsl.buildExec({ runtime: tag, command: "through the attached worker" }),
+            actor: TEST_OWNER,
+            contextWorkerId: modelWorkerId,
+            statements: [Dsl.buildExec({ runtime: tag, command: "acting for the model worker" })],
         });
-        assert.equal(attached.status, 200);
+        assert.equal(attached!.status, 200);
         assert.deepEqual(activated, [workspaceId], "residency is acquired for the workspace");
         assert.deepEqual(executions, [workspaceId], "the shared runtime ran");
-        assert.equal(
-            (await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: clientWorkerId }))
-                .filter(({ origin }) => origin === "client").length,
-            1,
-            "the client operation journals in the client worker",
-        );
+        const runtimeWorkerId = await daemon.ensureRuntimeWorker(workspaceId);
+        const clientRows = (await db.test_log_entries_by_worker.all<{ origin: string; loop_id: number }>({ worker_id: runtimeWorkerId }))
+            .filter(({ origin }) => origin === "client");
+        assert.equal(clientRows.length, 1, "the client operation journals in the runtime worker");
+        const operationLoop = (await daemon.listWorkerLoops({ workspaceId, workerId: runtimeWorkerId }))
+            .find(({ id }) => id === clientRows[0]!.loop_id);
+        assert.equal(operationLoop?.promptSource, TEST_OWNER, "the operation's loop names its person");
         const modelRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
         assert.equal(
             modelRows.some(({ origin }) => origin === "client"),
             false,
-            "no client row enters the model Worker's log; its rows are its own _plurnk materialization",
+            "no client row enters the log of the model worker the person acted for",
         );
 
-        // No worker attachment is needed to use the same environment.
-        const detached = await daemon.dispatchAsClient({
+        // Acting for no worker uses the same environment.
+        const [unattached] = await daemon.dispatchClientAction({
             workspaceId,
-            workerId: clientWorkerId,
-            statement: Dsl.buildExec({ runtime: tag, command: "without a worker attachment" }),
+            actor: TEST_OWNER,
+            statements: [Dsl.buildExec({ runtime: tag, command: "acting for no worker" })],
         });
-        assert.equal(detached.status, 200, "an unattached client can use the workspace runtime");
+        assert.equal(unattached!.status, 200, "an operation acting for no worker can use the workspace runtime");
         assert.deepEqual(executions, [workspaceId, workspaceId]);
 
-        // The submitting actor must belong to the workspace.
+        // The worker an operation acts for must be a model worker of the workspace.
         const foreignWorkspace = await insertWorkspace(db, `attached-foreign-${crypto.randomUUID()}`);
         const foreignWorker = await insertWorker(db, foreignWorkspace, null, "elsewhere", "model");
         await assert.rejects(
-            () => daemon.dispatchAsClient({
+            () => daemon.dispatchClientAction({
                 workspaceId,
-                workerId: foreignWorker,
-                statement: Dsl.buildExec({ runtime: tag, command: "cross-workspace" }),
+                actor: TEST_OWNER,
+                contextWorkerId: foreignWorker,
+                statements: [Dsl.buildExec({ runtime: tag, command: "cross-workspace" })],
             }),
-            /does not belong to workspace/,
+            (error: unknown) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
+                return true;
+            },
         );
+        await assert.rejects(
+            () => daemon.dispatchClientAction({
+                workspaceId,
+                actor: TEST_OWNER,
+                contextWorkerId: runtimeWorkerId,
+                statements: [Dsl.buildExec({ runtime: tag, command: "acting for the runtime" })],
+            }),
+            (error: unknown) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
+                return true;
+            },
+        );
+        assert.deepEqual(executions, [workspaceId, workspaceId], "a refused operation runs nothing");
     } finally {
         await daemon.stop();
         await db.close();

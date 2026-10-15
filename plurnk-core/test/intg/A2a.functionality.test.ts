@@ -12,6 +12,7 @@ import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { dispatchSettled } from "./_scheme.ts";
 import { sendStmt } from "./_dsl.ts";
+import { modelOperation } from "./_workers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const target = (alias: string): UrlPath => ({
@@ -34,8 +35,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     const workspaceId = await insertWorkspace(db, `a2a-agents-${crypto.randomUUID()}`);
     const model = await insertWorker(db, workspaceId, null, "primary", "model");
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
-    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-    for (const workerId of [model, peer, client]) await ownWorker(db, workspaceId, workerId);
+    for (const workerId of [model, peer]) await ownWorker(db, workspaceId, workerId);
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule(OutboundModule.init({
         PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
@@ -54,11 +54,15 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
         const references = await daemon.engine.referenceEntries(workspaceId);
         return references.find(({ pathname }) => pathname === `/_plurnk/a2a/${alias}.md`)?.content;
     };
-    // {§http-outbound-proposes} — reaching a remote agent proposes. A client dispatch settles its
-    // own proposal through the event it receives, exactly as a real client does; an alias that is
-    // not configured still refuses before any proposal, so a refusal needs no settlement.
-    const send = (alias: string, workerId = client) => dispatchSettled(daemon, { workspaceId, address: TEST_OWNER }, () =>
-        daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } }));
+    // {§http-outbound-proposes} — reaching a remote agent proposes. A person's operation is that person's
+    // decision already ({§proposal-disposition}); a worker's own operation is settled by its owner through the
+    // event the owner receives, exactly as a real client does. An alias that is not configured still refuses
+    // before any proposal, so a refusal needs no settlement.
+    const ping = (alias: string) => ({ ...sendStmt(target(alias), "ping"), target: target(alias) });
+    const send = async (alias: string, workerId?: number) => workerId === undefined
+        ? (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [ping(alias)] }))[0]!
+        : await dispatchSettled(daemon, { workspaceId, address: TEST_OWNER }, () =>
+            modelOperation(daemon, db, { workspaceId, workerId, statement: ping(alias) }));
     try {
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.a2a.")),

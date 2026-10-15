@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OutboundModule } from "@plurnk/plurnk-a2a";
@@ -119,12 +119,13 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         const part = JSON.parse(evidence.entry.channels.json!.content).parts[1] as { raw?: string; resource?: string; bytes?: number };
         assert.deepEqual([part.raw, part.resource, part.bytes], [undefined, resource, media.bytes.length], "the protocol JSON names the resource and its byte count in place of base64");
         const pathname = new URL(resource!).pathname;
-        const exact = await daemon.dispatchAsClient({ workspaceId, workerId, statement: {
+        // A person's READ, acting for the worker ({§actor-boundary-client-operations}).
+        const [exact] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [{
             op: "READ", aside: null, matcher: null, metadata: null, body: null, position: { line: 1, column: 1 }, lineMarker: { marks: [1, -1] },
             target: { kind: "url", raw: `${resource}#bytes`, scheme: "a2a", username: null, password: null, hostname: "remote", port: null, pathname, query: null, fragment: "bytes" },
-        } });
-        assert.equal(exact.status, 200);
-        assert.equal(exact.content, ByteView.hexLines(media.bytes), "exact A2A evidence survives offline and after curation, as the resource's own bytes");
+        }] });
+        assert.equal(exact!.status, 200);
+        assert.equal(exact!.content, ByteView.hexLines(media.bytes), "exact A2A evidence survives offline and after curation, as the resource's own bytes");
     } finally {
         await daemon.stop();
         await db.close();

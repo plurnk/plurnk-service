@@ -1,6 +1,6 @@
-import { ownWorker, serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§rollback} {§methods-workspace-rollback} — a worker's settled file mutations after a coordinate are
-// reversed latest first as the acting client's own operations; a patchless row is skipped; drift stops
+// reversed latest first as one client operation of the acting person; a patchless row is skipped; drift stops
 // the rollback where it is; a rollback is itself reversible; a coordinate that is not a row refuses.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ const parseOne = (source: string): PlurnkStatement => {
 
 const exists = async (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
-test("{§rollback} reversals land as the client's own operations, latest first; patchless rows are skipped; drift stops it; a rollback is reversible", async (t) => {
+test("{§rollback} reversals land as one client operation of the acting person, latest first; patchless rows are skipped; drift stops it; a rollback is reversible", async (t) => {
     serverProposals(t, "accept");
     const env = { PLURNK_SERVICE_GIT_ALLOWED: process.env.PLURNK_SERVICE_GIT_ALLOWED, PLURNK_SERVICE_GIT_AUTO: process.env.PLURNK_SERVICE_GIT_AUTO };
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
@@ -46,8 +46,6 @@ test("{§rollback} reversals land as the client's own operations, latest first; 
     const workspaceId = await insertWorkspace(db, `rollback-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
     const model = await insertWorker(db, workspaceId, null, "primary", "model");
-    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-    await ownWorker(db, workspaceId, client);
     const loopId = await insertLoop(db, model, 1);
     const turnId = await insertTurn(db, loopId, 1, 102);
     const daemon = new Daemon({ db, provider: null });
@@ -61,10 +59,17 @@ test("{§rollback} reversals land as the client's own operations, latest first; 
             return sequence;
         };
         const content = (path: string) => readFile(join(root, path), "utf8");
-        const rollback = (to: string) => daemon.rollback({ workspaceId, workerId: model, clientWorkerId: client, to });
-        const clientMutations = async () => (await db.log_file_mutations_after.all<{ op: string; pathname: string | null; patch: string | null }>({
-            worker_id: client, loop_seq: 0, turn_seq: 0, sequence: 0,
-        })).map(({ op, pathname, patch }) => `${op} ${pathname} ${patch === null ? "no patch" : "patch"}`);
+        const rollback = (to: string) => daemon.rollback({ workspaceId, workerId: model, actor: TEST_OWNER, to });
+        // A person's client operations journal in the runtime worker ({§connection-lifecycle}).
+        const runtime = await daemon.ensureRuntimeWorker(workspaceId);
+        const personLoops = async () => (await daemon.listWorkerLoops({ workspaceId, workerId: runtime }))
+            .filter(({ promptSource }) => promptSource === TEST_OWNER);
+        const clientMutations = async () => {
+            const operations = new Set((await personLoops()).map(({ sequence }) => sequence));
+            return (await db.log_file_mutations_after.all<{ loop_seq: number; op: string; pathname: string | null; patch: string | null }>({
+                worker_id: runtime, loop_seq: 0, turn_seq: 0, sequence: 0,
+            })).filter(({ loop_seq }) => operations.has(loop_seq)).map(({ op, pathname, patch }) => `${op} ${pathname} ${patch === null ? "no patch" : "patch"}`);
+        };
 
         await model_("````READ (a.md) <1,-1>````");
         const first = await model_("````EDIT (a.md) <2>\nTWO\n````");
@@ -88,7 +93,10 @@ test("{§rollback} reversals land as the client's own operations, latest first; 
         assert.equal(await content("a.md"), "one\nTWO\nthree\n");
         assert.equal(await exists(join(root, "new.md")), false);
         assert.equal(await exists(join(root, "bin2.png")), true, "a patchless row's effect stands");
-        assert.deepEqual(await clientMutations(), ["EDIT a.md patch", "KILL new.md patch"], "every reversal is a row of the acting client with a patch of its own");
+        assert.deepEqual(await clientMutations(), ["EDIT a.md patch", "KILL new.md patch"], "every reversal is a row of the person's operation with a patch of its own");
+        const [operation] = await personLoops();
+        assert.equal((await personLoops()).length, 1, "the reversals are one client operation, attributed to the acting person");
+        assert.equal(operation?.status, 200);
 
         // Rolling back past the first edit: the rows an earlier rollback reversed are recognized and skipped,
         // the first edit is reversed, and the original returns.

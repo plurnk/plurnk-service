@@ -9,6 +9,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
 import { makeMockResponse, fixtureExecutors } from "./_mock.ts";
+import { modelOperation } from "./_workers.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
@@ -73,7 +74,8 @@ test("{§worker-scheme-spawn} a held name: FORK is 409 naming the working forms,
             assert.equal(finalStatus, 200);
             const problemOf = (result: { status: number }): { type?: string; recovery?: string; worker?: string } =>
                 ((result as { problem?: { type?: string; recovery?: string; worker?: string } }).problem ?? {});
-            const dispatch = (statement: string) => daemon.dispatchAsClient({ workspaceId, workerId: modelWorkerId!, statement: parseOne(statement) });
+            // The model's own operations after its loop concluded.
+            const dispatch = (statement: string) => modelOperation(daemon, db, { workspaceId, workerId: modelWorkerId!, statement: parseOne(statement) });
 
             const fork = await dispatch("````FORK (worker://pong)\nbranch it\n````");
             assert.equal(fork.status, 409, "a branch needs a name no worker holds");

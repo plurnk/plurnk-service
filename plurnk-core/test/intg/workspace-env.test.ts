@@ -13,8 +13,8 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
     try {
         const workspaceId = await insertWorkspace(db, `env-${crypto.randomUUID()}`);
         const other = await insertWorkspace(db, `other-${crypto.randomUUID()}`);
-        const alice = await insertWorker(db, workspaceId, null, "alice", "client");
-        const bob = await insertWorker(db, workspaceId, null, "bob", "client");
+        const alice = await insertWorker(db, workspaceId, null, "alice", "model");
+        const bob = await insertWorker(db, workspaceId, null, "bob", "model");
         const shared = (verb: string, params: Record<string, unknown> = {}, workspace = workspaceId) =>
             daemon.invokeModuleAction(`workspace.env.${verb}`, params, { scope: "workspace", workspaceId: workspace });
         const local = (workerId: number, verb: string, params: Record<string, unknown> = {}) =>
@@ -41,7 +41,7 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
         await shared("enable", { alias: "ENV_WITNESS" });
         assert.equal((await get(alice))?.state, "active");
         assert.equal((await EnvFunctionality.resolve(db, workspaceId, alice)).env.ENV_WITNESS, "workspace");
-        const child = await insertWorker(db, workspaceId, bob, "child", "client");
+        const child = await insertWorker(db, workspaceId, bob, "child", "model");
         await shared("remove", { alias: "ENV_WITNESS" });
         await shared("add", { alias: "ENV_WITNESS", definition: { value: "updated" } });
         assert.deepEqual((await get(child))?.definition, { value: "updated" }, "workspace values stay live through parentage");

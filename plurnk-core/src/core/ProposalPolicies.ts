@@ -8,12 +8,14 @@ export default class ProposalPolicies {
         return Knob.choice("PLURNK_SERVICE_PROPOSALS", PROPOSAL_POLICIES);
     }
 
-    static disposition(tools: readonly string[], maintenance: boolean): ProposalDisposition {
+    static disposition(tools: readonly string[], turn: { readonly maintenance: boolean; readonly clientOperation: boolean }): ProposalDisposition {
         // {§runtime-bookkeeping-policy} Unexpected maintenance effects never acquire authority.
-        if (maintenance) return { decision: "reject", outcome: "runtime_bookkeeping" };
+        if (turn.maintenance) return { decision: "reject", outcome: "runtime_bookkeeping" };
         try {
             const decision = ProposalPolicies.read();
             if (decision !== "review") return { decision, ...(decision === "reject" ? { outcome: "policy_veto" } : {}) };
+            // {§proposal-disposition} A person's client operation is that person's decision already.
+            if (turn.clientOperation) return { decision: "accept", outcome: "client_operation" };
             return tools.includes("request_approval")
                 ? { decision: "review" }
                 : { decision: "reject", outcome: "no_review_channel" };

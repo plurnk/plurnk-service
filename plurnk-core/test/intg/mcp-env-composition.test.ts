@@ -15,6 +15,7 @@ import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
+import { modelOperation } from "./_workers.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 
@@ -61,7 +62,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, `mcp-env-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "alice", "client");
+        const workerId = await insertWorker(db, workspaceId, null, "alice", "model");
         await ownWorker(db, workspaceId, workerId);
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         const set = (alias: string, value: string) => invoke("env", "add", { alias, definition: { value } });
@@ -97,7 +98,8 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             if (op?.kind !== "statement") throw new Error("Expected one operation");
             const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: runtime, prefix: "/%" })).length;
             const seen = proposals.length;
-            const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: op.statement });
+            // The worker's own verb, reviewed by its owner.
+            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: op.statement });
             if (approve) {
                 await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10000 });
                 await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
@@ -226,7 +228,7 @@ for (const { policy, decision } of [
         await daemon.start();
         try {
             const workspaceId = await insertWorkspace(db, `mcp-approval-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId, null, "alice", "client");
+            const workerId = await insertWorker(db, workspaceId, null, "alice", "model");
             await ownWorker(db, workspaceId, workerId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
             const definition = { name: "credential", ...environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" }) };
@@ -239,7 +241,7 @@ for (const { policy, decision } of [
                 if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
             });
             t.after(unsubscribe);
-            const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: op.statement });
+            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: op.statement });
             if (policy === "review") {
                 await waitFor(() => proposals, (items) => items.length === 1, { timeoutMs: 10000 });
                 assert.deepEqual((await list()).definitions, [], "awaiting approval publishes no definition");

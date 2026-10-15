@@ -1,17 +1,16 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { writtenOp, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { insertWorker } from "./_db.ts";
 import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelWorker } from "./_workers.ts";
 
 test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable operand examples", async (t) => {
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
@@ -19,9 +18,8 @@ test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable op
         t.after(() => ws.close());
         const created = await rpcCall(ws, 1, "workspace.create", { name: "transfer-reference" });
         const workspaceId = (created.result as { id: number }).id;
-        const workerId = await insertWorker(db, workspaceId, null, "client", "client");
-        const dispatch = (statement: Parameters<typeof daemon.dispatchAsClient>[0]["statement"]) =>
-            daemon.dispatchAsClient({ workspaceId, workerId, statement });
+        const dispatch = async (statement: PlurnkStatement) =>
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const uri = "skill://plurnk/references/copy-move.md";
         const found = await dispatch(findStmt(parsePath("skill://plurnk/references/*"), regex("COPY")));
@@ -63,9 +61,8 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         const created = await rpcCall(ws, 1, "workspace.create", { projectRoot: root });
         const workspaceId = (created.result as { id: number }).id;
         const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const client = await insertWorker(db, workspaceId, null, "client", "client");
-        const dispatch = (statement: Parameters<typeof daemon.dispatchAsClient>[0]["statement"]) =>
-            daemon.dispatchAsClient({ workspaceId, workerId: client, statement });
+        const dispatch = async (statement: PlurnkStatement) =>
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const catalog = await dispatch({ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } });
         assert.equal(catalog.status, 200);
@@ -90,7 +87,8 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         assert.equal(config.content, (await readFile("INSTALL.md", "utf8")).trimEnd(), "configuration has one package owner");
         const context = { scope: "workspace" as const, workspaceId };
         const child = await daemon.forkWorker({ workspaceId, workerId });
-        const childRead = () => daemon.dispatchAsClient({ workspaceId, workerId: child.workerId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
+        // The child's own READ.
+        const childRead = () => modelOperation(daemon, db, { workspaceId, workerId: child.workerId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
         assert.equal((await childRead()).status, 200, "children use the same workspace skill");
         await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
         assert.equal((await read("skill://plurnk/.env.defaults")).status, 404);

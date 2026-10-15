@@ -237,6 +237,19 @@ export default class ClientInput {
         return resources;
     }
 
+    // {§actor-boundary-client-operations} The canonical address of the person a client operation acts for.
+    static assertActor(context: string, actor: unknown): string {
+        if (typeof actor !== "string" || actor.length === 0) {
+            ClientInput.#invalid(
+                context,
+                "actor-invalid",
+                "actor is not a non-empty string.",
+                { field: "actor", recovery: "Name the acting person's canonical address." },
+            );
+        }
+        return actor;
+    }
+
     static assertOptionalSource(context: string, source: unknown): string | undefined {
         if (source === undefined) return undefined;
         if (typeof source !== "string" || source.length === 0) {

@@ -4,7 +4,7 @@ import { AiSdkProvider, type ProviderCost } from "@plurnk/plurnk-providers";
 import { insertLoop, insertWorker } from "./_db.ts";
 import Dsl from "./dsl.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelWorker } from "./_workers.ts";
 
 for (const reported of [false, true]) {
     for (const stop of ["KILL", "shutdown"] as const) {
@@ -54,7 +54,8 @@ for (const reported of [false, true]) {
                     const task = await daemon.runLoop({ workspaceId, workerId: child, prompt: "Think about the task." });
                     await observed.promise;
                     if (stop === "KILL") {
-                        const result = await daemon.dispatchAsClient({
+                        // The parent's own KILL of its child.
+                        const result = await modelOperation(daemon, db, {
                             workspaceId, workerId: parent,
                             statement: Dsl.parseSingleStatement("````KILL (worker://child)\n````"),
                         });

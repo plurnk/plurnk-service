@@ -40,6 +40,9 @@ export interface PlurnkSchemeContext {
     readonly logEntryId?: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
+    // {§actor-boundary-client-operations} — present on a person's client operation: the worker whose log its
+    // `log:///` addresses read, or null when the person acts for none.
+    readonly client?: { readonly contextWorkerId: number | null };
     // {§file-delete-revision}: a selected file revision survives composed mutations and approval.
     readonly fileRevision?: string;
     readonly streamEventNotify?: StreamEventNotify;

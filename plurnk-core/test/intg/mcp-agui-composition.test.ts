@@ -252,9 +252,12 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one READ");
-            const result = await daemon.dispatchAsClient({ workspaceId: workspaceRow.id, workerId: producer.id, statement: item.statement });
-            assert.equal(result.status, 200);
-            return JSON.parse(result.content as string) as { tools: { name: string; inputSchema: object }[] };
+            // A person's READ, acting for the producing model worker ({§actor-boundary-client-operations}).
+            const [result] = await daemon.dispatchClientAction({
+                workspaceId: workspaceRow.id, actor: "test://primary", contextWorkerId: producer.id, statements: [item.statement],
+            });
+            assert.equal(result!.status, 200);
+            return JSON.parse(result!.content as string) as { tools: { name: string; inputSchema: object }[] };
         };
         assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo"],
             "the catalog excludes both capability-denied fail and non-allowlisted where");

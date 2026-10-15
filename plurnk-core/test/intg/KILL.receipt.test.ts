@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -75,12 +75,13 @@ Continue the task.
                     assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
                     assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
                     assert.ok(Number(receipt.tokens) > 0, "packet accounting includes the complete visible receipt");
-                    const recalled = await daemon.dispatchAsClient({
-                        workspaceId, workerId: run.modelWorkerId!,
-                        statement: { op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } },
+                    // A person's READ of the model's log, acting for the model worker ({§actor-boundary-client-operations}).
+                    const [recalled] = await daemon.dispatchClientAction({
+                        workspaceId, actor: TEST_OWNER, contextWorkerId: run.modelWorkerId!,
+                        statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
-                    assert.equal(recalled.status, 200);
-                    assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
+                    assert.equal(recalled!.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
+                    assert.equal(recalled!.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }

@@ -4,6 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Turn from "../../src/core/Turn.ts";
+import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { routeForSpec } from "../../src/server/model-route.ts";
@@ -121,13 +122,13 @@ test("{§machine-processes}: boot rejects queued provider work owned by a non-mo
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
-        const workspaceId = await insertWorkspace(db, `recovery-client-queue-${crypto.randomUUID()}`);
-        const clientWorkerId = await insertWorker(db, workspaceId);
-        await enqueueLoop(db, clientWorkerId, "illegal queued inference");
+        const workspaceId = await insertWorkspace(db, `recovery-runtime-queue-${crypto.randomUUID()}`);
+        const runtimeWorkerId = await RuntimeWorker.ensure(db, workspaceId);
+        await enqueueLoop(db, runtimeWorkerId, "illegal queued inference");
 
         await assert.rejects(
             () => daemon.start(),
-            /Queued provider work belongs to client worker .* only model workers may enter inference/,
+            /Queued provider work belongs to _plurnk worker .* only model workers may enter inference/,
         );
         assert.equal(mock.remaining, 1, "recovery fails before acquiring a provider for an invalid actor");
     } finally {

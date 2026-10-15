@@ -137,6 +137,7 @@ export class SqlRiteSync {
 	subscription_published_channel_meta: SqlRiteSyncPreparedStatements;
 	find_active_subscription: SqlRiteSyncPreparedStatements;
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
+	find_open_subscriptions_announced_in_loop: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
 	find_exec_runtimes_at_pathname: SqlRiteSyncPreparedStatements;
@@ -210,7 +211,6 @@ export class SqlRiteSync {
 	envelope_get_workspace: SqlRiteSyncPreparedStatements;
 	envelope_get_workspace_by_name: SqlRiteSyncPreparedStatements;
 	envelope_set_workspace_name: SqlRiteSyncPreparedStatements;
-	envelope_insert_worker: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_id: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_name: SqlRiteSyncPreparedStatements;
 	envelope_list_workers_for_workspace: SqlRiteSyncPreparedStatements;
@@ -453,7 +453,6 @@ export class SqlRiteSync {
 	test_first_log_entry: SqlRiteSyncPreparedStatements;
 	test_get_body_by_pathname: SqlRiteSyncPreparedStatements;
 	test_list_workspaces: SqlRiteSyncPreparedStatements;
-	test_get_client_worker_by_workspace: SqlRiteSyncPreparedStatements;
 	test_get_loop_by_worker: SqlRiteSyncPreparedStatements;
 	test_count_loops_by_worker: SqlRiteSyncPreparedStatements;
 	test_loop_queue_by_worker: SqlRiteSyncPreparedStatements;
@@ -753,6 +752,7 @@ export default class SqlRite {
 	subscription_published_channel_meta: SqlRitePreparedStatements;
 	find_active_subscription: SqlRitePreparedStatements;
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
+	find_open_subscriptions_announced_in_loop: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
 	find_exec_runtimes_at_pathname: SqlRitePreparedStatements;
@@ -826,7 +826,6 @@ export default class SqlRite {
 	envelope_get_workspace: SqlRitePreparedStatements;
 	envelope_get_workspace_by_name: SqlRitePreparedStatements;
 	envelope_set_workspace_name: SqlRitePreparedStatements;
-	envelope_insert_worker: SqlRitePreparedStatements;
 	envelope_get_worker_by_id: SqlRitePreparedStatements;
 	envelope_get_worker_by_name: SqlRitePreparedStatements;
 	envelope_list_workers_for_workspace: SqlRitePreparedStatements;
@@ -1069,7 +1068,6 @@ export default class SqlRite {
 	test_first_log_entry: SqlRitePreparedStatements;
 	test_get_body_by_pathname: SqlRitePreparedStatements;
 	test_list_workspaces: SqlRitePreparedStatements;
-	test_get_client_worker_by_workspace: SqlRitePreparedStatements;
 	test_get_loop_by_worker: SqlRitePreparedStatements;
 	test_count_loops_by_worker: SqlRitePreparedStatements;
 	test_loop_queue_by_worker: SqlRitePreparedStatements;

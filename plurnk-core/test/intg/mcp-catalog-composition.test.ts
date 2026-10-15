@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
@@ -80,15 +80,15 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "catalog-race" });
     const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    // Tool documents are workspace resources ({§worker-generated-subtree}); the model worker's next call is under test.
-    const observer = await insertWorker(db, workspaceId, null, "observer", "client");
+    // Tool documents are workspace resources ({§worker-generated-subtree}): a person reads them
+    // ({§connection-lifecycle}), leaving the model worker's next call under test.
     const read = async (path: string) => {
         const source = PlurnkParser.frame(`READ (${path}) <1,-1>`, null);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement");
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        return daemon.dispatchAsClient({ workspaceId, workerId: observer, statement: item.statement });
+        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0]!;
     };
     const toolsDocument = async (extension = "md"): Promise<string> => {
         const document = await read(`worker:///_plurnk/tools/fixture.${extension}`);

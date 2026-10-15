@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { TEST_OWNER } from "./_approval.ts";
 import { serverProposals } from "./_approval.ts";
 // {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
 // through a fixture adapter: one client projection, one generated runtime,
@@ -19,7 +19,6 @@ import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/M
 import type { Executor } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
-import { dispatchSettled } from "./_scheme.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -27,7 +26,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelWorker } from "./_workers.ts";
 
 const OWNER = "fx fixture adapter";
 
@@ -37,6 +36,12 @@ const parseOne = (input: string): PlurnkStatement => {
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
 };
+
+// One statement as a person's client operation ({§connection-lifecycle}), acting for `contextWorkerId` when named.
+const clientOperation = async (daemon: Daemon, workspaceId: number, statement: PlurnkStatement, contextWorkerId?: number) =>
+    (await daemon.dispatchClientAction({
+        workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [statement],
+    }))[0]!;
 
 const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
     namespaceOwner: OWNER,
@@ -175,15 +180,10 @@ for (const caller of ["action", "operation"] as const) {
         const daemon = await boot(db, log);
         t.after(async () => { await daemon.stop(); await db.close(); });
         const workspaceId = await insertWorkspace(db, `replacement-${caller}`);
-        const workerId = await insertWorker(db, workspaceId, null, "client", "client");
-        await ownWorker(db, workspaceId, workerId);
-        const owner = { workspaceId, address: TEST_OWNER };
         const action = (verb: string, params: Readonly<Record<string, unknown>>) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
         const listed = async () => (await action("list", {}) as FunctionalityListResult).definitions;
-        const operate = (verb: string, params: object, decision: "accept" | "reject" = "accept") =>
-            dispatchSettled(daemon, owner, () => daemon.dispatchAsClient({
-                workspaceId, workerId, statement: parseOne(PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params))),
-            }), decision);
+        const run = (statement: PlurnkStatement) => clientOperation(daemon, workspaceId, statement);
+        const operate = (verb: string, params: object) => run(parseOne(PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params))));
         const invoke = async (verb: string, params: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>> => {
             if (caller === "action") {
                 try { return await action(verb, params) as Record<string, unknown>; }
@@ -210,7 +210,7 @@ for (const caller of ["action", "operation"] as const) {
         assert.equal(unavailable.status, 502);
         assert.equal((unavailable.problem as ProblemDetails).type, "https://problems.plurnk.xyz/fx/fixture/refused");
         assert.deepEqual(await listed(), original, "preparation failure preserves the complete prior state");
-        assert.equal((await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(PlurnkParser.frame("local", "fixture")) })).status, 200,
+        assert.equal((await run(parseOne(PlurnkParser.frame("local", "fixture")))).status, 200,
             "the preceding capability still executes after replacement fails");
 
         const auth = await replace("local", "auth");
@@ -251,9 +251,11 @@ for (const caller of ["action", "operation"] as const) {
         assert.equal(unnamed.status, 400, "replacement always names its alias");
         assert.equal((unnamed.problem as ProblemDetails).type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
         if (caller === "operation") {
+            // {§proposal-disposition} A person's operation is that person's decision; the server's reject still applies.
+            serverProposals(t, "reject");
             const before = await listed();
             log.length = 0;
-            assert.equal((await operate("replace", { alias: "local", definition: { kind: "ok" } }, "reject")).status, 400);
+            assert.equal((await operate("replace", { alias: "local", definition: { kind: "ok" } })).status, 400);
             assert.deepEqual(await listed(), before);
             assert.deepEqual(log, [], "a rejected replacement never prepares or publishes");
         }
@@ -679,9 +681,8 @@ for (const defect of ["outcome", "namespace"] as const) {
         assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), [], "rejected publication clears its preparation activity");
         const result = await action("list") as { definitions: Array<{ alias: string }> };
         assert.deepEqual(result.definitions.map(({ alias }) => alias), ["svc"]);
-        const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
         for (const [tag, expected] of [["svc", 200], ["candidate", 400]] as const) {
-            const result = await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(PlurnkParser.frame(tag, "fixture")) });
+            const result = await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame(tag, "fixture")));
             assert.equal(result.status, expected, `${tag}: ${JSON.stringify(result)}`);
         }
     });
@@ -800,7 +801,6 @@ test("{§configuration-definition-resolution} failed inherited preparation prese
     let daemon = await start();
     t.after(async () => { await daemon.stop(); await db.close(); });
     const workspaceId = await insertWorkspace(db, "failed-inheritance");
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
     await invoke("add", { alias: "svc", definition: { kind: "doc" } });
     baseline = { kind: "fail" };
@@ -811,7 +811,7 @@ test("{§configuration-definition-resolution} failed inherited preparation prese
     assert.deepEqual((await invoke("list") as FunctionalityListResult).definitions, [{
         alias: "svc", origin: "workspace", state: "active", definition: { kind: "doc" },
     }]);
-    const result = await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(PlurnkParser.frame("svc", "fixture")) });
+    const result = await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("svc", "fixture")));
     assert.equal(result.status, 200, "the old capability remains callable after rejected restoration");
     await daemon.stop();
     daemon = await start();
@@ -824,16 +824,17 @@ test("{§module-workspace-sharing} {§functionality-coordinator} registration, c
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-    await ownWorker(db, workspaceId, client);
     let daemon = await boot(db, log);
     const model = await namedModelWorker(daemon, workspaceId, "main");
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
         daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
-    const exec = (tag: string, workerId = client) =>
-        daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(`\`\`\`\`${tag}
+    const invocation = (tag: string) => parseOne(`\`\`\`\`${tag}
 fixture
-\`\`\`\``) });
+\`\`\`\``);
+    // A person's operation ({§connection-lifecycle}), or one of the named worker's own.
+    const exec = (tag: string, workerId?: number) => workerId === undefined
+        ? clientOperation(daemon, workspaceId, invocation(tag))
+        : modelOperation(daemon, db, { workspaceId, workerId, statement: invocation(tag) });
     const states = async () =>
         (await invoke<{ definitions: Array<{ alias: string; origin: string; state: string }> }>("list", {})).definitions
             .map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
@@ -900,7 +901,7 @@ fixture
 
         // A family's published documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
-        await daemon.dispatchAsClient({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/fx/docy.md)````") });
+        await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/fx/docy.md)````"), model);
         const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
         assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared published document");
         for (const { content } of document) assert.match(content, /fixture document/);
@@ -935,10 +936,9 @@ fixture
 test("{§functionality-publication} a failed publication restores state, runtime selection, and every generated document", async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-rollback-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     const daemon = await boot(db, []);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````") });
+    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````"));
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;
@@ -962,8 +962,6 @@ test("{§functionality-publication} a failed publication restores state, runtime
 test("{§functionality-publication} a management stream reports publication refusal instead of premature success", { timeout: 30_000 }, async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-result-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "client", "client");
-    await ownWorker(db, workspaceId, workerId);
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -972,14 +970,7 @@ test("{§functionality-publication} a management stream reports publication refu
     t.mock.method(daemon, "replaceWorkspaceCapabilities", async () => {
         throw new OperationFailureError(refused);
     }, { times: 1 });
-    const proposal = Promise.withResolvers<number>();
-    const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
-        if (method === "loop/proposal") proposal.resolve((params as { logEntryId: number }).logEntryId);
-    });
-    t.after(unsubscribe);
-    const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````") });
-    await daemon.resolveProposal(await proposal.promise, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
-    await pending;
+    await clientOperation(daemon, workspaceId, parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````"));
     assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "fx" }), refused,
         "the invoking stream carries the exact refused publication, not an active definition");
     assert.equal(log.filter((line) => line === "abort:candidate,svc").length, 1);
@@ -1053,29 +1044,28 @@ test("{§functionality-model-mutation} authorization-required reaches the model 
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
 
-test("{§functionality-model-mutation} execution verbs are the same owner: read verbs run ungated, host verbs propose, acceptance publishes at the turn boundary", async () => {
+test("{§functionality-model-mutation} {§proposal-disposition} execution verbs are the same owner: read verbs run ungated, a person's host verb settles as that person's decision, publication lands at the turn boundary", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-exec-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-    await ownWorker(db, workspaceId, client);
     const daemon = await boot(db, log);
     const states = async () =>
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
-    const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(program) });
+    const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
     // A family verb streams its JSON outcome into the Worker's fx:// output
     // entry; the dispatch itself reports the started stream ({§exec-stream}).
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "fx" });
-    const proposals: number[] = [];
+    const proposals: Array<{ logEntryId: number; disposition: unknown }> = [];
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
-        if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
+        if (method === "loop/proposal") proposals.push(params as { logEntryId: number; disposition: unknown });
     });
-    const accepted = async (program: string, decision: "accept" | "reject") => {
+    // A host verb proposes, and under server review the person's operation settles at once: nobody resolves it.
+    const proposed = async (program: string) => {
         const seen = proposals.length;
-        const pending = operate(program);
-        while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
-        await daemon.resolveProposal(proposals[seen]!, { decision }, { workspaceId, address: TEST_OWNER });
-        return pending;
+        const result = await operate(program);
+        assert.equal(proposals.length, seen + 1, "the host verb proposed");
+        assert.deepEqual(proposals[seen]!.disposition, { decision: "accept", outcome: "client_operation" });
+        return result;
     };
     try {
         // read verbs run ungated.
@@ -1085,9 +1075,9 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         const listing = await verbResult();
         assert.equal((listing as { family?: string }).family, "fx", "the verb's JSON result streams into the family's output entry");
 
-        // A host verb proposes; acceptance runs the same coordinator method and
-        // the capability is live before the next operation.
-        const added = await accepted("````fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````", "accept");
+        // An accepted host verb runs the same coordinator method and the capability is live
+        // before the next operation.
+        const added = await proposed("````fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````");
         // An accepted settlement replaces the 202 with 200 ({§proposal-accept-applies});
         // the verb's own 201 and outcome ride in the results channel.
         assert.equal(added.status, 200, "the accepted add settled inside the turn");
@@ -1095,16 +1085,17 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
-        const down = await accepted("````fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````", "accept");
+        const down = await proposed("````fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````");
         assert.equal(down.status, 200);
         await operate("````fx (list)````");
         const downState = (await states()).find(({ alias }) => alias === "down");
         assert.equal(downState?.state, "unavailable");
         assert.equal(downState?.problem?.status, 502, "the enabled definition keeps its exact Problem");
 
-        // Rejection performs nothing: no preparation, no state.
+        // Rejection performs nothing: no preparation, no state. The server's reject applies to a person's operation too.
+        serverProposals(t, "reject");
         log.length = 0;
-        const rejected = await accepted("````fx (add)\n{\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n````", "reject");
+        const rejected = await operate("````fx (add)\n{\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n````");
         assert.equal(rejected.status, 400);
         assert.equal(log.some((entry) => entry.startsWith("prepare:") && entry.includes("nope")), false, "a rejected proposal never prepares");
         assert.equal((await states()).some(({ alias }) => alias === "nope"), false);
@@ -1125,10 +1116,8 @@ test("{§schemes-directory} {§capability-admission}: a denied family has no pag
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);
-    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-    await ownWorker(db, workspaceId, client);
     const daemon = await boot(db, log);
-    const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(program) });
+    const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
     try {
         await daemon.invokeModuleAction("workspace.fx.add", { alias: "paper", definition: { kind: "doc" } }, workspaceContext(workspaceId));
         const shown = await daemon.engine.referenceEntries(workspaceId);

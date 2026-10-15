@@ -16,6 +16,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_db.ts";
+import { modelOperation } from "./_workers.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const execFileP = promisify(execFile);
@@ -180,8 +181,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
         const workspaceId = await insertWorkspace(db, `members-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
         const model = await insertWorker(db, workspaceId, null, "model", "model");
-        const client = await insertWorker(db, workspaceId, null, "client-1", "client");
-        await ownWorker(db, workspaceId, client);
+        await ownWorker(db, workspaceId, model);
         const daemon = new Daemon({ db, provider: null });
         await daemon.start();
         const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, _workerId = model): Promise<T> =>
@@ -189,7 +189,8 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
         const definitions = async (workerId = model) => (await invoke<{ definitions: Definition[] }>("list", {}, workerId)).definitions;
         const states = async (workerId = model) => (await definitions(workerId)).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
         const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0]!;
-        const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(program) });
+        // The model's own surface: its operations, reviewed by its owner.
+        const operate = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
         const proposals: number[] = [];
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
@@ -246,7 +247,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
             // {§members-projection} — the document is named by the glob, percent-encoded as one segment.
-            await daemon.dispatchAsClient({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````") });
+            await operate("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````");
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");

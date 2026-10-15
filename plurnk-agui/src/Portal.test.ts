@@ -121,6 +121,7 @@ const mockSeam = (
         resolution: ClientInteractionResolution;
     }> = [];
     let cancelled: number | null = null;
+    const cancelledLoops: Array<{ workspaceId: number; loopId: number; reason?: string }> = [];
     const seam = {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => pending,
@@ -140,10 +141,11 @@ const mockSeam = (
         },
         runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { status: 100, action: "enqueued_new_loop" as const, loopId: 77 }; },
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
+        cancelLoop: async (args) => { cancelledLoops.push(args); return true; },
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
@@ -151,6 +153,7 @@ const mockSeam = (
         resolves,
         interactionResolves,
         cancelled: () => cancelled,
+        cancelledLoops,
     };
 };
 
@@ -235,27 +238,6 @@ test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and 
     assert.equal(events.at(-1)?.type, "RUN_ERROR");
     assert.equal(m.cancelled(), null);
     assert.throws(() => portal.openThread(args), /The PLURNK service is shutting down/u);
-});
-
-test("{§agui-worker-owner}: an action gate stays on its exact Run rather than interrupting its owner's other Runs too", async () => {
-    const m = mockSeam([], [], { workers: [worker(10), worker(20), worker(30)] });
-    const bound: AguiEvent[] = [];
-    const action: AguiEvent[] = [];
-    const unrelatedAction: AguiEvent[] = [];
-    const portal = new Portal(m.seam);
-    portal.start();
-    portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER,
-        notificationScope: "worker", emit: (events) => bound.push(...events) });
-    portal.openThread({ workspaceId: 3, workerId: 20, threadId: "tui", owner: OWNER,
-        notificationScope: "operation", emit: (events) => action.push(...events) });
-    portal.openThread({ workspaceId: 3, workerId: 30, threadId: "tui", owner: OWNER,
-        notificationScope: "operation", emit: (events) => unrelatedAction.push(...events) });
-    m.fire(3, "loop/proposal", proposal({ workerId: 20, loopId: 22 }));
-    await nextTask();
-    assert.equal(action.filter(({ type }) => type === "TOOL_CALL_START").length, 1);
-    assert.equal(bound.filter(({ type }) => type === "TOOL_CALL_START").length, 0);
-    assert.equal(unrelatedAction.filter(({ type }) => type === "TOOL_CALL_START").length, 0);
-    portal.stop();
 });
 
 test("{§agui-worker-owner}: an idle owner receives a gate without an ancestor loop; an observer cannot claim it", async () => {
@@ -1008,81 +990,6 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     portal.stop();
 });
 
-test("{§agui-broadcast-fan}: an interrupted operation restores its owner scope without leaking into a result-only Run", async () => {
-    const pending = proposal({ logEntryId: 42, workerId: 10, loopId: 7 });
-    const m = mockSeam([pending]);
-    const interruptedSeen: AguiEvent[] = [];
-    const resumedSeen: AguiEvent[] = [];
-    const managementSeen: AguiEvent[] = [];
-    const portal = new Portal(m.seam);
-    const view = capture(portal, interruptedSeen);
-    portal.start();
-    const first = portal.openThread({
-        workspaceId: 3,
-        workerId: 10,
-        modelWorkerId: 20,
-        threadId: "client", owner: OWNER,
-        inputRunId: "operation-a",
-        notificationScope: "operation",
-        emit: view.emit,
-    });
-    m.fire(3, "loop/proposal", pending);
-    assert.ok(interruptedSeen.some((event) => event.type === "TOOL_CALL_END"));
-    portal.closeRun(3, first);
-
-    const resume = [{
-        interruptId: view.interrupt("prop:42").id,
-        status: "resolved" as const,
-        payload: { decision: "accept" },
-    }];
-    const resumed = portal.openThread({
-        workspaceId: 3,
-        workerId: 20,
-        modelWorkerId: 20,
-        threadId: "client", owner: OWNER,
-        inputRunId: "operation-b",
-        notificationScope: "worker",
-        resume,
-        emit: (events) => resumedSeen.push(...events),
-    });
-    portal.openThread({
-        workspaceId: 3,
-        workerId: 10,
-        modelWorkerId: 20,
-        threadId: "client", owner: OWNER,
-        inputRunId: "management",
-        notificationScope: "result",
-        emit: (events) => managementSeen.push(...events),
-    });
-    await portal.resolve(3, resumed, resume);
-    m.fire(3, "log/entry", {
-        entry: {
-            id: 43,
-            worker_id: 10,
-            loop_id: 7,
-            origin: "client",
-            op: "sh", coordinate: "1/1/1/sh",
-            tx: { body: "printf done" },
-            rx: { status: 200 },
-            turn_id: 1,
-        },
-    });
-    portal.finishRun(3, 10, "client", [{
-        type: EventType.CUSTOM,
-        name: "plurnk.action.result",
-        value: { kind: "op.exec", ok: true, result: { status: 200 } },
-    }]);
-
-    assert.equal(
-        resumedSeen.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").length,
-        1,
-        "the resumed operation receives its settled row once",
-    );
-    assert.ok(resumedSeen.some((event) => event.type === "RUN_FINISHED"), "the action result settles its resumed Run");
-    assert.equal(managementSeen.length, 0, "the concurrent result-only Run receives no operation evidence");
-    portal.stop();
-});
-
 const startedExec = (over: Record<string, unknown> = {}) => ({
     entry: {
         id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "sh", status_rx: 200, coordinate: "1.1.1",
@@ -1091,6 +998,16 @@ const startedExec = (over: Record<string, unknown> = {}) => ({
     },
 });
 const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as { name: string }).name : event.type;
+// {§agui-broadcast-fan} An operation Run as the Run handler opens it: no worker until its dispatch announces the loop
+// it opened in the runtime worker (10).
+const openOperation = (portal: Portal, inputRunId: string, seen: AguiEvent[], loopId = 6) => {
+    const thread = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId, notificationScope: "operation",
+        cancelOnDisconnect: true, emit: (events) => seen.push(...events) });
+    portal.bindOperation(thread, { workerId: 10, loopId });
+    return thread;
+};
+const actionResult: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } };
+const concluded = (target: string) => ({ entryId: 170, workerId: 10, target, subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: `${target} completed (exit 0)`, wakeAction: "no-loop" });
 
 for (const status of [400, 403, 499, 503]) {
     test(`{§agui-broadcast-fan} failed execution ${status} does not open its proposed stream`, () => {
@@ -1098,7 +1015,7 @@ for (const status of [400, 403, 499, 503]) {
         const seen: AguiEvent[] = [];
         const portal = new Portal(m.seam);
         portal.start();
-        const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "refused-op", notificationScope: "operation", emit: (events) => seen.push(...events) });
+        const thread = openOperation(portal, "refused-op", seen);
         const { entry } = startedExec();
         m.fire(3, "log/entry", { entry: { ...entry, status_rx: status, rx: { status } } });
         portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status } } }]);
@@ -1112,7 +1029,7 @@ test("{§agui-broadcast-fan} queued execution remains an obligation even when ap
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "queued-op", notificationScope: "operation", emit: (events) => seen.push(...events) });
+    const thread = openOperation(portal, "queued-op", seen);
     const { entry } = startedExec();
     m.fire(3, "log/entry", { entry: { ...entry, status_rx: 202, rx: { status: 202, outcome: "auto: sh" } } });
     portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 202 } } }]);
@@ -1127,7 +1044,7 @@ test("{§agui-broadcast-fan} an operation Run owns an execution from the row tha
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "op-1", notificationScope: "operation", emit: (evs) => seen.push(...evs) });
+    const thread = openOperation(portal, "op-1", seen);
     m.fire(3, "log/entry", startedExec());
     const result: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } };
     portal.finishThread(thread, [result]);
@@ -1147,10 +1064,77 @@ test("{§agui-broadcast-fan} a detached execution (<-1>) is nobody's obligation:
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, inputRunId: "op-2", notificationScope: "operation", emit: (evs) => seen.push(...evs) });
+    const thread = openOperation(portal, "op-2", seen);
     m.fire(3, "log/entry", startedExec({ detached: true }));
     portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } }]);
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "the Run settles at once; the detached spawn outlives it");
+    portal.stop();
+});
+
+test("{§agui-broadcast-fan} an operation Run observes exactly its own loop of the shared runtime worker, and a result Run observes nothing", () => {
+    const m = mockSeam();
+    const mine: AguiEvent[] = [];
+    const theirs: AguiEvent[] = [];
+    const management: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = openOperation(portal, "mine", mine, 6);
+    openOperation(portal, "theirs", theirs, 7);
+    portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "management", notificationScope: "result", emit: (events) => management.push(...events) });
+
+    m.fire(3, "log/entry", startedExec());
+    m.fire(3, "log/entry", { entry: { ...startedExec({ stream: "sh:///7777aaaa" }).entry, id: 56, loop_id: 7 } });
+    m.fire(3, "stream/event", streamEvent({ entryId: 171, workerId: 10, target: "sh:///7777aaaa", scheme: "sh", contentLength: 9 }));
+    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 6 }));
+    m.fire(3, "stream/concluded", concluded("sh:///b1e0977e"));
+    portal.finishThread(thread, [actionResult]);
+
+    const rows = (events: AguiEvent[]) => events.filter((event) => label(event) === "plurnk.row").map((event) => (event as { value: { loop_id: number } }).value.loop_id);
+    assert.deepEqual(rows(mine), [6], "only its own loop's rows");
+    assert.deepEqual(rows(theirs), [7]);
+    assert.equal(mine.filter((event) => label(event) === "plurnk.stream").length, 1, "another operation's stream never reaches it");
+    assert.equal(mine.filter(({ type }) => type === "RUN_FINISHED").length, 1, "its loop's terminal does not settle it; its result does, once its own stream concluded");
+    assert.equal(theirs.some(({ type }) => type === "RUN_FINISHED"), false, "the other operation's stream is still open");
+    assert.equal(management.length, 0);
+    portal.stop();
+});
+
+test("{§agui-broadcast-fan} stream activity that precedes the row announcing it follows that row, and a stream concluded before its row defers nothing", () => {
+    const m = mockSeam();
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = openOperation(portal, "fast", seen);
+    m.fire(3, "stream/event", streamEvent({ entryId: 170, workerId: 10, target: "sh:///b1e0977e", scheme: "sh", contentLength: 2 }));
+    m.fire(3, "stream/event", streamEvent({ entryId: 170, workerId: 10, target: "sh:///b1e0977e", scheme: "sh", contentLength: 4 }));
+    m.fire(3, "stream/concluded", concluded("sh:///b1e0977e"));
+    assert.equal(seen.length, 0, "no row of its loop has announced the stream yet");
+
+    m.fire(3, "log/entry", startedExec());
+    const order = seen.map(label);
+    assert.deepEqual(order.filter((name) => name === "plurnk.row" || name === "plurnk.stream"), ["plurnk.row", "plurnk.stream", "plurnk.stream"],
+        `the row, then the latest snapshot, then the conclusion: ${order.join(" → ")}`);
+    assert.equal((seen.find((event) => label(event) === "plurnk.stream") as { value: { contentLength: number } }).value.contentLength, 4);
+    portal.finishThread(thread, [actionResult]);
+    assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "a concluded stream leaves nothing open");
+    portal.stop();
+});
+
+test("{§agui-run-disconnect} an operation Run's disconnect cancels exactly its own loop, even before its dispatch opened it", () => {
+    const m = mockSeam();
+    const portal = new Portal(m.seam);
+    portal.start();
+    const bound = openOperation(portal, "bound", [], 6);
+    portal.disconnect(bound);
+    assert.deepEqual(m.cancelledLoops, [{ workspaceId: 3, loopId: 6, reason: "client_disconnected" }]);
+
+    const early = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "early", notificationScope: "operation",
+        cancelOnDisconnect: true, emit: () => undefined });
+    portal.disconnect(early);
+    assert.equal(m.cancelledLoops.length, 1, "nothing to cancel before the loop exists");
+    portal.bindOperation(early, { workerId: 10, loopId: 7 });
+    assert.deepEqual(m.cancelledLoops.at(-1), { workspaceId: 3, loopId: 7, reason: "client_disconnected" });
+    assert.equal(m.cancelled(), null, "the runtime worker itself is never cancelled");
     portal.stop();
 });
 

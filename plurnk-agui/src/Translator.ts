@@ -145,9 +145,8 @@ export default class Translator {
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
         // never interleaved into the messages a generic frontend renders.
         const workerId = (e as { worker_id?: number }).worker_id;
-        // Lazy binding: workspace.create returns the CLIENT worker's id — the model worker is born at
-        // loop worker's drain, so a fresh thread adopts its first model-origin row's worker as the
-        // model worker (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
+        // Lazy binding: a Run that binds no model worker adopts its first model-origin row's worker as the
+        // model worker (workers spawn FROM it later).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:

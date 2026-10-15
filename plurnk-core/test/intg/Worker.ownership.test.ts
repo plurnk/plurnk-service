@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { withDaemon, waitForDb } from "./_rpc.ts";
 import { insertWorker } from "./_db.ts";
+import { modelOperation } from "./_workers.ts";
 import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -92,13 +93,14 @@ test("{§worker-owner-creation}: unknown owners and parents from another workspa
 });
 
 test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, including while no client is connected", async () => {
-    await withDaemon(null, async (_db, daemon) => {
+    await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-resolution" });
         await daemon.registerWorkerOwner(workspaceId, owner);
         const { workerId } = await daemon.createWorker({ workspaceId, name: "controlled", owner: owner.address });
         const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo owner-approved")).items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
-        const operation = daemon.dispatchAsClient({ workspaceId, workerId, statement: statement.statement });
+        // The worker's own operation: its owner reviews it.
+        const operation = modelOperation(daemon, db, { workspaceId, workerId, statement: statement.statement });
         try {
             const [proposal] = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
             assert.equal(proposal!.owner, owner.address);
@@ -120,12 +122,12 @@ test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, 
 });
 
 test("{§worker-owner-resolution}: runtime-owned work cannot hang awaiting a reviewer it does not have", async () => {
-    await withDaemon(null, async (_db, daemon) => {
+    await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-incapable" });
         const { workerId } = await daemon.createWorker({ workspaceId, name: "unclaimed" });
         const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo must-not-run")).items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
-        const operation = daemon.dispatchAsClient({ workspaceId, workerId, statement: statement.statement });
+        const operation = modelOperation(daemon, db, { workspaceId, workerId, statement: statement.statement });
         try {
             const result = await Promise.race([
                 operation,

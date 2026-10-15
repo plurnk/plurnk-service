@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§worker-lifecycle-wake-liveness}, {§notifications-stream-concluded}.
 
 import test from "node:test";
@@ -13,7 +13,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { namedModelWorker } from "./_workers.ts";
 
@@ -42,7 +42,7 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async (approvalContext) => {
+test("{§worker-lifecycle-wake-liveness}: a person's operation can cancel a workspace stream and wake its initiating waiting worker", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
@@ -64,11 +64,10 @@ test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream a
             assert.equal(subscriptions.length, 1);
             const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0]!.id });
             const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
-            const peer = await insertWorker(db, workspaceId, null, "controller", "client");
             const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
-            const killed = await daemon.dispatchAsClient({ workspaceId, workerId: peer, statement: parsed.statement });
-            assert.equal(killed.status, 200, JSON.stringify(killed));
+            const [killed] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
+            assert.equal(killed!.status, 200, JSON.stringify(killed));
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
             await flush();

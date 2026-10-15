@@ -5,7 +5,8 @@ import { GeneratedByteSource, Results, type ResourceTree, type ResourceTreeRegis
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { openMigrated } from "./_db.ts";
+import { TEST_OWNER } from "./_approval.ts";
 import { copyStmt, editStmt, findStmt, killStmt, readStmt, regex } from "./_dsl.ts";
 
 test("{§resource-tree-scheme} a public module supplies live trees while the host owns projection, selection and withdrawal", async (t) => {
@@ -32,8 +33,8 @@ test("{§resource-tree-scheme} a public module supplies live trees while the hos
     } }, "@acme/catalog");
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "resource-tree-witness" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
-    const dispatch = (statement: PlurnkStatement) => daemon.dispatchAsClient({ workspaceId, workerId, statement });
+    const dispatch = async (statement: PlurnkStatement) =>
+        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
     const find = async (path: string, matcher: ReturnType<typeof regex> | null = null) => {
         const result = await dispatch({ ...findStmt(parsePath(path), matcher), lineMarker: { marks: [1, -1] } });
         assert.equal(result.status, 200, JSON.stringify(result));
@@ -82,9 +83,8 @@ test("{§resource-tree-scheme} projection failures cannot become source refusals
     await daemon.start();
     t.mock.method(mimetypes, "projectReadableStream", async () => { throw Object.assign(new Error("projection failed"), { code: "ENOENT" }); });
     const { workspaceId } = await daemon.createWorkspace({ name: "resource-tree-projection" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     for (const statement of [readStmt(parsePath("catalog://alpha/image.png")), findStmt(parsePath("catalog://alpha/**"))]) {
-        const result: SchemeResult = await daemon.dispatchAsClient({ workspaceId, workerId, statement });
+        const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }) as SchemeResult[];
         assert.equal(result.status, 500);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw");
     }
@@ -109,9 +109,9 @@ test("{§resource-tree-scheme} recognized source failures retain their result th
     } }, "@acme/catalog");
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "resource-tree-failure" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     for (const statement of [readStmt(parsePath("catalog://refused/item")), findStmt(parsePath("catalog://refused/**"))]) {
-        const result: SchemeResult = Results.assert(await daemon.dispatchAsClient({ workspaceId, workerId, statement }));
+        const [operated] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] });
+        const result: SchemeResult = Results.assert(operated);
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/catalog/resource-outside-root");
         assert.equal(result.problem.detail, "The source is outside its tree.");

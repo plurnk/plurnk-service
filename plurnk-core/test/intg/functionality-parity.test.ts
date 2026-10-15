@@ -29,12 +29,12 @@ import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
-import { dispatchSettled } from "./_scheme.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
+import { modelOperation } from "./_workers.ts";
 
 type Definition = { readonly alias: string; readonly definition: object; readonly probe: (context: Context) => Promise<number> };
 
@@ -43,7 +43,8 @@ interface Context {
     readonly db: Db;
     readonly workspaceId: number;
     readonly modelWorkerId: number;
-    readonly clientWorkerId: number;
+    // The person whose client operations probe the workspace ({§connection-lifecycle}).
+    readonly actor: string;
 }
 
 interface Family {
@@ -83,8 +84,10 @@ const LIVE = new Set([102, 200]);
 // Absent: unknown or disabled (404/501) or unavailable with its exact Problem (5xx).
 const isAbsent = (status: number): boolean => status >= 400;
 
-const dispatch = (context: Context, statement: PlurnkStatement) =>
-    context.daemon.dispatchAsClient({ workspaceId: context.workspaceId, workerId: context.clientWorkerId, statement });
+// A person's operation, acting for the context's model worker ({§actor-boundary-client-operations}).
+const dispatch = async (context: Context, statement: PlurnkStatement) => (await context.daemon.dispatchClientAction({
+    workspaceId: context.workspaceId, actor: context.actor, contextWorkerId: context.modelWorkerId, statements: [statement],
+}))[0]!;
 
 // Generated documents are workspace resources ({§worker-generated-subtree}): the client reads them,
 // leaving the model worker's packets to the loops under test.
@@ -229,11 +232,10 @@ const mcpFamily = async (): Promise<Family> => {
 const agentsFamily = async (): Promise<Family> => {
     const agentA = await startDemoAgent();
     const agentB = await startDemoAgent();
-    // {§http-outbound-proposes} — an outbound SEND proposes. This probe only asks whether the alias
-    // is live, so it accepts its own proposal the way the dispatching client would; an alias that is
-    // not configured refuses before any proposal and passes straight through.
+    // {§http-outbound-proposes} — an outbound SEND proposes; this probe is a person's, so its proposal is that
+    // person's decision already ({§proposal-disposition}). An alias that is not configured refuses before any proposal.
     const send = (alias: string) => async (context: Context) =>
-        (await dispatchSettled(context.daemon, { workspaceId: context.workspaceId, address: TEST_OWNER }, () => dispatch(context, sendStmt(a2aTarget(alias), "parity")))).status;
+        (await dispatch(context, sendStmt(a2aTarget(alias), "parity"))).status;
     return {
         family: "a2a",
         documentOf: (alias) => `/_plurnk/a2a/${alias}.md`,
@@ -265,13 +267,13 @@ const matrix = async (family: Family): Promise<void> => {
     if (family.projectRoot !== undefined) await db.test_set_workspace_root.run({ id: workspaceId, project_root: family.projectRoot });
     const model = await insertWorker(db, workspaceId, null, "model", "model");
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
-    const clientA = await insertWorker(db, workspaceId, null, "client-a", "client");
-    const clientB = await insertWorker(db, workspaceId, null, "client-b", "client");
-    for (const workerId of [model, peer, clientA, clientB]) await ownWorker(db, workspaceId, workerId);
+    for (const workerId of [model, peer]) await ownWorker(db, workspaceId, workerId);
+    const personA = TEST_OWNER;
+    const personB = "test://secondary";
     let provider = mockProvider();
     let { daemon } = await family.boot(db, provider);
     await daemon.start();
-    const context = (modelWorkerId = model, clientWorkerId = clientA): Context => ({ daemon, db, workspaceId, modelWorkerId, clientWorkerId });
+    const context = (modelWorkerId = model, actor = personA): Context => ({ daemon, db, workspaceId, modelWorkerId, actor });
     // A client retries the one retryable refusal: 409 workspace-busy while a
     // just-settled stream still holds the workspace ({§module-workspace-quiescence}).
     const invoke = async <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> => {
@@ -291,14 +293,15 @@ const matrix = async (family: Family): Promise<void> => {
     type Listed = { alias: string; origin: string; state: string; definition: object; problem?: ProblemDetails };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const stateOf = async (alias: string): Promise<string | undefined> => (await listed()).find((entry) => entry.alias === alias)?.state;
-    const live = async (definition: Definition, workerId = model, clientWorkerId = clientA): Promise<boolean> => {
-        const status = await definition.probe(context(workerId, clientWorkerId));
+    const live = async (definition: Definition, workerId = model, actor = personA): Promise<boolean> => {
+        const status = await definition.probe(context(workerId, actor));
         assert.ok(LIVE.has(status) || isAbsent(status), `${family.family}: probe of ${definition.alias} answered ${status}`);
         return LIVE.has(status);
     };
     const document = (alias: string) => documentPresent(context(), family.documentOf(alias));
-    // Model verbs: the family's execution manager streams JSON into its output entry.
-    const exec = (program: string) => dispatch(context(), parseOne(program));
+    // Model verbs: the model's own operations through the family's execution manager, which streams JSON
+    // into its output entry; its owner reviews what they propose.
+    const exec = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: family.family, timeoutMs: 10_000 });
     const proposals: number[] = [];
     const events: Array<{ method: string; params: unknown }> = [];
@@ -448,10 +451,10 @@ ${JSON.stringify({ alias: family.addable.alias })}
             assert.equal(await stateOf(family.collidingAlias), undefined, "a publication the host refuses rolls back");
             assert.equal(await live(family.service), true, "the previous snapshot stays authoritative");
         }
-        // 9. Independent workers and clients see and use the workspace state.
-        assert.equal(await live(family.addable, peer, clientB), true, "a second client and independent worker use the same workspace definition");
+        // 9. Independent workers and people see and use the workspace state.
+        assert.equal(await live(family.addable, peer, personB), true, "a second person, acting for an independent worker, uses the same workspace definition");
         await invoke("disable", { alias: family.addable.alias });
-        assert.equal(await live(family.addable, peer, clientB), false, "a mutation through one client is observed by the other");
+        assert.equal(await live(family.addable, peer, personB), false, "a mutation through one client is observed by the other");
         await invoke("enable", { alias: family.addable.alias });
         // 10. Reapplying identical configuration is idempotent; a conflicting alias cannot silently replace it.
         assert.equal((await add(family.addable)).status, 200);

@@ -63,12 +63,13 @@ export type DispatchContext = {
     statement: PlurnkStatement;
     workspaceId: number;
     workerId: number;
-    // {§actor-boundary-attached-functionality} — absent means the dispatching
-    // Worker's own Functionality; a client operation names its attached Worker.
     loopId: number;
     turnId: number;
     sequence: number;
     origin: WriterTier;
+    // {§actor-boundary-client-operations} — a person's client operation: the worker whose log its `log:///`
+    // addresses read (null: none).
+    client?: { readonly contextWorkerId: number | null };
     // The append-only log boundary visible when this admitted program entered
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
@@ -1083,16 +1084,19 @@ export default class Dispatcher {
         return { result, nativePath };
     }
 
-    // The one place per-dispatch coordinates are built; a caller that carries no
-    // explicit Functionality coordinate acts in its own Worker's
-    // ({§actor-boundary-attached-functionality}). Consumers read the built
-    // PlurnkSchemeContext and never re-derive.
-    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { workspaceId, workerId, loopId, turnId, origin } = ids;
+    // The one place per-dispatch coordinates are built. Functionality resolves by workspace
+    // ({§actor-boundary-attached-functionality}); consumers read the built PlurnkSchemeContext
+    // and never re-derive.
+    #buildSchemeCtx(ids: {
+        workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier;
+        client?: { readonly contextWorkerId: number | null };
+    }): PlurnkSchemeContext {
+        const { workspaceId, workerId, loopId, turnId, origin, client } = ids;
         const context: PlurnkSchemeContext = {
             db: this.#db,
             workspaceId, workerId, loopId, turnId,
             writer: origin,
+            ...(client === undefined ? {} : { client }),
             resources: { capture: (targets) => ResourceBindings.using(this.#schemes, context,
                 (bound) => this.#resourceSelector.capture(targets, bound)) },
             replyToMessage: (statement) => this.#respond(statement, context, loopId),

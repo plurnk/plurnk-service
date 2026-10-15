@@ -13,32 +13,17 @@ test("{§worker-name-minting}: 'plurnk' is an ordinary worker name; the runtime 
     try {
         const workspaceId = await insertWorkspace(db, "ws-plurnk-name");
         const runtimeId = await RuntimeWorker.ensure(db, workspaceId);
-        const plurnk = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" });
-        assert.equal(plurnk.workerName, "plurnk", "an operator may name a worker plurnk");
-        assert.notEqual(plurnk.workerId, runtimeId, "and holds a worker of their own, not the runtime actor");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "_plurnk" }), WorkerNameError, "the runtime actor cannot be resumed by name");
-        const upper = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" });
-        assert.equal(upper.workerName, "PLURNK");
-        assert.notEqual(upper.workerId, plurnk.workerId, "worker identity is case-sensitive");
+        const plurnk = await Envelope.createModelWorker(db, workspaceId, "plurnk");
+        assert.equal(plurnk.name, "plurnk", "an operator may name a worker plurnk");
+        assert.notEqual(plurnk.id, runtimeId, "and holds a worker of their own, not the runtime actor");
+        await assert.rejects(() => Envelope.createModelWorker(db, workspaceId, "_plurnk"), WorkerNameError, "the runtime actor's name cannot be minted");
+        const upper = await Envelope.createModelWorker(db, workspaceId, "PLURNK");
+        assert.equal(upper.name, "PLURNK");
+        assert.notEqual(upper.id, plurnk.id, "worker identity is case-sensitive");
         for (const worker of [plurnk, upper]) {
-            const resumed = await Envelope.attachToWorkspace(db, workspaceId, { workerName: worker.workerName });
-            assert.equal(resumed.workerId, worker.workerId, "attachment resolves the exact literal identity");
+            const resolved = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: worker.name });
+            assert.equal(resolved?.id, worker.id, "a name resolves the exact literal identity");
         }
-    } finally { await db.close(); }
-});
-
-test("{§worker-auto-name}: concurrent anonymous attachments atomically claim distinct short names", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `ws-concurrent-clients-${crypto.randomUUID()}`);
-        const envelopes = await Promise.all(Array.from(
-            { length: 8 },
-            () => Envelope.attachToWorkspace(db, workspaceId),
-        ));
-        const names = envelopes.map(({ workerName }) => workerName);
-
-        assert.equal(new Set(names).size, envelopes.length, "every attachment receives a distinct addressable worker");
-        for (const name of names) assert.match(name, /^[a-f0-9]{8}$/);
     } finally { await db.close(); }
 });
 

@@ -378,9 +378,9 @@ filter a row.
 §actor-boundary-attached-functionality **Attachment selects a worker,
 not an environment owner.** Client management commands mutate workspace
 Functionality ({§module-workspace-capabilities}); runtimes, runtime
-schemes, and tools resolve by `workspaceId`. Operations journal in the
-submitting actor's `workerId` ({§connection-lifecycle}), which must belong to
-the workspace. Runtime and policy resolution require no second worker identity.
+schemes, and tools resolve by `workspaceId`. A model's operations journal in its
+worker, and a person's client operations in the workspace's runtime worker
+({§connection-lifecycle}). Runtime and policy resolution require no second worker identity.
 Attachment remains many-to-one and unrelated to parentage. Explicit control
 attachment may claim approval ownership under {§worker-ownership}.
 
@@ -585,7 +585,7 @@ or membership overlay requires a new workspace.
 §worker-authority-carving **Authority is a literal namespace, not a principal.** `worker:///notes.md` is shared scratch; `worker://alice/draft.md` is named scratch. Both belong directly to the workspace ({§entry-owner}). Entry addresses require no namesake Worker row and survive its deletion; only pathless worker controls resolve an actor. The caller never alters an address, and `~` has no alias semantics.
 
 §worker-name-minting **URI ingestion is permissive; worker minting is not.**
-Every model/client worker-creation door applies the contracts-owned
+Every model worker-creation door applies the contracts-owned
 `WORKER_NAME` predicate ({§worker-name}) through one core admission path. Generic URL parsing
 continues to decompose other authorities without treating them as mintable, and an exact read by
 name ({§methods-worker-read}) is no creation door: it resolves `_plurnk` like any listed name.
@@ -2468,14 +2468,14 @@ nothing is reconstructed for them: such a row has no `patch` channel, and whatev
 rollback included, fails by name rather than inventing one.
 
 §rollback **Rollback reverses a worker's settled file mutations, latest first, through ordinary
-operations.** `rollback({ workspaceId, workerId, clientWorkerId, to })` (`workspace.rollback { to,
+operations.** `rollback({ workspaceId, workerId, actor, to })` (`workspace.rollback { to,
 workerId? }` for a client) names a log coordinate of `workerId`, `<loop>/<turn>/<item>`; the state
 after that item is what remains. Every settled EDIT, COPY, MOVE or KILL row after it, latest first,
-has its patch ({§log-mutation-patch}) reversed against the file as it is now and written back as an
-operation of the acting client in `clientWorkerId`, settled under that worker's owner: a rewrite as
-`EDIT <1,-1>`, a removed file as a creating `EDIT`, a created file as `KILL`. Each reversal is a
-proposal, a row and a patch of its own, so a rollback is reviewable afterwards and reversible by the
-same means. The report (`RollbackReport`) lists what was restored, the rows skipped because they
+has its patch ({§log-mutation-patch}) reversed against the file as it is now and written back within
+one client operation of `actor` ({§connection-lifecycle}), that person's decision already: a rewrite
+as `EDIT <1,-1>`, a removed file as a creating `EDIT`, a created file as `KILL`. Each reversal is a
+row and a patch of its own, so a rollback is inspectable afterwards and reversible by the same
+means. The report (`RollbackReport`) lists what was restored, the rows skipped because they
 kept no patch or were reversed already (the file is in the state before that mutation, as an earlier
 rollback left it), and where it stopped: `drift`, the file no longer holds what that mutation wrote,
 leaves that file and everything earlier untouched; `refused` carries the reversing operation's
@@ -3428,7 +3428,7 @@ execution is refused `scope-unsupported` (400).
 | `lifetime`   | The spawn |
 | ------------ | --------- |
 | a duration   | Aborted at the deadline — a bounded reap, polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and the stream is stamped **504** `execution-timeout`, distinct from a deliberate kill (499) or a clean exit (200): `` Execution of '*runtime*' outlived its *lifetime* lifetime. `` |
-| `loop` (absent) | Loop-life bounded: reaped on every loop terminal except 202, the background-stream behavior. |
+| `loop` (absent) | Loop-life bounded: reaped on every loop terminal except 202, the background-stream behavior. A person's client operation answers once its command starts, so its execution belongs to the operation instead: it outlives the operation loop's 200 and is reaped when that operation is cancelled or the daemon stops ({§connection-lifecycle}). |
 | `turn`       | Reaped at the worker's next pre-turn via the registry abort, before the turn's own spawns, so it never survives into the subsequent turn; its terminal output surfaces born visible like any close ({§exec-stream}). |
 | `detached`   | Outlives its loop's terminal, 200 included. It never binds to the loop's teardown and is nobody's obligation — completion is not gated by it, WAIT does not park on it, optimistic settlement looks past it — and it ends only by KILL, the worker's total reap, or daemon shutdown; its late conclusion surfaces without opening a loop. |
 
@@ -3772,6 +3772,7 @@ operation, message sender, or attrs.
 | Runtime bookkeeping | reject, `runtime_bookkeeping` |
 | Server `accept` | accept |
 | Server `reject` | reject, `policy_veto` |
+| Server `review`, a person's client operation ({§connection-lifecycle}) | accept, `client_operation` |
 | Server `review`, owner implements `request_approval` | review |
 | Server `review`, owner has no reviewer | reject, `no_review_channel` |
 
@@ -3779,8 +3780,9 @@ Core selects the disposition once for the pending gate. Its live event and
 reconnect projection use that same decision. Automatic settlement precedes
 observational notification; an observer failure cannot change authority or orphan
 a waiter. Invalid configuration is diagnosed at the proposal boundary without
-substituting authority ({§configuration-repair-path}). Client-authored
-administrative operations retain their client's owner.
+substituting authority ({§configuration-repair-path}). A person's client operation is
+already that person's decision, so review never routes it; the server's `accept` and
+`reject` still apply.
 
 §runtime-bookkeeping-policy Runtime bookkeeping cannot acquire new authority.
 Generated reference publication and audit narration have no reviewer and do not
@@ -5022,15 +5024,15 @@ Core's behavior behind them.
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Validates the recorded recipient before delivering one resolved payload or cancellation. Unknown, mismatched, and already-resolved identities fail before affecting an operation. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§loop-addressed-admission}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
-| §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
-| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
+| §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime worker shares its scope. |
+| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextWorkerId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
-| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and returns its client envelope, minting no worker, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId })` | Returns the client envelope of an existing world, minting nothing. It does not retain caller or transport binding state in core. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
 | §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
@@ -5038,7 +5040,7 @@ Core's behavior behind them.
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
-| §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, clientWorkerId, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as the client's own operations in `clientWorkerId` ({§rollback}); answers a `RollbackReport`. |
+| §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, actor, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§rollback}, {§connection-lifecycle}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked model worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder and its label ({§workspace-label}), and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime worker's `_plurnk` included: the lookup is no minting door ({§worker-name-minting}). |
@@ -5080,19 +5082,17 @@ If an unpublished message is promoted into subsequent work under
 {§message-loop-containment}, its selected paths travel with it.
 
 §methods-rebind **Binding belongs to the client-interface module.** Core's
-workspace lifecycle calls return exactly the workspace and selected client actor
-(`workspaceId`, `workspaceName`, `projectRoot`, `workerId`, `workerName`); they
-carry no bound-worker or action-loop binding. Core retains no connection,
-thread, or current-workspace mapping. A module may replace its own binding with a
-later create or attach result without requiring a new transport; it resolves the
-bound worker separately, while each client action allocates its own
-administrative loop under {§connection-lifecycle}.
+workspace lifecycle calls return exactly the workspace (`workspaceId`,
+`workspaceName`, `projectRoot`, `projectLabel`); they carry no worker, bound-worker
+or operation-loop binding. Core retains no connection, thread, or current-workspace
+mapping. A module may replace its own binding with a later create or attach result
+without requiring a new transport; it resolves the bound worker separately, while
+each client operation allocates its own administrative loop under {§connection-lifecycle}.
 
-§methods-worker-name-admission **Client worker-name admission.** Attach,
-worker creation, and fork apply {§worker-name-minting} before lookup or
-creation. A client therefore cannot forge or resume the runtime actor (its
-name lies outside `WORKER_NAME`), insert a non-mintable spelling, or make the
-client registry diverge from model worker control.
+§methods-worker-name-admission **Client worker-name admission.** Worker
+creation and fork apply {§worker-name-minting} before lookup or creation. A client therefore cannot forge or resume the runtime actor (its
+name lies outside `WORKER_NAME`) or create a worker under a spelling model worker control
+could not mint.
 
 §capability-admission **One admission path owns external authority.** Core
 derives one or more `CapabilityDescriptor` demands from each routed statement,
@@ -5201,7 +5201,7 @@ continue from the loop snapshot and never re-resolve through the alias
 cascade. A WORK/FORK child copies the spawning loop's effective spawn model
 (spawn override ?? model) onto the new worker by value at creation; it retains
 no live link and begins with no override, so a later parent change affects
-only that worker's future loops and descendants. Client operation actors and
+only that worker's future loops and descendants. The runtime worker and other
 Plurnk-owned bookkeeping workers run no model loops and own no model
 selection; the model, spawn-override, and effort controls refuse them with
 `409 model-worker-required` before any policy row is initialized or written. An explicit model, spawn-override, or effort change while
@@ -5328,20 +5328,45 @@ the authoritative scope and is `null` only for a global event. Core does not
 mutate each payload to repeat it. A transport module stamps that scope onto any
 outward envelope that requires it and owns workspace fan-out.
 
-### §connection-lifecycle Client action evidence
+### §connection-lifecycle Client operations
 
-A module client is an actor ({§machine-processes}). Its dispatched side effects
-write to its own client worker with `origin="client"` and execute in the
-workspace's Functionality
-({§actor-boundary-attached-functionality}); one client action owns
-one administrative loop, and its statements become ordered operation turns
-inside that loop. A proposal may hold its turn and loop across an external
-interrupt/resume, but those records preserve durable evidence rather than
-defining the public client lifecycle. Multiple client actors have distinct workers.
+A worker is a model's identity. A person's client operations (an execution, typed
+statements, a rollback's compensations) are the workspace's, so each journals in the
+workspace's runtime worker `_plurnk`, created when absent, and executes in the workspace's
+Functionality ({§actor-boundary-attached-functionality}). Binding a workspace mints nothing.
 
-`runLoop` targets a separate model worker with `origin="model"`. Both workers share workspace state, while a packet renders
-only the model worker's private log; client action rows are structurally absent
-without an origin filter ({§actor-boundary-isolation}).
+| | A model worker | A client operation in `_plurnk` |
+|---|---|---|
+| Who acted | the worker | the person its loop names ({§actor-boundary-client-operations}) |
+| Who answers its proposals | the worker's owner reviews them | nobody: it is that person's decision already ({§proposal-disposition}) |
+| Who answers its clarifications | its owner, while it can ({§client-interaction-routing}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
+| What is cancelled and observed together | the worker's loops | the operation's own administrative loop |
+| Whose `log:///` its addresses mean | its own | the worker the person acts for, read and never curated |
+
+One client operation owns one administrative loop, and its statements become ordered
+`client` operation turns inside it. The loop carries its own cancellation scope, and
+nothing else in `_plurnk` (another person's operation, the daemon's narration, a hosted A2A
+task) shares it. `cancelLoop` cancels that operation alone: a dispatch still running
+ends `operation-cancelled`, as does its loop, and every attached execution its rows started
+that still runs is reaped ({§worker-lifecycle-total-reap}), its stream concluding aborted even
+after the loop settled. A detached execution is nobody's obligation, and `cancelLoop` leaves it
+running. Shutdown cancels every operation the same way.
+
+`runLoop` targets a model worker with `origin="model"`. A packet renders only that
+worker's private log, so a client operation's rows are structurally absent from every
+model's packet ({§actor-boundary-isolation}); a person reaches a model through a message.
+
+§actor-boundary-client-operations **A client operation names its person and reads for its worker.**
+Its loop's `promptSource` ({§methods-worker-loops}) is the acting person's canonical address, the
+form arrivals use ({§message-causal-source}); the daemon's own loops in `_plurnk` have none. Its
+rows are acts, not arrivals: they keep writer `origin: "client"`, so a person never writes as the
+runtime ({§scheme-surface-writableby-403}), and `source` null, so a person's SEND replies and
+completes as any author's does. Its `log:///` addresses resolve in the log of the worker the person
+acts for, as that worker reads it: a READ or FIND answers from it, an operation that would curate it
+is a client write the log refuses ({§scheme-surface-writableby-403}), and an operation that acts for
+no worker addresses no log (404 `log-unaddressed`). Every other address means what it means for the
+runtime worker: `env:///` is the environment every person's commands in the workspace receive
+({§env-scheme}).
 
 ---
 
@@ -6626,6 +6651,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 |---|---:|---|
 | `read-target-required` | 400 | READ requires a log coordinate. Recovery: Provide one exact log coordinate. |
 | `coordinate-malformed` | 400 | The log coordinate '*path*' is malformed. Recovery: Use one exact loop/turn/sequence coordinate. |
+| `log-unaddressed` | 404 | This client operation acts for no worker, so `log:///` names no log ({§actor-boundary-client-operations}). |
 | `kill-failed` | 400 | The log target '*path*' is malformed. (A glob the matcher cannot read: The log glob '*glob*' is malformed.) Recovery: the {§log-target-shape} sentence. |
 | `curation-failed` | 400 | A scoped KILL's selection could not be read: the same sentences and recovery as `kill-failed`. |
 | `worker-target-required` | 400 | EDIT requires a worker:// target. Recovery: Provide the worker target. |
@@ -6653,6 +6679,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `offset-invalid` | 400 | An entry offset is not a nonnegative safe integer. |
 | `userinfo-not-allowed` | 400 | An entry target URL contains userinfo. |
 | `action-threw` | 500 | The client action failed outside its operation result contract. |
+| `operation-cancelled` | 499 | The client operation was cancelled: *reason*. Its loop settles with this result ({§connection-lifecycle}). |
 | `message-already-accepted` | 409 | The message address was already accepted in this workspace. |
 | `source-not-running` | 409 | The originating task is not running; no message was admitted. |
 | `loop-not-open` | 409 | The named loop is not an unfinished recipient of the worker; no message was admitted. |

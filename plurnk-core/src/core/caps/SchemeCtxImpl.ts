@@ -24,6 +24,7 @@ interface SchemeCtxOptions {
 export default class SchemeCtxImpl implements SchemeCtx {
     readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly #fileRevision: string | undefined;
+    readonly #client: PlurnkSchemeContext["client"];
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
@@ -55,6 +56,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.logEntryId = ctx.logEntryId;
         this.#editPrecondition = options.editPrecondition ?? null;
         this.#fileRevision = ctx.fileRevision;
+        this.#client = ctx.client;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -98,5 +100,10 @@ export default class SchemeCtxImpl implements SchemeCtx {
 
     static fileRevisionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): string | undefined {
         return ctx instanceof SchemeCtxImpl ? ctx.#fileRevision : "db" in ctx ? ctx.fileRevision : undefined;
+    }
+
+    // {§actor-boundary-client-operations} — a person's operation carries the worker it acts for to core adapters.
+    static clientOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["client"] {
+        return ctx instanceof SchemeCtxImpl ? ctx.#client : "db" in ctx ? ctx.client : undefined;
     }
 }

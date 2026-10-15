@@ -455,11 +455,6 @@ WHERE e.pathname = $pathname AND ec.name = 'body';
 -- PREP: test_list_workspaces
 SELECT name FROM workspaces;
 
--- PREP: test_get_client_worker_by_workspace
-SELECT id FROM workers
-WHERE workspace_id = $workspace_id AND origin = 'client'
-ORDER BY id LIMIT 1;
-
 -- PREP: test_get_loop_by_worker
 SELECT id FROM loops WHERE worker_id = $worker_id LIMIT 1;
 

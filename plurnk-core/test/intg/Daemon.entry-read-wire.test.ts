@@ -14,6 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated } from "./_db.ts";
 import Dsl from "./dsl.ts";
+import { TEST_OWNER } from "./_approval.ts";
 
 class Notes implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -55,19 +56,20 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
         const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "entry-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "entry-child" });
 
-        for (const [workerId, name, content] of [
-            [parent.workerId, "entry-parent", "A😀éZ"],
-            [child.workerId, "entry-child", "child"],
+        // A person seeds each named space; an authority is a namespace, not a principal ({§worker-authority-carving}).
+        for (const [name, content] of [
+            ["entry-parent", "A😀éZ"],
+            ["entry-child", "child"],
         ] as const) {
-            const written = await daemon.dispatchAsClient({
+            const [written] = await daemon.dispatchClientAction({
                 workspaceId: workspace.workspaceId,
-                workerId,
-                statement: Dsl.buildEdit({
+                actor: TEST_OWNER,
+                statements: [Dsl.buildEdit({
                     target: `notes://${name}/same`,
                     content,
-                }),
+                })],
             });
-            assert.equal(written.status, 201);
+            assert.equal(written!.status, 201);
         }
 
         const parentRead = body(await daemon.readEntry({
@@ -138,15 +140,16 @@ test("{§client-entry-address} entry.read applies worker authority across the wo
         const workspace = await daemon.createWorkspace({ name: `entry-owner-${crypto.randomUUID()}` });
         const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "owner-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "owner-child" });
-        for (const [workerId, name, content] of [
-            [parent.workerId, "owner-parent", "parent"],
-            [child.workerId, "owner-child", "child"],
+        for (const [name, content] of [
+            ["owner-parent", "parent"],
+            ["owner-child", "child"],
         ] as const) {
-            assert.equal((await daemon.dispatchAsClient({
+            const [written] = await daemon.dispatchClientAction({
                 workspaceId: workspace.workspaceId,
-                workerId,
-                statement: Dsl.buildEdit({ target: `worker://${name}/same`, content }),
-            })).status, 201);
+                actor: TEST_OWNER,
+                statements: [Dsl.buildEdit({ target: `worker://${name}/same`, content })],
+            });
+            assert.equal(written!.status, 201);
         }
 
         assert.equal(body(await daemon.readEntry({

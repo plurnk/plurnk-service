@@ -6,6 +6,9 @@ import { actionFailure } from "./action-results.ts";
 import MessageAddress from "./MessageAddress.ts";
 import type { RunAgentInput } from "./types.ts";
 
+// {§agui-broadcast-fan} What a client operation's Run hears: the loop its dispatch opened, before any statement runs.
+export type OperationLoopListener = (loop: { readonly workerId: number; readonly loopId: number }) => void;
+
 const operationOutcome = (result: OperationResult): ActionOutcome => {
     const exact = Validator.assertOperationResult(result);
     return exact.problem === undefined
@@ -83,18 +86,40 @@ export default class BuiltinActions {
     readonly #seam: () => BuiltinActionsPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+    readonly #threadWorker: (threadId: string, env: ClientEnvelope) => Promise<number | undefined>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
 
-    constructor({ seam, capabilities, envelope, requireWorkspace }: {
+    constructor({ seam, capabilities, envelope, threadWorker, requireWorkspace }: {
         seam: () => BuiltinActionsPort;
         capabilities: () => Promise<AguiDiscovery>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+        threadWorker: (threadId: string, env: ClientEnvelope) => Promise<number | undefined>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
     }) {
         this.#seam = seam;
         this.#capabilities = capabilities;
         this.#envelope = envelope;
+        this.#threadWorker = threadWorker;
         this.#requireWorkspace = requireWorkspace;
+    }
+
+    // {§agui-client-operation} A person's client operation: the thread's owner acting, reading `log:///` in the
+    // thread's model worker when it exists, and announcing its loop to the Run that observes it.
+    async #clientOperation(
+        input: RunAgentInput,
+        world: ClientEnvelope,
+        principal: string,
+        statements: PlurnkStatement[],
+        onLoop: OperationLoopListener | undefined,
+    ): Promise<OperationResult[]> {
+        const contextWorkerId = await this.#threadWorker(input.threadId, world);
+        return await this.#seam().dispatchClientAction({
+            workspaceId: world.workspaceId,
+            actor: MessageAddress.owner(principal, input.threadId),
+            ...(contextWorkerId === undefined ? {} : { contextWorkerId }),
+            statements,
+            ...(onLoop === undefined ? {} : { onLoop }),
+        });
     }
 
     // The built-in implementation half of the declarative registry. The registry
@@ -107,6 +132,7 @@ export default class BuiltinActions {
         env: ClientEnvelope | null,
         boundWorkerId?: number,
         principal = "anonymous",
+        onLoop?: OperationLoopListener,
     ): Promise<ActionOutcome> {
         try {
             // Worldless actions never bind or forge a workspace.
@@ -133,7 +159,7 @@ export default class BuiltinActions {
                         // The name IS the world here — feed it as the workspace so #envelope
                         // creates/attaches exactly it (p carries no `workspace` of its own).
                         const { env: created } = await this.#envelope(p.name, { ...p, workspace: p.name });
-                        return { ok: true, result: { id: created.workspaceId, name: created.workspaceName, workerId: created.workerId } };
+                        return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                     }
                     const created = await this.#seam().createWorkspace({
                         ...(Object.hasOwn(p, "projectRoot")
@@ -146,7 +172,7 @@ export default class BuiltinActions {
                             ? { settings: p.settings as string | object }
                             : {}),
                     });
-                    return { ok: true, result: { id: created.workspaceId, name: created.workspaceName, workerId: created.workerId } };
+                    return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                 }
                 case "workspace.attach": {
                     // A REAL attach: rebind the thread map to the chosen workspace and hand
@@ -162,8 +188,8 @@ export default class BuiltinActions {
                             },
                         );
                     }
-                    const att = await this.#seam().attachWorkspace({ workspaceId: p.id, ...(typeof p.workerId === "number" ? { workerId: p.workerId } : {}) });
-                    return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId } };
+                    const att = await this.#seam().attachWorkspace({ workspaceId: p.id });
+                    return { ok: true, result: { id: att.workspaceId, name: att.workspaceName } };
                 }
             }
             const world = this.#requireWorkspace(kind, env);
@@ -231,8 +257,8 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().renameWorkspace(world.workspaceId, p.name) };
                 }
-                // {§rollback} — the bound worker's log, or a named worker's; the reversals are this
-                // client's own operations in its worker.
+                // {§rollback} — the bound worker's log, or a named worker's; the reversals are one client
+                // operation of this thread's owner ({§connection-lifecycle}).
                 case "workspace.rollback": {
                     if (typeof p.to !== "string" || p.to.length === 0) {
                         return actionFailure(
@@ -254,7 +280,7 @@ export default class BuiltinActions {
                     return { ok: true, result: await this.#seam().rollback({
                         workspaceId: world.workspaceId,
                         workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
-                        clientWorkerId: world.workerId,
+                        actor: MessageAddress.owner(principal, input.threadId),
                         to: p.to,
                     }) };
                 }
@@ -288,8 +314,7 @@ export default class BuiltinActions {
                     return operationOutcome(result);
                 }
                 case "op.exec": {
-                    // An execution constructed structurally (no DSL text): the model-facing shape,
-                    // proposal-gated by the engine like any client op.
+                    // An execution constructed structurally (no DSL text): the model-facing shape.
                     if (typeof p.command !== "string" || p.command.length === 0) {
                         return actionFailure(
                             "invalid-action-parameters",
@@ -302,14 +327,7 @@ export default class BuiltinActions {
                         runtime: "sh", aside: null, target: null,
                         metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
-                    // Client ops journal as client-origin turns in the client worker (worker split:
-                    // only LOOPS live in the model worker) and execute in the attached Worker's
-                    // Functionality ({§actor-boundary-attached-functionality}).
-                    const [result] = await this.#seam().dispatchClientAction({
-                        workspaceId: world.workspaceId,
-                        workerId: world.workerId,
-                        statements: [statement],
-                    });
+                    const [result] = await this.#clientOperation(input, world, principal, [statement], onLoop);
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
                     return operationOutcome(result);
                 }
@@ -354,11 +372,7 @@ export default class BuiltinActions {
                     }
                     const dispatched = statements.length === 0
                         ? []
-                        : await this.#seam().dispatchClientAction({
-                            workspaceId: world.workspaceId,
-                            workerId: world.workerId,
-                            statements,
-                        });
+                        : await this.#clientOperation(input, world, principal, statements, onLoop);
                     let index = 0;
                     for (let i = 0; i < results.length; i++) {
                         if (results[i] === null) results[i] = dispatched[index++];

@@ -4,24 +4,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 import Dsl from "./dsl.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelWorker } from "./_workers.ts";
+import { TEST_OWNER } from "./_approval.ts";
 
 test("{§methods-log-read}: readLog honors per-worker journal isolation", async () => {
-    await withDaemon(null, async (_db, daemon, addr) => {
+    await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "r376" });
             const workspaceId = (created.result as { id: number }).id;
-            const clientWorker = (created.result as { workerId: number }).workerId;
             const modelWorker = await namedModelWorker(daemon, workspaceId, "main");
-            // Seed one row in each worker via the seam dispatch.
-            await daemon.dispatchAsClient({ workspaceId, workerId: clientWorker, statement: Dsl.buildEdit({ target: "worker:///client-note", content: "client row" }) });
-            await daemon.dispatchAsClient({ workspaceId, workerId: modelWorker, statement: Dsl.buildEdit({ target: "worker:///model-note", content: "model row" }) });
-            const clientRows = await daemon.readLog({ workspaceId, workerId: clientWorker });
+            // Seed one row in each worker: a person's operation journals in the runtime worker
+            // ({§connection-lifecycle}); the model's own operation in its worker.
+            await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "worker:///client-note", content: "client row" })] });
+            await modelOperation(daemon, db, { workspaceId, workerId: modelWorker, statement: Dsl.buildEdit({ target: "worker:///model-note", content: "model row" }) });
+            const runtimeWorker = await daemon.ensureRuntimeWorker(workspaceId);
+            const runtimeRows = await daemon.readLog({ workspaceId, workerId: runtimeWorker });
             const modelRows = await daemon.readLog({ workspaceId, workerId: modelWorker });
-            assert.ok(clientRows.length > 0 && modelRows.length > 0, "both workers have rows");
-            const cSet = new Set(clientRows.map((r) => JSON.stringify(r)));
-            assert.ok(!modelRows.every((r) => cSet.has(JSON.stringify(r))), "the two workers return DIFFERENT rows");
+            assert.ok(runtimeRows.length > 0 && modelRows.length > 0, "both workers have rows");
+            const runtimeSet = new Set(runtimeRows.map((r) => JSON.stringify(r)));
+            assert.ok(!modelRows.every((r) => runtimeSet.has(JSON.stringify(r))), "the two workers return DIFFERENT rows");
         } finally { ws.close(); }
     });
 });
@@ -33,10 +35,11 @@ test("{§methods-log-read}: the panel is the page of a read that names no limit,
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "readlog-page" });
             const workspaceId = (created.result as { id: number }).id;
-            const workerId = (created.result as { workerId: number }).workerId;
             for (let n = 1; n <= 5; n += 1) {
-                await daemon.dispatchAsClient({ workspaceId, workerId, statement: Dsl.buildEdit({ target: `worker:///note-${n}`, content: `row ${n}` }) });
+                await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: `worker:///note-${n}`, content: `row ${n}` })] });
             }
+            // A person's operations journal in the runtime worker ({§connection-lifecycle}).
+            const workerId = await daemon.ensureRuntimeWorker(workspaceId);
             process.env.PLURNK_SERVICE_LOG_READ_PAGE = "2";
             process.env.PLURNK_SERVICE_LOG_READ_MAX = "4";
             assert.equal((await daemon.readLog({ workspaceId, workerId })).length, 2, "no limit named: the page");

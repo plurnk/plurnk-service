@@ -46,17 +46,15 @@ export interface ApplicationActionDescriptor {
     readonly outputSchema: JsonSchema;
 }
 
-// `workerId` is the client actor's worker: dispatched client actions live there
-// ({§connection-lifecycle}, {§machine-processes}). The worker a thread binds is
-// resolved separately by the client-interface module.
+// The bound workspace. Binding one mints nothing: a client operation journals in the workspace's
+// runtime worker ({§connection-lifecycle}), and the worker a thread binds is resolved separately by the
+// client-interface module.
 export interface ClientEnvelope {
     readonly workspaceId: number;
     readonly workspaceName: string;
     readonly projectRoot: string | null;
     /** {§workspace-label} The folder as the daemon spells it for display; null without a folder. */
     readonly projectLabel: string | null;
-    readonly workerId: number;
-    readonly workerName: string;
 }
 
 export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
@@ -326,13 +324,19 @@ export interface ApplicationPort extends HttpHost {
         readonly workerId: number;
         readonly reason?: string;
     }): Promise<void>;
-    // {§actor-boundary-attached-functionality} — a client operation journals in
-    // its own worker and executes in the attached Worker's environment.
+    // {§connection-lifecycle} — a person's client operation: one loop in the workspace's runtime worker,
+    // attributed to `actor`, its `log:///` addresses read in `contextWorkerId`'s log
+    // ({§actor-boundary-client-operations}); `onLoop` hears that loop before any statement runs.
     dispatchClientAction(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly actor: string;
+        readonly contextWorkerId?: number;
         readonly statements: PlurnkStatement[];
+        readonly onLoop?: (loop: { readonly workerId: number; readonly loopId: number }) => void;
     }): Promise<OperationResult[]>;
+    // {§connection-lifecycle} — cancel exactly one client operation: its dispatch while it runs and every execution its
+    // rows started that still runs; false when nothing of it was running.
+    cancelLoop(args: { readonly workspaceId: number; readonly loopId: number; readonly reason?: string }): Promise<boolean>;
     // {§fence-heading-in-body} — the executor tags this workspace can run: what a parse of
     // client-authored text must know for those tags to open blocks ({§interstitial-fence}).
     executorTags(workspaceId: number): readonly string[];
@@ -367,8 +371,6 @@ export interface ApplicationPort extends HttpHost {
     }): Promise<ClientEnvelope>;
     attachWorkspace(args: {
         readonly workspaceId: number;
-        readonly workerId?: number;
-        readonly workerName?: string;
     }): Promise<ClientEnvelope>;
     listWorkspaces(): Promise<Array<{
         readonly id: number;
@@ -401,12 +403,12 @@ export interface ApplicationPort extends HttpHost {
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
     // {§rollback} — reverse `workerId`'s settled file mutations after its log coordinate `to`, latest
-    // first, each as an ordinary operation of the acting client in `clientWorkerId`, resolved under
-    // that worker's owner; stops at the first file that no longer holds what its mutation wrote.
+    // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
+    // longer holds what its mutation wrote.
     rollback(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly clientWorkerId: number;
+        readonly actor: string;
         readonly to: string;
     }): Promise<RollbackReport>;
     /** {§methods-workspace-activate} Activate a cold workspace's Functionality without a turn; resolves when it is active. */
