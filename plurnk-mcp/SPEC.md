@@ -614,7 +614,8 @@ decision on durable identity material is ratified.
 ## §mcp-setup Atomic lifecycle
 
 When a cold workspace is demanded, activation resolves service defaults and durable positive
-workspace state, opens and discovers only enabled connections,
+workspace state, opens and discovers only enabled connections, all at once so that a workspace
+waits for its slowest server rather than their sum,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
 {§module-workspace-capabilities}. A configured tool absent from the server, a

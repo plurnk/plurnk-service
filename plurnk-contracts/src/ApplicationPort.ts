@@ -413,6 +413,8 @@ export interface ApplicationPort extends HttpHost {
         readonly clientWorkerId: number;
         readonly to: string;
     }): Promise<RollbackReport>;
+    /** {§methods-workspace-activate} Activate a cold workspace's Functionality without a turn; resolves when it is active. */
+    activateWorkspace(args: { readonly workspaceId: number }): Promise<void>;
     workspacePreparationStatus(workspaceId: number): readonly FunctionalityPreparationActivity[];
     workspaceDerivationStatus(workspaceId: number): {
         readonly phase: "preparing" | "indexing" | "complete" | "failed";

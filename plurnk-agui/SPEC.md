@@ -77,6 +77,11 @@ requests.
 | Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
 | Passive synchronization / connection; other management reads | No claim and no capability replacement. |
 
+§agui-owner-activation **An owner's arrival activates its workspace.** A control attachment starts the
+workspace's Functionality activation ({§methods-workspace-activate}) and does not wait for it: the Run
+proceeds, and a first prompt waits only for what remains of that activation. Observation activates
+nothing.
+
 Approval delivery matches the recorded owner; interaction delivery matches its recorded
 recipient. No connected-ancestor fallback or topology-based authority exists. An owner may
 review an independently active child while its own worker is idle. Concurrent connections

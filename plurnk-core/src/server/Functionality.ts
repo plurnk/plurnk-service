@@ -894,15 +894,28 @@ export default class Functionality {
         const { workspaceId } = identity;
         const current = this.#preparations.get(workspaceId) ?? new Map<string, FunctionalityPreparationActivity>();
         this.#preparations.set(workspaceId, current);
-        const report = (alias: string | null, phase: FunctionalityPreparationActivity["phase"]): void => {
-            current.set(adapter.family, { family: adapter.family, alias, phase, since: new Date().toISOString() });
+        const forget = (): void => {
+            for (const [key, activity] of current) if (activity.family === adapter.family) current.delete(key);
+        };
+        // {§functionality-preparation-visibility} — one activity for the family, or one per alias it reports
+        // preparing, each keeping the time its alias began.
+        const report = (aliases: readonly string[], phase: FunctionalityPreparationActivity["phase"]): void => {
+            const now = new Date().toISOString();
+            const began = new Map([...current.values()]
+                .filter((activity) => activity.family === adapter.family && activity.alias !== null)
+                .map((activity) => [activity.alias, activity.since]));
+            forget();
+            if (aliases.length === 0) current.set(adapter.family, { family: adapter.family, alias: null, phase, since: now });
+            for (const alias of aliases) {
+                current.set(`${adapter.family}/${alias}`, { family: adapter.family, alias, phase, since: began.get(alias) ?? now });
+            }
             this.#host.preparationChanged(workspaceId, this.preparationStatus(workspaceId));
         };
-        report(null, "preparing");
+        report([], "preparing");
         try {
             return await this.#publishPrepared(adapter, identity, nextState, options, report);
         } finally {
-            current.delete(adapter.family);
+            forget();
             if (current.size === 0) this.#preparations.delete(workspaceId);
             this.#host.preparationChanged(workspaceId, this.preparationStatus(workspaceId));
         }
@@ -919,7 +932,7 @@ export default class Functionality {
             readonly forceAlias?: string | null;
             readonly admissions?: readonly FunctionalityAdmission[];
         },
-        report: (alias: string | null, phase: FunctionalityPreparationActivity["phase"]) => void,
+        report: (aliases: readonly string[], phase: FunctionalityPreparationActivity["phase"]) => void,
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
@@ -936,9 +949,11 @@ export default class Functionality {
                 previous: previous?.snapshot ?? null,
                 failure: options.failure,
                 admissions: options.admissions ?? [],
-                progress: (alias) => {
-                    if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
-                    report(alias, "preparing");
+                progress: (aliases) => {
+                    for (const alias of aliases) {
+                        if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
+                    }
+                    report(aliases, "preparing");
                 },
                 retain: options.retain,
                 ...(options.forceAlias ? { force: options.forceAlias } : {}),
@@ -948,7 +963,7 @@ export default class Functionality {
             configurationFailure = { phase, error: cause };
             enabled = new Map();
         }
-        report(null, "publishing");
+        report([], "publishing");
         let runtimes: RuntimeRegistration[];
         try {
             if (prepared !== null) Functionality.#checkOutcomes(adapter, enabled, prepared);

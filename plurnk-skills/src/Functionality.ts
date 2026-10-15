@@ -344,7 +344,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const outcomes = new Map<string, FunctionalityOutcome>();
         const trees = new Map<string, SkillTree>();
         for (const [alias, raw] of definitions) {
-            preparation.progress(alias);
+            preparation.progress([alias]);
             const definition = raw as SkillDefinition;
             try {
                 const tree = definition.source === undefined ? provided.get(alias)

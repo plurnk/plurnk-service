@@ -16,7 +16,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 const LOOP_ADDRESSED_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel"]);
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner">;
+export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -170,6 +170,11 @@ export default class RunHandler {
             for (const claim of [workerId, env.workerId]) {
                 await this.#seam().claimWorkerOwner({ workspaceId, workerId: claim, owner });
             }
+            // {§agui-owner-activation} — an owner's arrival is the workspace's demand: activation starts now,
+            // so a first prompt finds it under way or done, and nothing waits for it here.
+            void this.#seam().activateWorkspace({ workspaceId }).catch((cause: unknown) => {
+                console.error(`AG-UI: activating workspace ${workspaceId} for its owner failed:`, cause);
+            });
         }
 
         let finished = false;

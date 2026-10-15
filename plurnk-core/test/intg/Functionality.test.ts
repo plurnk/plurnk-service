@@ -433,7 +433,7 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
             ...adapter,
             prepare: async (preparation) => {
                 if (hold) {
-                    preparation.progress("svc");
+                    preparation.progress(["svc"]);
                     entered.resolve();
                     await resume.promise;
                 }
@@ -471,6 +471,68 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
     assert.deepEqual((await listing()).map(({ state }) => state), ["active"]);
     assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
     assert.deepEqual(updates.at(-1), { workspaceId, preparation: [] });
+});
+
+test("{§methods-workspace-activate} activation without a turn publishes a workspace's capabilities once, however many demand it", async (t) => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam: HostSetupSeam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } }, "test-module");
+    await daemon.start();
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, `activate-${crypto.randomUUID()}`);
+    assert.equal(daemon.schemes.has("svc", workspaceId), false, "a workspace stays passive until demanded");
+    assert.equal(log.length, 0);
+    await Promise.all([daemon.activateWorkspace({ workspaceId }), daemon.activateWorkspace({ workspaceId })]);
+    assert.equal(daemon.schemes.has("svc", workspaceId), true, "its capabilities are published without a turn");
+    assert.equal(log.filter((line) => line.startsWith("prepare:")).length, 1, "concurrent demands share one activation");
+    await daemon.activateWorkspace({ workspaceId });
+    assert.equal(log.filter((line) => line.startsWith("prepare:")).length, 1, "a warm workspace is not prepared again");
+    await assert.rejects(daemon.activateWorkspace({ workspaceId: 999_999 }), /does not exist/u);
+});
+
+test("{§functionality-preparation-visibility} aliases prepared at once are each listed from the time it began, and each leaves when a report omits it", { timeout: 10_000 }, async (t) => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    const adapter = fixtureAdapter(log);
+    const both = Promise.withResolvers<void>();
+    const narrowed = Promise.withResolvers<void>();
+    const step = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam: HostSetupSeam) => {
+        seam.registerFunctionalityAdapter({
+            ...adapter,
+            available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true }, { alias: "web", definition: { kind: "ok" }, enabled: true }],
+            prepare: async (preparation) => {
+                preparation.progress(["svc", "web"]);
+                both.resolve();
+                await step.promise;
+                preparation.progress(["web"]);
+                narrowed.resolve();
+                await resume.promise;
+                return adapter.prepare(preparation);
+            },
+        });
+    } }, "test-module");
+    await daemon.start();
+    let demand: Promise<unknown> | undefined;
+    t.after(async () => { step.resolve(); resume.resolve(); await demand; await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, `concurrent-${crypto.randomUUID()}`);
+    demand = daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
+    await both.promise;
+    const first = daemon.workspacePreparationStatus(workspaceId);
+    assert.deepEqual(first.map(({ family, alias, phase }) => [family, alias, phase]), [["fx", "svc", "preparing"], ["fx", "web", "preparing"]],
+        "every alias being prepared is listed");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    step.resolve();
+    await narrowed.promise;
+    const second = daemon.workspacePreparationStatus(workspaceId);
+    assert.deepEqual(second.map(({ alias }) => alias), ["web"], "an alias that settled leaves");
+    assert.equal(second[0]!.since, first[1]!.since, "the alias still preparing keeps the time it began");
+    resume.resolve();
+    await demand;
+    assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
 });
 
 test("{§functionality-inspection} a changed inherited definition never borrows the previous definition's preparation outcome", async (t) => {

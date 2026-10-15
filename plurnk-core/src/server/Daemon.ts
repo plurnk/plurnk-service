@@ -1308,6 +1308,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedWorkerId = workerId === undefined ? null : ClientInput.assertId("workspace.prompts", "workerId", workerId);
         return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedWorkerId);
     }
+    // {§methods-workspace-activate} — the demand a turn makes, without the turn: a cold workspace activates,
+    // a concurrent demand shares that activation, and the release leaves it warm under the residency policy.
+    async activateWorkspace(args: { readonly workspaceId: number }): Promise<void> {
+        const workspaceId = ClientInput.assertId("workspace.activate", "workspaceId", args.workspaceId);
+        const release = await this.#residency.acquire(workspaceId);
+        release();
+    }
+
     workspacePreparationStatus(workspaceId: number) {
         return this.#functionality.preparationStatus(
             ClientInput.assertId("workspace preparation", "workspaceId", workspaceId),

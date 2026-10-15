@@ -4437,7 +4437,8 @@ modules in registration order. The daemon's listener is bound before durable adm
 ({§module-http-mounts}). Persisted workspaces with
 no durable work stay passive until first demand; activation publishes their
 complete capabilities and documentation before the demanding operation
-proceeds. `setup` is the readiness boundary for every capability registered
+proceeds. An owner's arrival is such a demand ({§methods-workspace-activate}), so a first prompt
+waits only for what remains of it. `setup` is the readiness boundary for every capability registered
 with Core: recovery may demand a workspace provider before `start`. Requests on
 the listener remain unavailable until it is admitted; a module opens any other exterior
 ingress only after recovery. No
@@ -4776,7 +4777,7 @@ state without demand; `workspace/preparation` broadcasts
 | Boundary | Visible state |
 |---|---|
 | Preparation begins | Family, `phase: preparing`, `alias: null`, UTC `since` |
-| Adapter calls `progress(alias)` | Enabled alias being prepared; a fresh `since` |
+| Adapter reports the aliases it is preparing | One activity per alias, each keeping the `since` it began; an alias leaves when a later report omits it, so aliases prepared at once are listed together |
 | Prepared candidate enters publication | `phase: publishing`, `alias: null` |
 | Commit, rejection, or rollback settles | Family removed; empty array means no preparation |
 
@@ -5027,6 +5028,7 @@ Core's behavior behind them.
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
+| §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
 | §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
 | §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |

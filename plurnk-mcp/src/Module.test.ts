@@ -481,6 +481,31 @@ test("{§mcp-preparation-diagnostics}: early stdio exit retains bounded session 
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
+test("{§mcp-setup} servers that need connections are prepared at once: a workspace waits for its slowest, not for their sum", async (t) => {
+    const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-concurrent-"));
+    t.after(() => rm(temp, { recursive: true, force: true }));
+    const started = (name: string) => join(temp, `${name}.started`);
+    const slow = (name: string) => stdio(name, [fixture], { env: { PLURNK_MCP_TEST_START_MARKER: started(name), PLURNK_MCP_TEST_START_DELAY_MS: "1500" } });
+    const reports: string[][] = [];
+    const h = harness();
+    await h.setup();
+    try {
+        const attempt = await h.adapter().prepare({
+            ...h.identity(1), enabled: new Map([["a", { definition: slow("a") }], ["b", { definition: slow("b") }]]), previous: null,
+            failure: "publish-unavailable", admissions: [], retain: () => () => {}, progress: (aliases) => { reports.push([...aliases]); },
+        });
+        try {
+            assert.deepEqual([...attempt.outcomes.values()].map(({ state }) => state), ["active", "active"]);
+            assert.deepEqual(reports[0], ["a", "b"], "both servers are reported preparing together");
+            assert.equal(reports.at(-1)?.length, 1, "the last report names the one server still preparing");
+            const firstStart = async (name: string) => Math.min(...(await readFile(started(name), "utf8")).trim().split("\n")
+                .map((line) => Number(/t=(\d+)/u.exec(line)![1])));
+            const [a, b] = await Promise.all([firstStart("a"), firstStart("b")]);
+            assert.ok(Math.abs(a - b) < 1500, `both servers start before either finishes its 1.5 s start; they started ${Math.abs(a - b)} ms apart`);
+        } finally { await attempt.abort(); }
+    } finally { await h.module.stop(); }
+});
+
 test("{§mcp-setup} commit closes connections the next snapshot no longer uses; abort closes only what the attempt opened; teardown closes the rest", async (t) => {
     const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-adapter-"));
     t.after(() => rm(temp, { recursive: true, force: true }));

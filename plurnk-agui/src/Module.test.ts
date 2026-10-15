@@ -90,8 +90,10 @@ const mockSeam = (operatorSecret: string | null = null) => {
     const effortSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const owners = new Map<string, WorkerOwner>();
+    const activations: number[] = [];
     const seam: ApplicationPort = {
         credentials: new Credentials({ operatorSecret }),
+        activateWorkspace: async ({ workspaceId }) => { activations.push(workspaceId); },
         registerWorkerOwner: async (_workspaceId, owner) => { owners.set(owner.address, owner); },
         claimWorkerOwner: async ({ owner }) => {
             const registered = owners.get(owner);
@@ -211,7 +213,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
     }))));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, owners, resolves, loopRuns, modelSets, modelQueries, effortSets, finish, emit };
+    return { seam, owners, activations, resolves, loopRuns, modelSets, modelQueries, effortSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -2377,6 +2379,19 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
     } finally {
         await mod.close();
     }
+});
+
+test("{§agui-owner-activation} an owner's attachment starts its workspace's activation; an observation starts none", async () => {
+    const { seam, activations } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "owned")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "owned", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
+    const mod = await host(seam);
+    try {
+        await post(mod.address().port, { threadId: "owned", runId: "watch", forwardedProps: { plurnk: { workspace: "owned", mode: "sync" } } });
+        assert.deepEqual(activations, [], "a passive observation activates nothing");
+        await post(mod.address().port, { threadId: "owned", runId: "own", forwardedProps: { plurnk: { workspace: "owned", mode: "sync", control: true } } });
+        assert.deepEqual(activations, [3], "the owner's arrival activates the workspace");
+    } finally { await mod.close(); }
 });
 
 test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows that reached it while the snapshot was read follow them, in order", async () => {

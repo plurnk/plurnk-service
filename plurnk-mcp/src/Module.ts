@@ -628,64 +628,77 @@ export default class Module implements DaemonModule<SetupSeam> {
         const consumedPending = new Map<string, PendingAuthorization>();
         const refreshed = new Map<string, symbol | undefined>();
         try {
-            for (const [name, value] of enabled) {
-                preparation.progress(name);
+            // {§mcp-setup} — every server that needs a connection or a catalog is prepared at once, so a
+            // workspace waits for its slowest server, not for the sum of them.
+            const plans = [...enabled].map(([name, value]) => {
                 const key = this.#pendingKey(workspaceId, name);
-                const invalidation = this.#dirty.get(key);
                 const binding = value as McpBinding;
-                const { definition } = binding;
                 const existing = previous.get(name);
-                const pending = this.#pending.get(this.#pendingKey(workspaceId, name));
-                if (
-                    existing !== undefined
-                    && force !== name
-                    && !this.#dirty.has(this.#pendingKey(workspaceId, name))
-                    && sameBinding(existing, binding)
-                    && pending?.prepared === undefined && pending?.authorized !== true
-                ) {
-                    next.set(name, existing);
-                    continue;
-                }
-                let attachment: Attachment;
+                const pending = this.#pending.get(key);
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
-                const catalogOnly = existing !== undefined
-                    && force !== name
-                    && sameBinding(existing, binding)
-                    && pending?.prepared === undefined && pending?.authorized !== true
-                    && heldConnection !== undefined;
-                if (pending?.prepared !== undefined && sameBinding(pending, binding)) {
-                    attachment = pending.prepared;
-                    consumedPending.set(name, pending);
-                } else if (catalogOnly) {
-                    // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
-                    // rebuilt on the connection the alias already holds. No second process is
-                    // spawned, so neither abort nor commit has anything of this alias to close
-                    // (#429).
-                    try {
-                        attachment = await this.#prepareAttachment(workspaceId, binding, heldConnection);
-                    } catch (cause) {
-                        this.#assertOpen();
-                        console.error(`MCP server '${name}' catalog refresh failed; the current catalog stays in service:`, cause);
-                        attachment = existing;
+                const settledBinding = existing !== undefined && force !== name && sameBinding(existing, binding)
+                    && pending?.prepared === undefined && pending?.authorized !== true;
+                const mode = settledBinding && !this.#dirty.has(key) ? "reuse"
+                    : pending?.prepared !== undefined && sameBinding(pending, binding) ? "pending"
+                        : settledBinding && heldConnection !== undefined ? "catalog"
+                            : "connect";
+                const authorized = mode === "connect" && pending?.authorized === true && sameBinding(pending, binding);
+                return { name, key, invalidation: this.#dirty.get(key), binding, existing, pending, heldConnection, mode, authorized };
+            });
+            const preparing = new Set(plans.filter(({ mode }) => mode === "catalog" || mode === "connect").map(({ name }) => name));
+            const reportPreparing = (): void => preparation.progress(plans.map(({ name }) => name).filter((name) => preparing.has(name)));
+            if (preparing.size > 0) reportPreparing();
+            const settled = await Promise.allSettled(plans.map(async (plan): Promise<Attachment> => {
+                if (plan.mode === "reuse") return plan.existing!;
+                if (plan.mode === "pending") return plan.pending!.prepared!;
+                try {
+                    if (plan.mode === "catalog") {
+                        // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
+                        // rebuilt on the connection the alias already holds. No second process is
+                        // spawned, so neither abort nor commit has anything of this alias to close
+                        // (#429).
+                        try {
+                            return await this.#prepareAttachment(workspaceId, plan.binding, plan.heldConnection);
+                        } catch (cause) {
+                            this.#assertOpen();
+                            console.error(`MCP server '${plan.name}' catalog refresh failed; the current catalog stays in service:`, cause);
+                            return plan.existing!;
+                        }
                     }
-                } else {
-                    const authorized = pending?.authorized === true && sameBinding(pending, binding);
                     try {
-                        attachment = await this.#prepareAttachment(workspaceId, binding, authorized ? pending.connection : undefined);
+                        return await this.#prepareAttachment(workspaceId, plan.binding, plan.authorized ? plan.pending!.connection : undefined);
                     } catch (cause) {
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
-                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(definition, undefined, cause);
-                        attachment = { ...binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
-                        console.error(`MCP server '${name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
+                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(plan.binding.definition, undefined, cause);
+                        console.error(`MCP server '${plan.name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
+                        return { ...plan.binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
                     }
+                } finally {
+                    preparing.delete(plan.name);
+                    if (preparing.size > 0) reportPreparing();
+                }
+            }));
+            // Assembled in alias order; under rejection the first failure in that order is the one thrown,
+            // after every connection the attempt did open is in hand to close.
+            let rejection: { readonly cause: unknown } | null = null;
+            for (const [index, plan] of plans.entries()) {
+                const result = settled[index]!;
+                if (result.status === "rejected") {
+                    rejection ??= { cause: result.reason };
+                    continue;
+                }
+                const attachment = result.value;
+                if (plan.mode === "pending") consumedPending.set(plan.name, plan.pending!);
+                if (plan.mode === "connect") {
                     // Only a connection this attempt opened is the attempt's to close on abort.
-                    if (authorized) consumedPending.set(name, pending);
+                    if (plan.authorized) consumedPending.set(plan.name, plan.pending!);
                     else if (attachment.kind !== "unavailable") fresh.push(attachment);
                 }
-                next.set(name, attachment);
-                if (attachment !== existing) refreshed.set(key, invalidation);
+                next.set(plan.name, attachment);
+                if (attachment !== plan.existing) refreshed.set(plan.key, plan.invalidation);
             }
+            if (rejection !== null) throw rejection.cause;
         } catch (cause) {
             const cleanup = [...await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection])))];
             const failures = cleanup.flatMap((result) => result.status === "rejected" ? errorsOf(result.reason) : []);
