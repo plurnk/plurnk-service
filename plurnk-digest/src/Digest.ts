@@ -70,7 +70,9 @@ export default class Digest {
         if (opts.workspaceId !== undefined) workers = workers.filter((r) => r.workspace_id === opts.workspaceId);
         if (opts.workerId !== undefined || opts.workspaceId !== undefined) {
             const keptWorkerIds = new Set(workers.map((r) => r.id));
-            const keptWorkspaceIds = new Set(workers.map((r) => r.workspace_id));
+            // A workspace selected alone stays the digest's though it holds no worker; a worker selector keeps the
+            // workspaces of the workers it kept.
+            const keptWorkspaceIds = new Set(opts.workerId === undefined ? [opts.workspaceId] : workers.map((r) => r.workspace_id));
             workspaces = workspaces.filter((s) => keptWorkspaceIds.has(s.id));
             loops = loops.filter((l) => keptWorkerIds.has(l.worker_id));
             const keptLoopIds = new Set(loops.map((l) => l.id));

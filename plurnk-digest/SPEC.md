@@ -104,7 +104,7 @@ accepted response, an empty response, or free inference.
 | Reader lifetime                       | `run` reads heavy evidence on demand while rendering, then closes its reader on success or failure. `requiem` closes its reader before awaiting witness inference. |
 | Export completion                     | Packet and response bodies are read and serialized one record at a time, without discarding evidence. `digest.json` is promoted from a partial file only after every artifact is written; its absence identifies an incomplete export. |
 | `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
-| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. |
+| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. A workspace selected alone is the digest's workspace even when it holds no worker. |
 
 §digest-cost-kind **Cost basis named.** A rendered Cost line carries the basis of its dollar figure: `(charged)` only when every settled request's cost is provider-charged; `(estimated — catalog rates)` when any settled request's cost is an estimate, because a mixed sum is no more trustworthy than its weakest term. A dollar figure without its basis reads as billed truth, and an estimate must never impersonate a charge.
 

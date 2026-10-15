@@ -45,6 +45,34 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
     assert.equal(opened, 1, "a refused destination never opens evidence");
 });
 
+test("{§digest-programmatic-surface}: a workspace selected alone is the digest's workspace though it holds no worker", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-empty-workspace-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const unexpected = (): never => { throw new Error("an empty workspace has no heavy evidence"); };
+    const openEvidence = (): DigestEvidence => ({
+        rows: () => ({
+            workspaces: [{ id: 3, name: "empty" }, { id: 4, name: "elsewhere" }],
+            workers: [{ id: 40, workspace_id: 4, name: "main", provider_identity: "mock", owner: "_plurnk" }],
+            loops: [], turns: [], inferenceCalls: [], modelCalls: [],
+            turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
+            reasoningRows: [], curationEffects: [], workerRollupRows: [], opMixRows: [], environmentRows: [],
+            searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
+            derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
+            storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
+        }),
+        packet: unexpected, response: unexpected, request: unexpected, reasoning: unexpected,
+        textWeight: unexpected,
+        [Symbol.dispose]: () => {},
+    });
+    const dbPath = join(root, "evidence");
+    await writeFile(dbPath, "");
+    const digestDir = join(root, "report");
+    Digest.run({ dbPath, digestDir, openEvidence, workspaceId: 3 });
+    const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }>; workers: unknown[] };
+    assert.deepEqual(report.workspaces.map(({ name }) => name), ["empty"]);
+    assert.deepEqual(report.workers, []);
+});
+
 // {§digest-capacity-evidence} — the capacity contract's 413 rows never make a win degenerate (#1096).
 test("{§digest-capacity-evidence}: a loop that concluded under a binding budget is CLEAN; one refusal beside its 413s is DEGENERATE-WIN with a count of one", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-capacity-"));
