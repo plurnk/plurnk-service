@@ -395,11 +395,13 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return { env, reattached };
     }
 
-    // Resolve the thread's bound worker within its world. Cached per
-    // workspace + threadId; worker names are immutable so the binding cannot rot. Durable
+    // Resolve the thread's bound worker within its world. Cached per workspace identity, its
+    // current name and threadId ({§agui-thread-binding}): a world that later takes an old name never
+    // inherits another world's worker, and a thread named after its workspace means the default worker
+    // only while the name holds. Worker names are immutable, so nothing else can rot. Durable
     // capability changes use workspace.capabilities.set; approval ownership is durable in Core.
     async #boundWorker(threadId: string, env: ClientEnvelope): Promise<number> {
-        const key = Module.#threadKey(env.workspaceName, threadId);
+        const key = JSON.stringify([env.workspaceId, env.workspaceName, threadId]);
         const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return cached;
         const pending = (async () => threadId === env.workspaceName

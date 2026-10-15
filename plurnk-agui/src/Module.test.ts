@@ -2334,6 +2334,42 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
     } finally { await mod.close(); }
 });
 
+test("{§agui-thread-binding} a thread's worker belongs to its world, not a name: a new world under an old name binds its own", async () => {
+    const { seam, finish } = mockSeam();
+    const worlds = [workspaceRow(3, "before")];
+    const envelope = (id: number) => ({
+        workspaceId: id, workspaceName: worlds.find((world) => world.id === id)!.name,
+        projectRoot: null, projectLabel: null, workerId: 10 + id, workerName: `client-${id}`,
+    });
+    seam.listWorkspaces = async () => worlds;
+    seam.attachWorkspace = async ({ workspaceId }) => envelope(workspaceId);
+    seam.createWorkspace = async ({ name }) => { worlds.push(workspaceRow(4, name!)); return envelope(4); };
+    const workers = new Map<number, ReturnType<typeof workerRow>[]>([[3, [workerRow(77, "page")]], [4, []]]);
+    seam.listWorkers = async (workspaceId) => workers.get(workspaceId) ?? [];
+    seam.createWorker = async ({ workspaceId, name }) => {
+        workers.get(workspaceId)!.push(workerRow(78, name!));
+        return { workerId: 78, workerName: name! };
+    };
+    const bound: Array<[number, number]> = [];
+    seam.runLoop = async (a) => {
+        bound.push([a.workspaceId, a.workerId]);
+        finish(a.workspaceId, a.workerId);
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+    };
+    const mod = await host(seam);
+    const message = (workspace: string) => post(mod.address().port, {
+        threadId: "page", forwardedProps: { plurnk: { workspace } }, messages: [{ role: "user", content: "hello" }],
+    });
+    try {
+        await message("before");
+        worlds[0]!.name = "after"; // renamed by another client
+        await message("before");
+        await message("after");
+        assert.deepEqual(bound, [[3, 77], [4, 78], [3, 77]],
+            "the world now called before binds its own page; the renamed world keeps the page it had");
+    } finally { await mod.close(); }
+});
+
 test("{§agui-thread-binding} a cached binding never outlives its workspace's name: renamed by any client, the old name resolves afresh", async () => {
     const { seam, loopRuns } = mockSeam();
     let name = "before-rename";
