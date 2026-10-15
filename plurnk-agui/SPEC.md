@@ -23,7 +23,9 @@ does not recompute them.
   — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
   curated workspace) from the CONVERSATION (a worker: a history over that world). AG-UI's workspace
   concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.workspace`
-  (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
+  (attach if it exists, create with exactly that name otherwise — no prefix, no forging), on every
+  Run: a thread's earlier binding serves only while its workspace still carries that name, so after
+  a rename, by any client, the old name resolves afresh and the new one reaches the workspace. The
   workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
   violation the module rejects (400) - never a workspace forged from the `threadId`. The
   `threadId` is the conversation over that world, and the name is the identity at

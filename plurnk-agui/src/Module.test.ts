@@ -1550,14 +1550,19 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
     const injectionStarted = Promise.withResolvers<void>();
     const releaseInjection = Promise.withResolvers<void>();
     let runs = 0;
-    seam.createWorkspace = async () => ({
-        workspaceId: 3,
-        workspaceName: "interrupt-ownership",
-        projectRoot: null,
-        projectLabel: null,
-        workerId: 10,
-        workerName: "client-1",
-    });
+    // The daemon lists what it created, so a cached binding is still its workspace's.
+    const created: ReturnType<typeof workspaceRow>[] = [];
+    seam.listWorkspaces = async () => created;
+    seam.createWorkspace = async () => {
+        created.push(workspaceRow(3, "interrupt-ownership"));
+        return {
+            workspaceId: 3,
+            workspaceName: "interrupt-ownership",
+            projectRoot: null,
+            projectLabel: null,
+            workerId: 10,
+            workerName: "client-1",
+        };
     seam.runLoop = async () => {
         runs += 1;
         if (runs === 1) {
@@ -2413,6 +2418,40 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
         assert.deepEqual(rows, [2, 3], "each row once, in arrival order, after the snapshot");
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
     } finally { await mod.close(); }
+});
+
+test("{§agui-thread-binding} a cached binding never outlives its workspace's name: renamed by any client, the old name resolves afresh", async () => {
+    const { seam, loopRuns } = mockSeam();
+    let name = "before-rename";
+    const created: string[] = [];
+    seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
+    seam.listWorkspaces = async () => [workspaceRow(3, name)];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
+    seam.readWorker = async ({ identity }) => identity.name === "exact-worker" ? workerRow(88, "exact-worker", "model") : null;
+    const mod = await host(seam);
+    const observe = async (workspace: string): Promise<Response> => await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(standardInput({ threadId: "page", messages: [], forwardedProps: { plurnk: { workspace, worker: "exact-worker", mode: "sync" } } })),
+    });
+    try {
+        const first = await observe("before-rename");
+        assert.equal(first.status, 200);
+        await first.text();
+        // Renamed outside this module: nothing here is told, so the cache alone must not decide.
+        name = "after-rename";
+        const stale = await observe("before-rename");
+        assert.deepEqual([stale.status, ((await stale.json()) as { type: string }).type.split("/").at(-1)], [404, "workspace-not-found"],
+            "a name that no longer exists is not found, however recently it was bound");
+        const renamed = await observe("after-rename");
+        assert.equal(renamed.status, 200);
+        const snapshot = (await renamed.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+            .map((frame) => JSON.parse(frame.slice(6)) as AguiEvent).find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: { name: string } } } };
+        assert.equal(snapshot.snapshot.plurnk.workspace.name, "after-rename", "the current name binds the same workspace");
+        assert.deepEqual(created, [], "observing created nothing");
+        assert.deepEqual(loopRuns, []);
+    } finally {
+        await mod.close();
+    }
 });
 
 test("{§agui-conversation-sync} an observation binds an existing workspace and conversation, exactly as named, and creates neither", async () => {

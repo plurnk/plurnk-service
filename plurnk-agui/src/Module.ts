@@ -326,14 +326,14 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             ));
         }
         const key = Module.#threadKey(workspace, threadId);
-        const cached = this.#threadEnvelopes.get(key);
+        const cached = await this.#currentEnvelope(key, workspace);
         if (cached !== undefined) return { env: cached, reattached: true };
         const previous = this.#workspaceAcquisitions.get(workspace);
         const acquisition = Promise.withResolvers<void>();
         this.#workspaceAcquisitions.set(workspace, acquisition.promise);
         try {
             await previous;
-            const acquired = this.#threadEnvelopes.get(key);
+            const acquired = await this.#currentEnvelope(key, workspace);
             if (acquired !== undefined) return { env: acquired, reattached: true };
             const result = await this.#openWorkspace(workspace, forwarded, options);
             this.#threadEnvelopes.set(key, result.env);
@@ -342,6 +342,17 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             acquisition.resolve();
             if (this.#workspaceAcquisitions.get(workspace) === acquisition.promise) this.#workspaceAcquisitions.delete(workspace);
         }
+    }
+
+    // {§agui-thread-binding} — a cached binding serves only while its workspace still carries the name the
+    // request selects: a rename by any client retires it, and the name resolves afresh.
+    async #currentEnvelope(key: string, workspace: string): Promise<ClientEnvelope | undefined> {
+        const cached = this.#threadEnvelopes.get(key);
+        if (cached === undefined) return undefined;
+        const current = (await this.#seam.listWorkspaces()).find(({ id }) => id === cached.workspaceId);
+        if (current?.name === workspace) return cached;
+        this.#threadEnvelopes.delete(key);
+        return undefined;
     }
 
     async #openWorkspace(workspace: string, forwarded: Record<string, unknown> | undefined, options: { readonly create?: boolean }): Promise<{ env: ClientEnvelope; reattached: boolean }> {
