@@ -230,8 +230,13 @@ const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or 
 // {§worker-initialization-entry} — the two NOTEs that open and close the initialization surveys, labelled
 // as the card's own first and last NOTE examples are.
 const INITIALIZATION_NOTE: NoteStatement = {
-    op: "NOTE", aside: "summary", metadata: null, target: null, lineMarker: null,
-    body: "Surveyed tooling, documentation, extended context, and project root.", position: UNKNOWN_POSITION,
+    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
+    body: [
+        "1. Survey the tooling, documentation, extended context, and project root: what exists decides what can be done.",
+        "2. Read the Open Message and restate what it asks for and what will show it is done.",
+        "3. Do the work, recording each finding, decision, and next action in a NOTE as it happens.",
+    ].join("\n"),
+    position: UNKNOWN_POSITION,
 };
 const INITIALIZATION_NEXT_NOTE: NoteStatement = {
     op: "NOTE", aside: "next", metadata: null, target: null, lineMarker: null,
@@ -242,7 +247,7 @@ const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    note: "YOU MUST emit at least one NOTE, a summary, in every turn.",
+    note: "YOU MUST emit at least one NOTE in every turn.",
     emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",

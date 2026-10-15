@@ -11,7 +11,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Internal Working Memory Register recording **every** summary, finding, decision, and next action.
+* NOTE: Internal Working Memory Register recording **every** plan, finding, decision, and next action.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -26,30 +26,30 @@ body?
 ## Loop Protocol
 
 > [!TIP]
-> Every summary, finding, decision, and next action not recorded in a NOTE is lost.
+> YOU SHOULD record every plan, finding, decision, and next action in detailed NOTEs to avoid permanent loss of information.
 
-```NOTE <!-- summary -->
-example summarization note
+```NOTE <!-- plan -->
+the steps ahead and why
 ```
 
 ```NOTE <!-- finding -->
-example fact or finding note
+a finding and its evidence
 ```
 
 ```NOTE <!-- decision -->
-example decision note
+a decision and its reasons
 ```
 
 ```NOTE <!-- next -->
-example next action note
+the next action and what it needs
 ```
 
 ```SEND
-example continuing progress update response
+a continuing progress update response
 ```
 
 ```SEND [200]
-example final deliverable response
+a final deliverable response
 ```
 
 > [!CAUTION]

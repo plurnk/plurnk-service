@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
-const OPENING_NOTE = "Surveyed tooling, documentation, extended context, and project root.";
 const CLOSING_NOTE = "Read and resolve the Open Message.";
+// The card's NOTE examples, in the order the card teaches them.
+const cardNoteAsides = async (): Promise<string[]> => [...(await readFile(new URL("../../../plurnk-contracts/plurnk.md", import.meta.url), "utf8"))
+    .matchAll(/^`{3,}NOTE <!-- (.+?) -->$/gmu)].map(([, aside]) => aside!);
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
 type Row = { op: string | null; origin: string; tx: string };
@@ -46,14 +49,17 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
         const rows = await rowsOf(db, initialization!);
         const [opening, ...rest] = rows;
         const closing = rest.pop();
-        assert.deepEqual([opening?.op, opening?.origin, JSON.parse(opening!.tx).body], ["NOTE", "_plurnk", OPENING_NOTE], "the opening NOTE is the first row");
+        assert.deepEqual([opening?.op, opening?.origin], ["NOTE", "_plurnk"], "the opening NOTE is the first row");
+        assert.match(JSON.parse(opening!.tx).body, /^1\. .+\n2\. .+\n3\. .+$/u, "it is a plan in numbered steps");
         assert.deepEqual([closing?.op, closing?.origin, JSON.parse(closing!.tx).body], ["NOTE", "_plurnk", CLOSING_NOTE], "the closing NOTE is the last row");
         assert.ok(rest.length > 0 && rest.every(({ op }) => op === "FIND" || op === "READ"), "the surveys stand between them");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const program = sources.find((row) => row.turn_id === initialization && row.kind === "ops")?.content ?? "";
-        assert.match(program, /^`{3,}NOTE <!-- summary -->\nSurveyed tooling, documentation, extended context, and project root\.\n`{3,}\n/u,
+        const asides = await cardNoteAsides();
+        assert.ok(asides.length > 1, "the card teaches NOTE by labelled examples");
+        assert.match(program, new RegExp(`^\`{3,}NOTE <!-- ${asides[0]} -->\\n1\\. `, "u"),
             "the recorded ops:// program begins with the NOTE labelled as the card's first NOTE example is");
-        assert.match(program, /\n`{3,}NOTE <!-- next -->\nRead and resolve the Open Message\.\n`{3,}\s*$/u,
+        assert.match(program, new RegExp(`\\n\`{3,}NOTE <!-- ${asides.at(-1)} -->\\nRead and resolve the Open Message\\.\\n\`{3,}\\s*$`, "u"),
             "and ends with the NOTE labelled as the card's last NOTE example is");
     });
 });

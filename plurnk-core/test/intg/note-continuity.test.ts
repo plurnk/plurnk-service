@@ -7,7 +7,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 import { packetSection } from "./_packet.ts";
 
 // {§continued-without-note} {§notice-directive} — the notice's directive and its rendered callout.
-const COMMAND = "YOU MUST emit at least one NOTE, a summary, in every turn.";
+const COMMAND = "YOU MUST emit at least one NOTE in every turn.";
 const NOTICE = `> [!WARNING]\n> ${COMMAND} The turn continued without a NOTE. [continued_without_note]`;
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
