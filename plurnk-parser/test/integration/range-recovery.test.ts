@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
-import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ParseResult } from "@plurnk/plurnk-contracts";
 
 const statementsOf = (parsed: ParseResult) => parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const warningsOf = (parsed: ParseResult) => parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
 const assertAdmitted = (parsed: ParseResult) => assert.deepEqual(parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error"), []);
-const marksOf = (statement: ClientStatement | undefined) => statement !== undefined && "lineMarker" in statement ? statement.lineMarker?.marks : undefined;
+const marksOf = (statement: PlurnkStatement | undefined) => statement !== undefined && "lineMarker" in statement ? statement.lineMarker?.marks : undefined;
 
 for (const [scope, marks] of [
     ["<395,12>", [395, 406]],
@@ -40,12 +40,12 @@ for (const [scope, marks] of [
     }
 }
 
-test("{§scope-range-recovery} reasoning and client scopes use the same normalization", () => {
+test("{§scope-range-recovery} reasoning and statement scopes use the same normalization", () => {
     const reasoning = PlurnkParser.parseReasoningOperations(PlurnkParser.frame("READ (file.md) <395,+12>", null));
     assert.deepEqual(reasoning[0]?.lineMarker?.marks, [395, 407]);
-    const client = PlurnkParser.parseClient(PlurnkParser.frame("LOOK (file.md) <395,12>", null));
-    assert.deepEqual(client.items.flatMap((item) => item.kind === "statement" ? [marksOf(item.statement)] : []), [[395, 406]]);
-    assert.deepEqual(client.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["Scope <395,12> was read as <395,406>."]);
+    const statements = PlurnkParser.parseStatements(PlurnkParser.frame("READ (file.md) <395,12>", null));
+    assert.deepEqual(statements.items.flatMap((item) => item.kind === "statement" ? [marksOf(item.statement)] : []), [[395, 406]]);
+    assert.deepEqual(statements.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["Scope <395,12> was read as <395,406>."]);
 });
 
 test("{§scope-range-recovery} range syntax tolerances compose inside target parentheses", () => {

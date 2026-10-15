@@ -899,7 +899,7 @@ fixture
 
         // A family's published documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
-        await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/fx/docy.md)````") });
+        await daemon.dispatchAsClient({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/fx/docy.md)````") });
         const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
         assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared published document");
         for (const { content } of document) assert.match(content, /fixture document/);
@@ -937,7 +937,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     const daemon = await boot(db, []);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await daemon.look({ workspaceId, workerId, statement: parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````") });
+    await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````") });
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;

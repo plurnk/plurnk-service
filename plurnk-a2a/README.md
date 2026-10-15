@@ -78,7 +78,7 @@ Disconnecting a review-capable owner leaves approvals waiting for reconnection.
 In either setup the A2A caller converses by message: the model asks it in a reply,
 and its answer arrives as a later Task in the same Context. Each Task runs in its own
 child Worker, so Tasks in one Context can progress and be cancelled independently.
-A new Task reads the retained Context conversation through an ordinary resource;
+A new Task reads the retained Context history through an ordinary resource;
 it does not inherit sibling execution logs. A Task never enters `input-required`.
 An interaction the Task raises, such as a `question`, goes to the
 worker's owner and needs an interactive one. A missing named parent refuses new Tasks;

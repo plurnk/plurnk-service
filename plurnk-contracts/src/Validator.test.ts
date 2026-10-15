@@ -657,7 +657,7 @@ test("CapabilityPolicy accepts only its canonical wire shape", () => {
     }
     for (const invalid of [
         { deny: [{}] },
-        { only: [{ operation: "LOOK" }] },
+        { only: [{ operation: "SCAN" }] },
         { deny: [{ operation: "JUMP" }] },
         { extra: [] },
     ]) {

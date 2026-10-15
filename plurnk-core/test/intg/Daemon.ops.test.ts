@@ -72,35 +72,6 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
-test("{§op-look}: resolves like READ without writing a log entry", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "secret" });
-            const before = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -1;
-            const response = await rpcCall(ws, 3, "op.look", { text: "````READ (worker:///x)````" });
-            const result = response.result as { status: number; content: string };
-            assert.equal(result.status, 200);
-            assert.equal(result.content, "secret");
-            const after = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -2;
-            assert.equal(after, before, "op.look must write no log_entries row — that's the whole contract");
-        } finally { ws.close(); }
-    });
-});
-
-test("{§op-look}: rejects a non-READ statement", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "look-readonly" });
-            const response = await rpcCall(ws, 2, "op.look", { text: "````EDIT (worker:///x)\nnope\n````" });
-            assert.ok(response.error, "a non-READ LOOK must be rejected");
-            assert.match(response.error!.message, /READ only/);
-        } finally { ws.close(); }
-    });
-});
-
 test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);

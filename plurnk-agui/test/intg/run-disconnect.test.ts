@@ -9,8 +9,8 @@ import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 const frames = (body: string): AguiEvent[] => body.split("\n\n")
     .filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 
-for (const kind of ["conversation", "action"] as const) {
-    test(`{§agui-run-disconnect}: a resumed ${kind} disconnect reaps its actual executor`, { timeout: 30_000 }, async (t) => {
+for (const kind of ["message", "action"] as const) {
+    test(`{§agui-run-disconnect}: a resumed ${kind} Run's disconnect reaps its actual executor`, { timeout: 30_000 }, async (t) => {
         await import(join(SERVICE, "test/setup.ts"));
         const [{ default: Daemon }, { makeMockResponse }, { waitForDb }] = await Promise.all([
             import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_mock.ts")),
@@ -56,9 +56,9 @@ for (const kind of ["conversation", "action"] as const) {
             controller.abort();
             await body;
             const stream = await concluded.promise;
-            assert.equal(stream.workerId, proposal.workerId, "the original operation worker is cancelled, not a guessed conversation worker");
+            assert.equal(stream.workerId, proposal.workerId, "the original operation worker is cancelled, not one guessed from the thread's binding");
             assert.equal(stream.result.status, 499, "the executor is reaped rather than detached");
-            if (kind === "conversation") {
+            if (kind === "message") {
                 const loops: ApplicationLoopProjection[] = await waitForDb(() => application.listWorkerLoops({ workspaceId: workspace.id, workerId: proposal.workerId }),
                     (rows: ApplicationLoopProjection[]) => rows.some((row) => row.terminalResult !== null));
                 const result = loops.find((loop) => loop.id === proposal.loopId)?.terminalResult;

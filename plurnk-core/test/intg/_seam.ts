@@ -214,11 +214,6 @@ export default class SeamSocket {
             }
             case "workspace.share": return daemon.shareWorkspace({ workspaceId: this.#attached().workspaceId, folder: p.folder as string });
             case "providers.list": return daemon.listProviders();
-            case "op.look": {
-                const s = this.#attached();
-                const statement = Dsl.parseSingleStatement(p.text as string);
-                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
-            }
             case "op.dispatch": {
                 const s = this.#attached();
                 return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement: p.statement as PlurnkStatement });

@@ -1381,7 +1381,7 @@ export default class TurnRunner {
         return split.emissionValid ? "admitted" : "rejected";
     }
 
-    // {§notifications-reasoning-event} — only the parent emission is conversational;
+    // {§notifications-reasoning-event} — only the parent emission is observed;
     // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
     // request they stream in; a new request or the call's end closes the open span.
     #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, turnId: number, modelCall: ModelCall): ReasoningObserver {

@@ -354,7 +354,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "openpaths-parked" });
-            const { workerId } = await daemon.createConversationWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
+            const { workerId } = await daemon.createWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
                 workerId,
@@ -430,7 +430,7 @@ test("{§message-loop-containment}: an injection crossing the park transition is
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "inject-at-park-boundary" });
-            const { workerId } = await daemon.createConversationWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
+            const { workerId } = await daemon.createWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
                 workerId,

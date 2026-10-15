@@ -342,7 +342,7 @@ export class SqlRiteSync {
 	worker_get: SqlRiteSyncPreparedStatements;
 	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
-	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	worker_name_get_default_worker: SqlRiteSyncPreparedStatements;
 	worker_owner_register: SqlRiteSyncPreparedStatements;
 	worker_owner_registered: SqlRiteSyncPreparedStatements;
 	worker_owner_read: SqlRiteSyncPreparedStatements;
@@ -646,7 +646,7 @@ export default class SqlRite {
 	worker_get: SqlRitePreparedStatements;
 	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
-	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	worker_name_get_default_worker: SqlRitePreparedStatements;
 	worker_owner_register: SqlRitePreparedStatements;
 	worker_owner_registered: SqlRitePreparedStatements;
 	worker_owner_read: SqlRitePreparedStatements;

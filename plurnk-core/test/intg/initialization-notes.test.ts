@@ -13,7 +13,7 @@ type Row = { op: string | null; origin: string; tx: string };
 
 const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId });
 
-const conversation = async (db: Db) => {
+const runLoop = async (db: Db) => {
     const workspaceId = await insertWorkspace(db, `initialization-notes-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Look around.");
@@ -40,7 +40,7 @@ const withFilesItems = async (value: string, body: (db: Db) => Promise<void>): P
 
 test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the initialization program and one closes it", async () => {
     await withFilesItems("-1", async (db) => {
-        const { result, workerId } = await conversation(db);
+        const { result, workerId } = await runLoop(db);
         assert.equal(result.result.status, 200);
         const [initialization] = result.turnIds;
         const rows = await rowsOf(db, initialization!);
@@ -60,7 +60,7 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
 
 test("{§worker-initialization-entry}: with the surveys off, initialization authors no NOTE", async () => {
     await withFilesItems("0", async (db) => {
-        const { result } = await conversation(db);
+        const { result } = await runLoop(db);
         assert.equal(result.result.status, 200);
         const [initialization] = result.turnIds;
         assert.equal((await rowsOf(db, initialization!)).some(({ op }) => op === "NOTE"), false, "no survey ran, so no NOTE claims one");

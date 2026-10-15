@@ -12,7 +12,7 @@ import File from "../../src/schemes/File.ts";
 import ByteView from "../../src/content/byte-view.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES ??= "104857600";
@@ -53,7 +53,7 @@ const setup = async () => {
 test("{§read-bytes} a binary member reads as hex lines: the first page without a scope, ranges, and 416", async () => {
     const { root, db, ctx } = await setup();
     try {
-        const head = await lookThroughScheme("file", null, readStmt(root, "blob.bin"), ctx);
+        const head = await readThroughScheme("file", null, readStmt(root, "blob.bin"), ctx);
         assert.equal(head.status, 200, JSON.stringify(head.problem));
         assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, the first page of bytes: 40 fit it ({§markerless-first-page})");
         assert.equal(head.startLine, 1);
@@ -61,19 +61,19 @@ test("{§read-bytes} a binary member reads as hex lines: the first page without 
         assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, PAGE], returned: [1, 40] });
         assert.equal((head as { projection?: string }).projection, "hex");
 
-        const tail = await lookThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [17, -1] }), ctx);
+        const tail = await readThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [17, -1] }), ctx);
         assert.equal(tail.status, 200);
         assert.equal(tail.startLine, 17);
         assert.equal(tail.content, ByteView.hexLines(BLOB.subarray(16)));
         assert.deepEqual(tail.range?.returned, [17, 40]);
 
-        const all = await lookThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [1, -1] }), ctx);
+        const all = await readThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [1, -1] }), ctx);
         assert.equal(all.content?.split("\n").length, 40, "<1,-1> is the whole resource");
 
-        const word = await lookThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [9, 18] }), ctx);
+        const word = await readThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [9, 18] }), ctx);
         assert.equal(word.content, ByteView.hexLines(Buffer.from("testword02")), "a byte window pastes straight from FIND evidence");
 
-        const beyond = await lookThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [41, 50] }), ctx);
+        const beyond = await readThroughScheme("file", null, readStmt(root, "blob.bin", { marks: [41, 50] }), ctx);
         assert.equal(beyond.status, 416, "past the last byte is not satisfiable");
         assert.equal(beyond.range?.total, 40);
     } finally {
@@ -85,12 +85,12 @@ test("{§read-bytes} a binary member reads as hex lines: the first page without 
 test("{§read-bytes} #bytes is the raw view of any member the scheme can supply, text included", async () => {
     const { root, db, ctx } = await setup();
     try {
-        const raw = await lookThroughScheme("file", null, readStmt(root, "notes.md", { marks: [1, 5] }, "bytes"), ctx);
+        const raw = await readThroughScheme("file", null, readStmt(root, "notes.md", { marks: [1, 5] }, "bytes"), ctx);
         assert.equal(raw.status, 200, JSON.stringify(raw.problem));
         assert.equal(raw.channel, "bytes");
         assert.equal(raw.content, ByteView.hexLines(Buffer.from("hello")));
         assert.equal(raw.mimetype, "text/markdown");
-        const body = await lookThroughScheme("file", null, readStmt(root, "notes.md"), ctx);
+        const body = await readThroughScheme("file", null, readStmt(root, "notes.md"), ctx);
         assert.equal(body.content, "hello\nworld\n", "the text body is untouched by the byte view");
     } finally {
         await db.close();
@@ -130,7 +130,7 @@ test("{§markerless-first-page} a retrieval without a scope is its first page, w
             await EntryCrud.writeEntry({ authority: "", pathname: `page${n}.md` }, { channels: { body: { content: "findable\n", mimetype: "text/markdown" } } }, ctx, "file");
         }
 
-        const bytes = await lookThroughScheme("file", null, readStmt(root, "blob.bin"), ctx);
+        const bytes = await readThroughScheme("file", null, readStmt(root, "blob.bin"), ctx);
         assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, PAGE], returned: [1, 40] }, "the first page of a byte view, in bytes");
 
         const found = await new File().find(findStmt("page*.md", "findable"), ctx);

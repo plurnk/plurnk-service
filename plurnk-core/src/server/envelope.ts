@@ -187,11 +187,11 @@ export default class Envelope {
     }
 
     // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).
-    // The model's conversation lives in its own worker, distinct from the client's
-    // client worker, so the packet — rendered from the model worker — never carries
-    // the client's dispatched actions. The module resolves and retains the binding.
-    // {§methods-conversation-worker}: a fresh conversation is a named, empty-log,
-    // model-origin worker, distinct from the stable default and from a history-copying fork.
+    // The model works in its own worker, distinct from the client's client worker, so the
+    // packet — rendered from the model worker — never carries the client's dispatched
+    // actions. The module resolves and retains the binding.
+    // {§methods-worker-create}: a fresh worker is a named, empty-log, model-origin worker,
+    // distinct from the stable default and from a history-copying fork.
     static async createModelWorker(db: Db, workspaceId: number, name?: string, parentWorkerId?: number, owner?: string): Promise<{ id: number; name: string }> {
         const options = { workspaceId, parentWorkerId, owner, origin: "model" as const };
         return name === undefined
@@ -202,8 +202,8 @@ export default class Envelope {
     static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {
         // {§methods-model-worker}: idempotence lives at the seam, not in a client's
         // connection cache. The durable role, not root ordering or a name parse,
-        // distinguishes this default from arbitrary fresh conversations.
-        const worker = await WorkerName.ensureDefaultConversation(db, {
+        // distinguishes this default from arbitrary fresh workers.
+        const worker = await WorkerName.ensureDefaultWorker(db, {
             workspaceId,
         });
         return worker.id;
@@ -224,7 +224,7 @@ export default class Envelope {
         return rows.map(projectWorkerRow);
     }
 
-    // {§methods-workspace-prompts}: expose root-conversation loop seeds directly,
+    // {§methods-workspace-prompts}: expose root-worker loop seeds directly,
     // without forcing clients to reconstruct prompt history from log rows.
     static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number, workerId: number | null): Promise<string[]> {
         const rows = await db.envelope_list_workspace_prompts.all<{ prompt: string }>({ workspace_id: workspaceId, limit, worker_id: workerId });

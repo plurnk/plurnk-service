@@ -58,7 +58,7 @@ for (const header of ["WAIT", "WAIT [0]"]) {
                 const notices = subscribeNotifications(ws, "notice/event");
                 try {
                     const workspace = await rpcCall(ws, 1, "workspace.create", { name: "wait-duration" });
-                    const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
+                    const { workerId } = await daemon.createWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
                     const generate = mock.generate.bind(mock);
                     let observedLiveStream = false;
                     t.mock.method(mock, "generate", async (args: Parameters<typeof mock.generate>[0]) => {

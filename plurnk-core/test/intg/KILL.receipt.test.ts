@@ -75,8 +75,8 @@ Continue the task.
                     assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
                     assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
                     assert.ok(Number(receipt.tokens) > 0, "packet accounting includes the complete visible receipt");
-                    const recalled = await daemon.engine.look({
-                        workspaceId, workerId: run.modelWorkerId!, loopId: run.loopId,
+                    const recalled = await daemon.dispatchAsClient({
+                        workspaceId, workerId: run.modelWorkerId!,
                         statement: { op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } },
                     });
                     assert.equal(recalled.status, 200);

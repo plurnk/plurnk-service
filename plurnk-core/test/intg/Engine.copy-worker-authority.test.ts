@@ -18,7 +18,7 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
         const run = (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
+            const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected an operation");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client",

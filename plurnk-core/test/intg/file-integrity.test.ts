@@ -16,6 +16,7 @@ import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop,
 import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { ownWorker } from "./_approval.ts";
 import { editStmt, copyStmt, moveStmt, readStmt, localPath, fullReplace } from "./_dsl.ts";
+import { clientRead } from "./_client-read.ts";
 
 const original = "old content\n";
 const external = "new content\n";
@@ -86,7 +87,8 @@ for (const scope of ["workers", "workspaces", "aliases"] as const) {
 
 test("{§file-snapshot-revision}: source revisions stay internal to ordinary READ receipts", async (t) => {
     const fx = await fixture(t);
-    const result = await fx.engine.look({ ...fx.ids, statement: readStmt(localPath("doc.md")) });
+    const { workspaceId, workerId } = fx.ids;
+    const result = await clientRead(fx.engine, fx.db, { workspaceId, workerId, statement: readStmt(localPath("doc.md")) });
     assert.equal(result.status, 200);
     assert.match(String((result as { content?: unknown }).content), /old content/);
     assert.doesNotMatch(JSON.stringify(result), /fileRevision|synced_sig|fingerprint/);

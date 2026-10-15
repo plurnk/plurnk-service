@@ -11,7 +11,7 @@ export default class HeadingTokens {
         plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT, plurnkParser.OPEN_COPY,
         plurnkParser.OPEN_MOVE, plurnkParser.OPEN_SEND, plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK, plurnkParser.OPEN_FORK,
-        plurnkParser.OPEN_KILL, plurnkParser.OPEN_LOOK,
+        plurnkParser.OPEN_KILL,
     ]);
     static readonly #SLOTS: ReadonlySet<number> = new Set([
         plurnkParser.LPAREN, plurnkParser.TARGET_TEXT, plurnkParser.RPAREN, plurnkParser.L_MARKER,

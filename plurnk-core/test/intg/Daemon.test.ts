@@ -960,7 +960,7 @@ test("{§workspace-name} a root spelled with '.' or '..' derives the name of the
 test("{§workspace-name} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and workers", async () => {
     await withDaemon(null, async (db, daemon) => {
         const legacyId = await insertWorkspace(db, "old/../name");
-        const { workerId } = await daemon.createConversationWorker({ workspaceId: legacyId, name: "kept" });
+        const { workerId } = await daemon.createWorker({ workspaceId: legacyId, name: "kept" });
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === legacyId)?.name, "old/../name", "enumeration hides nothing");
         const attached = await daemon.attachWorkspace({ workspaceId: legacyId });
         assert.equal(attached.workspaceName, "old/../name", "it is attached under the name it carries");
@@ -1179,8 +1179,8 @@ test("workspace.workers lists workers in the workspace, most-recent first", asyn
             const result = response.result as { workers: Array<{ id: number; name: string; kind: string; lifecycle: string }> };
             assert.equal(result.workers.length, 2);
             assert.deepEqual(result.workers.map((r) => r.name).toSorted(), ["first", "second"]);
-            // {§application-worker-observation} — a root with no loop is an idle conversation (#523).
-            assert.deepEqual(result.workers.map((r) => [r.kind, r.lifecycle]), [["conversation", "idle"], ["conversation", "idle"]]);
+            // {§application-worker-observation} — a worker with no parent and no loop is an idle root (#523).
+            assert.deepEqual(result.workers.map((r) => [r.kind, r.lifecycle]), [["root", "idle"], ["root", "idle"]]);
         } finally { ws.close(); }
     });
 });
@@ -1530,7 +1530,7 @@ test("{§methods-worker-name-admission} the client-interface seam — workspace 
         assert.deepEqual(
             Object.keys(attached).toSorted(),
             ["projectLabel", "projectRoot", "workerId", "workerName", "workspaceId", "workspaceName"],
-            "{§methods-rebind} #64: attach does not fabricate conversation or action-loop binding",
+            "{§methods-rebind} #64: attach does not fabricate a bound-worker or action-loop binding",
         );
 
         // rename — mutations return the applied value; a name collision is refused. (No root
@@ -1635,7 +1635,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
             // A fork inherits its parent's loops by snapshot, so its latest loop is the completed one it forked from.
             assert.equal(observed?.lifecycle, "completed");
             const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: clientWorker.id } });
-            assert.equal(parent?.kind, "conversation");
+            assert.equal(parent?.kind, "root");
 
             // invariants: the runtime actor's name and a foreign worker are both refused.
             await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: clientWorker.id, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
@@ -2078,7 +2078,7 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
     const owner = "attached Functionality test module";
     const tag = "attachedcap";
     const workspaceId = await insertWorkspace(db, `attached-functionality-${crypto.randomUUID()}`);
-    const modelWorkerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const modelWorkerId = await insertWorker(db, workspaceId, null, "primary", "model");
     const clientWorkerId = await insertWorker(db, workspaceId, null, "client-1", "client");
     await db.workspace_module_state_put.run({
         workspace_id: workspaceId,
@@ -2133,18 +2133,18 @@ test("{§actor-boundary-attached-functionality} clients share workspace Function
             1,
             "the client operation journals in the client worker",
         );
-        const conversationRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
+        const modelRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
         assert.equal(
-            conversationRows.some(({ origin }) => origin === "client"),
+            modelRows.some(({ origin }) => origin === "client"),
             false,
-            "no client row enters the conversation Worker's log; its rows are its own _plurnk materialization",
+            "no client row enters the model Worker's log; its rows are its own _plurnk materialization",
         );
 
-        // No conversation attachment is needed to use the same environment.
+        // No worker attachment is needed to use the same environment.
         const detached = await daemon.dispatchAsClient({
             workspaceId,
             workerId: clientWorkerId,
-            statement: Dsl.buildExec({ runtime: tag, command: "without a conversation attachment" }),
+            statement: Dsl.buildExec({ runtime: tag, command: "without a worker attachment" }),
         });
         assert.equal(detached.status, 200, "an unattached client can use the workspace runtime");
         assert.deepEqual(executions, [workspaceId, workspaceId]);

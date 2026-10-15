@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { type PlurnkStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("WAIT", "Reported the result.");
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
-const bodyText = (op: ClientStatement) => "body" in op && typeof op.body === "object" && op.body !== null && "raw" in op.body ? op.body.raw : "body" in op ? op.body : null;
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const errors = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+const bodyText = (op: PlurnkStatement) => "body" in op && typeof op.body === "object" && op.body !== null && "raw" in op.body ? op.body.raw : "body" in op ? op.body : null;
 
 for (const [name, parse] of [
     ["model", PlurnkParser.parse],
     ["statements", PlurnkParser.parseStatements],
     ["log", PlurnkParser.parseStatements],
-    ["client", PlurnkParser.parseClient],
 ] as const) {
     test(`{§statement-rendering}: ${name} keeps a report holding same-width blocks intact under a framed SEND`, () => {
         const body = [

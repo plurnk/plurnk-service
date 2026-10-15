@@ -8,7 +8,6 @@ import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import resourceSelectionSchema from "../schema/ResourceSelection.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
 import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
-import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
 import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "json" };
 import problemProjectionSchema from "../schema/ProblemProjection.json" with { type: "json" };
@@ -103,19 +102,6 @@ export default class Validator {
     static #plurnkStatement = Validator.#withRefs(
         plurnkStatementSchema,
         [
-            positionSchema,
-            lineMarkerSchema,
-            textLineMarkerSchema,
-            parsedPathSchema,
-            matcherBodySchema,
-            sendBodySchema,
-            resourceSelectionSchema,
-        ],
-    );
-    static #clientStatement = Validator.#withRefs(
-        clientStatementSchema,
-        [
-            plurnkStatementSchema,
             positionSchema,
             lineMarkerSchema,
             textLineMarkerSchema,
@@ -322,10 +308,6 @@ export default class Validator {
 
     static validatePlurnkStatement(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#plurnkStatement, value);
-    }
-
-    static validateClientStatement(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#clientStatement, value);
     }
 
     static validateNotice(value: unknown): ValidationResult {

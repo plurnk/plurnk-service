@@ -19,6 +19,7 @@ import type Exec from "../../src/schemes/Exec.ts";
 import { executionAddress } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { clientRead } from "./_client-read.ts";
 
 // Registration supplies output declarations without starting the runtime.
 const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`, channel = "results"): RegistryEntry => ({
@@ -170,12 +171,10 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
         assert.ok(schemes.get("myserver"));
         const workspaceId = await insertWorkspace(db, `module-runtime-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
-        const read = (statement: ReadStatement) => engine.look({
+        const read = (statement: ReadStatement) => clientRead(engine, db, {
             statement,
             workspaceId,
             workerId,
-            loopId,
         }).then(Results.assertReadResult);
 
         const remote = await read(readStatement("/resources/item"));
@@ -220,7 +219,7 @@ test("{§runtime-resource-binding}: a facet that states its representation owns 
             return item.statement;
         };
 
-        const card = await engine.look({ workspaceId, workerId, loopId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
+        const card = await clientRead(engine, db, { workspaceId, workerId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
         assert.equal(card.content, "ada's card", "a fragmentless READ selects the facet's default channel, not the executor's");
 
         let sequence = 0;
@@ -279,8 +278,8 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
             if (item?.kind !== "statement") throw new Error("Expected an operation");
             return item.statement;
         };
-        const read = (uri: string) => engine.look({
-            workspaceId, workerId: alice, loopId,
+        const read = (uri: string) => clientRead(engine, db, {
+            workspaceId, workerId: alice,
             statement: parse(`\`\`\`\`READ (${uri}) <1,-1>\`\`\`\``),
         });
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
@@ -368,7 +367,7 @@ test("{§runtime-resource-binding}: retained output keeps its actual channel aft
         await (schemes.get("exec") as Exec).idle();
         const address = await executionAddress(db, turnId);
         const target = readStatement(new URL(address).pathname);
-        const read = (reader = engine) => reader.look({ workspaceId, workerId: peer, loopId, statement: target });
+        const read = (reader = engine) => clientRead(reader, db, { workspaceId, workerId: peer, statement: target });
         await install([{ tag: "myserver", entry: fakeEntry("myserver", "fixture", "body") }]);
         const replaced = await read();
         assert.equal(replaced.status, 200, JSON.stringify(replaced));

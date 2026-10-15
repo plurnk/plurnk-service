@@ -1,5 +1,5 @@
 import { BaseErrorListener, CommonTokenStream, ListTokenSource, type Token } from "antlr4ng";
-import { PlurnkParseError, type ClientStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
@@ -12,15 +12,15 @@ export class HeadingErrors extends BaseErrorListener {
 // {§parser-architecture}: a heading-only grammar pass supplies shape to fence recovery.
 // It never pairs fences or admits operations; the full parse owns errors and advisories.
 export default class HeadingReader {
-    static read(tokens: readonly Token[], errors: HeadingErrors): ClientStatement | null {
+    static read(tokens: readonly Token[], errors: HeadingErrors): PlurnkStatement | null {
         if (errors.failed) return null;
         const parser = new plurnkParser(new CommonTokenStream(new ListTokenSource(HeadingTokens.normalize(tokens))));
         parser.removeErrorListeners();
         parser.addErrorListener(errors);
-        const ctx = parser.clientStatement();
+        const ctx = parser.statement();
         if (errors.failed) return null;
         try {
-            const { value } = AstBuilder.collectAdvisories(() => AstBuilder.buildClient(ctx));
+            const { value } = AstBuilder.collectAdvisories(() => AstBuilder.build(ctx));
             return value[0] ?? null;
         } catch (cause) {
             // Invalid slots remain invalid in the full parse, with their original diagnostic.

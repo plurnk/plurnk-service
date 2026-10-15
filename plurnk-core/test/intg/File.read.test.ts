@@ -11,7 +11,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
@@ -32,7 +32,7 @@ const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null)
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
-    lookThroughScheme("file", null, statement, ctx);
+    readThroughScheme("file", null, statement, ctx);
 
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.

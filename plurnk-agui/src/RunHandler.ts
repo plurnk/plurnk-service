@@ -25,22 +25,22 @@ export default class RunHandler {
     readonly #requiresWorkspace: (kind: string) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
-    readonly #conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
+    readonly #boundWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
     readonly #observedWorker: (threadId: string, env: ClientEnvelope, forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
+    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
 
-    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, observedWorker, workerStatus, action }: {
+    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, boundWorker, observedWorker, workerStatus, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
         requiresWorkspace: (kind: string) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
-        conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
+        boundWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
         observedWorker: (threadId: string, env: ClientEnvelope, forwarded?: Record<string, unknown>) => Promise<number>;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
+        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -48,7 +48,7 @@ export default class RunHandler {
         this.#requiresWorkspace = requiresWorkspace;
         this.#controlRun = controlRun;
         this.#envelope = envelope;
-        this.#conversationWorker = conversationWorker;
+        this.#boundWorker = boundWorker;
         this.#observedWorker = observedWorker;
         this.#workerStatus = workerStatus;
         this.#action = action;
@@ -103,13 +103,13 @@ export default class RunHandler {
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
         // unknown kind, which is no worker at all) answers without binding — or forging — a
-        // workspace. Only world-scoped actions and conversations reach #envelope below.
+        // workspace. Only world-scoped actions, message Runs and sync Runs reach #envelope below.
         const action = parseAction(input.forwardedProps);
         if (synchronize && (action !== null || input.resume !== undefined || input.messages.length > 0)) {
             throw new HttpProblemError(httpProblem(
                 "invalid-sync-input",
                 400,
-                "Conversation synchronization cannot include messages, an action, or an interrupt resume.",
+                "A sync Run cannot include messages, an action, or an interrupt resume.",
                 { stage: "request-validation", retryable: false },
             ));
         }
@@ -137,12 +137,12 @@ export default class RunHandler {
             currentUser = lastUser;
         }
 
-        // {§agui-conversation-sync} A passive observation claims nothing and creates nothing; an owner's
+        // {§agui-sync} A passive observation claims nothing and creates nothing; an owner's
         // control connection binds as a message Run does.
         const passive = synchronize && forwarded?.control !== true;
         if (!synchronize && forwarded?.worker !== undefined) {
             throw new HttpProblemError(httpProblem("worker-invalid", 400,
-                "forwardedProps.plurnk.worker names the conversation an observation binds; a message or action Run addresses its thread.",
+                "forwardedProps.plurnk.worker names the worker an observation binds; a message or action Run addresses its thread.",
                 { stage: "request-validation", retryable: false }));
         }
         // A loop-addressed action steers a loop already running in a world, and an observation watches
@@ -151,13 +151,13 @@ export default class RunHandler {
             create: !passive && (action === null || !LOOP_ADDRESSED_ACTIONS.has(action.kind)),
         });
         const workspaceId = env.workspaceId;
-        // {§agui-thread-binding} The threadId is the conversation over the
-        // world. threadId == workspace name binds the model worker (the default conversation);
+        // {§agui-thread-binding} The threadId names a worker in the
+        // world. threadId == workspace name binds the workspace's default worker;
         // a distinct threadId names its own worker: found by name, else minted via
-        // createConversationWorker. The name is the identity at BOTH levels.
+        // createWorker. The name is the identity at BOTH levels.
         const workerId = passive || forwarded?.worker !== undefined
             ? await this.#observedWorker(input.threadId, env, forwarded)
-            : await this.#conversationWorker(input.threadId, env);
+            : await this.#boundWorker(input.threadId, env);
         const control = forwarded?.control === true || (!synchronize && action === null)
             || action?.kind === "op.exec" || action?.kind === "op.parse";
         const owner = control ? MessageAddress.owner(principal, input.threadId) : undefined;
@@ -225,11 +225,11 @@ export default class RunHandler {
 
         const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
         const notificationScope = action === null
-            ? "conversation"
+            ? "worker"
             : action.kind === "op.exec" || action.kind === "op.parse"
                 ? "operation"
                 : "result";
-        // {§agui-delegation-observation} — a conversation Run may ask for its descendants' rows.
+        // {§agui-delegation-observation} — a message Run may ask for its descendants' rows.
         const descendants = action === null && forwarded?.descendants === true;
         const boundRun = this.#portal().openThread({
             workspaceId,
@@ -278,8 +278,8 @@ export default class RunHandler {
         if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
 
-        // {§agui-conversation-sync} — the existing Run endpoint can project the
-        // daemon's durable conversation without admitting a prompt or starting inference.
+        // {§agui-sync} — the existing Run endpoint can project the
+        // bound worker's durable log without admitting a prompt or starting inference.
         // A live Loop remains observed; an idle one settles after its snapshot.
         if (synchronize) {
             for (const notice of this.#seam().configurationNotices()) {
@@ -333,7 +333,7 @@ export default class RunHandler {
             return;
         }
 
-        if (prompt === null || currentUser === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
+        if (prompt === null || currentUser === null) throw new Error("message AG-UI Run reached dispatch without a validated prompt");
 
         if (reattached) {
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER }).catch(() => null);

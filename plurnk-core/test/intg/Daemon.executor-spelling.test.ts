@@ -38,7 +38,9 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 await rpcCall(client, 1, "workspace.create", { name: `js-spelling-${admission}` });
                 const [workspace] = await daemon.listWorkspaces();
                 const workerId = await daemon.ensureModelWorker(workspace.id);
-                const reference = (runtime: string) => daemon.look({ workspaceId: workspace.id, workerId,
+                // References are workspace documents ({§worker-generated-subtree}); the model worker's run is under test.
+                const observer = await daemon.createWorker({ workspaceId: workspace.id, name: "observer" });
+                const reference = (runtime: string) => daemon.dispatchAsClient({ workspaceId: workspace.id, workerId: observer.workerId,
                     statement: readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`)) });
                 assert.equal((await reference("node")).status, 200, "Node remains discoverable");
                 assert.equal((await reference("js")).status, 404, "the accepted spelling adds no reference document");

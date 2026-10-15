@@ -13,6 +13,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithC
 import { logEntries, packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { testExecutors } from "./_execs.ts";
+import { clientRead } from "./_client-read.ts";
 
 const frame = PlurnkParser.frame;
 
@@ -85,7 +86,7 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
         const system = packet.sections.filter((section: { slot: string }) => section.slot === "system");
         assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "system-policy"]);
         assert.equal(system[0].content, "The language definition.", "no alternate or appended reasoning teaching");
-        const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const raw = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(raw.content, reasoning.trimEnd(), "the normal line projection stays readable");
         assert.ok(sources.some(({ kind, content }) => kind === "reasoning" && content === reasoning),
             "admission does not erase or rewrite reasoning evidence");
@@ -122,9 +123,9 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             assert.equal(packetSection(packet, "emission-history"), "", "only a content NOTE is replayed; reasoning OPs stay in their own channel");
             if (content !== "") assert.match(JSON.stringify(rows), /The answer must await the facts/u, "the reply retains its own log row");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
-            const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+            const raw = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
             assert.equal(raw.content, reasoning);
-            const ops = await engine.look({ ...context, statement: statement(frame("READ (ops://alice/1/2) <1,-1>", null)) });
+            const ops = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (ops://alice/1/2) <1,-1>", null)) });
             assert.equal(ops.content ?? "", content, "the provider's content evidence is not rewritten");
         } finally { await db.close(); }
     });
@@ -318,7 +319,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         const done = await engine.runTurn({ ...context, provider, messages: [] });
         const curated = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: done.turnId }))!.packet);
         assert.ok(logEntries(curated).every((row) => !/^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath))));
-        const source = await engine.look({ ...context, statement: statement(frame("READ (sh:///fact) <1,-1>", null)) });
+        const source = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (sh:///fact) <1,-1>", null)) });
         assert.equal(source.content, "first\nsecond\nthird");
         assert.equal(source.terminal, true);
     } finally { await db.close(); }

@@ -7,7 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { benchmarksRoot } from "../../../scripts/test-artifacts.ts";
 
-test("{§operator-config-real-model-profile} deterministic AG-UI conversations never start operator MCP servers", { timeout: 60_000 }, async (t) => {
+test("{§operator-config-real-model-profile} deterministic AG-UI Runs never start operator MCP servers", { timeout: 60_000 }, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-agui-isolation-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const home = join(directory, "operator");
@@ -40,8 +40,8 @@ test("{§operator-config-real-model-profile} deterministic AG-UI conversations n
         "--env-file-if-exists=.env.defaults",
         "--test",
         "--test-reporter=spec",
-        "test/intg/conversations.test.ts",
+        "test/intg/threads.test.ts",
     ], { cwd: resolve(import.meta.dirname, "../.."), env, maxBuffer: 1024 * 1024 });
-    assert.match(stdout, /pass 1/u, `the actual conversation fixture passes: ${stderr}`);
+    assert.match(stdout, /pass 1/u, `the actual threads fixture passes: ${stderr}`);
     await assert.rejects(stat(marker), { code: "ENOENT" }, "neither file-backed nor inherited MCP definitions may start");
 });

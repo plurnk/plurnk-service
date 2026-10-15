@@ -106,7 +106,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     await writeFile(file, "not json");
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-file-repair-${crypto.randomUUID()}`);
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "primary", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````SEND [200]\nConfiguration checked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
@@ -256,7 +256,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-hotload-${crypto.randomUUID()}`);
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "primary", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");

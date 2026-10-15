@@ -53,7 +53,7 @@ interface Thread {
     gaugeRefresh: number;
 }
 
-export type NotificationScope = "conversation" | "operation" | "result";
+export type NotificationScope = "worker" | "operation" | "result";
 
 interface WorkerBinding {
     readonly workerId: number;
@@ -181,7 +181,7 @@ export default class Portal {
     // child), a turn settled its spend (its own or another worker's), or the bound Worker's own
     // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
-        if (thread.notificationScope !== "conversation") return false;
+        if (thread.notificationScope !== "worker") return false;
         const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown }; notice?: { source?: unknown; kind?: unknown } };
         if (method === "loop/terminated" || method === "loop/packet") {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
@@ -318,7 +318,7 @@ export default class Portal {
             case "reasoning/event":
             case "outside/event": return owns(payload.workerId, payload.loopId);
             case "notice/event": return payload.workerId === null
-                ? thread.notificationScope === "conversation"
+                ? thread.notificationScope === "worker"
                 : owns(payload.workerId, payload.loopId);
             case "stream/event":
             case "stream/concluded": return owns(payload.workerId);
@@ -409,7 +409,7 @@ export default class Portal {
         const threads = [...(this.#threads.get(workspaceId) ?? [])]
             .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope !== "result");
         const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
-        const recipients = exact.length > 0 ? exact : threads.filter((thread) => thread.notificationScope === "conversation");
+        const recipients = exact.length > 0 ? exact : threads.filter((thread) => thread.notificationScope === "worker");
         this.#emitDelivery(workspaceId, delivery, recipients);
     }
 
@@ -477,7 +477,7 @@ export default class Portal {
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the lifecycle actor
-    // (client worker for client ops, conversation worker otherwise); `modelWorkerId`
+    // (client worker for client ops, the bound worker otherwise); `modelWorkerId`
     // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
@@ -633,9 +633,9 @@ export default class Portal {
         return true;
     }
 
-    // Synchronize one AG-UI observer with the durable conversation. A pending
+    // Synchronize one AG-UI observer with the bound worker's durable log. A pending
     // stopped-world is re-presented first; otherwise an active Loop stays attached
-    // and an idle conversation settles immediately. Returns true only while this
+    // and an idle worker settles immediately. Returns true only while this
     // thread remains attached to independently-owned live work.
     async synchronize(workspaceId: number, thread: unknown, waitForWork = false): Promise<boolean> {
         const bound = thread as Thread;
@@ -698,7 +698,7 @@ export default class Portal {
                 || continuation.gate.workerId !== resolution.workerId
                 || continuation.gate.loopId !== resolution.loopId) {
                 throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
-                    "The resume does not match its interrupt's conversation."));
+                    "The resume does not match its interrupt's binding."));
             }
             bound.workerId = continuation.binding.workerId;
             bound.loopId = continuation.binding.loopId;

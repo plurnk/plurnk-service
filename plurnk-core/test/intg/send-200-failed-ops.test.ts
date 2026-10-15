@@ -16,7 +16,7 @@ for (const cancel of [false, true]) {
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
-            const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "alice" });
+            const { workerId } = await daemon.createWorker({ workspaceId, name: "alice" });
                 const result = await daemon.runLoop({ workspaceId, workerId, prompt: "go" });
                 const lifecycle = new LoopLifecycle(db);
                 await waitForDb(() => lifecycle.status(result.loopId), (status) => status === (cancel ? 499 : 200));

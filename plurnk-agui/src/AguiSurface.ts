@@ -62,7 +62,7 @@ const worker = object({
     owner: NONEMPTY,
     origin: { enum: ["model", "client", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
-    kind: { enum: ["conversation", "fork", "work"] },
+    kind: { enum: ["root", "fork", "work"] },
     lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "failed"] },
 }, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle"]);
 const capabilityProjection = ref("CapabilityProjection");
@@ -138,7 +138,6 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "op.parse": action("workspace", object({ text: NONEMPTY }, ["text"]), object({
         results: array(OPERATION_RESULT),
     }, ["results"])),
-    "op.look": action("workspace", object({ text: NONEMPTY, workerId: POSITIVE }, ["text"]), OPERATION_RESULT),
     "run.fork": action("workspace", object({ name: NONEMPTY }), object({
         workerId: POSITIVE,
         workerName: nullable(NONEMPTY),

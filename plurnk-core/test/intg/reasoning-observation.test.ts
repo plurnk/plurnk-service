@@ -8,6 +8,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 // {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
 process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
@@ -30,9 +31,11 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         assert.equal(logEntries(packet).find((row) => row.path === "reasoning://alice/3/1"), undefined, "no reasoning is authored, so nothing reads it back");
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), [], "initialization performs no reasoning READ");
-        const reasoning = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
+        // Read as another worker: alice's own reads and packets are what this test counts.
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const reasoning = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
         assert.equal(reasoning.status, 204, "the initialization turn has no reasoning source");
-        const program = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        const program = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
         assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
         assert.ok("content" in program && typeof program.content === "string");
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -69,7 +72,8 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         const result = JSON.parse(observation.rx);
         assert.equal(result.status, 200, "the READ is complete before any later model turn exists");
         assert.equal(result.content, "selected reasoning");
-        assert.deepEqual(result, await engine.look({ ...context, statement: statement(read) }));
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        assert.deepEqual(result, await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(read) }));
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);

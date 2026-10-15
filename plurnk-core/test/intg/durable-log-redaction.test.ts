@@ -62,8 +62,8 @@ class CredentialProbe implements SchemeHandler {
     }
 }
 
-const parseClientStatement = (source: string, op: PlurnkOp): PlurnkStatement => {
-    const parsed = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
+const parseOperation = (source: string, op: PlurnkOp): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     assert.equal(parsed.unparsedTail, undefined);
     const errors = parsed.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);
@@ -110,15 +110,15 @@ test("ordinary operation evidence redacts credential slots once before every dur
         schemes.register("credential-probe", probe);
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
-        const read = parseClientStatement(
+        const read = parseOperation(
             "````READ (credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body) [{\"Authorization\": \"Bearer primary-header-secret\", \"X-Api-Key\": \"secondary-header-secret\"}]````",
             "READ",
         );
-        const copy = parseClientStatement(
+        const copy = parseOperation(
             "````COPY (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)````",
             "COPY",
         );
-        const move = parseClientStatement(
+        const move = parseOperation(
             "````MOVE (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)````",
             "MOVE",
         );

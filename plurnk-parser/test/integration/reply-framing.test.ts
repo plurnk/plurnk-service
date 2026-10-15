@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { writtenOp, type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { writtenOp, type ParseResult } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 
 for (const [tier, parse] of [
     ["model", PlurnkParser.parse],
     ["stored", PlurnkParser.parseStatements],
-    ["client", PlurnkParser.parseClient],
 ] as const) {
     test(`{§operation-fences}: ${tier} preserves nested examples in a final reply's ordinary body`, () => {
         for (const body of ["All done.", "```python\nprint(42)\n```", "```\n42\n```", "A\n````READ (example.md)````\nB"]) {

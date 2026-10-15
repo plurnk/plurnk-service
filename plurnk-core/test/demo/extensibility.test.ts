@@ -39,5 +39,5 @@ test("demo: integrate plurnk into a chat bot", { timeout: 1_800_000 }, async (t)
 });
 
 test("demo: integrate plurnk with webhooks served by its own daemon", { timeout: 1_800_000 }, async (t) => {
-    await integrate(t, "extend-webhook", "Create an extension that integrates plurnk with GitHub webhooks: GitHub should POST to an endpoint that plurnk's own daemon serves, and each new issue should start a plurnk conversation. Put whatever it needs in this project.");
+    await integrate(t, "extend-webhook", "Create an extension that integrates plurnk with GitHub webhooks: GitHub should POST to an endpoint that plurnk's own daemon serves, and each new issue should start a new plurnk worker. Put whatever it needs in this project.");
 });

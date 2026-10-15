@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -49,7 +49,7 @@ test("Worker.read with no fragment returns body channel (default)", async () => 
     try {
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/x")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readThroughScheme("worker", null, readStmt(urlPath("worker", "/x")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "body content");
         assert.equal(r.channel, "body");
@@ -61,7 +61,7 @@ test("{§channel-selection-missing} Worker.read with unknown channel returns 404
     try {
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readThroughScheme("worker", null, readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 404);
         assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
     } finally { await db.close(); }

@@ -56,7 +56,7 @@ const workspaceRow = (id: number, name: string) => ({
     project_label: null,
     created_at: "2026-01-01T00:00:00.000Z",
 });
-// {§agui-conversation-sync} An observation watches a world that exists: here, workspace 3 named `name`.
+// {§agui-sync} An observation watches a world that exists: here, workspace 3 named `name`.
 const existingWorld = (seam: ApplicationPort, name: string): void => {
     seam.listWorkspaces = async () => [workspaceRow(3, name)];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
@@ -73,7 +73,7 @@ const workerRow = (
     origin,
     owner: "_plurnk",
     parentWorkerId,
-    kind: (parentWorkerId === null ? "conversation" : "work") as "conversation" | "fork" | "work",
+    kind: (parentWorkerId === null ? "root" : "work") as "root" | "fork" | "work",
     lifecycle: "idle" as const,
 });
 
@@ -159,7 +159,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
         listWorkers: async () => [workerRow(10, "client-1", "client")],
-        // Every conversation of this fixture's world is worker 77, as createConversationWorker mints it.
+        // Every named model worker of this fixture's world is worker 77, as createWorker mints it.
         readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
         workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
@@ -178,8 +178,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
             },
         }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
-        createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
-        look: async () => ({ status: 200, content: "looked" }),
+        createWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
         readWorkerEffort: async () => ({ effort: null, source: "default", supportedEfforts: [] }),
         readWorkspaceCapabilities: async () => ({
@@ -532,7 +531,7 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null, workerId: 10, workerName: "c" });
     seam.listWorkers = async () => [workerRow(20, "model-1")];
-    seam.createConversationWorker = async (a) => {
+    seam.createWorker = async (a) => {
         if (a.name === "chat-b") await releaseSecondWorker.promise;
         return { workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" };
     };
@@ -563,7 +562,7 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
     } finally { await mod.close(); }
 });
 
-test("a read-only management Run does not duplicate its conversation's model settlement", async () => {
+test("a read-only management Run does not duplicate the message Run's model settlement", async () => {
     const { seam, emit } = mockSeam();
     const loopStarted = Promise.withResolvers<void>();
     const readStarted = Promise.withResolvers<void>();
@@ -580,13 +579,13 @@ test("a read-only management Run does not duplicate its conversation's model set
     const mod = await host(seam);
     try {
         const port = mod.address().port;
-        const conversation = openStream(port, {
+        const messageRun = openStream(port, {
             threadId: "agui-t",
-            runId: "conversation-run",
+            runId: "message-run",
             messages: [{ role: "user", content: "hi" }],
             forwardedProps: { plurnk: { workspace: "agui-t" } },
         });
-        await waitForFixture(loopStarted.promise, () => "conversation AG-UI Run did not enter runLoop");
+        await waitForFixture(loopStarted.promise, () => "message AG-UI Run did not enter runLoop");
 
         const management = openStream(port, {
             threadId: "agui-t",
@@ -619,13 +618,13 @@ test("a read-only management Run does not duplicate its conversation's model set
             usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
         }));
 
-        const [conversationEvents, managementEvents] = await Promise.all([conversation, management]);
+        const [messageEvents, managementEvents] = await Promise.all([messageRun, management]);
         const answerRows = (events: AguiEvent[]) => events.filter((event) =>
             event.type === "CUSTOM"
             && (event as { name?: string; value?: { id?: number } }).name === "plurnk.row"
             && (event as { value?: { id?: number } }).value?.id === 21);
-        assert.equal(answerRows(conversationEvents).length, 1, "the conversation receives its SEND exactly once");
-        assert.equal(answerRows(managementEvents).length, 0, "the management Run receives no conversation rows");
+        assert.equal(answerRows(messageEvents).length, 1, "the message Run receives its SEND exactly once");
+        assert.equal(answerRows(managementEvents).length, 0, "the management Run receives none of the bound worker's rows");
     } finally { await mod.close(); }
 });
 
@@ -988,126 +987,6 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     } finally { await mod.close(); }
 });
 
-// {§agui-op-look} {§parse-diagnostics} {§unparsed-tail-boundary}
-test("#136: op.look admits one clean LOOK and rejects every other parser fact before observation", async () => {
-    const { seam } = mockSeam();
-    const calls: Parameters<ApplicationPort["look"]>[0][] = [];
-    seam.look = async (args) => {
-        calls.push(args);
-        return { status: 200, content: "looked" };
-    };
-    const mod = await host(seam);
-    try {
-        const invoke = async (text: string): Promise<{
-            ok: boolean;
-            result?: Record<string, unknown>;
-            problem?: Record<string, unknown>;
-        }> => {
-            const events = await post(mod.address().port, {
-                threadId: "look-admission",
-                forwardedProps: {
-                    plurnk: {
-                        workspace: "look-admission",
-                        action: { kind: "op.look", text },
-                    },
-                },
-            });
-            const event = events.find((candidate) => candidate.type === "CUSTOM"
-                && (candidate as { name?: string }).name === "plurnk.action.result") as {
-                value?: {
-                    ok: boolean;
-                    result?: Record<string, unknown>;
-                    problem?: Record<string, unknown>;
-                };
-            } | undefined;
-            assert.ok(event?.value !== undefined, "op.look returns one management-action outcome");
-            return event.value;
-        };
-
-        const source = " \n````LOOK (worker:///x) <1-2>\n~needle\n\n````";
-        const admitted = await invoke(source);
-        assert.equal(admitted.ok, true);
-        assert.equal(admitted.result?.content, "looked");
-        assert.equal(calls.length, 1);
-        // plurnk/plurnk#68 — the segment is the connection's own worker; the READ resolves as the conversation.
-        assert.equal(calls[0].workerId, 10, "the observation segment belongs to the connection's worker");
-        assert.equal(calls[0].perspectiveWorkerId, 77, "the look resolves as the thread's own conversation worker");
-        const expected = PlurnkParser.parseClient(source).items.find((item) => item.kind === "statement")?.statement;
-        assert.ok(expected !== undefined);
-        // {§read-pattern} — LOOK's matcher body becomes the READ's heading pattern; nothing else moves.
-        const { op: _look, body: expectedMatcher, ...expectedReadShape } = expected as unknown as { op: string; body: unknown; [key: string]: unknown };
-        const { op, matcher, body, ...actualReadShape } = calls[0].statement as unknown as { op: string; matcher: unknown; body: unknown; [key: string]: unknown };
-        assert.equal(op, "READ");
-        assert.deepEqual(matcher, expectedMatcher, "the LOOK matcher is the READ pattern");
-        assert.equal(body, null, "a READ takes no body");
-        assert.deepEqual(actualReadShape, expectedReadShape, "the projection changes only LOOK to READ");
-
-        const missing = await invoke(" \n\t");
-        assert.equal(missing.ok, false);
-        assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
-
-        const extra = await invoke("````LOOK (worker:///x)````\n````LOOK (worker:///y)````");
-        assert.equal(extra.ok, false);
-        assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
-        assert.equal(extra.problem?.stage, "action-validation");
-
-        for (const operation of ["READ", "EDIT"] as const) {
-            const body = operation === "EDIT" ? "bad" : null;
-            const wrongOperation = await invoke(PlurnkParser.frame(`${operation} (worker:///x)`, body));
-            assert.equal(wrongOperation.ok, false);
-            assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-            assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
-        }
-
-        const outside = await invoke("Preamble.\n````LOOK (worker:///x)````\nPostscript.");
-        assert.equal(outside.ok, true, "outside text on its own lines is ignored under {§whitespace-contract}");
-        assert.equal(outside.result?.content, "looked");
-        assert.equal(calls.length, 2);
-
-        // {§quotation} an opener after text on its line is prose, for client operations too.
-        const inline = await invoke("text ````LOOK (worker:///x)````");
-        assert.equal(inline.ok, false);
-        assert.equal(inline.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
-
-        const pinned = await post(mod.address().port, {
-            threadId: "look-admission",
-            forwardedProps: { plurnk: { workspace: "look-admission", action: { kind: "op.look", text: source, workerId: 33 } } },
-        });
-        const pinnedValue = (pinned.find((candidate) => candidate.type === "CUSTOM" && (candidate as { name?: string }).name === "plurnk.action.result") as { value?: { ok: boolean } } | undefined)?.value;
-        assert.equal(pinnedValue?.ok, true);
-        assert.equal(calls[2].perspectiveWorkerId, 33, "workerId pins another workspace worker as the perspective, as entry.read does");
-        const badPin = await invoke("````LOOK (worker:///x)````");
-        assert.equal(badPin.ok, true, "an omitted workerId is the conversation");
-        const invalidPin = await post(mod.address().port, {
-            threadId: "look-admission",
-            forwardedProps: { plurnk: { workspace: "look-admission", action: { kind: "op.look", text: source, workerId: -1 } } },
-        });
-        const invalidValue = (invalidPin.find((candidate) => candidate.type === "CUSTOM" && (candidate as { name?: string }).name === "plurnk.action.result") as { value?: { ok: boolean; problem?: Record<string, unknown> } } | undefined)?.value;
-        assert.equal(invalidValue?.ok, false);
-        assert.match(String(invalidValue?.problem?.detail), /workerId/, "the advertised schema refuses the pin before dispatch");
-        assert.equal(calls.length, 4, "an invalid pin never reaches the seam");
-        assert.deepEqual(calls[1].statement.position, { line: 2, column: 0 }, "the statement keeps its own source position under the ignored preamble");
-
-        const tailed = await invoke("````LOOK (worker:///x)````\n````EDIT (worker:///y");
-        assert.equal(tailed.ok, false);
-        assert.deepEqual(tailed.problem, {
-            type: "https://problems.plurnk.xyz/agui/action/parse-failed",
-            title: "Parse failed",
-            status: 400,
-            detail: "target slot of `EDIT` opened at line 2 but never closed - add `)`",
-            line: 2,
-            column: 0,
-            source: "grammar",
-            severity: "error",
-            stage: "parsing",
-            retryable: false,
-        });
-        assert.equal(calls.length, 4, "no rejected parse reaches ApplicationPort.look");
-    } finally { await mod.close(); }
-});
-
 test("{§agui-op-parse} {§target-group}: each compiled target returns its own result through the client action", async () => {
     const { seam } = mockSeam();
     const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
@@ -1437,7 +1316,7 @@ test("{§agui-module-action-scope} workspace module actions receive authority fr
     } finally { await mod.close(); }
 });
 
-test("{§agui-module-action-scope} worker module actions receive authority from the bound AG-UI conversation", async () => {
+test("{§agui-module-action-scope} worker module actions receive authority from the thread's bound worker", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
@@ -1580,7 +1459,7 @@ test("an action failure preserves its originating Problem instead of rebuilding 
 
 test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run", async () => {
     const { seam, emit } = mockSeam();
-    const conversationStarted = Promise.withResolvers<void>();
+    const messageStarted = Promise.withResolvers<void>();
     const injectionStarted = Promise.withResolvers<void>();
     const releaseInjection = Promise.withResolvers<void>();
     let runs = 0;
@@ -1601,7 +1480,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
     seam.runLoop = async () => {
         runs += 1;
         if (runs === 1) {
-            conversationStarted.resolve();
+            messageStarted.resolve();
             return { status: 100, action: "enqueued_new_loop", loopId: 9 };
         }
         injectionStarted.resolve();
@@ -1611,15 +1490,15 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
     const mod = await host(seam);
     try {
         const port = mod.address().port;
-        const conversation = openStream(port, {
+        const messageRun = openStream(port, {
             threadId: "interrupt-ownership",
-            runId: "conversation-run",
+            runId: "message-run",
             messages: [{ role: "user", content: "research the project" }],
             forwardedProps: { plurnk: { workspace: "interrupt-ownership" } },
         });
         await waitForFixture(
-            conversationStarted.promise,
-            () => "the conversation Run never reached runLoop",
+            messageStarted.promise,
+            () => "the message Run never reached runLoop",
         );
         await new Promise((resolve) => setImmediate(resolve));
 
@@ -1651,14 +1530,14 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
         });
         releaseInjection.resolve();
 
-        const [conversationEvents, injectionEvents] = await Promise.all([
-            conversation,
+        const [messageEvents, injectionEvents] = await Promise.all([
+            messageRun,
             injection,
         ]);
         assert.equal(
-            (conversationEvents.at(-1) as { outcome?: { type?: string } }).outcome?.type,
+            (messageEvents.at(-1) as { outcome?: { type?: string } }).outcome?.type,
             "interrupt",
-            "the proposal still interrupts its owning conversation Run",
+            "the proposal still interrupts the message Run that owns its loop",
         );
         assert.equal(
             injectionEvents.some((event) => event.type.startsWith("TOOL_CALL")),
@@ -2101,7 +1980,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
     });
 }
 
-test("a descendant client interaction round-trips through its controlling AG-UI conversation", async () => {
+test("a descendant client interaction round-trips through its owning AG-UI thread", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{
         interactionId: 88,
@@ -2337,7 +2216,7 @@ test("a workspace name is its identity; attach rebinds", async () => {
         assert.deepEqual(
             result.value.result,
             { id: 4, name: "alpha", workerId: 10 },
-            "{§agui-thread-binding} #64: attach returns the selected client worker, never a fabricated conversation binding",
+            "{§agui-thread-binding} #64: attach returns the selected client worker, never a fabricated thread binding",
         );
     } finally { await mod.close(); }
 });
@@ -2374,7 +2253,7 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
     } finally { await mod.close(); }
 });
 
-test("{§agui-conversation-sync}: an inference-free sync replays durable conversation state without driving the model", async () => {
+test("{§agui-sync}: an inference-free sync replays the bound worker's durable log without driving the model", async () => {
     const { seam, loopRuns } = mockSeam();
     const reads: Array<{ workspaceId: number; workerId: number; limit?: number }> = [];
     seam.listWorkspaces = async () => [workspaceRow(3, "sync-client")];
@@ -2489,11 +2368,11 @@ test("{§agui-thread-binding} a cached binding never outlives its workspace's na
     }
 });
 
-test("{§agui-conversation-sync} an observation binds an existing workspace and conversation, exactly as named, and creates neither", async () => {
+test("{§agui-sync} an observation binds an existing workspace and worker, exactly as named, and creates neither", async () => {
     const { seam, loopRuns } = mockSeam();
     const created: string[] = [];
     seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
-    seam.createConversationWorker = async () => { created.push("worker"); throw new Error("an observation created a worker"); };
+    seam.createWorker = async () => { created.push("worker"); throw new Error("an observation created a worker"); };
     seam.listWorkspaces = async () => [workspaceRow(3, "world")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.readWorker = async ({ identity }) => identity.name === "world" ? workerRow(88, "world", "model")
@@ -2510,15 +2389,15 @@ test("{§agui-conversation-sync} an observation binds an existing workspace and 
     try {
         for (const connect of [false, true]) {
             assert.deepEqual(await refused(await observe("t", { workspace: "elsewhere" }, connect)), [404, "workspace-not-found"]);
-            assert.deepEqual(await refused(await observe("unknown", { workspace: "world" }, connect)), [404, "conversation-not-found"]);
-            assert.deepEqual(await refused(await observe("t", { workspace: "world", worker: "client-1" }, connect)), [404, "conversation-not-found"],
-                "a connection's own worker is never a conversation");
+            assert.deepEqual(await refused(await observe("unknown", { workspace: "world" }, connect)), [404, "worker-not-found"]);
+            assert.deepEqual(await refused(await observe("t", { workspace: "world", worker: "client-1" }, connect)), [404, "worker-not-found"],
+                "a connection's own worker is never bound");
             assert.deepEqual(await refused(await observe("t", { workspace: "world", worker: "" }, connect)), [400, "worker-invalid"]);
         }
         const exact = await observe("world", { workspace: "world", worker: "world" });
         assert.equal(exact.status, 200);
         await exact.text();
-        assert.deepEqual(reads, [88], "worker names its conversation exactly, the same-named worker rather than a default by role");
+        assert.deepEqual(reads, [88], "worker names the observed worker exactly, the same-named worker rather than a default by role");
         const message = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify(standardInput({ threadId: "t", messages: [{ id: "u", role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "world", worker: "world" } } })),
@@ -2531,7 +2410,7 @@ test("{§agui-conversation-sync} an observation binds an existing workspace and 
     }
 });
 
-test("{§agui-snapshot} {§agui-conversation-sync} through the official client, synchronization rebuilds the conversation the live Run built and drops none of it", async () => {
+test("{§agui-snapshot} {§agui-sync} through the official client, synchronization rebuilds the messages the live Run built and drops none of them", async () => {
     const { seam, emit } = mockSeam();
     const threadId = "rebuilt";
     const question = `agui://anonymous/threads/${threadId}/messages/u1`;
@@ -2573,8 +2452,8 @@ test("{§agui-snapshot} {§agui-conversation-sync} through the official client, 
             ["1/3/1/SEND", "assistant"],
         ], "the live Run built the reasoning of both turns, the READ's call and result, and the answer");
 
-        // The SDK keeps of a client's messages only those a snapshot names, so a snapshot equal to the
-        // live conversation is what keeps a reconnecting client whole, as it rebuilds a reloaded one.
+        // The SDK keeps of a client's messages only those a snapshot names, so a snapshot naming every
+        // live message is what keeps a reconnecting client whole, as it rebuilds a reloaded one.
         const fresh = new HttpAgent({ url, threadId });
         await fresh.runAgent({ forwardedProps: { plurnk: { workspace: threadId, mode: "sync" } } });
         assert.deepEqual(fresh.messages.map(({ id }) => id), built.map(({ id }) => id), "the snapshot names every message the live Run built, in order");
@@ -2587,7 +2466,7 @@ test("{§agui-snapshot} {§agui-conversation-sync} through the official client, 
     }
 });
 
-test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without driving the model", async () => {
+test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the model", async () => {
     const { seam, loopRuns } = mockSeam();
     const proposal: ProposalProjection = {
         logEntryId: 42,
@@ -2641,7 +2520,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
     }
 });
 
-test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a workspace", async () => {
+test("{§agui-sync}: sync rejects ambiguous input before binding a workspace", async () => {
     const { seam } = mockSeam();
     const mod = await host(seam);
     try {
@@ -2659,7 +2538,7 @@ test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a 
             "agui:http",
             "invalid-sync-input",
             400,
-            "Conversation synchronization cannot include messages, an action, or an interrupt resume.",
+            "A sync Run cannot include messages, an action, or an interrupt resume.",
             { stage: "request-validation", retryable: false },
         ));
     } finally {
@@ -2667,7 +2546,7 @@ test("{§agui-conversation-sync}: sync rejects ambiguous input before binding a 
     }
 });
 
-test("{§agui-conversation-sync}: unknown Run modes fail without echoing untrusted input", async () => {
+test("{§agui-sync}: unknown Run modes fail without echoing untrusted input", async () => {
     const { seam } = mockSeam();
     const mod = await host(seam);
     try {
@@ -2767,7 +2646,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     }
 });
 
-test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the world; the thread resolves to a worker", async () => {
+test("WORKSPACE=WORLD, AG-UI THREAD=WORKER: the workspace prop selects the world; the thread resolves to a worker", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -2776,7 +2655,7 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
     seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", projectLabel: "/w", workerId: 100, workerName: "client-1" }; };
     seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, projectLabel: a.projectRoot ?? null, workerId: 101, workerName: "client-1" }; };
     seam.ensureModelWorker = async (sid) => { ensured.push(sid); return sid === 7 ? 200 : 201; };
-    seam.createConversationWorker = async (a) => ({ workerId: 300, workerName: a.name ?? "x" });
+    seam.createWorker = async (a) => ({ workerId: 300, workerName: a.name ?? "x" });
     const drivenRuns: number[] = [];
     seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
@@ -2786,7 +2665,7 @@ test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the
         await post(mod.address().port, { threadId: "chat-1", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace-a" } } });
         assert.deepEqual(attaches, [7], "the workspace 'workspace-a' was attached (not a workspace named 'chat-1')");
         assert.deepEqual(ensured, [], "a DISTINCT thread never binds the model worker (that's the default thread's door)");
-        assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own conversation worker");
+        assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own worker");
     } finally { await mod.close(); }
 });
 
@@ -2860,7 +2739,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     } finally { await mod.close(); }
 });
 
-// {§agui-thread-binding} — only a conversation Run brings a world into being.
+// {§agui-thread-binding} — only a message Run brings a world into being.
 test("an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
     let created = 0;
     const { seam } = mockSeam();
@@ -2873,7 +2752,7 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
         const body = await res.json() as { type: string; workspace: string; recovery: string; retryable: boolean };
         assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
         assert.equal(body.workspace, "designer");
-        assert.match(body.recovery, /workspace\.create or a conversation Run/);
+        assert.match(body.recovery, /workspace\.create or a message Run/);
         assert.equal(body.retryable, false);
         assert.equal(created, 0, "no world was minted on the action's behalf");
     } finally { await mod.close(); }
@@ -3044,7 +2923,6 @@ test("{§discovery} discover returns the exact public action and notification me
             "loop.inject",
             "models.list",
             "op.exec",
-            "op.look",
             "op.parse",
             "ping",
             "providers.list",
@@ -3123,30 +3001,30 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     } finally { await mod.close(); }
 });
 
-// {§agui-thread-binding} AG-UI THREAD ↔ CORE WORKER: threadId is the conversation.
-// threadId == workspace name → the model worker (the default conversation, unchanged).
-// A DISTINCT threadId names its own conversation worker within the world: found by
-// name if it exists, minted via createConversationWorker if it doesn't — the name is
+// {§agui-thread-binding} AG-UI THREAD ↔ CORE WORKER: threadId names the worker.
+// threadId == workspace name → the workspace's default worker, unchanged.
+// A DISTINCT threadId names its own worker within the world: found by
+// name if it exists, minted via createWorker if it doesn't — the name is
 // the identity at BOTH levels. Forks (named workers) are addressable as threads.
 
-test("a distinct threadId MINTS a conversation worker named for it, and the loop drives there", async () => {
+test("a distinct threadId MINTS a worker named for it, and the loop drives there", async () => {
     const created: Array<{ workspaceId: number; name?: string }> = [];
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1")];
-    seam.createConversationWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
+    seam.createWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "chat-2", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(created, [{ workspaceId: 3, name: "chat-2" }], "the conversation worker is named for the thread, verbatim");
-        assert.deepEqual(driven, [77], "the loop drove in the NEW conversation worker, not the model worker");
+        assert.deepEqual(created, [{ workspaceId: 3, name: "chat-2" }], "the new worker is named for the thread, verbatim");
+        assert.deepEqual(driven, [77], "the loop drove in the NEW worker, not the default worker");
     } finally { await mod.close(); }
 });
 
-test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelope and one conversation", async () => {
+test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelope and one worker binding", async () => {
     const { seam } = mockSeam();
     let attached = 0;
     let created = 0;
@@ -3157,7 +3035,7 @@ test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelo
         return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" };
     };
     seam.listWorkers = async () => [];
-    seam.createConversationWorker = async ({ name }) => {
+    seam.createWorker = async ({ name }) => {
         created += 1;
         await new Promise<void>((resolve) => setTimeout(resolve, 30));
         return { workerId: 77, workerName: name! };
@@ -3177,7 +3055,7 @@ test("{§agui-thread-binding}: concurrent first-touch actions acquire one envelo
     } finally { await mod.close(); }
 });
 
-test("{§agui-thread-binding}: concurrent conversations create one world with separate client actors", async () => {
+test("{§agui-thread-binding}: concurrent threads create one world with separate client actors", async () => {
     const { seam, finish } = mockSeam();
     const created: Parameters<ApplicationPort["createWorkspace"]>[0][] = [];
     const actors: number[] = [];
@@ -3197,7 +3075,7 @@ test("{§agui-thread-binding}: concurrent conversations create one world with se
         return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null, workerId: id, workerName: `client-${id}` };
     };
     seam.listWorkers = async () => [];
-    seam.createConversationWorker = async ({ name }) => ({ workerId: ++workerId, workerName: name! });
+    seam.createWorker = async ({ name }) => ({ workerId: ++workerId, workerName: name! });
     seam.runLoop = async ({ workspaceId, workerId }) => {
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -3216,7 +3094,7 @@ test("{§agui-thread-binding}: concurrent conversations create one world with se
     } finally { await mod.close(); }
 });
 
-test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued conversation its create contract", async () => {
+test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued message Run its create contract", async () => {
     const { seam, finish } = mockSeam();
     const lookup = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -3246,7 +3124,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
     } finally { release.resolve(); await mod.close(); }
 });
 
-for (const stage of ["envelope", "conversation"] as const) {
+for (const stage of ["envelope", "worker"] as const) {
     test(`{§agui-thread-binding}: a failed ${stage} acquisition preserves its Problem and permits retry`, async () => {
         const { seam } = mockSeam();
         let fail = true;
@@ -3261,9 +3139,9 @@ for (const stage of ["envelope", "conversation"] as const) {
             return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-10" };
         };
         seam.listWorkers = async () => [];
-        seam.createConversationWorker = async () => {
+        seam.createWorker = async () => {
             created += 1;
-            if (fail && stage === "conversation") throw failure;
+            if (fail && stage === "worker") throw failure;
             return { workerId: 42, workerName: "named" };
         };
         const mod = await host(seam);
@@ -3276,46 +3154,46 @@ for (const stage of ["envelope", "conversation"] as const) {
             const events = await post(mod.address().port, input);
             assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result" && (event.value as { ok: boolean }).ok));
             assert.equal(attached, stage === "envelope" ? 2 : 1);
-            assert.equal(created, stage === "conversation" ? 2 : 1);
+            assert.equal(created, stage === "worker" ? 2 : 1);
         } finally { await mod.close(); }
     });
 }
 
-test("a threadId naming an existing worker (a fork or prior conversation) binds it — no mint", async () => {
+test("a threadId naming an existing worker (a fork or an earlier worker) binds it — no mint", async () => {
     let created = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(20, "model-1"), workerRow(44, "spike")];
-    seam.createConversationWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
+    seam.createWorker = async () => { created++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(driven, [44], "the existing worker 'spike' is the conversation");
-        assert.equal(created, 0, "no duplicate conversation minted");
+        assert.deepEqual(driven, [44], "the existing worker 'spike' is bound");
+        assert.equal(created, 0, "no duplicate worker minted");
     } finally { await mod.close(); }
 });
 
-test("threadId == workspace name stays on the model worker (the default conversation)", async () => {
+test("threadId == workspace name stays on the workspace's default worker", async () => {
     let minted = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null, workerId: 10, workerName: "client-1" });
     seam.ensureModelWorker = async () => 20;
-    seam.createConversationWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
+    seam.createWorker = async () => { minted++; return { workerId: 99, workerName: "x" }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
     try {
         await post(mod.address().port, { threadId: "workspace", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(driven, [20], "the default conversation is the model worker");
+        assert.deepEqual(driven, [20], "the default thread drives the default worker");
         assert.equal(minted, 0, "no fresh worker for the default thread");
     } finally { await mod.close(); }
 });
 
-test("loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
+test("loop.inject on a distinct thread folds into THAT thread's worker, never the default worker", async () => {
     const driven: number[] = [];
     const messages: Array<Parameters<ApplicationPort["runLoop"]>[0]> = [];
     const { seam, finish } = mockSeam();
@@ -3328,7 +3206,7 @@ test("loop.inject on a distinct thread folds into THAT conversation, never the m
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
         assert.deepEqual(driven, [44], "the steer reached the thread's own worker");
         const message = messages[0]!;
-        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/spike\/messages\/[^/]+$/u, "injected input belongs to its conversation just like a normal message Run");
+        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/spike\/messages\/[^/]+$/u, "injected input belongs to its thread just like a normal message Run");
         assert.equal(message.messageAddress, message.source, "curation cannot erase the injected message's original source");
         const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
         assert.equal(envelope.threadId, "spike");
@@ -3579,7 +3457,7 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
         _plurnk: Problems.create("daemon:worker", "name-invalid", 400, "Worker name '_plurnk' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}.", { context: "worker.create", field: "name", name: "_plurnk", retryable: false }),
         c: Problems.create("daemon:worker", "name-conflict", 409, "Worker name 'c' is already in use in workspace 3 by a client worker.", { workspaceId: 3, name: "c", actualOrigin: "client", retryable: false }),
     };
-    seam.createConversationWorker = async (a) => {
+    seam.createWorker = async (a) => {
         minted.push(a.name ?? "");
         const problem = refusals[a.name ?? ""];
         if (problem === undefined) throw new Error(`unexpected mint: ${a.name}`);
@@ -3603,12 +3481,12 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
             assert.equal(res.status, problem.status, `thread '${threadId}' fails at minting instead of binding the worker that holds the name`);
             assert.equal(body.type, problem.type, `thread '${threadId}' surfaces the daemon's exact Problem`);
         }
-        assert.deepEqual(minted, ["_plurnk", "c"], "each name reached createConversationWorker; neither resolved among non-model workers");
+        assert.deepEqual(minted, ["_plurnk", "c"], "each name reached createWorker; neither resolved among non-model workers");
         assert.deepEqual(runWorkers, [], "no loop ran on a client or runtime actor");
     } finally { await mod.close(); }
 });
 
-test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a child's rows into the conversation's SSE, introduced once", async () => {
+test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a child's rows into the message Run's SSE, introduced once", async () => {
     const { seam, emit } = mockSeam();
     const started = Promise.withResolvers<void>();
     seam.listWorkers = async () => [workerRow(77, "chat"), workerRow(78, "child", "model", 77)];
@@ -3651,7 +3529,7 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
     } });
     try {
         const port = mod.address().port;
-        // A conversation Run submits the message under the admitted principal; the loop it enqueues is
+        // A message Run submits the message under the admitted principal; the loop it enqueues is
         // not the subject here, so the Run is abandoned once the submission was seen.
         const prompt = async (authorization: string): Promise<void> => {
             const entered = Promise.withResolvers<void>();

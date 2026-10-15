@@ -77,7 +77,7 @@ test("live: a client-attached image persists until log curation", { requires: ["
 // {§packet-attachment-parts} (#899): a retained native part is captioned as the model's own READ. The
 // witness is the model's account of what it has seen: after one image READ, a later message that
 // carries nothing must be reported as carrying nothing, and the image counted once.
-const ACCOUNT = "Reply with exactly one line and nothing else, in this form: `distinct_images=<n> new_image_this_message=<yes|no>` — n is how many distinct images you have seen in this conversation, and the second field says whether a new image arrived with this message.";
+const ACCOUNT = "Reply with exactly one line and nothing else, in this form: `distinct_images=<n> new_image_this_message=<yes|no>` — n is how many distinct images you have seen so far, and the second field says whether a new image arrived with this message.";
 
 test("live: a retained image is reported as one earlier READ, never as a new arrival", { requires: ["input:image"] }, async (t) => {
     const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-native-caption-"));
@@ -120,7 +120,7 @@ test("live: a retained image is reported as one earlier READ, never as a new arr
 });
 
 // The same account for the other native kinds: one READ, then two messages carrying nothing.
-const accountOf = (noun: string) => `Reply with exactly one line and nothing else, in this form: \`distinct_${noun}s=<n> new_${noun}_this_message=<yes|no>\` — n is how many distinct ${noun}s you have seen in this conversation, and the second field says whether a new ${noun} arrived with this message.`;
+const accountOf = (noun: string) => `Reply with exactly one line and nothing else, in this form: \`distinct_${noun}s=<n> new_${noun}_this_message=<yes|no>\` — n is how many distinct ${noun}s you have seen so far, and the second field says whether a new ${noun} arrived with this message.`;
 
 for (const kind of [
     { modality: "pdf" as const, noun: "document", file: "contract.pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), question: "How many pages does contract.pdf have?", answer: /\b(1|one)\b/iu },

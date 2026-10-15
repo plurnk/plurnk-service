@@ -81,11 +81,11 @@ flowchart LR
     Parent --> Task2["Task B Worker"]
     Caller["A2A caller"] -->|Task messages| Task1
     Caller -->|Task messages| Task2
-    History["Retained Context conversation"] -->|READ| Task1
+    History["Retained Context history"] -->|READ| Task1
     History -->|READ| Task2
 ```
 
-A Context is conversation identity, not an executing actor or a Worker. Each new Task is a
+A Context groups related Tasks; it is not an executing actor or a Worker. Each new Task is a
 fresh model child of the configured parent (WORK semantics), named by its server-generated
 Task UUID; no parent execution history is forked. A caller's Context identity is protocol
 data, not a worker name. Task/Context association comes from initial message sources:
@@ -182,16 +182,16 @@ including Tasks sharing the same Context.
 | Clarification and other client interactions | Worker owner, which must be interactive ({§client-interaction-routing}). |
 | Incoming message | Task input only; never approval authority or an ownership transfer. |
 
-The caller is a conversation partner, not a client: A2A carries no answer schema, so the
+The caller is a peer agent, not a client: A2A carries no answer schema, so the
 model asks it in a reply and its answer arrives as a later message, normally a later Task
 in the same Context. A Task never enters `INPUT_REQUIRED`.
 The adapter defines no approval policy of its own.
 
-### §a2a-context-resource Context conversation
+### §a2a-context-resource Context history
 
-`a2a://anonymous/contexts/<context>` is a read-only projection of retained conversation
-evidence, scoped to the workspace of the hosted exposure. It is not an ambient log or a
-second conversation store.
+`a2a://anonymous/contexts/<context>` is a read-only projection of the Context's retained
+Task and message evidence, scoped to the workspace of the hosted exposure. It is not an
+ambient log or a second message store.
 
 | Content | Representation |
 |---|---|

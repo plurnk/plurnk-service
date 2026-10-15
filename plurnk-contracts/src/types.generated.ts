@@ -699,31 +699,6 @@ payload?: unknown
 status: "cancelled"
 })
 
-export type ClientStatement = (PlurnkStatement | LookStatement)
-/**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
- */
-
-export type AsideOrNull = (string | null)
-
-export type SchemeMetadataOrNull = (string[] | null)
-
-export type PathOrNull = (ParsedPath | null)
-
-export type TextLineMarkerOrNull = (TextLineMarker | null)
-
-export type MatcherBodyOrNull = (MatcherBody | null)
-
-export interface LookStatement {
-op: "LOOK"
-aside: AsideOrNull
-metadata: SchemeMetadataOrNull
-target: PathOrNull
-lineMarker: TextLineMarkerOrNull
-body: MatcherBodyOrNull
-position: Position
-}
-
 export type Effort = ("off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max")
 
 export type EntryReadResult = ({
@@ -1112,10 +1087,24 @@ coordinate: string
 op?: string
 }
 
+export type AsideOrNull = (string | null)
+/**
+ * Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.
+ */
+
+export type SchemeMetadataOrNull = (string[] | null)
+
+export type PathOrNull = (ParsedPath | null)
+/**
+ * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
+ */
+
 export type LineMarkerOrNull = (LineMarker | null)
 /**
  * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
+
+export type TextLineMarkerOrNull = (TextLineMarker | null)
 
 export type SendBodyOrNull = (SendBody | null)
 

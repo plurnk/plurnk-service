@@ -1,4 +1,4 @@
-// {§methods-conversation-worker}: a fresh conversation has an empty history over the same world.
+// {§methods-worker-create}: a fresh worker has an empty history over the same world.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -6,7 +6,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
+test("{§methods-worker-name-admission} {§methods-worker-create}: fresh named worker — empty log, runLoop accepts, stable door unaffected", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\nhello from thread-2\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -16,32 +16,32 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
             const stable = await daemon.ensureModelWorker(workspaceId);
 
             // The fresh door: named, empty, model-origin root.
-            const conv = await daemon.createConversationWorker({ workspaceId, name: "Thread_2" });
-            assert.notEqual(conv.workerId, stable, "a fresh conversation, not the default");
-            assert.equal(conv.workerName, "Thread_2", "the client's name IS the worker name");
-            assert.equal((await daemon.readLog({ workspaceId, workerId: conv.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
+            const fresh = await daemon.createWorker({ workspaceId, name: "Thread_2" });
+            assert.notEqual(fresh.workerId, stable, "a fresh worker, not the default");
+            assert.equal(fresh.workerName, "Thread_2", "the client's name IS the worker name");
+            assert.equal((await daemon.readLog({ workspaceId, workerId: fresh.workerId })).length, 0, "an EMPTY log — fork copies history, this must not");
 
-            // runLoop accepts it (model-origin), and the full loop settles on that conversation.
+            // runLoop accepts it (model-origin), and the full loop settles on that worker.
             const terminated: Array<{ loopId: number; result: { status: number } }> = [];
             daemon.subscribeToEvents((_workspaceId, method, params) => {
                 if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
             });
-            const accepted = await daemon.runLoop({ workspaceId, workerId: conv.workerId, prompt: "start thread 2" });
-            assert.ok(accepted.loopId > 0, "runLoop accepts the fresh conversation worker");
+            const accepted = await daemon.runLoop({ workspaceId, workerId: fresh.workerId, prompt: "start thread 2" });
+            assert.ok(accepted.loopId > 0, "runLoop accepts the fresh worker");
             await waitFor(
                 () => terminated,
                 (events) => events.some(({ loopId, result }) => loopId === accepted.loopId && result.status === 200),
                 { timeoutMs: 8000 },
             );
 
-            // The stable door still finds the original root; later fresh conversations never shadow it.
-            assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh conversations");
+            // The stable door still finds the original root; later fresh workers never shadow it.
+            assert.equal(await daemon.ensureModelWorker(workspaceId), stable, "ensureModelWorker is unmoved by fresh workers");
 
             // Name invariants mirror forkWorker's: plurnk is an ordinary name; unmintable + taken are legible refusals.
-            const plurnk = await daemon.createConversationWorker({ workspaceId, name: "plurnk" });
-            assert.equal(plurnk.workerName, "plurnk", "the operator may hold a conversation named plurnk");
+            const plurnk = await daemon.createWorker({ workspaceId, name: "plurnk" });
+            assert.equal(plurnk.workerName, "plurnk", "the operator may hold a worker named plurnk");
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "_plurnk" }),
+                () => daemon.createWorker({ workspaceId, name: "_plurnk" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
@@ -51,7 +51,7 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
                 },
             );
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "_invalid" }),
+                () => daemon.createWorker({ workspaceId, name: "_invalid" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
@@ -62,7 +62,7 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
                 },
             );
             await assert.rejects(
-                () => daemon.createConversationWorker({ workspaceId, name: "Thread_2" }),
+                () => daemon.createWorker({ workspaceId, name: "Thread_2" }),
                 (error) => {
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict");
@@ -72,26 +72,26 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
                     return true;
                 },
             );
-            // Omission mints a distinct conversation with an opaque name.
-            const anon = await daemon.createConversationWorker({ workspaceId });
-            assert.match(anon.workerName, /^[a-f0-9]{8}$/, "unnamed conversations receive the ordinary opaque worker identity");
+            // Omission mints a distinct worker with an opaque name.
+            const anon = await daemon.createWorker({ workspaceId });
+            assert.match(anon.workerName, /^[a-f0-9]{8}$/, "an unnamed worker receives the ordinary opaque name");
         } finally { ws.close(); }
     });
 });
 
-test("{§worker-auto-name}: concurrent unnamed fresh conversations claim distinct short names", async () => {
+test("{§worker-auto-name}: concurrent unnamed fresh workers claim distinct short names", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: `threads-${crypto.randomUUID()}` });
             const workspaceId = (created.result as { id: number }).id;
-            const conversations = await Promise.all(Array.from(
+            const workers = await Promise.all(Array.from(
                 { length: 8 },
-                () => daemon.createConversationWorker({ workspaceId }),
+                () => daemon.createWorker({ workspaceId }),
             ));
-            const names = conversations.map(({ workerName }) => workerName);
+            const names = workers.map(({ workerName }) => workerName);
 
-            assert.equal(new Set(names).size, conversations.length, "every fresh conversation remains individually addressable");
+            assert.equal(new Set(names).size, workers.length, "every fresh worker remains individually addressable");
             for (const name of names) assert.match(name, /^[a-f0-9]{8}$/);
         } finally { ws.close(); }
     });

@@ -20,7 +20,7 @@ test("{§methods-readable-reasoning}: a turn's admitted reasoning rides its firs
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "reasoning-carrier", projectRoot: null });
-        const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "reasoner" });
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "reasoner" });
         const announced = new Map<number, { op: unknown; reasoning?: unknown }>();
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method !== "log/entry") return;

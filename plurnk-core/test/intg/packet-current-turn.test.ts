@@ -11,6 +11,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 import { packetSection } from "./_packet.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 import { userText } from "./_mock.ts";
+import { clientRead } from "./_client-read.ts";
 
 test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, after log and continuity", async () => {
     const db = await openMigrated();
@@ -46,7 +47,7 @@ test("{§packet-current-turn}: the coordinate on the packet is the one whose rea
         const user = userText(mock.received.at(-1)!);
         assert.match(user, /## Worker\n\{"path":"worker:\/\/alice","parent":null,"loop":1,"turn":2,"owner":\{"address":"[^"]+","interactive":(?:true|false)\}\}/, "the packet the model answered named turn 1/2 and its owner in its Worker block");
         assert.ok(user.indexOf("## Log") < user.indexOf("## Worker"), "below the log");
-        const own = await engine.look({ ...context, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") });
+        const own = await clientRead(engine, db, { ...context, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") });
         assert.equal(own.status, 200);
         assert.ok("content" in own);
         assert.equal(own.content, "Own reasoning for this very turn.");

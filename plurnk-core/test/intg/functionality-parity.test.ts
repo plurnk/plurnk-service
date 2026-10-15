@@ -86,11 +86,11 @@ const isAbsent = (status: number): boolean => status >= 400;
 const dispatch = (context: Context, statement: PlurnkStatement) =>
     context.daemon.dispatchAsClient({ workspaceId: context.workspaceId, workerId: context.clientWorkerId, statement });
 
+// Generated documents are workspace resources ({§worker-generated-subtree}): the client reads them,
+// leaving the model worker's packets to the loops under test.
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
-    if (pathname.includes("://")) return (await dispatch(context, parseOne(`\`\`\`\`READ (${pathname})\`\`\`\``))).status;
-    const result = await context.daemon.look({ workspaceId: context.workspaceId, workerId: context.modelWorkerId,
-        statement: parseOne(`\`\`\`\`READ (worker://${pathname})\`\`\`\``) });
-    return result.status;
+    const target = pathname.includes("://") ? pathname : `worker://${pathname}`;
+    return (await dispatch(context, parseOne(`\`\`\`\`READ (${target})\`\`\`\``))).status;
 };
 
 const a2aTarget = (alias: string): UrlPath => ({
@@ -263,7 +263,7 @@ const matrix = async (family: Family): Promise<void> => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `parity-${family.family}-${crypto.randomUUID()}`);
     if (family.projectRoot !== undefined) await db.test_set_workspace_root.run({ id: workspaceId, project_root: family.projectRoot });
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "model", "model");
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
     const clientA = await insertWorker(db, workspaceId, null, "client-a", "client");
     const clientB = await insertWorker(db, workspaceId, null, "client-b", "client");
@@ -296,7 +296,7 @@ const matrix = async (family: Family): Promise<void> => {
         assert.ok(LIVE.has(status) || isAbsent(status), `${family.family}: probe of ${definition.alias} answered ${status}`);
         return LIVE.has(status);
     };
-    const document = (alias: string, workerId = model) => documentPresent(context(workerId), family.documentOf(alias));
+    const document = (alias: string) => documentPresent(context(), family.documentOf(alias));
     // Model verbs: the family's execution manager streams JSON into its output entry.
     const exec = (program: string) => dispatch(context(), parseOne(program));
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: family.family, timeoutMs: 10_000 });
@@ -365,7 +365,7 @@ const matrix = async (family: Family): Promise<void> => {
         const addSchema = JSON.parse(addDoc.content);
         assert.deepEqual(addSchema.required, ["definition"], "alias remains optional as the coordinator actually admits it");
         assert.equal(await documentPresent(context(), `${managerPath}/add.json`), 200,
-            "the full schema is materialized in the model Worker's private namespace");
+            "the full schema is materialized in the workspace's generated subtree");
         if (family.family === "mcp") {
             type Property = { readonly description?: string; readonly $ref?: string };
             type Definition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };

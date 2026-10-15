@@ -7,7 +7,7 @@ import A2aProjection from "./A2aProjection.ts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
 export type AdmissionPort = Pick<ApplicationPort,
-    "createConversationWorker" | "readWorker" | "ensureRuntimeWorker" | "runLoop">;
+    "createWorker" | "readWorker" | "ensureRuntimeWorker" | "runLoop">;
 
 const textOf = (message: Message): string => {
     if (message.parts.length === 0) throw new RequestMalformedError("The A2A Message has no Parts.");
@@ -61,7 +61,7 @@ export default class TaskAdmission {
             : [text, `Accepted output media types: ${JSON.stringify(modes)}`].filter(Boolean).join("\n\n");
         const source = `a2a://anonymous/contexts/${encodeURIComponent(contextId)}`
             + `/tasks/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(message.messageId)}`;
-        const workerId = binding?.worker.id ?? (await this.#port.createConversationWorker({
+        const workerId = binding?.worker.id ?? (await this.#port.createWorker({
             workspaceId, name: taskId, parentWorkerId: await this.#parent(workspaceId),
         })).workerId;
         try {

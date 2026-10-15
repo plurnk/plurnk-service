@@ -11,6 +11,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const message = "message://alice/assignment";
@@ -24,6 +25,8 @@ const setup = async (responses: MockResponse[]) => {
     const parentId = await insertWorker(db, workspaceId, null, "lead");
     const workerId = await insertWorker(db, workspaceId, parentId, "alice");
     const loopId = await insertLoop(db, workerId, 1);
+    // Source identity never depends on the reader ({§turn-source-resources}); alice's turns and history are under test.
+    const observer = await insertWorker(db, workspaceId, null, "observer");
     const notices: Notice[] = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
         noticeNotify: (_id, payload) => notices.push(payload.notice as Notice),
@@ -34,7 +37,7 @@ const setup = async (responses: MockResponse[]) => {
     return {
         db, engine, provider, ids, parentId, notices,
         turn: () => engine.runTurn({ provider, ...ids, messages: [] }),
-        answer: () => engine.look({ ...ids, statement: statement("````READ (ops://alice/1)````") }),
+        answer: () => clientRead(engine, db, { workspaceId, workerId: observer, statement: statement("````READ (ops://alice/1)````") }),
     };
 };
 

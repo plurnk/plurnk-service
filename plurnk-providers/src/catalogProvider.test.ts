@@ -84,7 +84,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORTS: "low,medium,xhigh",
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_ON_BODY: '{"enable_thinking":true}',
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_OFF_BODY: '{"enable_thinking":false}',
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-conversation"}',
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-session-affinity"}',
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "65536",
         PLURNK_PROVIDERS_OUTPUT_BUDGET: "32768",
         PLURNK_PROVIDERS_EFFORT: "adaptive",
@@ -98,7 +98,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     assert.equal(bodies[0]?.max_completion_tokens, 32768);
     assert.equal(bodies[0]?.max_tokens, undefined);
     assert.equal(bodies[0]?.reasoning_effort, undefined);
-    assert.equal(headers[0]?.get("x-conversation"), "wire-test");
+    assert.equal(headers[0]?.get("x-session-affinity"), "wire-test");
     assert.equal(bodies[0]?.enable_thinking, true);
     assert.equal(bodies[1]?.max_completion_tokens, 4096);
     assert.equal(bodies[1]?.thinking_budget, 4095);

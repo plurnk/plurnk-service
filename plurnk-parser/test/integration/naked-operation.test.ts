@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ParseResult } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const warnings = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-const bodyOf = (statement: ClientStatement | undefined) => statement !== undefined && "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw ?? null : null;
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const warnings = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+const bodyOf = (statement: PlurnkStatement | undefined) => statement !== undefined && "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw ?? null : null;
 const RECEIPT = (op: string) => `\`${op}\` opened with no fence; the taught form is three backticks.`;
 
-for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkParser.parseStatements], ["client", PlurnkParser.parseClient]] as const) {
+for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkParser.parseStatements]] as const) {
     test(`{§naked-operation}: ${tier} opens a name alone on a line as the operation, its body whole to the end of the turn`, () => {
         const answer = "The answer is **42**.\n\n```python\nprint(42)\n```\n\nDone.";
         const result = parse(`SEND\n${answer}\n`);
@@ -35,10 +35,9 @@ for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkPar
 }
 
 test("{§naked-operation}: aside recovery uses every native operation's ordinary admission", () => {
-    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "NOTE", "WAIT", "WORK", "FORK", "KILL", "LOOK"]) {
-        const parse = op === "LOOK" ? PlurnkParser.parseClient : PlurnkParser.parse;
-        const expected = statements(parse(`\`\`\`${op} <!-- purpose -->\n\`\`\``));
-        assert.deepEqual(statements(parse(`${op} <!-- purpose -->\n`)), expected, op);
+    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "NOTE", "WAIT", "WORK", "FORK", "KILL"]) {
+        const expected = statements(PlurnkParser.parse(`\`\`\`${op} <!-- purpose -->\n\`\`\``));
+        assert.deepEqual(statements(PlurnkParser.parse(`${op} <!-- purpose -->\n`)), expected, op);
     }
 });
 

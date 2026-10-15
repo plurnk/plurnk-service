@@ -434,7 +434,7 @@ for (const built of [false, true]) {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                // {§agui-conversation-sync} A client attaches to the conversation it owns, as the terminal client does.
+                // {§agui-sync} A client attaches to the worker it owns, as the terminal client does.
                 forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, mode: "sync", control: true } },
             }),
         });

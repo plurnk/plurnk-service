@@ -57,11 +57,11 @@ export default class WorkerName {
         return randomBytes(4).toString("hex");
     }
 
-    static async #defaultConversation(
+    static async #defaultWorker(
         db: Db,
         workspaceId: number,
     ): Promise<WorkerNameClaim | undefined> {
-        return await db.worker_name_get_default_conversation.get<WorkerNameClaim>({
+        return await db.worker_name_get_default_worker.get<WorkerNameClaim>({
             workspace_id: workspaceId,
         });
     }
@@ -69,7 +69,7 @@ export default class WorkerName {
     static async #claimAuto(
         db: Db,
         options: AutoWorkerOptions,
-        defaultConversation: boolean,
+        defaultWorker: boolean,
     ): Promise<WorkerNameClaim> {
         const {
             workspaceId,
@@ -84,13 +84,13 @@ export default class WorkerName {
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
                 owner: options.owner ?? "_plurnk",
-                default_conversation: defaultConversation ? 1 : 0,
+                default_worker: defaultWorker ? 1 : 0,
                 fork_snapshot: forkSnapshot ? 1 : 0,
             });
             if (claimed !== undefined) return claimed;
 
-            if (defaultConversation) {
-                const existing = await WorkerName.#defaultConversation(db, workspaceId);
+            if (defaultWorker) {
+                const existing = await WorkerName.#defaultWorker(db, workspaceId);
                 if (existing !== undefined) return existing;
             }
         }
@@ -109,20 +109,20 @@ export default class WorkerName {
             parent_worker_id: options.parentWorkerId ?? null,
             origin: options.origin,
             owner: options.owner ?? "_plurnk",
-            default_conversation: 0,
+            default_worker: 0,
             fork_snapshot: options.forkSnapshot ? 1 : 0,
         });
         if (claimed === undefined) throw new WorkerNameConflictError(name);
         return claimed;
     }
 
-    // The stable default conversation is both an auto-name allocation and the
+    // The stable default worker is both an auto-name allocation and the
     // workspace's one durable default role; both predicates share one write.
-    static async ensureDefaultConversation(
+    static async ensureDefaultWorker(
         db: Db,
         options: Pick<AutoWorkerOptions, "workspaceId">,
     ): Promise<WorkerNameClaim> {
-        const existing = await WorkerName.#defaultConversation(db, options.workspaceId);
+        const existing = await WorkerName.#defaultWorker(db, options.workspaceId);
         if (existing !== undefined) return existing;
         return await WorkerName.#claimAuto(db, { ...options, origin: "model" }, true);
     }

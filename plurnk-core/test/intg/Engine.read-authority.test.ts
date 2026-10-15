@@ -29,7 +29,7 @@ const runtime = async (t: TestContext) => {
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     let sequence = 0;
     const run = async (program: string, origin: "model" | "_plurnk" = "model") => {
-        const parsed = PlurnkParser.parseClient(program, { executors: fixtureExecutors(program) });
+        const parsed = PlurnkParser.parseStatements(program, { executors: fixtureExecutors(program) });
         assert.equal(parsed.items.length, 1, program);
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement", program);

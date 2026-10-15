@@ -14,14 +14,14 @@ import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 
 const readHttp = (
     http: Http,
     statement: ReadStatement,
     ctx: ReturnType<typeof makeSchemeCtx>,
-) => lookThroughScheme("https", http, statement, ctx);
+) => readThroughScheme("https", http, statement, ctx);
 
 const statement = (
     lineMarker: ReadStatement["lineMarker"] = null,

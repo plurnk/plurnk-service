@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { type PlurnkStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const diagnostics = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const diagnostics = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 const one = (source: string) => {
     const result = PlurnkParser.parseStatements(source);
     const ops = statements(result);
     assert.equal(ops.length, 1, source);
-    return { op: ops[0]! as ClientStatement & { matcher?: { dialect: string; raw: string; message?: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
+    return { op: ops[0]! as PlurnkStatement & { matcher?: { dialect: string; raw: string; message?: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
 };
 
 test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a trailing aside on the same line stays the aside", () => {
@@ -195,7 +195,7 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
 });
 
 test("{§local-path-fragment}: a bare path's #channel is its fragment, and stringify renders it back", () => {
-    const targetOf = (statement: ClientStatement) => "target" in statement ? statement.target : null;
+    const targetOf = (statement: PlurnkStatement) => "target" in statement ? statement.target : null;
     const { op, diagnostics: notes } = one("````READ (data/users.html#readable) <1,-1>\n````\n");
     assert.deepEqual(notes, []);
     assert.deepEqual(targetOf(op), { kind: "local", raw: "data/users.html", fragment: "readable" });
@@ -205,7 +205,7 @@ test("{§local-path-fragment}: a bare path's #channel is its fragment, and strin
 });
 
 test("{§trailing-slots}: a scope, an option block or an aside written after the matcher peels off the right end", () => {
-    const markerOf = (statement: ClientStatement) => "lineMarker" in statement ? statement.lineMarker : null;
+    const markerOf = (statement: PlurnkStatement) => "lineMarker" in statement ? statement.lineMarker : null;
     const scoped = one("````READ (crates/wasmi/src/store/mod.rs) /fn resolve_(memory|global)/ <1,-1> <!-- store entity resolution -->\n````\n");
     assert.deepEqual(scoped.op.matcher, { dialect: "regex", raw: "/fn resolve_(memory|global)/", pattern: "fn resolve_(memory|global)", flags: "" });
     assert.deepEqual(markerOf(scoped.op), { marks: [1, -1] });
@@ -231,7 +231,7 @@ test("{§trailing-slots}: a scope, an option block or an aside written after the
 });
 
 test("{§transparent-inline-closer}: a closing fence mid-heading reads as if it were not written", () => {
-    const markerOf = (statement: ClientStatement) => "lineMarker" in statement ? statement.lineMarker : null;
+    const markerOf = (statement: PlurnkStatement) => "lineMarker" in statement ? statement.lineMarker : null;
     // Each pair is the same heading with and without the inline closer; the readings must agree,
     // because every slot after it is an ordinary slot of the operation the fence opened.
     const pairs: Array<[string, string]> = [

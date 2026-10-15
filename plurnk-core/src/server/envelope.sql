@@ -27,20 +27,20 @@ WHERE id = $id
 RETURNING id, name;
 
 -- PREP: envelope_insert_worker
--- origin is the worker's actor ({§machine-processes}): 'model' (the conversation),
+-- origin is the worker's actor ({§machine-processes}): 'model' (a model worker),
 -- 'client' (a connection's own worker), or '_plurnk' (the runtime self-hosting worker).
 INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, $origin)
 RETURNING id, name, origin;
 
 -- {§application-worker-observation}: kind is minted lineage (fork boundary → fork, other child →
--- work, root → conversation); loop observations feed the shared lifecycle selector in TS.
+-- work, no parent → root); loop observations feed the shared lifecycle selector in TS.
 -- PREP: envelope_get_worker_by_id
 SELECT id, name, workspace_id, created_at, origin, owner,
        parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
-            ELSE 'conversation' END AS kind,
+            ELSE 'root' END AS kind,
        (SELECT json_group_array(json_object('status', l.status, 'sequence', l.sequence, 'terminatedAt', l.terminated_at))
           FROM work_loops l WHERE l.worker_id = workers.id) AS loopObservations
 FROM workers
@@ -51,7 +51,7 @@ SELECT id, name, workspace_id, created_at, origin, owner,
        parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
-            ELSE 'conversation' END AS kind,
+            ELSE 'root' END AS kind,
        (SELECT json_group_array(json_object('status', l.status, 'sequence', l.sequence, 'terminatedAt', l.terminated_at))
           FROM work_loops l WHERE l.worker_id = workers.id) AS loopObservations
 FROM workers
@@ -61,7 +61,7 @@ WHERE workspace_id = $workspace_id AND name = $name;
 SELECT id, name, created_at, origin, owner, parent_worker_id AS parentWorkerId,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
-            ELSE 'conversation' END AS kind,
+            ELSE 'root' END AS kind,
        (SELECT json_group_array(json_object('status', l.status, 'sequence', l.sequence, 'terminatedAt', l.terminated_at))
           FROM work_loops l WHERE l.worker_id = workers.id) AS loopObservations
 FROM workers
@@ -120,7 +120,7 @@ WHERE id = $id
 -- {§methods-workspace-prompts}: nonempty loop seeds a client addressed to a model worker,
 -- newest-first, optionally one worker's. Authorship is the seed message's address: a worker-issued
 -- seed (WORK, FORK, SEND to a worker) carries none, so the model's own task prompts are not history
--- whichever worker they seeded, and a human prompt at a forked conversation is.
+-- whichever worker they seeded, and a human prompt at a forked worker is.
 SELECT l.prompt
 FROM loops l
 JOIN workers r ON r.id = l.worker_id

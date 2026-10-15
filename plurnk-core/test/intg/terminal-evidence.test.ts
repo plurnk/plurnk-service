@@ -11,6 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.t
 import { logEntries } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 const said = (content: string): MockResponse => ({ assistant: { content, reasoning: null }, assistantRaw: null });
 
@@ -55,8 +56,8 @@ test("{§terminal-evidence}: a strike threshold crossed by unfenced prose keeps 
         assert.ok(!JSON.stringify(problem).includes("The answer is four"), "cited, never embedded");
 
         // And the citation is not a dead link.
-        const cited = await engine.look({
-            workspaceId, workerId, loopId,
+        const cited = await clientRead(engine, db, {
+            workspaceId, workerId,
             statement: statement(`\`\`\`\`READ (${problem.unconcluded as string})\`\`\`\``),
         });
         assert.equal(cited.status, 200);
@@ -225,7 +226,7 @@ test("{§terminal-evidence}: an empty completion reply resolves the message with
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(loop.result.status, 200, "{§message-completion} resolves the request before the rail can rule");
-        const answer = await engine.look({ workspaceId, workerId, loopId, statement: statement("````READ (ops://alice/1)````") });
+        const answer = await clientRead(engine, db, { workspaceId, workerId, statement: statement("````READ (ops://alice/1)````") });
         assert.ok("content" in answer);
         assert.equal(answer.content, "The answer is four.", "and the loop's own address is the answer, not a citation");
     } finally { await db.close(); }

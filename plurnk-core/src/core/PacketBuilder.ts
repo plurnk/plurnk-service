@@ -542,7 +542,7 @@ export default class PacketBuilder {
     async #buildLog(workerId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
-        // earlier loops' work as conversational memory.
+        // earlier loops' work as its own memory.
         //
         // User prompts are first-class actionless log entries written by
         // runTurn. They surface naturally in this query without synthetic

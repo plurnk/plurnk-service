@@ -13,8 +13,8 @@ INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES ($workspace_id
 -- PREP: test_workers_insert_returning
 INSERT INTO workers (workspace_id, name) VALUES ($workspace_id, $name) RETURNING id;
 
--- PREP: test_workers_insert_default_conversation
-INSERT INTO workers (workspace_id, name, parent_worker_id, origin, default_conversation)
+-- PREP: test_workers_insert_default_worker
+INSERT INTO workers (workspace_id, name, parent_worker_id, origin, default_worker)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin, 1);
 
 -- PREP: test_workers_insert_version

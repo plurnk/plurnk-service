@@ -93,7 +93,7 @@ test("{§a2a-context-resource}: a fresh Task READs the caller's request and the 
     const provider = new Mock({ contextWindow: 100_000, responses: [answer("Which branch should I use?"), answer("main selected")] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
-    const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-conversation", projectRoot: null });
+    const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-context-history", projectRoot: null });
     daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     daemon.registerModule(Exposure.init({ ...A2A_EXPOSURE, card: a2aCard(), workspace: { name: workspaceName, projectRoot: null } }), "test-module");
     try {
@@ -152,18 +152,18 @@ test("{§a2a-inbound-exposure}: a parked Task's child obligation neither blocks 
 
 test("{§a2a-inbound-exposure}: a Context ID cannot adopt an existing model Worker", async () => {
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 100_000, responses: [answer("independent conversation")] });
+    const provider = new Mock({ contextWindow: 100_000, responses: [answer("independent Task")] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
     const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-context-name", projectRoot: null });
-    const existing = await daemon.createConversationWorker({ workspaceId, name: "existing" });
+    const existing = await daemon.createWorker({ workspaceId, name: "existing" });
     const before = await daemon.readWorker({ workspaceId, identity: { id: existing.workerId } });
     daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     daemon.registerModule(Exposure.init({ ...A2A_EXPOSURE, card: a2aCard(), workspace: { name: workspaceName, projectRoot: null } }), "test-module");
     try {
         await daemon.start();
         const client = await connectHttpJsonAgent(serviceUrl(daemon));
-        const task = await observe(client, "Start a separate conversation.", existing.workerName).result;
+        const task = await observe(client, "Start independent work.", existing.workerName).result;
         assert.equal(task.status?.state, TaskState.TASK_STATE_COMPLETED);
         const worker = await daemon.readWorker({ workspaceId, identity: { name: task.id } });
         assert.ok(worker?.parentWorkerId);
@@ -362,7 +362,7 @@ test("{§a2a-inbound-exposure}: simultaneous first Tasks share only their opaque
     } finally { finish.resolve(); await daemon.stop(); await http.close(); await db.close(); }
 });
 
-test("{§a2a-context-resource}: conversation and exact attachment bytes survive curation without exposing working internals", async () => {
+test("{§a2a-context-resource}: Context history and exact attachment bytes survive curation without exposing working internals", async () => {
     const frame = PlurnkParser.frame;
     const contextId = "retained-evidence";
     const address = `a2a://anonymous/contexts/${contextId}`;
@@ -399,8 +399,8 @@ test("{§a2a-context-resource}: conversation and exact attachment bytes survive 
         assert.match(packet, /first-retained-request/u);
         assert.match(packet, /intermediate-retained-reply/u);
         assert.match(packet, /first-retained-answer/u);
-        assert.doesNotMatch(packet, /private-exploration-marker/u, "a Context is conversation evidence, not an ambient log dump");
-        const read = async (target: string) => daemon.look({ workspaceId, workerId: worker.id, statement: parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]! });
+        assert.doesNotMatch(packet, /private-exploration-marker/u, "a Context is Task and message evidence, not an ambient log dump");
+        const read = async (target: string) => daemon.dispatchAsClient({ workspaceId, workerId: worker.id, statement: parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]! });
         const context = await read(`${address}#json`);
         assert.equal(context.status, 200);
         const json = JSON.parse(context.content as string) as { tasks: Array<{ id: string; history: Array<{ role: string; parts: Array<{ raw?: string; resource?: string; bytes?: number }> }> }> };
@@ -414,10 +414,10 @@ test("{§a2a-context-resource}: conversation and exact attachment bytes survive 
         assert.equal(retained.content, "00\n01\n02\nff", "the ordinary byte channel preserves the exact retained Part");
         const refreshed = await read(address);
         assert.equal(refreshed.status, 200);
-        assert.match(refreshed.content as string, /second-retained-answer/u, "READ refreshes completed replies without a second conversation store");
+        assert.match(refreshed.content as string, /second-retained-answer/u, "READ refreshes completed replies without a second message store");
         const stranger = await daemon.createWorkspace({ name: "unrelated-a2a-workspace", projectRoot: null });
         const strangerWorker = await daemon.ensureModelWorker(stranger.workspaceId);
-        const absent = await daemon.look({ workspaceId: stranger.workspaceId, workerId: strangerWorker, statement: parseDsl(frame(`READ (${address})`, null))[0]! });
+        const absent = await daemon.dispatchAsClient({ workspaceId: stranger.workspaceId, workerId: strangerWorker, statement: parseDsl(frame(`READ (${address})`, null))[0]! });
         assert.equal(absent.status, 404, "the retained Context belongs to the hosted workspace");
         const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });
         assert.deepEqual(messages.filter(({ direction }) => direction === "inbound").map(({ body }) => body), ["second-retained-request"]);
@@ -432,7 +432,7 @@ test("{§a2a-inbound-exposure}: retained shared-Worker Tasks stay addressable wi
     const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-retained-topology", projectRoot: null });
     const parentWorkerId = await daemon.ensureRuntimeWorker(workspaceId);
     const contextId = crypto.randomUUID();
-    const retained = await daemon.createConversationWorker({ workspaceId, parentWorkerId, name: contextId });
+    const retained = await daemon.createWorker({ workspaceId, parentWorkerId, name: contextId });
     daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     daemon.registerModule(Exposure.init({ ...A2A_EXPOSURE, card: a2aCard(), workspace: { name: workspaceName, projectRoot: null } }), "test-module");
     try {
@@ -457,7 +457,7 @@ test("{§a2a-inbound-exposure}: retained shared-Worker Tasks stay addressable wi
             assert.equal(task.status?.state, TaskState.TASK_STATE_COMPLETED);
             assert.equal(task.history[0]!.parts[0]!.content?.value, `retained request ${index}`);
         }
-        const fresh = await observe(client, "Continue the conversation in independent work.", contextId).result;
+        const fresh = await observe(client, "Continue this Context in independent work.", contextId).result;
         assert.equal(fresh.status?.state, TaskState.TASK_STATE_COMPLETED, "a previous Task's exhausted one-call budget is not inherited");
         const child = await daemon.readWorker({ workspaceId, identity: { name: fresh.id } });
         assert.ok(child);

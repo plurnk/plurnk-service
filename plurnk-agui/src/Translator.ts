@@ -4,7 +4,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The mapping ({§agui-projection}):
 //   log/entry response (model) → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
-//   log/entry rejected emission → forensic row only, no conversational event
+//   log/entry rejected emission → forensic row only, no message event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
@@ -143,7 +143,7 @@ export default class Translator {
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
-        // never interleaved into the conversation a generic frontend renders.
+        // never interleaved into the messages a generic frontend renders.
         const workerId = (e as { worker_id?: number }).worker_id;
         // Lazy binding: workspace.create returns the CLIENT worker's id — the model worker is born at
         // loop worker's drain, so a fresh thread adopts its first model-origin row's worker as the
@@ -313,7 +313,7 @@ export default class Translator {
         return events;
     }
 
-    // {§agui-replay} {§agui-snapshot} — the conversation as the live projection built it: arrivals, each turn's
+    // {§agui-replay} {§agui-snapshot} — the messages as the live projection built them: arrivals, each turn's
     // reasoning, speech, and every other model operation as its tool call and result, under the
     // live identities. Wire rows arrive as the log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {

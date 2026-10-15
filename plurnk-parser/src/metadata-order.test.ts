@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import PlurnkParser from "./PlurnkParser.ts";
 
 const parse = (heading: string, body: string | null = null) => {
-    const parsed = PlurnkParser.parseClient(PlurnkParser.frame(heading, body), { executors: ["sh", "gitea"] });
+    const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(heading, body), { executors: ["sh", "gitea"] });
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], heading);
     assert.equal(parsed.unparsedTail, undefined, heading);
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -21,7 +21,7 @@ test("{§slot-order}: SEND accepts completion metadata before its message path",
     assert.deepEqual(statement.body, { raw: "Final deliverable", json: null });
 });
 
-for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "LOOK", "sh", "gitea"]) {
+for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "sh", "gitea"]) {
     test(`{§slot-order}: ${op} accepts metadata before or after its path/scope pair`, () => {
         const metadata = '[{"request":{"value":"]"}}]';
         const body = op === "EDIT" || op === "SEND" || op === "sh" || op === "gitea" ? "literal body" : null;
@@ -34,7 +34,7 @@ for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "LOOK", "sh", "gitea"]
     });
 }
 
-for (const op of ["FIND", "READ", "EDIT", "KILL", "LOOK"]) {
+for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
     test(`{§slot-order}: ${op} retains single-path scope-first tolerance around metadata`, () => {
         const metadata = '[{"keep":1}]';
         const canonical = parse(`${op} (item) <1,3> ${metadata}`);

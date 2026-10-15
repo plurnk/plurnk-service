@@ -38,7 +38,7 @@ test("{§schedule-module} a discovered schedule arms a persisted rule at restart
     const first = new Daemon({ db, provider: null });
     await first.start();
     const { workspaceId } = await first.createWorkspace({ name: "discovered-schedule", projectRoot: null });
-    const { workerName } = await first.createConversationWorker({ workspaceId, name: "recipient" });
+    const { workerName } = await first.createWorker({ workspaceId, name: "recipient" });
     const due = new Date(Math.ceil((Date.now() + 4_000) / 1_000) * 1_000);
     const stamp = due.toISOString().replaceAll(/[-:]/gu, "").replace(/\.\d{3}Z$/u, "");
     const added = await first.invokeModuleAction("workspace.schedule.add", {

@@ -16,7 +16,7 @@ for (const cancelled of [false, true]) {
             const ws = await connect(addr);
             try {
                 const workspace = await rpcCall(ws, 1, "workspace.create", { name: `live-response-${cancelled}` });
-                const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
+                const { workerId } = await daemon.createWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
                 const result = await liveLoop({ db, ws }, 2, { prompt: "Answer in two parts.", workerId, maxTurns: 5 });
                 assert.equal(result.finalStatus, cancelled ? 499 : 200);
                 assert.equal(provider.received.length, 3);

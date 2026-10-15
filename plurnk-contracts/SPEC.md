@@ -1094,8 +1094,7 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
 FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
-through the `pattern` option ({§matcher-option}); the client-tier LOOK still
-carries its matcher as a body. AstBuilder assigns the dialect from the
+through the `pattern` option ({§matcher-option}). AstBuilder assigns the dialect from the
 matcher's leading characters. A leading prefix claims its dialect. Invalid
 claimed syntax never falls back to glob matching: it is the operation's own
 refusal ({§matcher-refusal}), not a parse error.
@@ -1160,8 +1159,8 @@ statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line Every matcher is one physical line. On the protocol
   operations it is the heading line's text ({§naked-pattern}) or the `pattern` option's
-  JSON string ({§matcher-option}), one line by construction; the client-tier LOOK still carries its matcher as a body, and AstBuilder
-  rejects a multiline one before dialect classification. A regex that matches a
+  JSON string ({§matcher-option}); AstBuilder rejects a multiline one before dialect
+  classification. A regex that matches a
   newline uses the two-character `\n` escape. Non-matcher operation bodies remain
   multiline.
 
@@ -1178,7 +1177,7 @@ The operation column names the canonical AST operation after
 | Operation             | Canonical components                   | Meaning                                                                    |
 |-----------------------|----------------------------------------|----------------------------------------------------------------------------|
 | FIND                  | 0–2 positions                          | Inclusive resource or exact-target location positions ({§find-result-unit}; markerless first page under {§markerless-first-page}) |
-| READ / client LOOK    | 0/1/2/4 text coordinates               | Text projection from one exact selected file, entry, or log item           |
+| READ                  | 0/1/2/4 text coordinates               | Text projection from one exact selected file, entry, or log item           |
 | EDIT                  | 0/1/2/4 text coordinates               | Text replacement, deletion, prepend, or append                             |
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
@@ -1199,7 +1198,7 @@ body, while unsupported arity is a runtime failure.
 spelled `@` followed by exactly five Base62 characters (`0-9A-Za-z`) wherever
 its `L`, `SL`, or `EL` position denotes a line. Columns, prepend `0`, and append
 `-1` remain numeric. Exact READ, EDIT, COPY/MOVE source and destination,
-KILL, and client LOOK preserve these positions in `TextLineMarker`; core resolves them
+and KILL preserve these positions in `TextLineMarker`; core resolves them
 against the addressed current text before operation-specific numeric scope
 semantics run. FIND's result positions remain numeric and reject anchors. Numeric text scopes remain
 canonical and fully supported. Parser acceptance does not imply model-facing
@@ -1415,7 +1414,6 @@ blocks themselves are the program.
 |--------------------------------|----------------------------------------------------------------|-----------------------|
 | `PlurnkParser.parse`           | One model turn, including recoverable outside text and operation diagnostics | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
-| `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
 
 Every entry point returns ordered `statement` and `error` items. The model-turn
 entry point also returns `text` items under {§response-text}. When present,
@@ -1700,13 +1698,13 @@ it; Core validates and records it through the same prompt admission path.
 `runLoop.attachments` carries typed bytes selected by the adapter;
 `runLoop.envelope` retains opaque protocol evidence under
 {§message-envelope-evidence}. `readMessages` projects durable inbox messages
-and successful conversation replies independently of log visibility, retaining
+and successful replies independently of log visibility, retaining
 each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 
 §application-worker-observation Worker observation exposes durable identity,
-origin, immediate parent identity, minted `kind` (`conversation`; `fork` for a
+origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a
 child carrying a fork boundary; `work` for any other child), and `lifecycle`,
 the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle`
 when it has none). `selectWorkerLoop` chooses running before parked before queued;

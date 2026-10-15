@@ -72,8 +72,8 @@ for (const body of ["Inspect this.", ""]) test(`{§send-resource-attachments}: $
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "worker-attachments", projectRoot: null });
-        const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
-        const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
+        const sender = await daemon.createWorker({ workspaceId, name: "sender" });
+        const receiver = await daemon.createWorker({ workspaceId, name: "receiver" });
         const program = PlurnkParser.parseStatements([
             PlurnkParser.frame("EDIT (worker:///report.md)", "original peer report"),
             PlurnkParser.frame('SEND (worker://receiver) [{"attachments":42}]', "Do not deliver invalid input."),

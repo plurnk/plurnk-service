@@ -9,6 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
+import { clientRead } from "./_client-read.ts";
 
 const op = PlurnkParser.frame;
 const note = (body: string) => op("NOTE", body);
@@ -165,12 +166,12 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     const log = observations(provider.received[2]!);
     assert.doesNotMatch(log, /Superseded memory\./u, "the curated NOTE is gone from row and replay alike");
     assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE row");
-    const missing = await engine.look({ ...ids, statement: readStmt(urlPath("worker", "/memo.md")) });
+    const missing = await clientRead(engine, db, { workspaceId, workerId, statement: readStmt(urlPath("worker", "/memo.md")) });
     assert.equal(missing.status, 404, "the file KILL in the mixed target executed");
     for (const [turn, original] of [[2, first], [3, second]] as const) {
         const parsed = PlurnkParser.parse(op(`READ (ops://writer/1/${turn}) <1,-1>`, null)).items[0];
         assert.ok(parsed?.kind === "statement");
-        const source = await engine.look({ ...ids, statement: parsed.statement });
+        const source = await clientRead(engine, db, { workspaceId, workerId, statement: parsed.statement });
         assert.equal(source.status, 200);
         assert.equal(source.content, original, "an explicit source READ keeps NOTE, curation, grouped targets and every body");
     }

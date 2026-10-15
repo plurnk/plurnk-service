@@ -27,7 +27,7 @@ const withResources = (json: unknown, authority: string, resources: readonly { p
 
 test("{§a2a-part-resources}: mixed Parts preserve order, exact JSON, safe names and distinct raw sources", () => {
     const message = Message.fromJSON({
-        messageId: "answer", contextId: "conversation", role: "ROLE_AGENT",
+        messageId: "answer", contextId: "context", role: "ROLE_AGENT",
         parts: [
             { text: "First comes the explanation.", mediaType: "text/plain" },
             { raw: "AAEC", filename: "../sample.bin", mediaType: "application/octet-stream" },

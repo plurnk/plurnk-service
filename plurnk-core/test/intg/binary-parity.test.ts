@@ -11,7 +11,7 @@ import type { ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { viableWindow } from "./_provider.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import { resourcePaths } from "./_find.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -334,7 +334,7 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
         assert.equal(rows[0].mimetype, "image/png", "the binary mimetype is preserved");
         assert.equal(rows[0].content, PNG.toString("base64"), "the bytes are stored base64 in TEXT content");
 
-        const read = await lookThroughScheme("worker", null, readStmt("stash.png"), ctx);
+        const read = await readThroughScheme("worker", null, readStmt("stash.png"), ctx);
         assert.equal(read.status, 200, "a default READ of the binary entry succeeds");
         assert.equal(read.mimetype, "image/png", "the byte view never relabels the source mimetype");
         assert.equal(read.projection, "hex", "it projects as the hex byte view");
@@ -350,7 +350,7 @@ test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordin
     const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
     await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker");
     const statement: ReadStatement = { ...readStmt("stash.png"), matcher: { dialect: "regex", raw: "/\\r/", pattern: "\\r", flags: "" }, lineMarker: { marks: [1, 8] } };
-    const read = await lookThroughScheme("worker", null, statement, ctx);
+    const read = await readThroughScheme("worker", null, statement, ctx);
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.equal(read.content, "0d\n");
     assert.equal(read.projection, "hex");
@@ -358,7 +358,7 @@ test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordin
     assert.deepEqual(read.lineOrdinals, [5]);
     assert.deepEqual(read.range, { unit: "byte", total: PNG.length, requested: [1, 8], returned: [5, 5] });
     assert.deepEqual(read.matches, [{ region: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 3 }, matched: "0d" }]);
-    const empty = await lookThroughScheme("worker", null, { ...statement, lineMarker: { marks: [6, 8] } }, ctx);
+    const empty = await readThroughScheme("worker", null, { ...statement, lineMarker: { marks: [6, 8] } }, ctx);
     assert.equal(empty.status, 204);
     assert.equal(empty.content, "");
     assert.equal(empty.matched, 0);

@@ -105,7 +105,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
         Object.assign(environment, mcpEnvironment(entries));
         await cool();
     };
-    const read = (target: string, workerId = client) => daemon.look({
+    const read = (target: string, workerId = client) => daemon.dispatchAsClient({
         workspaceId, workerId, statement: statement(PlurnkParser.frame(`READ (${target}) <1,-1>`, null)),
     });
     const setPolicy = (policy: CapabilityPolicy) => waitForDb(async () => {

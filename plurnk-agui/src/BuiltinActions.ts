@@ -59,7 +59,6 @@ export type BuiltinActionsPort = Pick<
     | "listProviders"
     | "listWorkers"
     | "listWorkspaces"
-    | "look"
     | "readEntry"
     | "readLog"
     | "readWorkerEffort"
@@ -101,7 +100,7 @@ export default class BuiltinActions {
         p: Readonly<Record<string, unknown>>,
         input: RunAgentInput,
         env: ClientEnvelope | null,
-        conversationWorkerId?: number,
+        boundWorkerId?: number,
         principal = "anonymous",
     ): Promise<ActionOutcome> {
         try {
@@ -166,8 +165,8 @@ export default class BuiltinActions {
             switch (kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(typeof p.id === "number" ? p.id : world.workspaceId) } };
                 case "log.read": {
-                    // Default worker: the conversation; p.workerId pins another.
-                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId);
+                    // Default worker: the bound worker; p.workerId pins another.
+                    const readWorkerId = typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId);
                     const entries = await this.#seam().readLog({
                         workspaceId: world.workspaceId,
                         workerId: readWorkerId,
@@ -192,7 +191,7 @@ export default class BuiltinActions {
                     }
                     const ack = await this.#seam().runLoop({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         prompt: p.prompt,
                         ...MessageAddress.submission(principal, input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
                     });
@@ -201,17 +200,17 @@ export default class BuiltinActions {
                 // The stop control (TUI /stop + Ctrl-C): abort the model
                 // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam().cancelDrain(
-                    conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                    boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     typeof p.reason === "string" ? p.reason : undefined,
                 ) } };
-                // Default worker: the conversation; p.workerId pins another — the log.read shape.
+                // Default worker: the bound worker; p.workerId pins another — the log.read shape.
                 case "workspace.prompts": return {
                     ok: true,
                     result: {
                         prompts: await this.#seam().listPrompts(
                             world.workspaceId,
                             Object.hasOwn(p, "limit") ? p.limit as number : undefined,
-                            typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                            typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         ),
                     },
                 };
@@ -227,7 +226,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().renameWorkspace(world.workspaceId, p.name) };
                 }
-                // {§rollback} — the bound conversation's log, or a named worker's; the reversals are this
+                // {§rollback} — the bound worker's log, or a named worker's; the reversals are this
                 // client's own operations in its worker.
                 case "workspace.rollback": {
                     if (typeof p.to !== "string" || p.to.length === 0) {
@@ -244,12 +243,12 @@ export default class BuiltinActions {
                             "invalid-action-parameters",
                             "workspace.rollback workerId must be a positive integer.",
                             400,
-                            { field: "workerId", recovery: "Name a worker of this workspace, or omit it for the conversation." },
+                            { field: "workerId", recovery: "Name a worker of this workspace, or omit it for the bound worker." },
                         );
                     }
                     return { ok: true, result: await this.#seam().rollback({
                         workspaceId: world.workspaceId,
-                        workerId: typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: typeof p.workerId === "number" ? p.workerId : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         clientWorkerId: world.workerId,
                         to: p.to,
                     }) };
@@ -276,7 +275,7 @@ export default class BuiltinActions {
                         workspaceId: world.workspaceId,
                         workerId: typeof p.workerId === "number"
                             ? p.workerId
-                            : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                            : boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         target: p.target,
                         ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
                         ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
@@ -320,7 +319,7 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Provide PLURNK statements to parse." },
                         );
                     }
-                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
+                    const parsed = PlurnkParser.parseStatements(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
                     const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
@@ -335,7 +334,7 @@ export default class BuiltinActions {
                             continue;
                         }
                         if (item.kind === "statement") {
-                            statements.push(item.statement as unknown as PlurnkStatement);
+                            statements.push(item.statement);
                             results.push(null);
                         }
                     }
@@ -361,84 +360,11 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: { results } };
                 }
-                case "op.look": {
-                    // {§agui-op-look}
-                    if (typeof p.text !== "string" || p.text.length === 0) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "op.look requires non-empty PLURNK text.",
-                            400,
-                            { field: "text", recovery: "Provide one PLURNK statement to observe." },
-                        );
-                    }
-                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
-                    // Advisories (warnings) describe a normalization; only a hard error fails the observation.
-                    const diagnostic = parsed.items.find((item) => item.kind === "error" && item.error.severity === "error");
-                    if (diagnostic !== undefined && diagnostic.kind === "error") {
-                        return operationOutcome(parseFailureResult({
-                            detail: diagnostic.error.message,
-                            line: diagnostic.error.line,
-                            column: diagnostic.error.column,
-                            source: diagnostic.error.source,
-                            severity: diagnostic.error.severity,
-                        }));
-                    }
-                    if (parsed.unparsedTail !== undefined) {
-                        return operationOutcome(parseFailureResult({
-                            detail: parsed.unparsedTail.reason,
-                            line: parsed.unparsedTail.from.line,
-                            column: parsed.unparsedTail.from.column,
-                            source: "grammar",
-                            severity: "error",
-                        }));
-                    }
-                    const statements = parsed.items.filter((item) => item.kind === "statement");
-                    if (statements.length !== 1) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            `op.look parsed ${statements.length} statements; exactly one LOOK statement is required.`,
-                            400,
-                            { field: "text", recovery: "Provide exactly one valid LOOK statement." },
-                        );
-                    }
-                    const [item] = statements;
-                    if (item.statement.op !== "LOOK") {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            `op.look parsed ${item.statement.op}; the single statement must be LOOK.`,
-                            400,
-                            { field: "text", recovery: "Use LOOK as the observation operation." },
-                        );
-                    }
-                    if (Object.hasOwn(p, "workerId")
-                        && (typeof p.workerId !== "number" || !Number.isSafeInteger(p.workerId) || p.workerId <= 0)) {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "op.look workerId must be a positive integer.",
-                            400,
-                            { field: "workerId", recovery: "Use a workerId from workspace.workers." },
-                        );
-                    }
-                    // LOOK is the client's observation with a matcher body; on the seam it is a READ whose
-                    // heading pattern is that matcher ({§read-pattern}): the matching lines, no log row.
-                    // Local log coordinates resolve as the conversation worker; explicit resource authorities
-                    // keep their identity. The observation segment stays on the connection's own worker ({§op-look}).
-                    const { body: matcher, ...look } = item.statement;
-                    const statement = { ...look, op: "READ", matcher, body: null } as unknown as PlurnkStatement;
-                    return operationOutcome(await this.#seam().look({
-                        workspaceId: world.workspaceId,
-                        workerId: world.workerId,
-                        statement,
-                        perspectiveWorkerId: typeof p.workerId === "number"
-                            ? p.workerId
-                            : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
-                    }));
-                }
-                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 case "worker.model.get": {
                     const { model, spawnModel } = await this.#seam().readWorkerModel({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     });
                     return { ok: true, result: { model, spawnModel } };
                 }
@@ -453,7 +379,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerModel({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         selector: p.selector,
                         ...(p.effort === undefined ? {} : { effort: p.effort }),
                     }) };
@@ -470,14 +396,14 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerSpawnModel({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         selector: p.selector as string | null,
                     }) };
                 }
                 case "worker.effort.get": {
                     return { ok: true, result: await this.#seam().readWorkerEffort({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     }) };
                 }
                 case "worker.effort.set": {
@@ -491,7 +417,7 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().setWorkerEffort({
                         workspaceId: world.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        workerId: boundWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         effort: p.effort,
                     }) };
                 }

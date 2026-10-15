@@ -58,7 +58,7 @@ test("{§tier-entrypoints}: only the model tier exposes outside text; all tiers 
             task,
             "Trailing prose.",
         ].join(newline);
-        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
             const parsed = parse(source);
             assert.equal(parsed.unparsedTail, undefined);
             assert.deepEqual(parsed.items.map((item) => item.kind), parse === PlurnkParser.parse

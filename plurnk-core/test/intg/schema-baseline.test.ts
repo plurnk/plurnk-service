@@ -14,6 +14,7 @@ import sha256 from "../../src/core/sha256.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import Envelope from "../../src/server/envelope.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 import File from "../../src/schemes/File.ts";
@@ -326,7 +327,32 @@ test("{§db-migrations} {§log-mutation-patch}: upgrading gives every settled ro
     } finally { await db.close(); }
 });
 
-test("{§worker-owner-creation}: upgrades retain conversations, assign runtime ownership and enforce inherited references", async () => {
+test("{§db-migrations} {§methods-model-worker}: upgrading keeps each workspace's default worker and its one-per-workspace rule", async (t) => {
+    const path = await released(V3_3_0);
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'defaultUpgrade');
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO workers (id, workspace_id, name, origin, default_conversation) VALUES (1, 1, 'ab3d5678', 'model', 1), (2, 1, 'named', 'model', 0);
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        assert.equal(await Envelope.ensureModelWorker(db, 1), 1, "the released default is still the workspace's default worker");
+    } finally { await db.close(); }
+    const after = new DatabaseSync(path);
+    try {
+        assert.ok(columns(after, "workers").includes("default_worker"));
+        assert.equal(columns(after, "workers").includes("default_conversation"), false);
+        assert.deepEqual(after.prepare("SELECT id, default_worker FROM workers ORDER BY id").all().map((row) => ({ ...row })),
+            [{ id: 1, default_worker: 1 }, { id: 2, default_worker: 0 }]);
+        assert.throws(() => after.exec("UPDATE workers SET default_worker = 1 WHERE id = 2"), /UNIQUE constraint failed/, "one default per workspace");
+    } finally { after.close(); }
+});
+
+test("{§worker-owner-creation}: upgrades retain workers and their loops, assign runtime ownership and enforce inherited references", async () => {
     const path = await released(V2_0_0);
     const before = new DatabaseSync(path);
     try {
@@ -335,7 +361,7 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
             INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id)
                 VALUES (1, 1, 'parent', 'model', NULL), (2, 1, 'child', 'model', 1), (3, 1, '_plurnk', '_plurnk', NULL);
             INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns)
-                VALUES (1, 1, 1, 'original conversation', '{"proposals":"accept","attended":true}', -1);
+                VALUES (1, 1, 1, 'original request', '{"proposals":"accept","attended":true}', -1);
         `);
     } finally { before.close(); }
     const db = await openMigrated(path);
@@ -346,7 +372,7 @@ test("{§worker-owner-creation}: upgrades retain conversations, assign runtime o
         after.exec("PRAGMA foreign_keys = ON");
         assert.deepEqual(after.prepare("SELECT id, owner FROM workers ORDER BY id").all().map((row) => ({ ...row })),
             [1, 2, 3].map((id) => ({ id, owner: "_plurnk" })), "old loop policy does not guess an approval owner");
-        assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "original conversation");
+        assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "original request");
         assert.deepEqual(after.prepare("SELECT workspace_id, address, tools, interactive FROM worker_owners ORDER BY workspace_id").all().map((row) => ({ ...row })),
             [1, 2].map((workspace_id) => ({ workspace_id, address: "_plurnk", tools: "[]", interactive: 0 })), "{§worker-ownership} nobody attends an upgraded owner");
         after.exec(`

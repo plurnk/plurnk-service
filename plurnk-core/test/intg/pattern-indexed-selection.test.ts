@@ -22,7 +22,7 @@ const runtime = async (t: TestContext) => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     let sequence = 0;
     const dispatch = async (source: string) => {
-        const { items } = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
+        const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement as PlurnkStatement });

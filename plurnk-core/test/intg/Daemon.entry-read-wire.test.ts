@@ -52,7 +52,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
     await daemon.start();
     try {
         const workspace = await daemon.createWorkspace({ name: `entry-wire-${crypto.randomUUID()}` });
-        const parent = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "entry-parent" });
+        const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "entry-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "entry-child" });
 
         for (const [workerId, name, content] of [
@@ -136,7 +136,7 @@ test("{§client-entry-address} entry.read applies worker authority across the wo
     await daemon.start();
     try {
         const workspace = await daemon.createWorkspace({ name: `entry-owner-${crypto.randomUUID()}` });
-        const parent = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "owner-parent" });
+        const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "owner-parent" });
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "owner-child" });
         for (const [workerId, name, content] of [
             [parent.workerId, "owner-parent", "parent"],

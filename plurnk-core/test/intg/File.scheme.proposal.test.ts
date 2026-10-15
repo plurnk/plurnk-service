@@ -24,6 +24,7 @@ import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { copyStmt, moveStmt, urlPath, localPath } from "./_dsl.ts";
+import { clientRead } from "./_client-read.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -204,7 +205,7 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         const creating = ctx.engine.dispatch({ ...ctx, statement: fileEditStmt(target, original), sequence: 1, origin: "model", onDispatch: seed.resolve });
         ctx.engine.resolveProposal(await seed.promise, { decision: "accept" });
         assert.equal((await creating).status, 200);
-        const read = await ctx.engine.look({ ...ctx, statement: { ...fileReadStmt(target), lineMarker: fullReplace } });
+        const read = await clientRead(ctx.engine, ctx.db, { ...ctx, statement: { ...fileReadStmt(target), lineMarker: fullReplace } });
         assert.equal(read.status, 200);
         const anchors = read.lineAnchors as string[];
         assert.ok(anchors.length >= 3);

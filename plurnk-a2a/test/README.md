@@ -4,7 +4,7 @@
 |---|---|---|
 | Package integration tests | Independent demo actors using the official SDK | Discovery, binding, lifecycle and resource translation against a reference peer. |
 | Core `A2a.*.test.ts` | Real daemon, persistence, Mock inference | The adapter drives ordinary Workers and Loops; literal HTTP tests do not reuse Plurnk's client or request builders. |
-| Core `A2a.context.test.ts` | Related Tasks with independent Workers | Sibling lifecycle isolation, retained conversation and media after curation, opaque Context identities, and unchanged historical Task evidence. |
+| Core `A2a.context.test.ts` | Related Tasks with independent Workers | Sibling lifecycle isolation, retained Context history and media after curation, opaque Context identities, and unchanged historical Task evidence. |
 | Package observation tests and Core HTTP tests | Concurrent requests over durable Tasks | Independent initial snapshots, completion during admission/read/cancellation, exact-Loop continuation, and observer cleanup. |
 | Core `A2a.media.test.ts` | Remote SDK peer → daemon → READ → capturing provider | Received Message/Artifact media becomes exact native parts or scoped bytes; offline retention and log curation use ordinary Core behavior. |
 | Upstream TCK | Independent Python HTTP+JSON client against that same real daemon | External conformance assertions and their remaining gaps, with unmodified reports. |

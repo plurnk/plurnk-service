@@ -11,7 +11,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -86,7 +86,7 @@ test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body"
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
         const stmt: ReadStatement = { metadata: null, op: "READ", aside: null, target: url("lines"), lineMarker: { marks: [2, 2] }, matcher: null, body: null, position: { line: 1, column: 1 } };
-        const r = await lookThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
         assert.doesNotMatch(r.content ?? "", /alpha|gamma/);

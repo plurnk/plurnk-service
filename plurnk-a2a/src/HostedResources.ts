@@ -23,7 +23,7 @@ export default class HostedResources {
         const body = [`# Context ${JSON.stringify(contextId)}`];
         const tasks: unknown[] = [];
         for (const binding of bindings) {
-            const task = await HostedTasks.conversation(this.#port, binding);
+            const task = await HostedTasks.history(this.#port, binding);
             const projected = A2aProjection.taskEntry(task, "anonymous", prefix);
             resources.push(...projected.resources, { pathname: A2aProjection.taskPath(task.id, prefix), entry: projected.entry });
             tasks.push(JSON.parse(projected.entry.channels.json!.content));

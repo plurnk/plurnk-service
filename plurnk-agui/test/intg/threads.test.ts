@@ -1,4 +1,4 @@
-// {§agui-thread-binding} TWO CONVERSATIONS OVER ONE WORLD:
+// {§agui-thread-binding} TWO THREADS OVER ONE WORLD:
 // two threads name the same workspace; each gets its OWN worker (its own history), and the
 // world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
 // through thread B (the environment door). No model needed: client ops (op.parse)
@@ -34,7 +34,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
     const port = http.httpAddress().port;
 
     try {
-        // Thread A (== workspace name: the default conversation) dispatches one ordered
+        // Thread A (== workspace name: the default worker) dispatches one ordered
         // multi-statement action against a shared entry. {§agui-op-parse} {§whitespace-contract}
         const edit = await action(port, "shared-world", "shared-world", "op.parse", {
             text: "Prelude.\n````EDIT (worker:///notes.md)\nfirst\n````\n3\n````EDIT (worker:///notes.md) <1,-1>\nthe world is one\n````\nPostscript.",
@@ -71,51 +71,20 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const untrustedResults = (untrusted.result as { results: Array<{ status: number }> }).results;
         assert.equal(untrustedResults[0]?.status, 404, "the statement recovered from the undefined tail never dispatched");
 
-        // Thread B — a DISTINCT conversation over the SAME world.
-        const read = await action(port, "second-look", "shared-world", "op.parse", { text: "````READ (worker:///notes.md)````" });
+        // Thread B names a DISTINCT worker in the SAME world.
+        const read = await action(port, "second-thread", "shared-world", "op.parse", { text: "````READ (worker:///notes.md)````" });
         assert.equal(read.ok, true, JSON.stringify(read.problem));
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
         assert.equal(readResults[0]?.content, "the world is one", "the action dispatched both EDITs in source order");
 
-        // {§agui-op-look} {§op-look}
-        const beforeLook = await action(port, "second-look", "shared-world", "log.read");
-        const entriesBeforeLook = (beforeLook.result as { entries: unknown[] }).entries.length;
-        const looked = await action(port, "second-look", "shared-world", "op.look", {
-            text: "Observe the note.\n````LOOK (worker:///notes.md)````\nThis is not a result.",
-        });
-        assert.equal(looked.ok, true, JSON.stringify(looked.problem));
-        assert.equal(looked.result?.status, 200);
-        assert.equal(looked.result?.content, "the world is one");
-        const afterLook = await action(port, "second-look", "shared-world", "log.read");
-        assert.equal(
-            (afterLook.result as { entries: unknown[] }).entries.length,
-            entriesBeforeLook,
-            "op.look creates no log entry through the assembled module and daemon",
-        );
-
-        const ambiguousLook = await action(port, "second-look", "shared-world", "op.look", {
-            text: "````LOOK (worker:///notes.md)````\n````EDIT (worker:///notes.md)\nmust-not-dispatch\n````",
-        });
-        assert.equal(ambiguousLook.ok, false);
-        assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
-        const textOnlyLook = await action(port, "second-look", "shared-world", "op.look", { text: "Only commentary." });
-        assert.equal(textOnlyLook.ok, false);
-        assert.equal(textOnlyLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(textOnlyLook.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
-        const unchanged = await action(port, "second-look", "shared-world", "op.look", {
-            text: "````LOOK (worker:///notes.md)````",
-        });
-        assert.equal(unchanged.result?.content, "the world is one", "the rejected second statement never reaches the daemon");
-
-        // The workers are DISTINCT: the workspace holds thread B's own conversation worker,
-        // named for it, alongside the model worker — histories split, world shared.
-        const workers = await action(port, "second-look", "shared-world", "workspace.workers");
+        // The workers are DISTINCT: the workspace holds thread B's own worker,
+        // named for it, alongside the default worker — histories split, world shared.
+        const workers = await action(port, "second-thread", "shared-world", "workspace.workers");
         assert.equal(workers.ok, true);
         const workerList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
         const names = workerList.map((worker) => worker.name);
-        assert.ok(names.includes("second-look"), `thread B's conversation worker exists by ITS name: ${names.join(", ")}`);
+        assert.ok(names.includes("second-thread"), `thread B's worker exists by ITS name: ${names.join(", ")}`);
 
         // The workerId filter crosses the module and real seam: the
         // client ops journaled in each thread's client worker; per-worker reads must differ.
@@ -123,7 +92,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         // pins the full module→seam path with live params.)
         const perWorker = new Map<number, number>();
         for (const worker of workerList) {
-            const read = await action(port, "second-look", "shared-world", "log.read", { workerId: worker.id });
+            const read = await action(port, "second-thread", "shared-world", "log.read", { workerId: worker.id });
             assert.equal(read.ok, true, `log.read workerId=${worker.id}: ${JSON.stringify(read.problem)}`);
             perWorker.set(worker.id, (read.result as { entries: unknown[] }).entries.length);
         }

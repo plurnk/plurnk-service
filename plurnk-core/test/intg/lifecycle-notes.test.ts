@@ -11,6 +11,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 const frame = PlurnkParser.frame;
 
@@ -36,21 +37,24 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.equal(notes.length, 1, "{§emission-history}: the reasoning NOTE is an ordinary row; the content NOTE rides its turn's legend and replay");
         assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${String(row.logPath).replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
-        const firstSource = await engine.look({ ...context, statement: statement(frame(`READ (${notes[0]!.resource}) <1,-1>`, null)) });
+        // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const read = (source: string, workerId = observer) => clientRead(engine, db, { workspaceId, workerId, statement: statement(source) });
+        const firstSource = await read(frame(`READ (${notes[0]!.resource}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
         const legend = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/emission$/.test(String(row.logPath)));
         const contentNote = /1:log:\/\/\/(1\/2\/\d+)\/NOTE · \d+/u.exec(String(legend?.body))?.[1];
         assert.ok(contentNote, "the legend names the content NOTE's row");
-        const secondSource = await engine.look({ ...context, statement: statement(frame(`READ (note://alice/${contentNote}) <1,-1>`, null)) });
+        const secondSource = await read(frame(`READ (note://alice/${contentNote}) <1,-1>`, null));
         assert.equal(secondSource.content, "Inspect the parser next.", "the legend's coordinate reads the content NOTE's durable source");
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
         assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(String(row.logPath))).length, 0);
-        const sourceAgain = await engine.look({ ...context, statement: statement(frame(`READ (${notes[0]!.resource}) <1,-1>`, null)) });
+        const sourceAgain = await read(frame(`READ (${notes[0]!.resource}) <1,-1>`, null));
         assert.equal(sourceAgain.content, "The network is not the cause.", "curating the log does not delete the source note");
-        const rawReasoning = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const rawReasoning = await read(frame("READ (reasoning://alice/1/2) <1,-1>", null));
         assert.equal(rawReasoning.content, reasoning);
         const found = await engine.dispatch({ ...context, turnId: final.turnId, sequence: 40, origin: "model",
             statement: statement(frame("FIND (note://alice/1/2/*) /parser/", null)),
@@ -58,7 +62,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
         const fork = await Fork.fork(db, workerId, "branch");
-        const inherited = await engine.look({ ...context, workerId: fork, statement: statement(frame(`READ (${String(notes[0]!.resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null)) });
+        const inherited = await read(frame(`READ (${String(notes[0]!.resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null), fork);
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
         for (const op of ["EDIT", "KILL"]) {
             const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "EDIT" ? 50 : 51, origin: "model",
@@ -66,7 +70,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
             });
             assert.equal(refused.status, 403, `${op} cannot change immutable note evidence`);
         }
-        const missing = await engine.look({ ...context, statement: statement(frame("READ (note://alice/1/2/99)", null)) });
+        const missing = await read(frame("READ (note://alice/1/2/99)", null));
         assert.equal(missing.status, 404, "an absent note is not an invented empty source");
     } finally { await db.close(); }
 });
@@ -137,7 +141,7 @@ test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission can
         const notes = sources.filter(({ kind }) => kind === "note");
         assert.equal(notes.filter(({ content }) => content === "This belongs to the accepted attempt.").length, 1);
         assert.ok(notes.every(({ content }) => content !== "This belongs to the rejected attempt."));
-        const reasoning = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const reasoning = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(reasoning.content, acceptedReasoning);
     } finally { await db.close(); }
 });

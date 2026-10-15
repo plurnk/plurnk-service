@@ -3,7 +3,7 @@ import type { RunAgentInput, UserMessage } from "./types.ts";
 
 const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]+)\/messages\/([^/]+)$/u;
 
-/** {§agui-run-source}: message identity belongs to the conversation, not its transport run. */
+/** {§agui-run-source}: message identity belongs to the thread, not its transport run. */
 export default class MessageAddress {
     /** The principal is the credential's subject ({§agui-http-authorization}); `anonymous` names nobody. */
     static owner(principal: string, threadId: string): string {

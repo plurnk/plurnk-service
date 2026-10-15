@@ -134,7 +134,7 @@ for (const recipientState of ["idle", "parked"]) {
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-send-${recipientState}` });
             const sourceWorkerId = await daemon.ensureModelWorker(workspaceId);
-            const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "recipient" });
+            const { workerId } = await daemon.createWorker({ workspaceId, name: "recipient" });
             await holdChild(db, workspaceId, workerId);
             if (recipientState === "parked") {
                 const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Await instructions." });

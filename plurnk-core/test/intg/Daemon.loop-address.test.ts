@@ -37,7 +37,7 @@ test("{§loop-addressed-admission}: terminal, foreign and missing recipients cre
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address-refusal" });
         const workerId = await daemon.ensureModelWorker(workspaceId);
-        const other = await daemon.createConversationWorker({ workspaceId });
+        const other = await daemon.createWorker({ workspaceId });
         const terminal = await daemon.runLoop({ workspaceId, workerId, prompt: "finish" });
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops[0]?.status === 200);
         await holdChild(db, workspaceId, other.workerId);

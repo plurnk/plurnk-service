@@ -17,6 +17,7 @@ import { testExecutors } from "./_execs.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
+import { clientRead } from "./_client-read.ts";
 
 const frame = PlurnkParser.frame;
 const program = (name: string) => `${frame("NOTE", `${name} source`)}\n\n${frame(`READ (note://${name}/1/1/1)`, null)}`;
@@ -104,9 +105,10 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
             assert.equal("resource" in result && result.resource, `note://${name}/1/1/1`);
             await Turn.complete(db, turn.id, 200);
         }
-        const look = async (source: string, workerId = parent, loopId = parentLoop) => {
+        // A READ is its reader's client action, whose loop follows loop 1; any other operation is the model's.
+        const perform = async (source: string, workerId = parent, loopId = parentLoop) => {
             const operation = statement(source);
-            if (operation.op === "READ") return engine.look({ workspaceId, workerId, loopId, statement: operation });
+            if (operation.op === "READ") return clientRead(engine, db, { workspaceId, workerId, statement: operation });
             const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
             const result = await engine.dispatch({ workspaceId, workerId, loopId, turnId: turn.id, sequence: 1,
                 origin: "model", statement: operation });
@@ -118,50 +120,49 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
             ["reasoning", "1/1", "child_A reasoning"],
             ["note", "1/1/1", "child_A note"],
         ]) {
-            const result = await look(frame(`READ (${scheme}://child_A/${path}) <1,-1>`, null));
+            const result = await perform(frame(`READ (${scheme}://child_A/${path}) <1,-1>`, null));
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.equal("content" in result && result.content, expected);
         }
-        const found = await look(frame("FIND (note://*/1/1/*) <1,-1>", null)) as FindResult;
+        const found = await perform(frame("FIND (note://*/1/1/*) <1,-1>", null)) as FindResult;
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found).sort(), ["note://child_A/1/1/1", "note://parent/1/1/1"]);
-        const searched = await look(frame("FIND (note://*/1/1/1) <1,-1> /child_A/", null)) as FindResult;
+        const searched = await perform(frame("FIND (note://*/1/1/1) <1,-1> /child_A/", null)) as FindResult;
         assert.equal(searched.status, 200, JSON.stringify(searched));
         assert.deepEqual(resourcePaths(searched), ["note://child_A/1/1/1"], "authority glob with an exact path retains a resource catalog");
-        const indexed = await look(frame('FIND (ops://*/1/1) <1,-1> [{"pattern":"~source"}]', null)) as FindResult;
+        const indexed = await perform(frame('FIND (ops://*/1/1) <1,-1> [{"pattern":"~source"}]', null)) as FindResult;
         assert.equal(indexed.status, 200, JSON.stringify(indexed));
         assert.deepEqual(resourcePaths(indexed).sort(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both workers at identical coordinates");
         for (const address of ["note:///1/1/1", "note://child_A:80/1/1/1", "note://child_A/1/1/1?q=x"]) {
-            const invalid = await look(frame(`READ (${address})`, null));
+            const invalid = await perform(frame(`READ (${address})`, null));
             assert.equal(invalid.status, 400, address);
             assert.equal(invalid.problem?.type, "https://problems.plurnk.xyz/scheme/note/coordinate-malformed");
         }
         for (const address of ["note://child_a/1/1/1", "note://missing/1/1/1"]) {
-            const absent = await look(frame(`READ (${address})`, null));
+            const absent = await perform(frame(`READ (${address})`, null));
             assert.equal(absent.status, 404, "worker authorities are exact, not silently case-folded");
         }
-        const copied = await look(frame("COPY (note://child_A/1/1/1) (worker:///shared-note.md)", null));
+        const copied = await perform(frame("COPY (note://child_A/1/1/1) (worker:///shared-note.md)", null));
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const copy = await look(frame("READ (worker:///shared-note.md) <1,-1>", null));
+        const copy = await perform(frame("READ (worker:///shared-note.md) <1,-1>", null));
         assert.equal("content" in copy && copy.content, "child_A note");
-        const trimmed = await look(frame("KILL (log:///1/1/1/NOTE)", null), child, childLoop);
+        const trimmed = await perform(frame("KILL (log:///1/1/1/NOTE)", null), child, childLoop);
         assert.equal(trimmed.status, 200);
-        const retained = await look(frame("READ (note://child_A/1/1/1) <1,-1>", null));
+        const retained = await perform(frame("READ (note://child_A/1/1/1) <1,-1>", null));
         assert.equal("content" in retained && retained.content, "child_A note");
         const fork = await Fork.fork(db, child, "branch");
-        const forkLoop = await insertLoop(db, fork, 2);
-        const inherited = await look(frame("READ (note://branch/1/1/1) <1,-1>", null));
+        const inherited = await perform(frame("READ (note://branch/1/1/1) <1,-1>", null));
         assert.equal("content" in inherited && inherited.content, "child_A note");
-        const original = await look(frame("READ (ops://child_A/1/1) <1,-1>", null), fork, forkLoop);
+        const original = await perform(frame("READ (ops://child_A/1/1) <1,-1>", null), fork);
         assert.equal("content" in original && original.content, program("child_A"));
-        const forkProgram = await look(frame("READ (ops://branch/1/1) <1,-1>", null));
+        const forkProgram = await perform(frame("READ (ops://branch/1/1) <1,-1>", null));
         assert.equal("content" in forkProgram && forkProgram.content, program("child_A"), "embedded explicit source references are not rewritten by FORK");
         for (const op of ["READ", "FIND", "KILL"]) {
-            const qualifiedLog = await look(frame(`${op} (log://child_A/1/1/1/NOTE) <1,-1>`, null));
+            const qualifiedLog = await perform(frame(`${op} (log://child_A/1/1/1/NOTE) <1,-1>`, null));
             assert.equal(qualifiedLog.status, 400, `${op} must not silently substitute the caller's log`);
             assert.equal(qualifiedLog.problem?.type, "https://problems.plurnk.xyz/scheme/log/coordinate-malformed");
         }
-        const parentNote = await look(frame("READ (log:///1/1/1/NOTE) <1,-1>", null));
+        const parentNote = await perform(frame("READ (log:///1/1/1/NOTE) <1,-1>", null));
         assert.equal("content" in parentNote && parentNote.content, "parent note", "rejected foreign curation leaves local context intact");
     } finally { await db.close(); }
 });
@@ -202,8 +203,7 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
         assert.ok(history.some(({ op, rx }) => op === "READ" && JSON.parse(rx).content === "The retry condition is idempotent."), "the parent's READ resolves the exact shared source");
         const otherWorkspace = await insertWorkspace(db, "other-note-sharing");
         const otherWorker = await insertWorker(db, otherWorkspace, null, "parent");
-        const otherLoop = await insertLoop(db, otherWorker, 1);
-        const isolated = await engine.look({ workspaceId: otherWorkspace, workerId: otherWorker, loopId: otherLoop,
+        const isolated = await clientRead(engine, db, { workspaceId: otherWorkspace, workerId: otherWorker,
             statement: statement(frame("READ (note://child/1/1/1)", null)) });
         assert.equal(isolated.status, 404, "an explicit authority never crosses the workspace boundary");
     } finally { await db.close(); }

@@ -11,6 +11,7 @@ import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { packetSection } from "./_packet.ts";
+import { clientRead } from "./_client-read.ts";
 
 test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and output inactivity", async (t) => {
     const db = await openMigrated();
@@ -59,7 +60,6 @@ test("{§child-orientation}: only changes to published output reset the durable 
     try {
         const workspaceId = await insertWorkspace(db, "stream-clock-writes");
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
         const pathname = "/abcd1234";
         const entryId = await seedEntryWithChannel(db, {
             workspaceId, scheme: "sh", authority: "", pathname,
@@ -93,7 +93,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
             { name: "clearing content", changed: true, write: () => channels.replace(pathname, "stdout", "") },
             { name: "empty-to-empty replacement", changed: false, write: () => channels.replace(pathname, "stdout", "") },
             { name: "executor append", changed: true, write: () => ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "stdout", chunk: "visible\n" }) },
-            { name: "ordinary stream READ", changed: false, write: () => engine.look({ workspaceId, workerId, loopId, statement: readStmt(urlPath("sh", pathname, "stdout"), { marks: [1, -1] }) }) },
+            { name: "ordinary stream READ", changed: false, write: () => clientRead(engine, db, { workspaceId, workerId, statement: readStmt(urlPath("sh", pathname, "stdout"), { marks: [1, -1] }) }) },
         ]) await t.test(specimen.name, async () => {
             await rebase();
             const result = await specimen.write();

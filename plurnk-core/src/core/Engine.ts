@@ -6,7 +6,7 @@ import Meta from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import SearchIndex from "../schemes/_search-index.ts";
 import GitMembership from "./git-membership.ts";
-import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
+import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
@@ -50,7 +50,6 @@ export type WorkspaceTurnStarting = (args: {
 }) => Promise<readonly Notice[] | void>;
 
 
-
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
@@ -69,7 +68,6 @@ export type LoopUsage = {
     contextCapacity: number | null;
     meta: Record<string, unknown>;
 };
-
 
 
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
@@ -536,15 +534,6 @@ export default class Engine {
                 return result;
             },
         );
-    }
-
-    // {§op-look}: resolve a READ without writing a log_entries row.
-    async look(context: {
-        statement: PlurnkStatement;
-        workspaceId: number; workerId: number; loopId: number;
-        origin?: WriterTier;
-    }): Promise<DispatchResult> {
-        return this.#dispatcher.look(context);
     }
 
     capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {

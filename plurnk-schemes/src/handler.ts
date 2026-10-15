@@ -17,8 +17,7 @@
 
 // This interface contains only operations the engine delegates to one scheme.
 // COPY and MOVE are engine-owned compositions over entry capabilities and
-// editBatch, not overridable handler methods. LOOK is deliberately absent:
-// they are client operations the engine never dispatches to a scheme.
+// editBatch, not overridable handler methods.
 import type {
     FindStatement,
     SendStatement,

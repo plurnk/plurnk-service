@@ -6,7 +6,7 @@ import { TurnDisposition, Validator } from "@plurnk/plurnk-contracts";
 test("{§send-wait-scope} WAIT preserves a non-negative duration in seconds in every program tier", () => {
     for (const seconds of [0, 1, 600, 0.25]) {
         const source = PlurnkParser.frame(`WAIT [${seconds}] <!-- reassess -->`, "Check the running tests again.");
-        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
             const result = parse(source);
             assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
             const item = result.items[0];
@@ -55,7 +55,7 @@ for (const [op, status] of [["WAIT", 202]] as const) {
             "(worker://missing) [{\"timeout\":42}]",
         ]) {
             const source = PlurnkParser.frame(`${op} ${decoration} <!-- suite -->`, body);
-            for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+            for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
                 const result = parse(source);
                 const warnings = result.items.filter((item) => item.kind === "error");
                 assert.equal(warnings.length, decoration.includes("[") ? 1 : 0, source);

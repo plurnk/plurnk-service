@@ -244,8 +244,8 @@ export default class HostedTasks {
         };
     }
 
-    // {§a2a-context-resource} Conversation includes every delivered reply, not just the final artifact.
-    static async conversation(port: HostedTasksPort, binding: HostedTaskBinding): Promise<Task> {
+    // {§a2a-context-resource} A Task's history includes every delivered reply, not just the final artifact.
+    static async history(port: HostedTasksPort, binding: HostedTaskBinding): Promise<Task> {
         const rows = await port.readMessages({ workspaceId: binding.workspaceId, workerId: binding.worker.id });
         const task = HostedTasks.#project(binding, rows);
         const incoming = new Map(task.history.map((item) => [item.messageId, item]));

@@ -98,18 +98,18 @@ test("{§worker-provider-identity}: every worker mints a unique immutable provid
     } finally { await db.close(); }
 });
 
-test("{§methods-model-worker}: one durable default-conversation role admits only a model root", async () => {
+test("{§methods-model-worker}: one durable default-worker role admits only a model root", async () => {
     const db = await openMigrated();
     try {
-        const uniqueWorkspaceId = await insertWorkspace(db, "ws-one-default-conversation");
-        await db.test_workers_insert_default_conversation.run({
+        const uniqueWorkspaceId = await insertWorkspace(db, "ws-one-default-worker");
+        await db.test_workers_insert_default_worker.run({
             workspace_id: uniqueWorkspaceId,
             name: n("default"),
             parent_worker_id: null,
             origin: "model",
         });
         await assert.rejects(
-            () => db.test_workers_insert_default_conversation.run({
+            () => db.test_workers_insert_default_worker.run({
                 workspace_id: uniqueWorkspaceId,
                 name: n("second-default"),
                 parent_worker_id: null,
@@ -120,7 +120,7 @@ test("{§methods-model-worker}: one durable default-conversation role admits onl
 
         const clientWorkspaceId = await insertWorkspace(db, "ws-client-not-default");
         await assert.rejects(
-            () => db.test_workers_insert_default_conversation.run({
+            () => db.test_workers_insert_default_worker.run({
                 workspace_id: clientWorkspaceId,
                 name: n("client-default"),
                 parent_worker_id: null,
@@ -135,7 +135,7 @@ test("{§methods-model-worker}: one durable default-conversation role admits onl
             name: n("parent"),
         });
         await assert.rejects(
-            () => db.test_workers_insert_default_conversation.run({
+            () => db.test_workers_insert_default_worker.run({
                 workspace_id: childWorkspaceId,
                 name: n("child-default"),
                 parent_worker_id: parent?.id,

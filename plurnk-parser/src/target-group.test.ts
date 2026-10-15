@@ -49,8 +49,8 @@ test("{§target-group} {§log-kill-distillation}: distillation lands once; other
         const kills = operations(`\`\`\`KILL ${paths}\nBoth held the same fact.\n\`\`\``) as KillStatement[];
         assert.deepEqual(kills.map(({ body }) => body), ["Both held the same fact.", null]);
     }
-    for (const op of ["EDIT", "FIND", "LOOK"]) {
-        const parsed = PlurnkParser.parseClient(`\`\`\`${op} (a.md) (b.md)\`\`\``);
+    for (const op of ["EDIT", "FIND"]) {
+        const parsed = PlurnkParser.parseStatements(`\`\`\`${op} (a.md) (b.md)\`\`\``);
         const error = parsed.items.find((item) => item.kind === "error" && item.error.severity === "error");
         assert.ok(error?.kind === "error");
         assert.match(error.error.message, /slot opener/u);
@@ -96,11 +96,11 @@ test("{§safe-uri-target-groups}: ambiguous, invalid and ineligible targets stay
     }
 });
 
-test("{§reasoning-operations} {§target-group}: reasoning and client tiers receive the same compiled selections", () => {
+test("{§reasoning-operations} {§target-group}: reasoning and statement tiers receive the same compiled selections", () => {
     const source = "```READ (a) <1,3> (b) /shared/\n```";
     assert.deepEqual(PlurnkParser.parseReasoningOperations(source), operations(source));
-    const client = PlurnkParser.parseClient(source);
-    assert.deepEqual(client.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []), operations(source));
+    const statements = PlurnkParser.parseStatements(source);
+    assert.deepEqual(statements.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []), operations(source));
 });
 
 test("{§trailing-slots} {§safe-uri-target-groups}: a URI list in one slot retains that slot's unambiguous recovered scope", () => {

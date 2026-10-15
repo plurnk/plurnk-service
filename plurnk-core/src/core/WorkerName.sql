@@ -2,15 +2,15 @@
 
 -- PREP: worker_name_claim
 -- Claiming the literal and creating its worker are one SQLite write statement.
--- The default-conversation predicate is enabled only by
--- ensureDefaultConversation; ordinary allocation passes 0 and competes solely
+-- The default-worker predicate is enabled only by
+-- ensureDefaultWorker; ordinary allocation passes 0 and competes solely
 -- on the generated literal.
 INSERT INTO workers (
-    workspace_id, name, parent_worker_id, origin, owner, default_conversation,
+    workspace_id, name, parent_worker_id, origin, owner, default_worker,
     ambient_event_cursor, fork_event_boundary,
     model_route_id, spawn_model_route_id, effort
 )
-SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner, $default_conversation,
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $owner, $default_worker,
        CASE WHEN $fork_snapshot = 1 THEN (
            SELECT ambient_event_cursor FROM workers WHERE id = $parent_worker_id
        ) ELSE NULL END,
@@ -27,11 +27,11 @@ WHERE NOT EXISTS (
     WHERE workspace_id = $workspace_id AND name = $name
 )
 AND (
-    $default_conversation = 0 OR NOT EXISTS (
+    $default_worker = 0 OR NOT EXISTS (
         SELECT 1
         FROM workers
         WHERE workspace_id = $workspace_id
-          AND default_conversation = 1
+          AND default_worker = 1
     )
 )
 AND (
@@ -42,8 +42,8 @@ AND (
 )
 RETURNING id, name;
 
--- PREP: worker_name_get_default_conversation
+-- PREP: worker_name_get_default_worker
 SELECT id, name
 FROM workers
 WHERE workspace_id = $workspace_id
-  AND default_conversation = 1;
+  AND default_worker = 1;

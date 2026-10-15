@@ -43,7 +43,7 @@ test("a2a: two workers in different roles coordinate over A2A — the writer ask
         daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
         const researcher = await daemon.createWorkspace({ name: "researcher", projectRoot: researcherRoot });
         await daemon.registerWorkerOwner(researcher.workspaceId, HOST_OWNER);
-        const host = await daemon.createConversationWorker({ workspaceId: researcher.workspaceId, name: "researcher-host", owner: HOST_OWNER.address });
+        const host = await daemon.createWorker({ workspaceId: researcher.workspaceId, name: "researcher-host", owner: HOST_OWNER.address });
         // {§a2a-worker-ownership} — every Task the exposure admits becomes a model child of this host.
         daemon.registerModule(A2aExposure.init({
             ...A2A_EXPOSURE, parentWorker: host.workerName,

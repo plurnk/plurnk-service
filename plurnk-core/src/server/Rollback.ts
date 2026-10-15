@@ -111,7 +111,7 @@ export default class Rollback {
         const source = action === "delete"
             ? `\`\`\`\`KILL (${target})\`\`\`\``
             : `\`\`\`\`EDIT (${target})${action === "update" ? " <1,-1>" : ""}\n${previous}\n\`\`\`\``;
-        const { items } = PlurnkParser.parseClient(source, { executors: [...executors] });
+        const { items } = PlurnkParser.parseStatements(source, { executors: [...executors] });
         const item = items[0];
         if (items.length !== 1 || item?.kind !== "statement") throw new Error(`rollback of log:///${coordinate} built an operation the parser refused: ${source.slice(0, 120)}`);
         const result = await seam.apply(item.statement as PlurnkStatement);

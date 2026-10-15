@@ -76,7 +76,6 @@ const program = PlurnkParser.frame("NOTE", "smoke");
 assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
 assertClean("statement sequence", result);
-assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (worker:///foo)", null)));
 
 const reasoning = PlurnkParser.frame("READ (worker:///fact.txt)", null);
 if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {
@@ -109,7 +108,7 @@ const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "st
 const ticks = String.fromCharCode(96).repeat(3);
 const answerTail = "Complete answer.\\n" + ticks + "\\n"
     + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
     for (const target of ["", " (message://dogfood04/6094c6e9)"]) {
         const parsed = parse(PlurnkParser.frame("SEND [200]" + target, answerTail));
         assertClean("completion reply", parsed);
@@ -123,7 +122,7 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
 }
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
     + "\\n3\\n" + program + "\\nPostscript.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
     const parsed = parse(interstitial);
     assertClean("interstitial text", parsed);
     const statements = statementsOf(parsed);

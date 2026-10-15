@@ -11,7 +11,7 @@ const owner: WorkerOwner = { address: "agui://local/threads/primary", tools: ["r
 test("{§worker-owner-creation}: every worker has a durable runtime owner before client attachment", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: "owner-default" });
-        const model = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "conversation" });
+        const model = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "model" });
         const workers = await daemon.listWorkers(workspace.workspaceId);
         assert.ok(workers.some(({ id }) => id === model.workerId));
         for (const worker of workers) {
@@ -23,7 +23,7 @@ test("{§worker-owner-creation}: every worker has a durable runtime owner before
 test("{§worker-ownership}: control claims runtime descendants; later delegation inherits and other owners survive", async () => {
     await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-inheritance" });
-        const parent = await daemon.createConversationWorker({ workspaceId, name: "parent" });
+        const parent = await daemon.createWorker({ workspaceId, name: "parent" });
         const before = await daemon.forkWorker({ workspaceId, workerId: parent.workerId, name: "before" });
         await daemon.registerWorkerOwner(workspaceId, owner);
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: parent.workerId, owner: owner.address }), owner);
@@ -35,7 +35,7 @@ test("{§worker-ownership}: control claims runtime descendants; later delegation
         const stranger: WorkerOwner = { address: "agui://local/threads/other", tools: [], interactive: false };
         await daemon.registerWorkerOwner(workspaceId, stranger);
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: parent.workerId, owner: stranger.address }), owner,
-            "opening an already-owned conversation is not a transfer");
+            "opening an already-owned worker is not a transfer");
         const runtimeId = await insertWorker(db, workspaceId, null, "_plurnk", "_plurnk");
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: runtimeId, owner: owner.address }),
             { address: "_plurnk", tools: [], interactive: false }, "the runtime actor itself is never claimable");
@@ -46,8 +46,8 @@ test("{§worker-ownership}: disconnected owners keep their declared capabilities
     await withDaemon(null, async (_db, daemon) => {
         const first = await daemon.createWorkspace({ name: "owner-first" });
         const second = await daemon.createWorkspace({ name: "owner-second" });
-        const one = await daemon.createConversationWorker({ workspaceId: first.workspaceId, name: "primary" });
-        const two = await daemon.createConversationWorker({ workspaceId: second.workspaceId, name: "primary" });
+        const one = await daemon.createWorker({ workspaceId: first.workspaceId, name: "primary" });
+        const two = await daemon.createWorker({ workspaceId: second.workspaceId, name: "primary" });
         await daemon.registerWorkerOwner(first.workspaceId, owner);
         await daemon.registerWorkerOwner(second.workspaceId, { ...owner, tools: [] });
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId: first.workspaceId, workerId: one.workerId, owner: owner.address }), owner);
@@ -60,15 +60,15 @@ test("{§worker-owner-creation}: fresh model children inherit an existing parent
     await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-fresh-model" });
         await daemon.registerWorkerOwner(workspaceId, owner);
-        const parent = await daemon.createConversationWorker({ workspaceId, name: "parent", owner: owner.address });
-        const child = await daemon.createConversationWorker({ workspaceId, name: "context", parentWorkerId: parent.workerId });
+        const parent = await daemon.createWorker({ workspaceId, name: "parent", owner: owner.address });
+        const child = await daemon.createWorker({ workspaceId, name: "context", parentWorkerId: parent.workerId });
         const projected = await daemon.readWorker({ workspaceId, identity: { id: child.workerId } });
         assert.equal(projected?.parentWorkerId, parent.workerId);
         assert.equal(projected?.owner, owner.address);
         assert.equal(projected?.origin, "model");
         assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId: child.workerId }), []);
         const runtimeId = await insertWorker(db, workspaceId, null, "_plurnk", "_plurnk");
-        const runtimeChild = await daemon.createConversationWorker({ workspaceId, name: "runtime-context", parentWorkerId: runtimeId });
+        const runtimeChild = await daemon.createWorker({ workspaceId, name: "runtime-context", parentWorkerId: runtimeId });
         const runtimeProjection = await daemon.readWorker({ workspaceId, identity: { id: runtimeChild.workerId } });
         assert.equal(runtimeProjection?.origin, "model");
         assert.equal(runtimeProjection?.owner, "_plurnk");
@@ -80,10 +80,10 @@ test("{§worker-owner-creation}: unknown owners and parents from another workspa
     await withDaemon(null, async (_db, daemon) => {
         const first = await daemon.createWorkspace({ name: "owner-invalid-first" });
         const second = await daemon.createWorkspace({ name: "owner-invalid-second" });
-        const parent = await daemon.createConversationWorker({ workspaceId: second.workspaceId, name: "parent" });
+        const parent = await daemon.createWorker({ workspaceId: second.workspaceId, name: "parent" });
         const failure = (code: string) => (error: unknown): boolean => error instanceof OperationFailureError && error.result.problem?.type.endsWith(`/${code}`) === true;
-        await assert.rejects(daemon.createConversationWorker({ workspaceId: first.workspaceId, name: "unowned", owner: owner.address }), failure("owner-not-found"));
-        await assert.rejects(daemon.createConversationWorker({ workspaceId: first.workspaceId, name: "wrong-parent", parentWorkerId: parent.workerId }), failure("worker-not-found"));
+        await assert.rejects(daemon.createWorker({ workspaceId: first.workspaceId, name: "unowned", owner: owner.address }), failure("owner-not-found"));
+        await assert.rejects(daemon.createWorker({ workspaceId: first.workspaceId, name: "wrong-parent", parentWorkerId: parent.workerId }), failure("worker-not-found"));
         assert.equal((await daemon.listWorkers(first.workspaceId)).some(({ name }) => name === "unowned" || name === "wrong-parent"), false);
         await daemon.registerWorkerOwner(second.workspaceId, owner);
         await daemon.claimWorkerOwner({ workspaceId: second.workspaceId, workerId: parent.workerId, owner: owner.address });
@@ -95,7 +95,7 @@ test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, 
     await withDaemon(null, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-resolution" });
         await daemon.registerWorkerOwner(workspaceId, owner);
-        const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "controlled", owner: owner.address });
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "controlled", owner: owner.address });
         const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo owner-approved")).items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
         const operation = daemon.dispatchAsClient({ workspaceId, workerId, statement: statement.statement });
@@ -122,7 +122,7 @@ test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, 
 test("{§worker-owner-resolution}: runtime-owned work cannot hang awaiting a reviewer it does not have", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-incapable" });
-        const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "unclaimed" });
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "unclaimed" });
         const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo must-not-run")).items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
         const operation = daemon.dispatchAsClient({ workspaceId, workerId, statement: statement.statement });

@@ -10,6 +10,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 const stat1 = (path: string): number => {
     const raw = new DatabaseSync(path, { readOnly: true });
@@ -30,7 +31,7 @@ test("{§db-maintenance-optimize}: stopping the daemon runs PRAGMA optimize on t
         const loopId = await insertLoop(db, workerId, 1);
         await daemon.engine.runTurn({ workspaceId, workerId, loopId, provider: provider("thought",
             `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
-        assert.equal((await daemon.engine.look({ workspaceId, workerId, loopId, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") })).status, 200);
+        assert.equal((await clientRead(daemon.engine, db, { workspaceId, workerId, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") })).status, 200);
         assert.equal(stat1(path), 0, "a fresh baseline carries no statistics");
     } finally {
         await daemon.stop();

@@ -47,7 +47,7 @@ export interface ApplicationActionDescriptor {
 }
 
 // `workerId` is the client actor's worker: dispatched client actions live there
-// ({§connection-lifecycle}, {§machine-processes}). The conversation worker is
+// ({§connection-lifecycle}, {§machine-processes}). The worker a thread binds is
 // resolved separately by the client-interface module.
 export interface ClientEnvelope {
     readonly workspaceId: number;
@@ -61,11 +61,11 @@ export interface ClientEnvelope {
 
 export type ApplicationWorkerOrigin = "model" | "client" | "_plurnk";
 
-// {§application-worker-observation} — `kind` is how the worker was minted (a conversation, a FORK
+// {§application-worker-observation} — `kind` is how the worker was minted (a root worker, a FORK
 // child with a forked log, a WORK child with a fresh log); `lifecycle` projects its representative loop
 // through the shared {§loop-lifecycle-vocabulary}, so a directory row can carry the same glyph the
 // bound worker's own status gauge shows. Neither is inferred by a client.
-export type ApplicationWorkerKind = "conversation" | "fork" | "work";
+export type ApplicationWorkerKind = "root" | "fork" | "work";
 export interface ApplicationWorkerProjection {
     readonly id: number;
     readonly name: string;
@@ -336,11 +336,11 @@ export interface ApplicationPort extends HttpHost {
         readonly workerId: number;
         readonly statements: PlurnkStatement[];
     }): Promise<OperationResult[]>;
-    // {§fence-heading-in-body} — the executor tags this workspace can run: what a client-tier
-    // parse must know for those tags to open blocks ({§interstitial-fence}).
+    // {§fence-heading-in-body} — the executor tags this workspace can run: what a parse of
+    // client-authored text must know for those tags to open blocks ({§interstitial-fence}).
     executorTags(workspaceId: number): readonly string[];
-    // {§bare-option-object} — the executors whose declared body is JSON; a client-tier parse reads their bare
-    // heading object as that body instead of the option array.
+    // {§bare-option-object} — the executors whose declared body is JSON; a parse of client-authored text reads
+    // their bare heading object as that body instead of the option array.
     executorJsonBodyTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;
@@ -425,15 +425,6 @@ export interface ApplicationPort extends HttpHost {
         // {§notice-level}: the producer's level rides unchanged — `warn` when a completed pass carries failed members.
         readonly level: "info" | "warn" | "error";
     } | null;
-    // {§op-look} — `workerId` owns the closed observation segment; `perspectiveWorkerId`, when
-    // given, is the worker whose local `log:///` the READ resolves against, so a human's look
-    // sees the conversation as the model does without touching the conversation's loops.
-    look(args: {
-        readonly workspaceId: number;
-        readonly workerId: number;
-        readonly statement: PlurnkStatement;
-        readonly perspectiveWorkerId?: number;
-    }): Promise<OperationResult>;
     readEntry(args: {
         readonly workspaceId: number;
         readonly workerId: number;
@@ -450,7 +441,7 @@ export interface ApplicationPort extends HttpHost {
         readonly workerName: string | null;
         readonly parentWorkerId: number;
     }>;
-    createConversationWorker(args: ApplicationWorkerCreation): Promise<{ readonly workerId: number; readonly workerName: string }>;
+    createWorker(args: ApplicationWorkerCreation): Promise<{ readonly workerId: number; readonly workerName: string }>;
     readWorkerModel(args: {
         readonly workspaceId: number;
         readonly workerId: number;

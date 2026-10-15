@@ -47,7 +47,7 @@ test("{§fs-namei} file URLs preserve native filename identity through reads and
                 for (const row of rows) {
                     const target = renderTarget(row, root);
                     assert.ok(target);
-                    const read = await daemon.look({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${target})`, null))[0] });
+                    const read = await daemon.dispatchAsClient({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${target})`, null))[0] });
                     assert.equal(read.status, 200, `reuse ${target}`);
                     assert.equal(read.content, `Content of ${row.pathname}\n`, `identity of ${target}`);
                 }
@@ -103,7 +103,7 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                     await assert.rejects(readFile(join(root, key(`copy-${name}`))), { code: "ENOENT" });
                     await assert.rejects(readFile(join(root, key(`moved-${name}`))), { code: "ENOENT" });
                     const address = renderTarget({ scheme: null, pathname: key(name) }, root)!;
-                    const read = await daemon.look({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${address})`, null))[0] });
+                    const read = await daemon.dispatchAsClient({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${address})`, null))[0] });
                     assert.equal(read.status, 200, address);
                     assert.equal(read.content, `Revised ${name}\n`);
                     assert.ok(userText(provider.received[1]!).includes(address), "the exact FIND advertised a reusable address");
@@ -266,7 +266,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-home} {
                 }
 
                 for (const target of [relativeSource, spelling("source.txt"), source, pathToFileURL(source).href]) {
-                    const result = await daemon.look({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${target})`, null))[0] });
+                    const result = await daemon.dispatchAsClient({ workspaceId, workerId: loop.modelWorkerId!, statement: parseDsl(frame(`READ (${target})`, null))[0] });
                     assert.equal(result.status, 200, target);
                     assert.equal(result.content, "revised\n", target);
                 }

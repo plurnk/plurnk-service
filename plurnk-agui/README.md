@@ -14,7 +14,7 @@ and approval requests. Additional execution metadata uses namespaced
 Workspace selection and PLURNK-specific management actions use namespaced
 fields under `forwardedProps.plurnk`. `SPEC.md` defines those extensions.
 
-## Conversation projection
+## Event projection
 
 Each Run observes its bound Worker and, once known, its exact Loop. Sibling
 events do not become chat messages; child activity arrives only when Core
@@ -32,9 +32,9 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Packet and terminal usage | State updates and `plurnk.terminated`; daemon quantities pass through unchanged. |
 
 READ of `reasoning://<worker>/…` is an operation receipt, not another reasoning stream.
-On reattach, the durable conversation snapshot restores accepted reasoning and
+On reattach, the durable `MESSAGES_SNAPSHOT` restores accepted reasoning and
 SENDs. `forwardedProps.plurnk.mode="sync"` obtains that state without a prompt
-or model inference ({§agui-conversation-sync}).
+or model inference ({§agui-sync}).
 
 Pending proposals and user interactions use standard AG-UI interrupts and
 resume Runs. Core decides their owner and disposition, including delegated

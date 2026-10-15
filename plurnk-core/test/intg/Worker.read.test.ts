@@ -4,7 +4,7 @@ import type { LineMarker, MatcherBody, ParsedPath, ReadStatement, UrlPath } from
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -57,7 +57,7 @@ test("{§read-read-content} Worker.read: existing entry — returns body content
     try {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/france/capital"), body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/france/capital") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/france/capital") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris");
         assert.equal(result.mimetype, "text/markdown");
@@ -67,7 +67,7 @@ test("{§read-read-content} Worker.read: existing entry — returns body content
 test("Worker.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/nope") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/nope") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
         assert.equal(result.mimetype, null);
@@ -77,7 +77,7 @@ test("Worker.read: nonexistent path returns 404 with null content/mimetype", asy
 test("Worker.read: null path returns 400", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
-        const result = await lookThroughScheme("worker", null, readStatement({ target: null }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readThroughScheme("worker", null, readStatement({ target: null }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 400);
         assert.equal(result.content, null);
         assert.equal(result.mimetype, null);
@@ -89,7 +89,7 @@ test("Worker.read: lineMarker <N> on text source returns raw line + text/markdow
     try {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/lined"), body: "first\nsecond\nthird" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/lined"), lineMarker: { marks: [2] } }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/lined"), lineMarker: { marks: [2] } }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.content, "second");
         assert.equal((result as { startLine?: number }).startLine, 2);
@@ -109,7 +109,7 @@ test("Worker.read: four-coordinate scope returns an exact Unicode text region", 
             }),
             makeSchemeCtx({ db, workspaceId, workerId }),
         );
-        const result = await lookThroughScheme("worker", null,
+        const result = await readThroughScheme("worker", null,
             readStatement({
                 target: urlPath("worker", "/exact"),
                 lineMarker: { marks: [1, 2, 1, 3] },
@@ -196,7 +196,7 @@ test("Worker.read: edited entry round-trips through read — content matches wha
             // First iteration creates (markerless); the rest re-edit an existing entry, which
             // needs the deliberate full-replace marker ({§edit-marker-required-on-existing}).
             await k.edit(editStatement({ target, body, lineMarker: i === 0 ? null : fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-            const result = await lookThroughScheme("worker", null, readStatement({ target }), makeSchemeCtx({ db, workspaceId, workerId }));
+            const result = await readThroughScheme("worker", null, readStatement({ target }), makeSchemeCtx({ db, workspaceId, workerId }));
             assert.equal(result.status, 200);
             assert.equal(result.content, body);
         }
@@ -215,8 +215,8 @@ test("Worker.read: different workspaces see different entries at the same path",
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "from-A" }), makeSchemeCtx({ db, workspaceId: workspaceA, workerId: workerA }));
         await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "from-B" }), makeSchemeCtx({ db, workspaceId: workspaceB, workerId: workerB }));
-        const a = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/x") }), makeSchemeCtx({ db, workspaceId: workspaceA, workerId: workerA }));
-        const b = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/x") }), makeSchemeCtx({ db, workspaceId: workspaceB, workerId: workerB }));
+        const a = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/x") }), makeSchemeCtx({ db, workspaceId: workspaceA, workerId: workerA }));
+        const b = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/x") }), makeSchemeCtx({ db, workspaceId: workspaceB, workerId: workerB }));
         assert.equal(a.content, "from-A");
         assert.equal(b.content, "from-B");
     } finally { db.close(); }
@@ -231,7 +231,7 @@ test("Worker.read: read against workspace A doesn't surface workspace B's entry"
         const workerB = await insertWorker(db, workspaceB);
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/only-b"), body: "B-only" }), makeSchemeCtx({ db, workspaceId: workspaceB, workerId: workerB }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/only-b") }), makeSchemeCtx({ db, workspaceId: workspaceA, workerId: workerA }));
+        const result = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/only-b") }), makeSchemeCtx({ db, workspaceId: workspaceA, workerId: workerA }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     } finally { db.close(); }
@@ -249,7 +249,7 @@ test("{§ext-mimetype} Worker: path suffix `.json` declares mimetype; READ retur
             editStatement({ target: urlPath("worker", "/users.json"), body: '[{"name":"Alice"}]' }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        const result = await lookThroughScheme("worker", null,
+        const result = await readThroughScheme("worker", null,
             readStatement({ target: urlPath("worker", "/users.json") }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -272,7 +272,7 @@ test("Worker: extension `.json` does not change line shorthand semantics", async
             }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        const result = await lookThroughScheme("worker", null,
+        const result = await readThroughScheme("worker", null,
             readStatement({ target: urlPath("worker", "/users.json"), lineMarker: { marks: [3] } }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -295,7 +295,7 @@ test("{§ext-mimetype} Worker: no path suffix → scheme default (text/markdown)
         );
         // Without `.json` delimiter, mimetype falls back to manifest default
         // (text/markdown). <L><2> is line-based.
-        const result = await lookThroughScheme("worker", null,
+        const result = await readThroughScheme("worker", null,
             readStatement({ target: urlPath("worker", "/users"), lineMarker: { marks: [2] } }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );

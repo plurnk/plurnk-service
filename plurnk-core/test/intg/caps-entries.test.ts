@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { readStmt } from "./_dsl.ts";
 
@@ -23,7 +23,7 @@ test("{§binary-parity} public entry writes retain bytes for ordinary byte READs
             channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } },
         });
         assert.equal(written.status, 201);
-        const read = await lookThroughScheme("notes", new Notes(), readStmt(parsePath("notes:///binary"), { marks: [1, -1] }), ctx);
+        const read = await readThroughScheme("notes", new Notes(), readStmt(parsePath("notes:///binary"), { marks: [1, -1] }), ctx);
         assert.equal(read.status, 200);
         assert.equal(read.content, "00\nff\n80\n41");
         assert.equal((await caps.read("/binary")).entry?.channels.body.mimetype, "application/octet-stream");

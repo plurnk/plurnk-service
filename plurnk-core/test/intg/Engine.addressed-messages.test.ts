@@ -37,7 +37,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
             .find(({ op, origin }) => op === "SEND" && origin === "model");
         assert.ok(turn && original);
         const originalLog = `log:///1/${turn.sequence}/${original.sequence}/SEND`;
-        const curationLoop = await insertLoop(db, workerId, 2, "Curate the prior conversation.");
+        const curationLoop = await insertLoop(db, workerId, 2, "Curate the earlier log.");
         assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId: curationLoop })).status, 102);
         assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId: curationLoop })).status, 200);
         await db.close();
@@ -312,7 +312,7 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
     } finally { await db.close(); }
 });
 
-test("{§message-reply-delivery} another worker's addressed answer reaches both the sender and assigned conversation", async () => {
+test("{§message-reply-delivery} another worker's addressed answer reaches both the sender and the assigned worker", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "third-worker-reply");

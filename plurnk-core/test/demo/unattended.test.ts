@@ -1,4 +1,4 @@
-// {§owner-interaction-ring} — the conversational half of the unattended contract. A harness worker is
+// {§owner-interaction-ring} — the reply half of the unattended contract. A harness worker is
 // owned by the runtime, which nobody attends, so nothing can answer a question. Given an ambiguous
 // task, a good run decides, finishes on its own, and says what it decided. Like every story, it is
 // judged by the outcome a person would read, never by which operations got it there.
@@ -19,7 +19,7 @@ import WorldState from "../intg/world-state.ts";
 const AMBIGUOUS = "Update the project so it targets the right release branch, then tell me what you did.";
 const RELEASES = "# Release branches\n\nMaintained release branches, both receiving fixes:\n\n- release/2.1\n- release/2.2\n";
 
-test("conversation: with nobody to ask, plurnk decides and says what it could not resolve", { timeout: 600_000 }, async (t) => {
+test("reply: with nobody to ask, plurnk decides and says what it could not resolve", { timeout: 600_000 }, async (t) => {
     const fixture = await seedDemoFixture("unattended-recovery");
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);

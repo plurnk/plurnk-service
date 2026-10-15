@@ -19,12 +19,12 @@ import GitMembership from "../../src/core/git-membership.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
-import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { logEntries } from "./_packet.ts";
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
-    lookThroughScheme("file", null, statement, ctx);
+    readThroughScheme("file", null, statement, ctx);
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 
@@ -394,7 +394,9 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
                 ctx,
             );
             assert.equal(rejectedEdit.status, 413, "EDIT cannot mistake an unavailable snapshot for an empty file");
-            assert.deepEqual(rejectedEdit.problem, rejectedRead.problem, "READ and EDIT preserve one canonical source-limit failure");
+            const { instance, ...readProblem } = rejectedRead.problem!;
+            assert.ok(instance, "the dispatched READ names its own recorded row");
+            assert.deepEqual(rejectedEdit.problem, readProblem, "READ and EDIT preserve one canonical source-limit failure");
             assert.equal(await readFile(join(root, trackedPath), "utf8"), original, "the oversized source remains untouched");
 
             process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1024";

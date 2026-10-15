@@ -122,8 +122,8 @@ ORDER BY p.sequence;
 
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
--- Yields log_entries for the whole worker — the conversation's working
--- memory carries across loops within a worker, not just the
+-- Yields log_entries for the whole worker — the worker's working
+-- memory carries across loops, not just the
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- Packet suppression and deliberate trimming remain separate facts under

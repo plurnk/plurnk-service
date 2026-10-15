@@ -16,12 +16,12 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
-    lookThroughScheme("file", null, statement, ctx);
+    readThroughScheme("file", null, statement, ctx);
 
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) — the exact thing the model emits, not a hand-built UrlPath.

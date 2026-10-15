@@ -15,14 +15,14 @@ import GitMembership from "../../src/core/git-membership.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { resourcePaths } from "./_find.ts";
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
-    lookThroughScheme("file", null, statement, ctx);
+    readThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
@@ -323,8 +323,13 @@ test("{§membership-read-refusal}: beyond the root a miss is the same sentence w
             assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
             assert.equal(result.problem?.recovery, `'../${name}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
         }
-        // The disk beyond the root stays dark: swap the names and the two answers are one answer.
-        const normalize = (result: typeof there, name: string): string => JSON.stringify(result).replaceAll(name, "<name>");
+        // The disk beyond the root stays dark: swap the names and the two answers are one answer,
+        // apart from where each refused read was recorded.
+        const normalize = (result: typeof there, name: string): string => {
+            const { instance, ...problem } = result.problem!;
+            assert.ok(instance, "each refused read is its own recorded act");
+            return JSON.stringify({ ...result, problem }).replaceAll(name, "<name>");
+        };
         assert.equal(normalize(there, present), normalize(notThere, absent));
     } finally {
         await rm(join(root, "..", present), { force: true });

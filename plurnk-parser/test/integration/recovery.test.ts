@@ -5,8 +5,8 @@ import { PlurnkParser } from "../../src/index.ts";
 import AstBuilder from "../../src/AstBuilder.ts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
-const statements = (r: ReturnType<typeof PlurnkParser.parseClient>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
-const errors = (r: ReturnType<typeof PlurnkParser.parseClient>) => r.items.flatMap((i) => i.kind === "error" ? [i.error] : []);
+const statements = (r: ReturnType<typeof PlurnkParser.parseStatements>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+const errors = (r: ReturnType<typeof PlurnkParser.parseStatements>) => r.items.flatMap((i) => i.kind === "error" ? [i.error] : []);
 const frame = PlurnkParser.frame;
 const task = (op = "WAIT") => frame(op, "Observe the results.");
 const turn = (...blocks: string[]) => [...blocks, task()].join("\n");
@@ -132,7 +132,7 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
 // {§target-group} — a second slot on READ or KILL is a member, not an extra slot.
 for (const header of ["READ (a.md) <2,3> (extra.md)", "KILL (a.md) (extra.md)"]) {
     test(`{§target-group}: ${header} is a target group of two`, () => {
-        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
             const r = parse(turn(frame(header, null)));
             assert.deepEqual(errors(r), [], header);
             const [first, second] = statements(r);
@@ -157,7 +157,7 @@ for (const header of [
     "MOVE (😀.md) <2,3> (dest.md) <0> (extra.md)",
 ]) {
     test(`{§extra-path-slot}: ${header} reports its unexpected slot without assuming intent`, () => {
-        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
             const r = parse(turn(frame(header, null)));
             const [error] = errors(r);
             assert.equal(errors(r).length, 1);

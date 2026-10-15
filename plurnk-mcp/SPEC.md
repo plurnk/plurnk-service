@@ -121,7 +121,7 @@ MCP adds no second scheduler or client-disconnect policy.
 
 | Boundary | Behaviour |
 |---|---|
-| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§agui-conversation-sync}). |
+| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§agui-sync}). |
 | Client hangup | Inherits the owning client's cancellation or observer-detachment semantics; MCP does not change them. |
 | Graceful shutdown | Aborts and settles owned work before closing its protocol connection ({§mcp-connection-shutdown}). |
 | Restart after owner loss | No Task resume or automatic tool replay; core reconciles the interrupted operation and its durable evidence. |
@@ -766,7 +766,7 @@ protocol-invalid. Size limits and MIME trust remain ordinary channel and
 entry policy, not MCP-specific rules.
 
 §mcp-prompt-content Retrieved prompts retain their ordered message list, roles,
-text, and metadata as data, not conversation injections. The same content
+text, and metadata as data, never injected as messages. The same content
 projection used for tools replaces non-text parts with resource links: embedded
 content becomes typed snapshots under the prompt's `resources/` folder; remote
 links resolve through the server resource authority. Reading a snapshot does

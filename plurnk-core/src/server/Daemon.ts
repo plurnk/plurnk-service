@@ -988,7 +988,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods-op-mirror} — execute parsed ops on behalf of a client as a
     // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
-    // family (read/edit/copy/find/kill/look/move/send/exec); the module parses at its edge with the
+    // family (read/edit/copy/find/kill/move/send/exec); the module parses at its edge with the
     // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
     // {§functionality-model-mutation} — await every queued Functionality
     // publication (a Worker's accepted mutation publishes at its turn boundary).
@@ -1093,44 +1093,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             }
         } finally {
             release();
-        }
-    }
-
-    // {§op-look} — the pure READ-projection query on the seam: resolve a READ through the
-    // full scheme resolver and return its content, writing NO log row — the client's out-of-band
-    // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
-    // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
-    // required by extension context and relative log:/// addresses without impersonating an active
-    // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
-    // {§op-look} — the segment is the acting worker's; the READ resolves as the perspective worker.
-    async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement; perspectiveWorkerId?: number }): Promise<{ status: number; [key: string]: unknown }> {
-        const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
-        const perspective = args.perspectiveWorkerId === undefined
-            ? workerId
-            : ClientInput.assertId("operation.look", "perspectiveWorkerId", args.perspectiveWorkerId);
-        const { statement } = args;
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        if (perspective !== workerId) await this.#assertWorkerOwned(workspaceId, perspective);
-        const releaseCapabilities = await this.#residency.acquire(workspaceId);
-        try {
-            const releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
-            try {
-                await this.#residency.reconcile(workspaceId);
-                const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
-                try {
-                    const result = await this.#engine.look({ statement, workspaceId, workerId: perspective, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
-                    await Envelope.closeClientLoop(this.#db, clientLoopId, { status: 200 });
-                    return result;
-                } catch (error) {
-                    await Envelope.closeClientLoop(this.#db, clientLoopId, clientActionFailure(error));
-                    throw error;
-                }
-            } finally {
-                releaseWorkspace();
-            }
-        } finally {
-            releaseCapabilities();
         }
     }
 
@@ -1295,7 +1257,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
     }
-    // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
+    // {§methods-workspace-prompts}: root-worker loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
@@ -1434,9 +1396,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
     }
 
-    // {§methods-conversation-worker}: a fresh conversation is a model-origin worker with an empty private log.
+    // {§methods-worker-create}: a fresh worker is model-origin, with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
-    async createConversationWorker(args: ApplicationWorkerCreation): Promise<{ workerId: number; workerName: string }> {
+    async createWorker(args: ApplicationWorkerCreation): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });

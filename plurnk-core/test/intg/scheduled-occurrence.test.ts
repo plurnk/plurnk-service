@@ -102,7 +102,7 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
     await daemon.start();
     try {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-occurrence", projectRoot: null });
-        const { workerId, workerName } = await daemon.createConversationWorker({ workspaceId, name: "recipient" });
+        const { workerId, workerName } = await daemon.createWorker({ workspaceId, name: "recipient" });
         const added = await daemon.invokeModuleAction("workspace.schedule.add", {
             alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "scheduled-proof" },
         }, { scope: "workspace", workspaceId }) as { status: number };
@@ -150,7 +150,7 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
     await daemon.start();
     try {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-parked-arrival", projectRoot: null });
-        const { workerId, workerName } = await daemon.createConversationWorker({ workspaceId, name: "recipient" });
+        const { workerId, workerName } = await daemon.createWorker({ workspaceId, name: "recipient" });
         await holdChild(db, workspaceId, workerId);
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for the child." });
         const lifecycle = new LoopLifecycle(db);

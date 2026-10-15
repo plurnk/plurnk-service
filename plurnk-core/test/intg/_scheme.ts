@@ -1,4 +1,4 @@
-// Integration harness: scheme and handler contexts, proposal settlement, look-through reads.
+// Integration harness: scheme and handler contexts, proposal settlement, client reads through a scheme.
 
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { ApplicationOwnerIdentity, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../../src/core/content-hash.ts";
-import { insertLoop } from "./_db.ts";
+import { clientRead } from "./_client-read.ts";
 
 // Discover the same installed content handlers as the runtime.
 export const DEFAULT_MIMETYPES = new Mimetypes();
@@ -118,18 +118,14 @@ export const seedStaticChannel = async (
     });
 };
 
-// Exercise a scheme READ through the real universal dispatch composition while
-// retaining the surrounding test's database and principal coordinates.
-export const lookThroughScheme = async (
+// A client READ through the real dispatch composition, read by the context's worker in the
+// surrounding test's database ({§connection-lifecycle}): an administrative loop joins that worker's log.
+export const readThroughScheme = async (
     name: string,
     handler: object | null,
     statement: ReadStatement,
     ctx: PlurnkSchemeContext,
 ): Promise<EntryReadResult> => {
-    const existingLoop = ctx.loopId > 0
-        ? { id: ctx.loopId }
-        : await ctx.db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: ctx.workerId });
-    const loopId = existingLoop?.id ?? await insertLoop(ctx.db, ctx.workerId, 1);
     const schemes = new SchemeRegistry();
     if (handler !== null) schemes.register(name, handler);
     const engine = new Engine({
@@ -138,15 +134,9 @@ export const lookThroughScheme = async (
         mimetypes: ctx.mimetypes,
         weigh: ctx.weigh,
     });
-    // A context that carries a registry looks through an engine that has it, as the daemon does.
+    // A context that carries a registry reads through an engine that has it, as the daemon does.
     if (ctx.executors !== undefined) engine.setExecutors(ctx.executors);
-    const result = await engine.look({
-        statement,
-        workspaceId: ctx.workspaceId,
-        workerId: ctx.workerId,
-        loopId,
-        origin: ctx.writer,
-    });
+    const result = await clientRead(engine, ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, statement });
     Results.assertReadResult(result);
     return result as EntryReadResult;
 };
@@ -154,7 +144,7 @@ export const lookThroughScheme = async (
 export const readLog = (
     statement: ReadStatement,
     ctx: PlurnkSchemeContext,
-): Promise<EntryReadResult> => lookThroughScheme("log", null, statement, ctx);
+): Promise<EntryReadResult> => readThroughScheme("log", null, statement, ctx);
 
 export const schemeManifest = (name: string, channels: Record<string, string> = { body: "text/markdown" }, defaultChannel = Object.keys(channels)[0] ?? "body"): SchemeManifest => ({
     name,

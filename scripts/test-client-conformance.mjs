@@ -365,6 +365,18 @@ try {
     }
     process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
 
+    const { AguiTransport } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
+    )).href);
+    // {§agui-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
+    const { default: Credential } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
+    )).href);
+    const aguiToken = await seededToken();
+    const credential = () => ({ aguiUrl: `http://127.0.0.1:${port}/agui`, credential: new Credential(aguiToken) });
+    // One access token for a raw request, minted the way the client mints its own.
+    const bearer = async () => (await new Credential(aguiToken).headers(`http://127.0.0.1:${port}/agui`)).authorization;
+
     // {§subscription-finalization}: a real failed SQLite commit, with no production fault-injection seam.
     const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
     try {
@@ -382,10 +394,14 @@ try {
         if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
-        tui.write(`/look sh://${state.pathname}\r`);
-        await tui.waitFor(/LOOK \(sh:\/\/\/[^)]+\)[\s\S]*retained-stream-output/);
+        const retained = await new AguiTransport(credential(), "Recovery_Worker", { workspace: "installed-recovery" })
+            .rpc("entry.read", { target: `sh://${state.pathname}` });
+        if (retained.status !== 200
+            || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
+            throw new Error(`the failed close lost the stream's retained output: ${JSON.stringify(retained)}`);
+        }
         if (fixture.requests.filter(({ journey }) => journey === "recovery").length !== 1) {
-            throw new Error("inspection ran inference instead of inspecting the parked worker");
+            throw new Error("reading the retained output ran inference");
         }
         tui.write("Please keep observing the unresolved stream.\r");
         await tui.waitFor(/Follow-up accepted while parked\./);
@@ -405,21 +421,10 @@ try {
         await faultDb.test_restore_stream_close();
         await faultDb.close();
     }
-    process.stdout.write("installed failed-finalization journey GREEN: honest park + inspection + new input + cancellation + retained outcome\n");
+    process.stdout.write("installed failed-finalization journey GREEN: honest park + retained output + new input + cancellation + retained outcome\n");
 
     fixture.assertComplete();
 
-    const { AguiTransport } = await import(pathToFileURL(join(
-        install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
-    )).href);
-    // {§agui-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
-    const { default: Credential } = await import(pathToFileURL(join(
-        install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
-    )).href);
-    const aguiToken = await seededToken();
-    const credential = () => ({ aguiUrl: `http://127.0.0.1:${port}/agui`, credential: new Credential(aguiToken) });
-    // One access token for a raw request, minted the way the client mints its own.
-    const bearer = async () => (await new Credential(aguiToken).headers(`http://127.0.0.1:${port}/agui`)).authorization;
     const terminal = new AguiTransport(credential(), world, { workspace: world });
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });

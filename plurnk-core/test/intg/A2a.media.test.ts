@@ -118,7 +118,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         const part = JSON.parse(evidence.entry.channels.json!.content).parts[1] as { raw?: string; resource?: string; bytes?: number };
         assert.deepEqual([part.raw, part.resource, part.bytes], [undefined, resource, media.bytes.length], "the protocol JSON names the resource and its byte count in place of base64");
         const pathname = new URL(resource!).pathname;
-        const exact = await daemon.look({ workspaceId, workerId, statement: {
+        const exact = await daemon.dispatchAsClient({ workspaceId, workerId, statement: {
             op: "READ", aside: null, matcher: null, metadata: null, body: null, position: { line: 1, column: 1 }, lineMarker: { marks: [1, -1] },
             target: { kind: "url", raw: `${resource}#bytes`, scheme: "a2a", username: null, password: null, hostname: "remote", port: null, pathname, query: null, fragment: "bytes" },
         } });

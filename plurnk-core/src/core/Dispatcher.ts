@@ -892,31 +892,6 @@ export default class Dispatcher {
         await this.#notify.operationSettledNotify?.(context.workspaceId, logEntryId);
     }
 
-    // {§op-look}: resolve a READ and return its content without writing a
-    // log_entries row: the client's out-of-band inspection primitive (LOOK → READ,
-    // invisible to the model). READ never mutates and never proposes, so this is
-    // dispatch's resolve path minus #writeLog. Runs on the client loop, so the
-    // human's inspection is never constrained by a model loop's flags. {§op-look}
-    async look(context: {
-        statement: PlurnkStatement;
-        workspaceId: number; workerId: number; loopId: number;
-        origin?: WriterTier;
-    }): Promise<DispatchResult> {
-        const { statement, workspaceId, workerId, loopId, origin = "client" } = context;
-        if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
-        // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
-        return ResourceBindings.using(this.#schemes, schemeCtx, async (ctx) => {
-            try {
-                const denial = await this.#checkCapabilities(statement, ctx) ?? Dispatcher.#unreadableMatcher(statement);
-                return denial ?? await this.#dataRun.run(schemeNameOf(statement.target), statement, ctx);
-            } catch (error) {
-                if (error instanceof OperationFailureError) return error.result;
-                throw error;
-            }
-        });
-    }
-
     capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
         return this.#capabilities.projection(workspaceId);
     }

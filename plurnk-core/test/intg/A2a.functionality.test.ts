@@ -32,7 +32,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     const agent = await startDemoAgent();
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `a2a-agents-${crypto.randomUUID()}`);
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "primary", "model");
     const peer = await insertWorker(db, workspaceId, null, "peer", "model");
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
     for (const workerId of [model, peer, client]) await ownWorker(db, workspaceId, workerId);

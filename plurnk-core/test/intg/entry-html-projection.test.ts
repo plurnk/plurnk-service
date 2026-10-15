@@ -13,7 +13,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { testExecutors, quiesceExecs } from "./_execs.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
@@ -42,7 +42,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         assert.equal(body.content, ROSTER, "the source channel is exactly what was authored");
         assert.equal(rows.find((r) => r.name === "readable")?.mimetype, "text/markdown");
 
-        const read = await lookThroughScheme("worker", null, readStmt("roster.html"), ctx);
+        const read = await readThroughScheme("worker", null, readStmt("roster.html"), ctx);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });
@@ -57,7 +57,7 @@ test("{§naked-pattern} {§readable-channel}: `READ (page.html) #readable`, the 
         assert.equal(written.status, 201);
         const parsed = PlurnkParser.parseStatements("```READ (worker:///roster.html) #readable\n```\n").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
         assert.equal(parsed.matcher, null, "the token is the channel, not a pattern");
-        const read = await lookThroughScheme("worker", null, parsed, ctx);
+        const read = await readThroughScheme("worker", null, parsed, ctx);
         assert.equal(read.status, 200);
         assert.equal((read as { channel?: string }).channel, "readable", "the readable projection was selected");
         assert.equal(read.mimetype, "text/markdown");
@@ -144,7 +144,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
             },
             lineMarker: { marks: [2, 3] }, matcher: null, body: null, position: { line: 1, column: 1 },
         };
-        const result = await lookThroughScheme("https", new Http(), statement, ctx);
+        const result = await readThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "two\nthree");
         assert.equal(result.startLine, 2);
@@ -176,7 +176,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
             },
             lineMarker: { marks: [2, 3] }, matcher: null, body: null, position: { line: 1, column: 1 },
         };
-        const result = await lookThroughScheme("https", new Http(), statement, ctx);
+        const result = await readThroughScheme("https", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "content-type: text/plain\nx-request-id: 42");
         assert.equal(result.channel, "header");

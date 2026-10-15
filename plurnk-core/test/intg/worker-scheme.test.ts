@@ -31,7 +31,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, noteStmt } from "./_dsl.ts";
@@ -121,11 +121,11 @@ test("{§worker-scheme-fork-scratch} {§machine-processes-entry-inheritance}: a 
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId });
         assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), ctxF)), ["worker://alpha-fork/todo.md"]);
-        assert.equal((await lookThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctxF)).content, body);
+        assert.equal((await readThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctxF)).content, body);
         assert.equal((await scheme.edit(editStmt(workerEntry("alpha-fork", "todo.md"), "fork note", fullReplace), ctxP)).status, 200);
         for (const ctx of [ctxP, ctxF]) {
-            assert.equal((await lookThroughScheme("worker", null, readEntry("alpha", "todo.md"), ctx)).content, body);
-            assert.equal((await lookThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctx)).content, "fork note");
+            assert.equal((await readThroughScheme("worker", null, readEntry("alpha", "todo.md"), ctx)).content, body);
+            assert.equal((await readThroughScheme("worker", null, readEntry("alpha-fork", "todo.md"), ctx)).content, "fork note");
         }
     } finally { await db.close(); }
 });
@@ -624,13 +624,13 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const reader = await insertWorker(db, workspaceId); // the sister doing the collection
         const ctx = makeSchemeCtx({ db, workspaceId, workerId: reader });
         // No such worker → 404 (not a bare 400 the model can't read).
-        const missing = await lookThroughScheme("worker", null, readStmt(workerPath("ghost")), ctx);
+        const missing = await readThroughScheme("worker", null, readStmt(workerPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no worker is 404");
 
         // {§join-blocking-collect}
         const worker = await insertWorker(db, workspaceId, null, "worker-db");
         const wLoop = await insertLoop(db, worker, 1, "find db");
-        const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
+        const running = await readThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
         assert.equal(running.problem?.detail, "The execution at ops://worker-db/1 has not concluded."); // {§pinned-wording-core}
@@ -645,7 +645,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
             await new LoopLifecycle(db).finish(wLoop, deliverable),
             deliverable,
         );
-        const done = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
+        const done = await readThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
         assert.equal(done.content, lines.join("\n"), "a markerless READ is the first page of the deliverable; 20 lines fit it ({§markerless-first-page})");
         assert.equal(Object.hasOwn(done, "lineAnchors"), false, "an actor's deliverable is not an editable entry");
@@ -656,7 +656,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
             returned: [1, 20],
         });
 
-        const tail = await lookThroughScheme("worker", null, {
+        const tail = await readThroughScheme("worker", null, {
             ...readStmt(workerPath("worker-db")),
             lineMarker: { marks: [18, -1] },
         }, ctx);
@@ -666,7 +666,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
 
         const bodyTarget = workerPath("worker-db");
         if (bodyTarget.kind !== "url") throw new Error("worker test target must be a URL");
-        const body = await lookThroughScheme("worker", null, readStmt({
+        const body = await readThroughScheme("worker", null, readStmt({
             ...bodyTarget,
             raw: `${bodyTarget.raw}#body`,
             fragment: "body",
@@ -683,7 +683,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
             "The child provider failed.",
         );
         await new LoopLifecycle(db).finish(failedLoop, failure);
-        const failed = await lookThroughScheme("worker", null, readStmt(workerPath("worker-failed")), ctx);
+        const failed = await readThroughScheme("worker", null, readStmt(workerPath("worker-failed")), ctx);
         assert.equal(failed.status, 502, "READ preserves the child's exact failure status");
         assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem"); // {§pinned-wording-core}
         assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem"); // {§pinned-wording-core}
@@ -1107,14 +1107,14 @@ for (const answer of ["", "The module was tested."]) {
             assert.equal(waited.status, 102, "the empty join continues");
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 102, "the loop remains active");
             const reader = await insertWorker(db, workspaceId);
-            const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+            const collected = await readThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
             assert.equal(collected.status, 425);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: null } },
             ] });
             const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
             assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");
-            const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+            const done = await readThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
             assert.equal(done.status, 200);
             assert.equal(done.content, answer, "READ preserves the actual reply or successful silence, never the WAIT body");
             assert.equal(done.resource, "ops://req-test/1");
@@ -1174,6 +1174,6 @@ test("{§worker-generated-subtree}: shared docs are not forked; every named scra
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const forkCtx = makeSchemeCtx({ db, workspaceId, workerId: forkId });
         assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), forkCtx)), ["worker://alpha-fork/_plurnk/note.md"]);
-        assert.equal((await lookThroughScheme("worker", null, readEntry("", "_plurnk/example.md"), forkCtx)).content, "# Shared");
+        assert.equal((await readThroughScheme("worker", null, readEntry("", "_plurnk/example.md"), forkCtx)).content, "# Shared");
     } finally { await db.close(); }
 });

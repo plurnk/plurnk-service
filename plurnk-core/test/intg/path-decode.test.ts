@@ -8,7 +8,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 
 test("decodePathParens decodes only %28/%29 — other percent-sequences + literal % pass through", () => {
     assert.equal(PathSyntax.decodeParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");
@@ -40,13 +40,13 @@ test("{§path-parentheses} a percent-encoded pathname alias resolves to literal 
         assert.ok(w.status === 200 || w.status === 201, "the encoded-paren EDIT lands");
 
         // READ of the encoded form resolves the entry the EDIT created.
-        const r = await lookThroughScheme("worker", null, readStmt(enc("doc%28v1%29.md")), ctx);
+        const r = await readThroughScheme("worker", null, readStmt(enc("doc%28v1%29.md")), ctx);
         assert.equal(r.status, 200, "READ of the encoded form resolves the entry");
         assert.match(r.content ?? "", /paren body/, "and returns its content");
 
         // The decisive check: the EDIT stored at the DECODED path, so the LITERAL-paren form
         // addresses the same entry. Without decode-at-resolve it would 404 here.
-        const literal = await lookThroughScheme("worker", null, readStmt(enc("doc(v1).md")), ctx);
+        const literal = await readThroughScheme("worker", null, readStmt(enc("doc(v1).md")), ctx);
         assert.equal(literal.status, 200, "the literal-paren form hits the same entry — proof the EDIT resolved decoded");
     } finally { await db.close(); }
 });

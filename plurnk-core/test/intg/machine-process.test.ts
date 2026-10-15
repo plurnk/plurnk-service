@@ -13,6 +13,7 @@ import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { findStmt, killStmt, readStmt } from "./_dsl.ts";
+import { clientRead } from "./_client-read.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -82,9 +83,9 @@ test("{§no-visibility} curating the log leaves the entry catalogued and READ-ab
             });
             assert.equal(listed.status, 200, JSON.stringify(listed));
             assert.match(JSON.stringify(listed.results), /curated\.md/u, `the catalog still lists the entry for ${who}`);
-            const read = await engine.look({
+            const read = await clientRead(engine, db, {
                 statement: readStmt(target, { marks: [1, -1] }),
-                workspaceId, workerId: actor.workerId, loopId: actor.loopId,
+                workspaceId, workerId: actor.workerId,
             });
             assert.equal(read.status, 200, `the entry still READs for ${who}`);
             assert.equal(read.content, "the entry itself");
@@ -429,7 +430,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         assert.deepEqual(
             branchRows.map(({ op, model_call_id }) => ({ op, model_call_id })),
             [{ op: "BARE", model_call_id: null }],
-            "the BARE result remains conversational history without claiming the source call",
+            "the BARE result remains in the copied history without claiming the source call",
         );
     } finally { db.close(); }
 });

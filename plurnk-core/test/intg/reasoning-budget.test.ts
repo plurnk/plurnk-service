@@ -8,6 +8,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 import { logEntries } from "./_packet.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
+import { clientRead } from "./_client-read.ts";
 
 // {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
 process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
@@ -59,7 +60,9 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         } else {
             assert.equal(record.status, 413, "the receipt rides the next packet");
             assert.doesNotMatch(String(record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
-            const range = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
+            // Source identity never depends on the reader ({§turn-source-resources}); alice's READs and packets are counted below.
+            const observer = await insertWorker(db, workspaceId, null, "observer");
+            const range = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
             assert.equal(range.status, 200, "a range READ of the source still works ({§context-verbs})");
             assert.ok("content" in range);
             assert.equal(range.content, reasoning.split("\n").slice(0, 10).join("\n"));

@@ -54,7 +54,7 @@ for (const specimen of cases) {
                 const header = transfer
                     ? `${operation} (${source}) [${JSON.stringify({ pattern: specimen.pattern })}] (${destination})`
                     : `${operation} (${source}) [${JSON.stringify({ pattern: specimen.pattern })}]`;
-                const parsed = PlurnkParser.parseClient(`\`\`\`${header}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
+                const parsed = PlurnkParser.parseStatements(`\`\`\`${header}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
                 assert.equal(parsed.items.length, 1, JSON.stringify(parsed));
                 const [item] = parsed.items;
                 assert.equal(item?.kind, "statement", JSON.stringify(parsed));
@@ -100,7 +100,7 @@ for (const specimen of [
             await new Worker().edit(editStmt(urlPath("worker", `/${specimen.path}`), specimen.content), makeSchemeCtx({ db, ...env }));
             const pattern = `[${JSON.stringify({ pattern: specimen.pattern })}]`;
             const transfer = operation === "COPY" || operation === "MOVE";
-            const parsed = PlurnkParser.parseClient(`\`\`\`${operation} (${target}) ${pattern}${transfer ? " (worker:///destination.txt)" : ""}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
+            const parsed = PlurnkParser.parseStatements(`\`\`\`${operation} (${target}) ${pattern}${transfer ? " (worker:///destination.txt)" : ""}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
             assert.equal(parsed.items[0]?.kind, "statement");
             const item = parsed.items[0];
             if (item?.kind !== "statement") throw new Error(JSON.stringify(parsed));

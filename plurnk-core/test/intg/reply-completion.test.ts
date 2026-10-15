@@ -110,7 +110,7 @@ for (const body of [null, "", " \n\t"]) {
         assert.equal(await new LoopLifecycle(f.db).status(f.loopId), 200);
         assert.deepEqual(await speech(f), []);
         assert.deepEqual((await f.history()).filter(({ direction }) => direction === "inbound").map(({ body }) => body), ["Answer the question."]);
-        assert.deepEqual((await f.history()).filter(({ direction }) => direction === "outbound"), [], "the completion fact is not an empty conversation message");
+        assert.deepEqual((await f.history()).filter(({ direction }) => direction === "outbound"), [], "the completion fact is not an empty outbound message");
         assert.equal((await f.db.message_unanswered_count.get({ loop_id: f.loopId }))?.count, 0);
     });
 }

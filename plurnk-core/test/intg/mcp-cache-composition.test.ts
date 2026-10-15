@@ -55,7 +55,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        const read = (reader = workerId) => daemon.look({ workspaceId, workerId: reader, statement: item.statement });
+        const read = (reader = workerId) => daemon.dispatchAsClient({ workspaceId, workerId: reader, statement: item.statement });
         return { name, action, read, otherWorkerId };
     }));
     for (const workspace of workspaces) {

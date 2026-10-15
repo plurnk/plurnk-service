@@ -541,7 +541,7 @@ export default class Engine {
         );
     }
 
-    // {§op-look}: resolve a READ without writing a log_entries row.
+    // Resolve a READ without writing a log_entries row.
     async look(context: {
         statement: PlurnkStatement;
         workspaceId: number; workerId: number; loopId: number;

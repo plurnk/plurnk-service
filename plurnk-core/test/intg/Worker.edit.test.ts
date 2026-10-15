@@ -5,7 +5,7 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {
@@ -219,7 +219,7 @@ test("Worker.edit: lineMarker on non-existent entry — body becomes content", a
         const stmt = editStatement({ target: urlPath("worker", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
         const result = await new Worker().edit(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 201);
-        const read = await lookThroughScheme("worker", null, { ...stmt, op: "READ", lineMarker: null, matcher: null, body: null } as never, makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await readThroughScheme("worker", null, { ...stmt, op: "READ", lineMarker: null, matcher: null, body: null } as never, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "first line\nsecond line");
     } finally { await db.close(); }
 });
@@ -231,7 +231,7 @@ test("Worker.edit: lineMarker <N> on existing entry replaces line N", async () =
         await k.edit(editStatement({ target: urlPath("worker", "/ed"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await k.edit(editStatement({ target: urlPath("worker", "/ed"), body: "BETA", lineMarker: { marks: [2] } }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
-        const read = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/ed") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/ed") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "alpha\nBETA\ngamma");
     } finally { await db.close(); }
 });
@@ -242,7 +242,7 @@ test("Worker.edit: lineMarker <0> on existing entry prepends", async () => {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/p"), body: "one\ntwo" }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target: urlPath("worker", "/p"), body: "zero", lineMarker: { marks: [0] } }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const read = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/p") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/p") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "zero\none\ntwo");
     } finally { await db.close(); }
 });
@@ -253,7 +253,7 @@ test("Worker.edit: lineMarker <-1> on existing entry appends", async () => {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/a"), body: "one\ntwo" }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target: urlPath("worker", "/a"), body: "three", lineMarker: { marks: [-1] } }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const read = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/a") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/a") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "one\ntwo\nthree");
     } finally { await db.close(); }
 });
@@ -264,7 +264,7 @@ test("Worker.edit: lineMarker <1,-1> empty body clears", async () => {
         const k = new Worker();
         await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "", lineMarker: { marks: [1, -1] } }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const read = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/c") }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/c") }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((read as { content: string }).content, "");
     } finally { await db.close(); }
 });
@@ -313,7 +313,7 @@ test("Worker.edit: exact coordinates edit minified JSON as text", async () => {
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(r.status, 200);
-        const read = await lookThroughScheme("worker", null,
+        const read = await readThroughScheme("worker", null,
             readStatement({ target: urlPath("worker", "/users.json") }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -346,7 +346,7 @@ test("Worker.edit: line shorthand edits JSON physical lines and can replace the 
             }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        const read1 = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const read1 = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.deepEqual(JSON.parse(read1.content ?? ""), [
             { name: "Alice" },
             { name: "Beth" },
@@ -357,7 +357,7 @@ test("Worker.edit: line shorthand edits JSON physical lines and can replace the 
             editStatement({ target: urlPath("worker", "/users.json"), body: "[]", lineMarker: { marks: [1, -1] } }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        const read2 = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const read2 = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.deepEqual(JSON.parse(read2.content ?? ""), []);
     } finally { await db.close(); }
 });
@@ -371,7 +371,7 @@ test("Worker.edit: line shorthand has the same meaning without a path suffix", a
         // No delimiter → text/markdown → line EDIT.
         await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "BETA", lineMarker: { marks: [2] } }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
-        const noSuffixRead = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/notes") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const noSuffixRead = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/notes") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(noSuffixRead.content, "alpha\nBETA\ngamma");
     } finally { await db.close(); }
 });
@@ -388,7 +388,7 @@ test("Worker.edit: textual JSON edits do not introduce a hidden parse gate", asy
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(r.status, 200);
-        const read = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const read = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/users.json") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(read.content, '[1,2,3]\n{not valid json');
     } finally { await db.close(); }
 });

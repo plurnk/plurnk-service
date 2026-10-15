@@ -3,7 +3,6 @@ import * as xpath from "xpath";
 import { JSONPathEnvironment } from "json-p3";
 import type {
     BareStatement,
-    ClientStatement,
     CopyStatement,
     EditStatement,
     ExecStatement,
@@ -13,7 +12,6 @@ import type {
     WorkStatement,
     ForkStatement,
     LineMarker,
-    LookStatement,
     MatcherBody,
     MoveStatement,
     NoteStatement,
@@ -30,7 +28,6 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type {
     BareStatementContext,
-    ClientStatementContext,
     CopyStatementContext,
     EditStatementContext,
     ExecModifiersContext,
@@ -40,7 +37,6 @@ import type {
     KillStatementContext,
     WorkStatementContext,
     ForkStatementContext,
-    LookStatementContext,
     MoveStatementContext,
     NoteStatementContext,
     ResourceSelectionContext,
@@ -426,31 +422,6 @@ export default class AstBuilder {
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: null,
-            position,
-        };
-    }
-
-    // Client-tier dispatch (parseClient). A `clientStatement` is either a protocol `statement`
-    // (delegated to build, returning a PlurnkStatement — which IS a ClientStatement) or one of
-    // the two client-only ops. Kept separate from build() so the protocol return type stays the
-    // closed PlurnkStatement and client ops never leak into it.
-    static buildClient(ctx: ClientStatementContext): ClientStatement[] {
-        const statement = ctx.statement(); if (statement) return AstBuilder.build(statement);
-        const look = ctx.lookStatement(); if (look) return [AstBuilder.#buildLook(look)];
-        throw new Error("clientStatement context has no recognized alternative");
-    }
-
-    // LOOK is the client-tier matcher observation. It shares the tag slots and parses
-    // its matcher body directly for its client-owned lifecycle.
-    static #buildLook(ctx: LookStatementContext): LookStatement {
-        const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        const raw = AstBuilder.#headingBody("LOOK", ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position);
-        return {
-            op: "LOOK",
-            aside: AstBuilder.#asideOf(ctx),
-            ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
         };
     }

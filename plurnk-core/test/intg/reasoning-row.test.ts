@@ -11,6 +11,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithC
 import { packetSection } from "./_packet.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
+import { clientRead } from "./_client-read.ts";
 
 const frame = PlurnkParser.frame;
 const KNOB = "PLURNK_SERVICE_REASONING_ROWS";
@@ -113,7 +114,7 @@ test("{§reasoning-row}: an oversized reasoning line is a column-scoped suffix a
             assert.deepEqual(JSON.parse(preview.tx!).lineMarker, { marks: [1, 137, 1, 201] });
             const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
             assert.ok(item?.kind === "statement");
-            const whole = await engine.look({ ...ids, statement: item.statement });
+            const whole = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(whole.status, 200);
             assert.equal(whole.content, reasoning, "automatic preview bounds never truncate source evidence");
         } finally { await db.close(); }
@@ -135,7 +136,7 @@ test("{§reasoning-row}: reasoning longer than the page lands as its last page, 
             assert.doesNotMatch(log, /thought 1: an exploratory step/u, "the restatement is not");
             assert.match(log, /<201,300> of 300 lines/u, "the fact of the page is stated beneath the heading");
             const statement = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,200>", null)).items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0]!;
-            const head = await engine.look({ ...ids, statement });
+            const head = await clientRead(engine, db, { ...ids, statement });
             assert.ok("content" in head && typeof head.content === "string" && head.content.startsWith("thought 1:") && head.content.endsWith("thought 200: an exploratory step"), "the rest is one READ away");
             assert.ok(envelope.some((m) => m.role === "user" && /DECISION: patch the resolver/u.test(String(m.content))), "the page reaches the wire");
         } finally { await db.close(); }
@@ -219,7 +220,7 @@ test("{§reasoning-row}: -1 returns complete reasoning independently of the shar
             assert.match(wire, /thought 150:/u);
             const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2)", null)).items[0];
             assert.ok(item?.kind === "statement");
-            const ordinary = await engine.look({ ...ids, statement: item.statement });
+            const ordinary = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(ordinary.status, 200);
             assert.ok(typeof ordinary.content === "string" && ordinary.content.length <= 64, "an ordinary markerless READ still uses the shared preview");
         } finally { await db.close(); }
@@ -238,7 +239,7 @@ test("{§reasoning-row}: complete reasoning is omitted whole when it cannot fit,
             assert.equal(rows.some((row) => row.op === "error"), false);
             const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
             assert.ok(item?.kind === "statement");
-            const source = await engine.look({ ...ids, statement: item.statement });
+            const source = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(source.content, reasoning, "omission retains the full immutable source");
         } finally { await db.close(); }
     }));

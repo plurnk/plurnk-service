@@ -56,7 +56,7 @@ const runtime = async (t: TestContext) => {
     });
     let sequence = 0;
     const dispatch = async (source: string): Promise<{ status: number; problem: Problem }> => {
-        const { items } = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
+        const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement as PlurnkStatement });

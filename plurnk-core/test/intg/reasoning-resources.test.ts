@@ -16,6 +16,7 @@ import LogEntry from "../../src/server/logEntry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { statement, original, provider, type Resource, type Read } from "./reasoning-fixture.ts";
+import { clientRead } from "./_client-read.ts";
 
 // {§reasoning-row} lands the harness's own READ of each turn's reasoning beside the model's; these witnesses count the model's deliberate observations, so the row is off here. Its own witnesses: reasoning-row.test.ts and Digest.reasoning-rows.test.ts.
 process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
@@ -80,11 +81,13 @@ Revised determination.
         const anchored = await dispatch(`\`\`\`\`READ (${target}) <@abcde>\`\`\`\``);
         assert.equal(anchored.status, 400);
         assert.equal(anchored.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/line-anchor-unsupported");
-        const editable = await engine.look({ ...context, statement: statement(`\`\`\`\`READ (${copy}) <1,-1>\`\`\`\``) });
+        // Scratch is workspace-readable ({§worker-read-scope}); `log:///` is the reader's own log, so alice reads her receipt.
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const editable = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(`\`\`\`\`READ (${copy}) <1,-1>\`\`\`\``) });
         assert.equal(editable.status, 200, "a denied MOVE preserves its writable source");
         assert.ok("lineAnchors" in editable && Array.isArray(editable.lineAnchors));
         assert.equal(editable.lineAnchors.length, 30, "an ordinary editable copy still publishes anchors");
-        const history = await engine.look({ ...context, statement: statement(`\`\`\`\`READ (${receipt}) <1,-1>\`\`\`\``) });
+        const history = await clientRead(engine, db, { workspaceId, workerId, statement: statement(`\`\`\`\`READ (${receipt}) <1,-1>\`\`\`\``) });
         assert.ok("content" in history && "lineAnchors" in history && Array.isArray(history.lineAnchors));
         assert.equal(history.content, original);
         assert.equal(history.lineAnchors.length, 30, "explicit log READs retain anchors for line curation");
@@ -133,11 +136,9 @@ test("{§reasoning-history}: immutable sources support search, FORK, restart, an
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        const shared = await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``) });
+        const shared = await clientRead(engine, db, { workspaceId, workerId: unrelatedId, statement: statement(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``) });
         assert.equal(shared.status, 200);
         assert.equal(shared.content, original, "an explicit source address identifies the same evidence for every workspace worker");
-        assert.equal((await engine.look({ ...context, statement: statement("```READ (reasoning://unrelated/1/2)```") })).status, 404,
-            "an address never substitutes another worker's history for a missing source");
         assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
 Retained determination.
 \`\`\`\``)).status, 403);
@@ -188,6 +189,10 @@ Branch-only decision.
         const evidence = await readFile(join(digestDir, "reasoning.md"), "utf8");
         assert.ok(evidence.includes(original));
         assert.ok(!evidence.includes("Revised conclusion."), "denied source edits cannot alter forensic reasoning");
+        // Only a reader with its own 1/2 source can witness substitution, and a client READ joins its reader's log:
+        // alice reads last, after her history has been counted and forked.
+        assert.equal((await clientRead(engine, db, { workspaceId, workerId, statement: statement("```READ (reasoning://unrelated/1/2)```") })).status, 404,
+            "an address never substitutes another worker's history for a missing source");
     } finally {
         await db.close();
         await rm(dir, { recursive: true, force: true });
@@ -243,17 +248,20 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId })).length, 0, "no substitute source is recorded");
         const own = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname, turn_id }) => pathname === "/1/2" && turn_id === silent.turnId);
         assert.ok(own, "the model's READ of its own reasoning coordinate produced a receipt");
-        const look = (source: string) => engine.look({ ...context, statement: statement(source) });
-        const empty = await look("````READ (reasoning://alice/1/2) <1,-1>````");
+        // A client read opens a loop on its reader, and alice's loop 2 must stay absent: another worker reads
+        // ({§turn-source-resources}).
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const read = (source: string) => clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(source) });
+        const empty = await read("````READ (reasoning://alice/1/2) <1,-1>````");
         assert.equal(empty.status, 204, "an existing turn with nothing from the provider reads as the ordinary empty resource");
         assert.ok("content" in empty);
         assert.equal(empty.content, "");
-        const program = await look("````READ (ops://alice/1/2) <1,-1>````");
+        const program = await read("````READ (ops://alice/1/2) <1,-1>````");
         assert.equal(program.status, 200);
         assert.ok("content" in program && typeof program.content === "string" && program.content.includes("READ (reasoning://alice/1/2)"), "the same turn's admitted program is present");
-        const future = await look("````READ (reasoning://alice/1/9) <1,-1>````");
+        const future = await read("````READ (reasoning://alice/1/9) <1,-1>````");
         assert.equal(future.status, 404, "a turn that has not happened is missing, not empty");
         assert.equal(future.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
-        assert.equal((await look("```READ (reasoning://alice/2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
+        assert.equal((await read("```READ (reasoning://alice/2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
     } finally { await db.close(); }
 });

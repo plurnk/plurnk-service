@@ -29,7 +29,7 @@ const speech = (messages: readonly Replayed[]): unknown[] =>
 const calls = (messages: readonly Replayed[]): Array<[string, string]> =>
     messages.flatMap(({ toolCalls }) => (toolCalls ?? []).map((call): [string, string] => [call.id, call.function.name]));
 
-test("{§agui-replay} successful conversation replies are assistant responses in live and replay", () => {
+test("{§agui-replay} successful replies to the thread are assistant responses in live and replay", () => {
     const tr = t();
     const messages = [
         entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "First." } } }),
@@ -134,7 +134,7 @@ test("{§agui-row-channel} NOTE remains literal in live rows; no task inventory 
     assert.equal(ambientRow.value?.tx?.body, native);
 });
 
-test("{§agui-projection} addressed replies project by conversation, including answers delivered by another worker", () => {
+test("{§agui-projection} addressed replies project by thread, including answers delivered by another worker", () => {
     for (const origin of ["model", "client", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
         const native = "Verification.";
         const address = `agui://anonymous/threads/${thread}/messages/user-message`;
@@ -551,9 +551,9 @@ test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient
     const own = tr.logEntry({ entry: { id: 1, op: "WAIT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
-    assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
+    assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never the thread's messages");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
-    assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's conversation");
+    assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's messages");
 });
 
 test("a rejected emission attempt remains forensic even if an invalid producer supplies readable text", () => {

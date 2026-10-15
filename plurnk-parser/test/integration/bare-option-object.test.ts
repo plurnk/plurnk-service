@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
+import type { ParseResult } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const warnings = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const warnings = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+const errors = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
 const RECEIPT = (tag: string) => `\`${tag}\` took a bare option object; the taught form is \`[{…}]\`.`;
 const MATCHER_ADVISORY = "`{…}` was read as the matcher.";
 

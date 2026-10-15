@@ -173,7 +173,7 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
     assert.equal(filtered.tasks[0].artifacts[0].parts[0].text, "third Task");
     const scoped = await request(`/tasks?contextId=${encodeURIComponent(first.contextId)}`);
     assert.deepEqual(scoped.tasks.map((task: { id: string }) => task.id), [third.id, first.id],
-        "a Context filter lists that conversation's Tasks, newest first");
+        "a Context filter lists that Context's Tasks, newest first");
     for (const token of ["-1", "garbage", Buffer.from(JSON.stringify([0])).toString("base64url")]) {
         const problem = await request(`${path}&pageToken=${encodeURIComponent(token)}`, undefined, 400);
         assert.equal(problem.error.code, 400);

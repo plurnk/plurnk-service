@@ -86,7 +86,7 @@ Where things are, for an agent that has to act before it has read everything:
   and text coordinates.
 - `plurnk-parser` owns the ANTLR grammars and the parser that implements that
   language. Its importers are the service's execution path, `plurnk-agui`
-  (`parseClient`, for client-authored blocks) and `plurnk-execs`
+  (`parseStatements`, for client-authored blocks) and `plurnk-execs`
   (`parseStatements` and `frame`, for runtime invocation and teaching examples);
   no other package parses the language.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
@@ -215,10 +215,10 @@ PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one s
 
 ## Dogfood teamwork sessions
 
-An operator drives a daemon in an ordinary, unscripted conversation — web research,
+An operator drives a daemon through ordinary, unscripted messages — web research,
 questions about plurnk's own syntax, changing their mind mid-task — and the session is then read
 like a demo. Its lack of structure is the point: benchmarks grade the workspace afterwards, a
-conversation grades the reply. Share the daemon's database; the share takes its own consistent
+session grades the reply. Share the daemon's database; the share takes its own consistent
 copy, so the daemon keeps running.
 
 ```sh
@@ -226,7 +226,7 @@ npm run -s share -- ~/.local/share/plurnk/plurnk.db ~/benchmarks/dogfood-teamwor
 ```
 
 Report friction first (the standing rule): refused or failed operations by
-family, then the **conversation census** — was every message answered, in what form (prose answer,
+family, then the **message census** — was every message answered, in what form (prose answer,
 tolerated SEND, never), premature endings, packet echoes, and anything that ran which the operator
 did not ask for. Pass rates and outcomes come after. An advisory, a strike, an empty turn or a
 surprise mutation is a failure in this tier even when the final text is right.
@@ -321,7 +321,7 @@ or translate it. Any record of it invites its resurrection. History lives in git
 changelogs.
 
 **A benchmark is evidence on one axis, never the scope.** A page or contract serves every model and
-conversation.
+every task.
 
 **The model curates its context.** The verbs are the curation ({§context-verbs}): the daemon adds no
 compaction, folding, summary or other mechanism the model did not emit, however a benchmark goes.

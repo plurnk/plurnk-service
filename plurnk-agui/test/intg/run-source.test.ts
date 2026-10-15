@@ -47,7 +47,7 @@ for (const final of ["Four, precisely.", ""]) {
             const { port } = http.httpAddress();
             await daemon.createWorkspace({ name: "sent-reply", projectRoot: null });
             const events = await post(port, {
-                threadId: "conversation", runId: "initial",
+                threadId: "main",runId: "initial",
                 messages: [{ id: "question", role: "user", content: "What is two plus two?" }],
                 forwardedProps: { plurnk: { workspace: "sent-reply", maxTurns: 3 } },
             });
@@ -56,7 +56,7 @@ for (const final of ["Four, precisely.", ""]) {
             const expected = final ? ["Four.", final] : ["Four."];
             assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta), expected);
             const replay = await post(port, {
-                threadId: "conversation", runId: "reconnected",
+                threadId: "main",runId: "reconnected",
                 forwardedProps: { plurnk: { workspace: "sent-reply", mode: "sync" } },
             });
             const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ role: string; content: string }> } | undefined;
@@ -99,25 +99,25 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         const { port } = http.httpAddress();
         const { workspaceId } = await daemon.createWorkspace({ name: "injected-source", projectRoot: null });
         const result = post(port, {
-            threadId: "conversation", runId: "initial",
+            threadId: "main",runId: "initial",
             messages: [{ id: "opening", role: "user", content: "Start the work." }],
             forwardedProps: { plurnk: { workspace: "injected-source", maxTurns: 4 } },
         });
         await entered.promise;
         const injected = await post(port, {
-            threadId: "conversation", runId: "steering",
+            threadId: "main",runId: "steering",
             forwardedProps: { plurnk: { workspace: "injected-source", action: { kind: "loop.inject", prompt: "Also check the new requirement." } } },
         });
         assert.equal(injected.at(-1)?.type, "RUN_FINISHED");
         assert.match(JSON.stringify(injected), /injected_next_turn/);
-        const worker = (await daemon.listWorkers(workspaceId)).find(({ name }: { name: string }) => name === "conversation");
+        const worker = (await daemon.listWorkers(workspaceId)).find(({ name }: { name: string }) => name === "main");
         assert.ok(worker);
         const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });
-        assert.equal(messages.length, 2, "the injection is a message in the existing loop, not another conversation");
+        assert.equal(messages.length, 2, "the injection is a second message to the same worker");
         const message = messages.find(({ body }: { body: string }) => body === "Also check the new requirement.");
         assert.ok(message);
         assert.equal(message.loopId, messages[0]!.loopId);
-        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/conversation\/messages\/[^/]+$/u);
+        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/main\/messages\/[^/]+$/u);
         const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
         assert.equal(envelope.runId, "steering");
         assert.equal(envelope.message.role, "user");
@@ -125,7 +125,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         inspection.assistant.content = [
             PlurnkParser.frame("KILL (log:///**/SEND)", ""),
             PlurnkParser.frame(`READ (${message.source}) <1,-1>`, ""),
-            PlurnkParser.frame("SEND (agui://anonymous/threads/conversation/messages/opening) [200]", "Initial request answered."),
+            PlurnkParser.frame("SEND (agui://anonymous/threads/main/messages/opening) [200]", "Initial request answered."),
             PlurnkParser.frame(`SEND (${message.source}) [200]`, "Injected requirement answered."),
         ].join("\n\n");
         release.resolve();
@@ -135,7 +135,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         assert.deepEqual(await db.message_unanswered_count.get({ loop_id: message.loopId }), { count: 0 }, "both requests received completion replies");
         const rows = await db.test_log_entries_by_loop.all({ loop_id: message.loopId }) as Array<{ op: string; origin: string; source: string; status_rx: number; rx: string }>;
         const arrival = rows.find(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === message.source);
-        assert.ok(arrival, "the live arrival carries the conversation identity clients use to suppress their own echo");
+        assert.ok(arrival, "the live arrival carries the message identity clients use to suppress their own echo");
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
             ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200],
@@ -145,7 +145,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
             ["Initial request answered.", "Injected requirement answered."]);
         const replay = await post(port, {
-            threadId: "conversation", runId: "reconnected",
+            threadId: "main",runId: "reconnected",
             forwardedProps: { plurnk: { workspace: "injected-source", mode: "sync" } },
         });
         const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ id: string; role: string; content: string }> } | undefined;
@@ -164,7 +164,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
     }
 });
 
-test("{§agui-run-source}: a collaborator's exact reply reaches the assigned conversation live and on replay", { timeout: 60_000 }, async () => {
+test("{§agui-run-source}: a collaborator's exact reply reaches the assigned worker live and on replay", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
@@ -192,7 +192,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
         await daemon.start();
         const { port } = http.httpAddress();
         const { workspaceId } = await daemon.createWorkspace({ name: "collaborative-reply", projectRoot: null });
-        const collaborator = await daemon.createConversationWorker({ workspaceId, name: "collaborator" });
+        const collaborator = await daemon.createWorker({ workspaceId, name: "collaborator" });
         const result = post(port, {
             threadId: "assigned", runId: "initial",
             messages: [{ id: "question", role: "user", content: "What is the result?" }],
@@ -226,7 +226,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
     }
 });
 
-test("{§agui-run-source}: a curated arrival remains readable, copyable and replyable by its conversation message address", { timeout: 60_000 }, async (t) => {
+test("{§agui-run-source}: a curated arrival remains readable, copyable and replyable by its AG-UI message address", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
     serverProposals(t, "accept");

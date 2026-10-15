@@ -97,7 +97,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
     assert.ok(incident);
     assert.equal(incident.status_rx, 413, "the incident attachment needed recovery, not just the unrelated telemetry");
-    const recovered = await daemon.look({ workspaceId, workerId, statement: readStmt(localPath("incident.txt"), { marks: [2] }) });
+    const recovered = await daemon.dispatchAsClient({ workspaceId, workerId, statement: readStmt(localPath("incident.txt"), { marks: [2] }) });
     assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
     assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
     if (incident.active === 0) {

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { type ParseResult } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("WAIT", "Reported the result.");
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const errors = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 
 // The shape of #784: an essay about reasoning streams whose
 // table mentions a reasoning tag in prose, then a diagram, then a fenced worked example holding a

@@ -106,7 +106,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
                 authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null)]),
         }, "@plurnk/plurnk-a2a");
         await caller.start();
-        const worker = await caller.createConversationWorker({
+        const worker = await caller.createWorker({
             workspaceId: callerWorkspace.workspaceId,
             name: crypto.randomUUID(),
         });
@@ -254,11 +254,11 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             projectRoot: null,
         });
         routedProvider.bind(callerWorkspace.workspaceId, callerProvider);
-        const worker = await caller.createConversationWorker({
+        const worker = await caller.createWorker({
             workspaceId: callerWorkspace.workspaceId,
             name: "delegator",
         });
-        const bystander = await caller.createConversationWorker({
+        const bystander = await caller.createWorker({
             workspaceId: callerWorkspace.workspaceId,
             name: "bystander",
         });

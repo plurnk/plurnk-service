@@ -44,7 +44,7 @@ flowchart LR
     K --> L["Loop<br/>queued-to-terminal work"]
     L --> T["Turn<br/>one admitted scheduling unit"]
     T --> O["Op<br/>one statement / action row"]
-    H["AG-UI thread<br/>conversation identity"] -. resolves to .-> K
+    H["AG-UI thread<br/>names a worker"] -. resolves to .-> K
     R["AG-UI Run<br/>client stream envelope"] -. binds to .-> L
     R -. or executes .-> A["Management action<br/>no core loop required"]
 ```
@@ -62,7 +62,7 @@ flowchart LR
 | **action**        | Core                  | One executed op. Execution normally produces a `log_entries` row at `log:///<L>/<T>/<S>/<op>`; an engine rail may instead record an `op='error'` row ({§operation-results}). A source artifact carries no fabricated operation. |
 | **dispatch**      | Core                  | Routing a statement to its scheme's op handler. |
 | **AG-UI Run**     | AG-UI protocol        | A client request/stream envelope identified by the client's `runId`. A message or resume AG-UI Run binds to one core loop; a management-action AG-UI Run may complete without creating a core loop. |
-| **AG-UI thread**  | AG-UI protocol        | Conversation identity. Within an explicitly selected workspace, `threadId` resolves to one conversation worker. |
+| **AG-UI thread**  | AG-UI protocol        | Message history identity. Within an explicitly selected workspace, `threadId` resolves to one model worker. |
 
 ### Storage terms
 
@@ -324,7 +324,7 @@ not access to workspace resources ({§actor-boundary-no-mutex}).
 | Root creation | Explicit owner, otherwise the runtime `_plurnk`. |
 | WORK, FORK, or a fresh child | Inherit the parent's owner. |
 | SEND, schedule occurrence, or other incoming message | Preserve the recipient's owner. |
-| Explicit client control attachment | Claim a runtime-owned conversation and its runtime-owned descendants; never claim the runtime actor or replace another owner. |
+| Explicit client control attachment | Claim a runtime-owned model worker and its runtime-owned descendants; never claim the runtime actor or replace another owner. |
 | Observation or disconnect | No change. |
 
 An owner declares its capability set: the client tool names it implements, and whether it
@@ -375,7 +375,7 @@ filter over workspace resources.
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
 filter a row.
 
-§actor-boundary-attached-functionality **Attachment selects a conversation,
+§actor-boundary-attached-functionality **Attachment selects a worker,
 not an environment owner.** Client management commands mutate workspace
 Functionality ({§module-workspace-capabilities}); runtimes, runtime
 schemes, and tools resolve by `workspaceId`. Operations journal in the
@@ -543,7 +543,7 @@ for a loop, `(loop, sequence)` for a turn, `(turn, sequence)` for a log row — 
 outside the database, every copied row passes the same table triggers the original did, and a fork
 either lands whole or not at all. Nothing else runs: `Fork.fork` is the claim.
 
-§machine-processes-worker-is-its-log **A worker's conversational memory of
+§machine-processes-worker-is-its-log **A worker's memory of
 the shared world is its log, with no hidden per-worker snapshot beside it.**
 A scoped KILL suppresses canonical body intervals on that worker's rows ({§log-kill-scope});
 lineage activity and explicit commons broadcasts arrive as attributed log
@@ -559,9 +559,9 @@ the parent after that boundary is sibling activity, not fork history. Global
 commons broadcasts remain live after the fork because the branch is then an
 existing workspace worker in its own right.
 
-§machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its conversation binding. Inspection does not inject another log into a model's packet.
+§machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its worker binding. Inspection does not inject another log into a model's packet.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a client-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a model worker), `client` (a client-interface actor), or `_plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by WORK/FORK from the parent. A turn's producer is independent: a client-produced program in a model worker still delegates model workers. `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
 
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
@@ -2180,7 +2180,7 @@ source line therefore retains the same prefix across projections of one revision
 An explicit default-channel fragment and its fragmentless spelling share that
 identity; a selected non-default channel retains its canonical `#channel`.
 
-For READ/LOOK and COPY/MOVE source or destination selection, core resolves every
+For READ and COPY/MOVE source or destination selection, core resolves every
 anchor against the addressed current complete content before applying the
 ordinary numeric text-coordinate contract. Exactly one current match lowers to
 its numeric line; zero or multiple matches return 409 `line-anchor-collision`,
@@ -3474,12 +3474,12 @@ lifecycle teardown still reaps its work. No new delegation semantics follow.
 
 §worker-auto-name **Automatic names are eight random lowercase hexadecimal
 characters**, e.g. `worker://ab3d5678`; a colliding draw is retried. All unnamed
-workers use this allocator, including WORK, FORK, clients, and conversations.
+workers use this allocator, including WORK, FORK, clients, and model workers.
 Names encode neither machine identity nor topology or role; those remain
 separate durable fields.
 Automatic names never reuse an existing literal. Name selection and worker
 creation share one atomic claim: concurrent allocations receive distinct
-addresses, while concurrent default-conversation ensures converge on one root
+addresses, while concurrent default-worker ensures converge on one root
 worker. Generated addresses appear in ordinary operation receipts and child
 inventory; allocation never rewrites the submitted operation's target.
 
@@ -5025,7 +5025,6 @@ Core's behavior behind them.
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§loop-addressed-admission}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop in the client worker, executing in the workspace's Functionality ({§actor-boundary-attached-functionality}). Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
-| Client observation                                | `look({ workspaceId, workerId, statement, perspectiveWorkerId? })` | Runs an already-parsed READ through the full resolver in the workspace's Functionality without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
@@ -5034,18 +5033,18 @@ Core's behavior behind them.
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
-| §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-conversation role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh conversations and forks do not replace it. |
-| §methods-conversation-worker Workspace lifecycle  | `createConversationWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
+| §methods-model-worker Workspace lifecycle         | `ensureModelWorker(workspaceId)` | Returns the workspace's stable default model worker, creating it on first use. A durable default-worker role identifies it independently of worker name and root creation order. Repeated and concurrent calls return the same root; fresh workers and forks do not replace it. |
+| §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, clientWorkerId, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as the client's own operations in `clientWorkerId` ({§rollback}); answers a `RollbackReport`. |
-| §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked conversation worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
+| §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked model worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder and its label ({§workspace-label}), and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime worker's `_plurnk` included: the lookup is no minting door ({§worker-name-minting}). |
-| §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`conversation`, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
+| §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`root` for a worker with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
 | §methods-worker-loops Loop lifecycle              | `listWorkerLoops({ workspaceId, workerId })` | Ownership-checks the Worker and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists. It performs no scheduling or event replay. |
 | §methods-worker-accounting Worker spend       | `workerAccounting({ workspaceId, workerId })` | Ownership-checks the Worker and returns the {§provider-accounting} projection of every settled request on any loop the Worker or a descendant of it (`parent_worker_id`, to any depth) ran, since the Worker began: its own spend and its delegations', the same tree the turn cap counts ({§turn-cap-counts-the-tree}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
 | Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope, inputSchema, outputSchema }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
@@ -5085,14 +5084,14 @@ If an unpublished message is promoted into subsequent work under
 §methods-rebind **Binding belongs to the client-interface module.** Core's
 workspace lifecycle calls return exactly the workspace and selected client actor
 (`workspaceId`, `workspaceName`, `projectRoot`, `workerId`, `workerName`); they
-carry no conversation-worker or action-loop binding. Core retains no connection,
+carry no bound-worker or action-loop binding. Core retains no connection,
 thread, or current-workspace mapping. A module may replace its own binding with a
 later create or attach result without requiring a new transport; it resolves the
-conversation worker separately, while each client action allocates its own
+bound worker separately, while each client action allocates its own
 administrative loop under {§connection-lifecycle}.
 
 §methods-worker-name-admission **Client worker-name admission.** Attach,
-fresh-conversation, and fork apply {§worker-name-minting} before lookup or
+worker creation, and fork apply {§worker-name-minting} before lookup or
 creation. A client therefore cannot forge or resume the runtime actor (its
 name lies outside `WORKER_NAME`), insert a non-mintable spelling, or make the
 client registry diverge from model worker control.
@@ -5132,7 +5131,7 @@ resolver.** Workspace capability actions return the contracts-owned
 their normalized effective intersection. The same resolver governs dispatch
 and packet shaping. Replacement preserves unrelated workspace settings. Before their next operation
 or observation, existing workers reconcile generated references against it. It requires no selected
-conversation worker and returns the complete fresh projection.
+bound worker and returns the complete fresh projection.
 
 §question-tool **The native request-user-input tool.** Core registers one
 in-process `question` runtime at boot and offers it only to a worker whose owner
@@ -5195,7 +5194,7 @@ packets or state snapshots.
 owns one durable model, persisted as a nullable `model_routes` foreign key.
 Concurrent first selections of the same resolved tuple share one identity;
 an insertion conflict returns the existing route without changing its fields.
-The root conversation worker is seeded once — from an explicit selection, else
+A root model worker is seeded once — from an explicit selection, else
 the daemon default — and never re-seeded from a later default change. A
 deliberately modelless daemon leaves the worker unset and rejects model work
 until an explicit selection. Starting a loop snapshots the worker's resolved
@@ -5296,17 +5295,6 @@ project the turn's nonempty admitted `packet.assistant.reasoning` as the optiona
 core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 
-§op-look **LOOK ownership.** A client-interface module owns the public LOOK
-spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
-hands the AST to core's `look`; core owns the full resolver and the no-log
-invariant. The internal closed, rowless observation segment supplies an honest
-numeric loop coordinate for relative `log:///` addressing without leaving
-active lifecycle behind. The segment belongs to the acting worker (`workerId`);
-the READ resolves `log:///` as `perspectiveWorkerId` when one is given; explicit source
-authorities retain their identity under {§turn-source-resources}. A client can look at a conversation without
-adding a loop to it. LOOK text anchors resolve through the same
-{§line-anchors} path as READ.
-
 ### §notifications Core events
 
 | Event                                                        | Payload | When fired |
@@ -5319,7 +5307,7 @@ adding a loop to it. LOOK text anchors resolve through the same
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic extension notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
+| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for routing to the bound worker, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic extension notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 | §notifications-outside-event `outside/event`                 | `{ workerId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<worker>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
@@ -5353,8 +5341,7 @@ inside that loop. A proposal may hold its turn and loop across an external
 interrupt/resume, but those records preserve durable evidence rather than
 defining the public client lifecycle. Multiple client actors have distinct workers.
 
-`runLoop` targets a separate model worker holding the conversation with
-`origin="model"`. Both workers share workspace state, while a packet renders
+`runLoop` targets a separate model worker with `origin="model"`. Both workers share workspace state, while a packet renders
 only the model worker's private log; client action rows are structurally absent
 without an origin filter ({§actor-boundary-isolation}).
 
@@ -5759,9 +5746,9 @@ another admission is a 409 conflict, not a second message or an implicit content
 
 | Audience | Delivery | Effect |
 |---|---|---|
-| Assigned worker | Its conversation, even when another actor answered | Visible reply; wakes eligible parked work without a new Open Message or loop. |
+| Assigned worker | Its own log, even when another actor answered | Visible reply; wakes eligible parked work without a new Open Message or loop. |
 | Original native sender | That worker, if distinct from the assigned worker; original delegated-task answers use {§worker-scheme-collect} instead | Other replies use the same wake and observation path. |
-| Exterior sender | The assigned conversation's protocol adapter | The adapter delivers the answer through its standard message channel. |
+| Exterior sender | The assigned worker's protocol adapter | The adapter delivers the answer through its standard message channel. |
 | Replying actor | Its own executed SEND | No duplicate ambient occurrence. |
 
 The successful SEND and its addressed occurrences commit together. Reply occurrences use
@@ -6661,7 +6648,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | code | status | condition |
 |---|---:|---|
 | `interaction-not-pending` | 409 | The requested client interaction is not pending. |
-| `interaction-unsupported` | 501 | No recipient implements the requested tool for this conversation. |
+| `interaction-unsupported` | 501 | No recipient implements the requested tool for this worker. |
 | `recipient-mismatch` | 403 | Only the interaction's recipient may answer it. |
 | `interaction-response-invalid` | 400 | The response does not satisfy the pending interaction's schema. |
 | `invalid-body` | 400 | A question body is not JSON, or lacks its nonempty message or requested schema. |

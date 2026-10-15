@@ -15,7 +15,7 @@ import { contentHash } from "../../src/core/content-hash.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { lookThroughScheme, mimetypesFixture, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
+import { readThroughScheme, mimetypesFixture, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { urlPath, editStmt, findStmt, fullReplace, readStmt, regex } from "./_dsl.ts";
@@ -55,7 +55,7 @@ test("fragment targets the named channel; fragment-less targets default", async 
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
-        const readExec = (statement: ReturnType<typeof readStmt>) => lookThroughScheme(
+        const readExec = (statement: ReturnType<typeof readStmt>) => readThroughScheme(
             "exec",
             null,
             statement,
@@ -458,7 +458,7 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
-        const read = await lookThroughScheme(
+        const read = await readThroughScheme(
             "exec",
             null,
             readStmt(urlPath("exec", "/run/abc", "results")),
@@ -565,7 +565,7 @@ test("channel state does not gate reads — errored/closed channels still return
         });
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readThroughScheme("worker", null, readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");

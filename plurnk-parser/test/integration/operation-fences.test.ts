@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PLURNK_FENCE, writtenOp, type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { PLURNK_FENCE, writtenOp, type PlurnkStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
 const block = (width: number, header: string, body = "") => `${"`".repeat(width)}${header}\n${body}\n${"`".repeat(width)}`;
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const bodyText = (statement: ClientStatement) => "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw : undefined;
-const clean = (result: ParseResult<ClientStatement>) => {
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const bodyText = (statement: PlurnkStatement) => "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw : undefined;
+const clean = (result: ParseResult) => {
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 };
@@ -14,7 +14,6 @@ const clean = (result: ParseResult<ClientStatement>) => {
 for (const [tier, parse] of [
     ["model", PlurnkParser.parse],
     ["stored", PlurnkParser.parseStatements],
-    ["client", PlurnkParser.parseClient],
 ] as const) {
     for (const width of [3, 4, 6]) {
         test(`{§operation-fences}: ${tier} accepts ${width}-backtick native and registered executor operations without a receipt`, () => {

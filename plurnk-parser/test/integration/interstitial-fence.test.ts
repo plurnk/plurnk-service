@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
+import type { ParseResult } from "@plurnk/plurnk-contracts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("WAIT", '[{"content":"Explain the example.","status":"completed"}]');
 const unlabeled = (body: string, ticks = 4, newline = "\n") => `${"`".repeat(ticks)}${newline}${body}${newline}${"`".repeat(ticks)}`;
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const errors = (result: ParseResult) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 
 for (const [name, parse] of [
     ["model", PlurnkParser.parse],
     ["statements", PlurnkParser.parseStatements],
     ["log", PlurnkParser.parseStatements],
-    ["client", PlurnkParser.parseClient],
 ] as const) {
     test(`{§quotation}: ${name} reads unlabeled fences outside a block as literal text, never as executable contents`, () => {
         const bodies = [

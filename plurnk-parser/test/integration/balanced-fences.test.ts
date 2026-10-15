@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { writtenOp, type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
+import { writtenOp, type PlurnkStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
-const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-const bodyText = (statement: ClientStatement) => "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw : undefined;
-const clean = (result: ParseResult<ClientStatement>) => {
+const statements = (result: ParseResult) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const bodyText = (statement: PlurnkStatement) => "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw : undefined;
+const clean = (result: ParseResult) => {
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 };
@@ -13,7 +13,6 @@ const clean = (result: ParseResult<ClientStatement>) => {
 for (const [name, parse] of [
     ["model", PlurnkParser.parse],
     ["stored", PlurnkParser.parseStatements],
-    ["client", PlurnkParser.parseClient],
 ] as const) {
     test(`{§balanced-fences}: ${name} preserves the dogfood nested syntax example and the rest of the answer`, () => {
         const body = [

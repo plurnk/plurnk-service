@@ -21,8 +21,8 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "empty-worker-message", projectRoot: null });
-        const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
-        const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
+        const sender = await daemon.createWorker({ workspaceId, name: "sender" });
+        const receiver = await daemon.createWorker({ workspaceId, name: "receiver" });
         const accepted = await daemon.runLoop({ workspaceId, workerId: sender.workerId, prompt: "Check delivery." });
         const loops = await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: sender.workerId }),
             (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
@@ -53,8 +53,8 @@ test("{§message-reply-delivery}: a client-authored answer wakes its assigned wo
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "client-answer-wake" });
-        const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "assigned" });
-        const collaborator = await daemon.createConversationWorker({ workspaceId, name: "collaborator" });
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "assigned" });
+        const collaborator = await daemon.createWorker({ workspaceId, name: "collaborator" });
         await holdChild(db, workspaceId, workerId);
         const address = "message://assigned/12345678";
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "What is the result?", messageAddress: address });

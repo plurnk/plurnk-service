@@ -1,4 +1,4 @@
-// {§agui-proposal-resolve} A controlling conversation receives both its own
+// {§agui-proposal-resolve} An owning thread receives both its own
 // gate and a descendant's later gate through the same ordinary AG-UI
 // terminate/resume contract. The real daemon owns proposal identity and Worker
 // topology; the module neither simulates nor flattens either one.
@@ -57,7 +57,7 @@ const interruptedBy = (events: readonly AguiEvent[], op: string): string => {
     return id;
 };
 
-test("a child proposal traverses its controlling conversation without losing either identity", {
+test("a child proposal traverses its owning thread without losing either identity", {
     timeout: 60_000,
 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));

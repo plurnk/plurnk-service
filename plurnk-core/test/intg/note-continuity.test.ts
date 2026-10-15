@@ -18,7 +18,7 @@ const noticesOf = async (db: Db, turnId: number): Promise<string[]> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices").split("\n\n");
 const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId });
 
-const conversation = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {
+const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {
     const workspaceId = await insertWorkspace(db, `note-continuity-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "Look around.");
@@ -31,7 +31,7 @@ const conversation = async (db: Db, responses: Array<{ content: string; reasonin
 test("{§continued-without-note}: a continuing turn that carried no NOTE is told so in the next packet, and only then", async () => {
     const db = await openMigrated();
     try {
-        const result = await conversation(db, [
+        const result = await runLoop(db, [
             { content: "```FIND (worker:///*)\n```", reasoning: null },
             { content: "```NOTE\nThe worker namespace is listed.\n```\n\n```FIND (worker:///*)\n```", reasoning: null },
             { content: "```FIND (worker:///*)\n```", reasoning: "Thinking.\n\n```NOTE\nKept from reasoning.\n```\n" },
@@ -51,7 +51,7 @@ test("{§continued-without-note}: a continuing turn that carried no NOTE is told
 test("{§continued-without-note}: an empty turn keeps its own no-operation row and takes no notice", async () => {
     const db = await openMigrated();
     try {
-        const result = await conversation(db, [
+        const result = await runLoop(db, [
             { content: "Still thinking about it.", reasoning: null },
             { content: "```SEND [200]\nDone.\n```", reasoning: null },
         ]);

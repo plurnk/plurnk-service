@@ -13,7 +13,7 @@ test("{§send-directed-scope}: a scoped worker SEND is refused and admits no tas
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "send-scope" });
-        const workerId = (await daemon.createConversationWorker({ workspaceId, name: "scheduler" })).workerId;
+        const workerId = (await daemon.createWorker({ workspaceId, name: "scheduler" })).workerId;
         try {
             const initial = await daemon.runLoop({ workspaceId, workerId, prompt: "Send yourself a scoped message." });
             await waitForDb(() => db.test_get_loop_status.get({ id: initial.loopId }), (row) => row?.status === 200);

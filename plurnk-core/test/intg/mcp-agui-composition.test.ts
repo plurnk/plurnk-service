@@ -217,7 +217,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             .map((event) => event.value as { workerId: number; target: string; result?: { status: number } });
         assert.ok(streamEvents.some((event) => event.result?.status === 200), "the producer's AG-UI Run receives its actual MCP conclusion");
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through AG-UI before its conclusion");
-        assert.ok(streamEvents.every((event) => event.workerId === producer.id), "stream provenance identifies the producing conversation, not a storage owner");
+        assert.ok(streamEvents.every((event) => event.workerId === producer.id), "stream provenance identifies the producing worker, not a storage owner");
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerWorkerId")), "the wire carries one causal actor identity");
         assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
@@ -251,7 +251,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one READ");
-            const result = await daemon.look({ workspaceId: workspaceRow.id, workerId: producer.id, statement: item.statement });
+            const result = await daemon.dispatchAsClient({ workspaceId: workspaceRow.id, workerId: producer.id, statement: item.statement });
             assert.equal(result.status, 200);
             return JSON.parse(result.content as string) as { tools: { name: string; inputSchema: object }[] };
         };

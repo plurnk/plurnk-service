@@ -350,7 +350,7 @@ export class SqlRiteSync {
 	worker_get: SqlRiteSyncPreparedStatements;
 	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
-	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	worker_name_get_default_worker: SqlRiteSyncPreparedStatements;
 	worker_owner_register: SqlRiteSyncPreparedStatements;
 	worker_owner_registered: SqlRiteSyncPreparedStatements;
 	worker_owner_read: SqlRiteSyncPreparedStatements;
@@ -642,7 +642,7 @@ export class SqlRiteSync {
 	test_workers_insert_with_parent: SqlRiteSyncPreparedStatements;
 	test_workers_insert_with_parent_returning: SqlRiteSyncPreparedStatements;
 	test_workers_insert_returning: SqlRiteSyncPreparedStatements;
-	test_workers_insert_default_conversation: SqlRiteSyncPreparedStatements;
+	test_workers_insert_default_worker: SqlRiteSyncPreparedStatements;
 	test_workers_insert_version: SqlRiteSyncPreparedStatements;
 	test_workers_get_by_workspace: SqlRiteSyncPreparedStatements;
 	test_workers_get_provider_identity: SqlRiteSyncPreparedStatements;
@@ -968,7 +968,7 @@ export default class SqlRite {
 	worker_get: SqlRitePreparedStatements;
 	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
-	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	worker_name_get_default_worker: SqlRitePreparedStatements;
 	worker_owner_register: SqlRitePreparedStatements;
 	worker_owner_registered: SqlRitePreparedStatements;
 	worker_owner_read: SqlRitePreparedStatements;
@@ -1260,7 +1260,7 @@ export default class SqlRite {
 	test_workers_insert_with_parent: SqlRitePreparedStatements;
 	test_workers_insert_with_parent_returning: SqlRitePreparedStatements;
 	test_workers_insert_returning: SqlRitePreparedStatements;
-	test_workers_insert_default_conversation: SqlRitePreparedStatements;
+	test_workers_insert_default_worker: SqlRitePreparedStatements;
 	test_workers_insert_version: SqlRitePreparedStatements;
 	test_workers_get_by_workspace: SqlRitePreparedStatements;
 	test_workers_get_provider_identity: SqlRitePreparedStatements;

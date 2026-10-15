@@ -68,21 +68,21 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
         return result;
     };
     const packet = (index: number) => provider.received[index]!.map(chatMessageText).join("\n");
-    const look = (uri: string) => {
+    const viewerRead = (uri: string) => {
         const source = read(uri);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement");
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        return daemon.look({ workspaceId, workerId: client, statement: item.statement });
+        return daemon.dispatchAsClient({ workspaceId, workerId: client, statement: item.statement });
     };
     const first = await run(alice);
     assert.equal(provider.received.length, 2);
     assert.match(packet(1), /alpha-version-one/u);
     assert.match(packet(1), /beta-version-one/u);
     const history = await db.test_log_entries_by_loop.all({ loop_id: first.loopId });
-    assert.equal((await look(alpha)).content, "alpha-version-one");
-    assert.equal((await look(beta)).content, "beta-version-one");
+    assert.equal((await viewerRead(alpha)).content, "alpha-version-one");
+    assert.equal((await viewerRead(beta)).content, "beta-version-one");
     assert.deepEqual([...reads.values()], [1, 1], "a second actor reads the same workspace attachment's cached resources");
     const subscriptions = served.requests.flatMap(({ body }) => {
         const message = body as { method?: string; params?: { notifications?: { resourceSubscriptions?: string[] } } };
@@ -92,9 +92,9 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
 
     documents.set(alpha, "alpha-version-two");
     for (let index = 0; index < 32; index++) handler.notify.resourceUpdated(alpha);
-    const refreshed = await waitForDb(() => look(alpha), (result) => result.content === "alpha-version-two");
+    const refreshed = await waitForDb(() => viewerRead(alpha), (result) => result.content === "alpha-version-two");
     assert.equal(refreshed.status, 200);
-    assert.equal((await look(beta)).content, "beta-version-one");
+    assert.equal((await viewerRead(beta)).content, "beta-version-one");
     assert.deepEqual([...reads.values()], [2, 1], "the selected resource is invalidated; the other cached body stays valid");
     assert.equal(provider.received.length, 2, "neither resource notifications nor client READs invoke a model");
     assert.deepEqual(await db.test_log_entries_by_loop.all({ loop_id: first.loopId }), history,

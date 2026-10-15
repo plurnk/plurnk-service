@@ -246,7 +246,7 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
         const ws = await connect(addr);
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "abandon-tree" });
-            const { workerId } = await daemon.createConversationWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
+            const { workerId } = await daemon.createWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
             const parent = runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", workerId });
             await activationStarted.promise;
             const { finalStatus } = await parent;

@@ -383,7 +383,7 @@ const executeModelOnce = async (
     const firstNonSystem = request.messages.findIndex((message) => message.role !== "system");
     const instructionCount = firstNonSystem === -1 ? request.messages.length : firstNonSystem;
     if (request.messages.slice(instructionCount).some((message) => message.role === "system")) {
-        throw new Error("provider messages: system instructions must precede conversational messages");
+        throw new Error("provider messages: system instructions must precede user and assistant messages");
     }
     const instructions = request.messages.slice(0, instructionCount).map(({ content }, index) => ({
         role: "system" as const,
@@ -392,7 +392,7 @@ const executeModelOnce = async (
             ? { providerOptions: systemProviderOptions }
             : {}),
     }));
-    // {§provider-input-modalities} — conversational messages in the SDK's own shape: a user message
+    // {§provider-input-modalities} — user and assistant messages in the SDK's own shape: a user message
     // may be parts (text beside native files distinguished by media type); every other role is text.
     const messages: ModelMessage[] = request.messages.slice(instructionCount).map((message): ModelMessage => {
         if (message.role === "user") {

@@ -12,7 +12,7 @@ const errors = (result: ReturnType<typeof PlurnkParser.parse>) =>
 const frame = PlurnkParser.frame;
 const task = (content: string, op: DispositionStatement["op"] = "WAIT") => frame(op, content);
 
-for (const entrypoint of ["parse", "parseStatements", "parseClient"] as const) {
+for (const entrypoint of ["parse", "parseStatements"] as const) {
     test(`{§executor-js-spelling}: ${entrypoint} canonicalizes js without shadowing a registered executor`, () => {
         for (const { executors, tag, runtime } of [
             { executors: ["node"], tag: "js", runtime: "node" },
@@ -167,12 +167,6 @@ test("statement lists retain source order without inventing turn boundaries", ()
     const unfinished = PlurnkParser.parseStatements(turn + "\n" + frame("READ (unfinished.md)", null));
     assert.deepEqual(errors(unfinished), []);
     assert.deepEqual(ops(unfinished).map(writtenOp), ["KILL", "WAIT", "READ"]);
-});
-
-test("client-only operations use the same fences", () => {
-    const parsed = PlurnkParser.parseClient(frame("LOOK (worker:///note.md) <1,20>", "~recent thoughts"));
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
-    assert.equal(parsed.items.find((item) => item.kind === "statement")?.statement.op, "LOOK");
 });
 
 test("prose without executable fences is not a program", () => {

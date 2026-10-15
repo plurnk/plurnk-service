@@ -18,7 +18,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
         });
         const contextId = crypto.randomUUID();
         const taskId = crypto.randomUUID();
-        const context = await daemon.createConversationWorker({
+        const context = await daemon.createWorker({
             workspaceId: workspace.workspaceId,
             name: contextId,
         });
@@ -50,8 +50,8 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             origin: "model",
             owner: "_plurnk",
             parentWorkerId: null,
-            // {§application-worker-observation} — a root conversation with no loop yet (#523).
-            kind: "conversation",
+            // {§application-worker-observation} — a root worker with no loop yet (#523).
+            kind: "root",
             lifecycle: "idle",
         });
         assert.equal(typeof projectedContext.created_at, "string");

@@ -4,7 +4,6 @@ tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
     OPEN_SEND, OPEN_NOTE, OPEN_WAIT,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
-    OPEN_LOOK,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, BODY_OPEN, SECTION_END,
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE, ARROW_TARGET
 }
@@ -297,7 +296,6 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     SEND: plurnkLexer.OPEN_SEND, BARE: plurnkLexer.OPEN_BARE,
     NOTE: plurnkLexer.OPEN_NOTE, WAIT: plurnkLexer.OPEN_WAIT,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
-    LOOK: plurnkLexer.OPEN_LOOK,
 };
 
 // {§naked-operation} — a native name and optional complete aside, outside reasoning.
@@ -570,7 +568,7 @@ public getFenceLength(): number { return this.fenceLength; }
 
 public isTextCoordinateOp(): boolean {
     return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE"
-        || this.openOp === "KILL" || this.openOp === "LOOK";
+        || this.openOp === "KILL";
 }
 }
 

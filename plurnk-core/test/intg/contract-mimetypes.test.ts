@@ -26,13 +26,13 @@ import MembershipMaterialization from "../../src/core/MembershipMaterialization.
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
-    lookThroughScheme("file", null, statement, ctx);
+    readThroughScheme("file", null, statement, ctx);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -88,7 +88,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
         await k.edit(editStmt(urlPath("worker", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
-        const r = await lookThroughScheme("worker", null,
+        const r = await readThroughScheme("worker", null,
             readStmt(urlPath("worker", "/config.json")),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -143,7 +143,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
 
         const second = rx.results[1]!;
         assert.ok(second.region);
-        const surgical = await lookThroughScheme("worker", null,
+        const surgical = await readThroughScheme("worker", null,
             {
                 ...readStmt(urlPath("worker", "/log.txt")),
                 lineMarker: {

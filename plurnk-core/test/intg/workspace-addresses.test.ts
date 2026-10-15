@@ -19,7 +19,7 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
         const run = (header: string, body: string | null = null) => {
-            const parsed = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one operation");
@@ -67,7 +67,7 @@ test("{§entry-owner}: scratch survives its namesake actor and remains workspace
         const turnId = await insertOperationTurn(db, loopId, 1, "client");
         let sequence = 0;
         return { workspaceId, run: (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseClient(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
+            const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
             assert.ok(item?.kind === "statement");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, origin: "client", sequence: ++sequence,
                 statement: item.statement as PlurnkStatement });

@@ -12,6 +12,7 @@ import { logEntries } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
+import { clientRead } from "./_client-read.ts";
 
 const program = (message: string) => [
     "An interstitial sentence retained as evidence.",
@@ -34,7 +35,10 @@ test("{§turn-source-resources}: the initialization program and later content so
             { assistant: { content: program("Continue."), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
-        const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
+        // Source identity never depends on the reader ({§turn-source-resources}); the analyst's log is listed, curated and forked below.
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const read = (target: string, scope = "<1,-1>", workerId = observer) =>
+            clientRead(engine, db, { workspaceId, workerId, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
         assert.deepEqual(records.filter((row: Record<string, unknown>) => String(row.logPath).endsWith("/emission")), [],
@@ -66,7 +70,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         }
         const child = await Fork.fork(db, workerId, "branch");
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
-            const inherited = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`\`READ (${scheme}://branch/${coordinate}) <1,-1>\`\`\`\``) });
+            const inherited = await read(`${scheme}://branch/${coordinate}`, "<1,-1>", child);
             assert.equal(inherited.status, 200);
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
@@ -80,7 +84,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         assert.ok(parentNotes.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
         assert.deepEqual(await sourcesOf(child, "note"), parentNotes, "the fork carries every note source under the child's coordinates");
         assert.deepEqual(await sourcesOf(workerId, "outside"), [], "every turn here fenced an operation, so none keeps an outside source");
-        const unaddressed = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`\`READ (outside://branch/${coordinate}) <1,-1>\`\`\`\``) });
+        const unaddressed = await read(`outside://branch/${coordinate}`, "<1,-1>", child);
         assert.ok(unaddressed.status >= 400, "outside text is not a readable resource");
     } finally { await db.close(); }
 });

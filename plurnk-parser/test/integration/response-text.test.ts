@@ -52,7 +52,7 @@ test("{§response-text}: text positions use the lexer's Unicode and CRLF coordin
 
 test("{§response-text}: statement and client tiers still ignore outside text", () => {
     const source = "Before.\n````READ (notes.md)\n````\nAfter.";
-    for (const parse of [PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+    for (const parse of [PlurnkParser.parseStatements]) {
         assert.deepEqual(parse(source).items.map(({ kind }) => kind), ["statement"]);
     }
 });

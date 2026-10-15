@@ -14,7 +14,7 @@ test("{§agui-action-schema-enforcement} {§worker-ownership}: worker directorie
         owner: "agui://anonymous/threads/main",
         origin: "client",
         parentWorkerId: null,
-        kind: "conversation",
+        kind: "root",
         lifecycle: "idle",
     };
     assert.deepEqual(Validator.assertJsonSchemaInstance("worker directory", schema, { workers: [worker] }), { workers: [worker] });
@@ -35,7 +35,7 @@ test("{§agui-discovery-contract}: stream conclusions admit pending wakes, not p
 });
 
 test("{§discovery} {§agui-discovery-contract}: the AG-UI-owned executable surface is complete and schema-valid", () => {
-    assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 27);
+    assert.equal(Object.keys(AGUI_BUILTIN_ACTIONS).length, 26);
     assert.equal(Object.hasOwn(AGUI_BUILTIN_ACTIONS, "workspace.derivation"), false, "activity is observed through AG-UI state, not polled");
     assert.equal(Object.keys(AGUI_NOTIFICATIONS).length, 11);
 

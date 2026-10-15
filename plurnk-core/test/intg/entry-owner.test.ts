@@ -11,6 +11,7 @@ import ExecutionOutputs from "../../src/core/ExecutionOutputs.ts";
 import WorkerName, { WorkerNameError } from "../../src/core/WorkerName.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { clientRead } from "./_client-read.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_JQ = "1";
@@ -41,7 +42,6 @@ test("fan-out: equal causal coordinates create distinct outputs shared by the wo
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);
 
         const parent = await insertWorker(db, ws, null, "parent");
-        const parentLoop = await insertLoop(db, parent, 1, "parent");
         const host = await insertWorker(db, ws, parent, "extract-host");
         const hLoop = await insertLoop(db, host, 1, "host");
         const hTurn = await insertTurn(db, hLoop, 1, 102);
@@ -56,31 +56,26 @@ test("fan-out: equal causal coordinates create distinct outputs shared by the wo
         const hostPath = new URL(await executionAddress(db, hTurn)).pathname;
         const poolPath = new URL(await executionAddress(db, pTurn)).pathname;
         assert.notEqual(hostPath, poolPath, "independent executions never alias because their causal coordinates match");
-        const read = async (
-            workerId: number,
-            loopId: number,
-            statement: ReadStatement,
-        ): Promise<EntryReadResult> => {
-            const result = await engine.look({ statement, workspaceId: ws, workerId, loopId });
+        const read = async (workerId: number, statement: ReadStatement): Promise<EntryReadResult> => {
+            const result = await clientRead(engine, db, { statement, workspaceId: ws, workerId });
             Results.assertReadResult(result);
             return result as EntryReadResult;
         };
-        for (const [workerId, loopId] of [[host, hLoop], [pool, pLoop], [parent, parentLoop]]) {
-            const hostRead = await read(workerId!, loopId!, streamRead("jq", null, hostPath));
-            const poolRead = await read(workerId!, loopId!, streamRead("jq", null, poolPath));
+        for (const workerId of [host, pool, parent]) {
+            const hostRead = await read(workerId, streamRead("jq", null, hostPath));
+            const poolRead = await read(workerId, streamRead("jq", null, poolPath));
             assert.equal(hostRead.status, 200);
             assert.match(hostRead.content ?? "", /db\.internal/);
             assert.equal(poolRead.status, 200);
             assert.match(poolRead.content ?? "", /^5$/m);
         }
         await db.test_delete_worker.run({ id: host });
-        assert.match((await read(parent, parentLoop, streamRead("jq", null, hostPath))).content ?? "", /db\.internal/,
+        assert.match((await read(parent, streamRead("jq", null, hostPath))).content ?? "", /db\.internal/,
             "deleting the producer leaves its workspace output readable");
         const foreignWorkspace = await insertWorkspace(db, "foreign-output");
         const foreignWorker = await insertWorker(db, foreignWorkspace);
-        const foreignLoop = await insertLoop(db, foreignWorker, 1);
-        const foreign = await engine.look({ statement: streamRead("jq", null, hostPath),
-            workspaceId: foreignWorkspace, workerId: foreignWorker, loopId: foreignLoop });
+        const foreign = await clientRead(engine, db, { statement: streamRead("jq", null, hostPath),
+            workspaceId: foreignWorkspace, workerId: foreignWorker });
         assert.equal(foreign.status, 404, "the same address does not cross workspace boundaries");
     } finally { await db.close(); }
 });
@@ -121,7 +116,7 @@ test("shared entries require only a workspace, not a synthetic Worker", async ()
     } finally { await db.close(); }
 });
 
-test("{§worker-auto-name}: unnamed conversations retry occupied names; explicit names retain their validation", async (t) => {
+test("{§worker-auto-name}: unnamed model workers retry occupied names; explicit names retain their validation", async (t) => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-name-${crypto.randomUUID()}`);

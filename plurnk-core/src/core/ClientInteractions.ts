@@ -54,7 +54,7 @@ const unsupportedInteraction = (loopId: number, toolName: string): OperationFail
         "interaction:request",
         "interaction-unsupported",
         501,
-        `No recipient implements '${toolName}' for this conversation.`,
+        `No recipient implements '${toolName}' for this worker.`,
         {},
         {
             loopId,

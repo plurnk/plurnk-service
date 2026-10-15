@@ -179,7 +179,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `members-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const model = await insertWorker(db, workspaceId, null, "model", "model");
         const client = await insertWorker(db, workspaceId, null, "client-1", "client");
         await ownWorker(db, workspaceId, client);
         const daemon = new Daemon({ db, provider: null });
@@ -246,7 +246,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
             // {§members-projection} — the document is named by the glob, percent-encoded as one segment.
-            await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````") });
+            await daemon.dispatchAsClient({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````") });
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");
@@ -382,7 +382,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `members-scope-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "model", "model");
     const who = { workspaceId, workerId: model };
     const engine = (): never => { throw new Error("prepare is not exercised here"); };
     const refusedAs = async (run: () => Promise<unknown>, code: string, status: number) => {

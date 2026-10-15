@@ -22,7 +22,7 @@ const ORIGINAL = "one\ntwo\nthree\n";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52]);
 
 const parseOne = (source: string): PlurnkStatement => {
-    const { items } = PlurnkParser.parseClient(source, { executors: fixtureExecutors(source) });
+    const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     const item = items[0];
     if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
     return item.statement as PlurnkStatement;
@@ -45,7 +45,7 @@ test("{§rollback} reversals land as the client's own operations, latest first; 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `rollback-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const model = await insertWorker(db, workspaceId, null, "primary", "model");
     const client = await insertWorker(db, workspaceId, null, "client-1", "client");
     await ownWorker(db, workspaceId, client);
     const loopId = await insertLoop(db, model, 1);

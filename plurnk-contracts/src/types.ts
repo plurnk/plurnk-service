@@ -6,7 +6,6 @@ import proposalPolicySchema from "../schema/ProposalPolicy.json" with { type: "j
 import effortSchema from "../schema/Effort.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
-    ClientStatement,
     ProposalPolicy,
     Position,
     PlurnkStatement,
@@ -40,7 +39,7 @@ export const isExecution = <T extends { readonly op?: string | undefined }>(stat
     "runtime" in statement;
 // The heading token as written: an operation keyword, or an execution's runtime. This is the
 // log row's `op`.
-export const writtenOp = <T extends PlurnkStatement | ClientStatement>(statement: T): Exclude<T["op"], undefined> | RuntimeTag =>
+export const writtenOp = <T extends PlurnkStatement>(statement: T): Exclude<T["op"], undefined> | RuntimeTag =>
     (isExecution(statement) ? statement.runtime : statement.op) as Exclude<T["op"], undefined> | RuntimeTag;
 
 // Runtime-neutral cardinal observation for one physical inference request.
@@ -84,18 +83,12 @@ export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, col
 // The platform's setTimeout ceiling (2^31-1 ms): the bound on any delay a knob may name.
 export const MAX_TIMER_MS = 2_147_483_647;
 
-// Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
-// stays closed and client ops never widen the model-facing type.
-export type ClientOp = "LOOK";
-
-// Parameterized over the statement type so the protocol entry points keep the closed
-// PlurnkStatement (the default), while parseClient returns ParseResult<ClientStatement>.
-export type ParseItem<S = PlurnkStatement> =
-    | { kind: "statement"; statement: S }
+export type ParseItem =
+    | { kind: "statement"; statement: PlurnkStatement }
     | { kind: "text"; content: string; position: Position }
     | { kind: "error"; error: PlurnkParseError };
 
-export type ParseResult<S = PlurnkStatement> = {
-    items: ParseItem<S>[];
+export type ParseResult = {
+    items: ParseItem[];
     unparsedTail?: { from: Position; reason: string };
 };

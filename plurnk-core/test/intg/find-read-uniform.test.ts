@@ -16,7 +16,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
@@ -411,7 +411,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
         }]);
         const span = matchLocations(found)[0];
         assert.ok(span?.region);
-        const read = await lookThroughScheme("worker", null,
+        const read = await readThroughScheme("worker", null,
             {
                 ...parseOp<ReadStatement>("````READ (worker:///users.json) <1,1,1,1>````", "READ"),
                 lineMarker: {

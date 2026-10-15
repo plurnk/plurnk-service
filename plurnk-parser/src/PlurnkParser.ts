@@ -1,6 +1,6 @@
 import { CharStream, CommonTokenStream, ListTokenSource, Token, type ParserRuleContext } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
-import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
+import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
 import NativeToolCalls from "./NativeToolCalls.ts";
@@ -9,7 +9,6 @@ import RecordingListener from "./RecordingListener.ts";
 import { isReasoningOperation, type ReasoningOperation } from "./ReasoningOperation.ts";
 import {
     PlurnkParseError,
-    type ClientStatement,
     type ParseItem,
     type ParseResult,
     type PlurnkStatement,
@@ -20,13 +19,11 @@ import { PLURNK_OPS, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct
-// `dispositionStatement` child of a turn; `clientStatement` wraps one op in the
-// client tier.
+// `dispositionStatement` child of a turn.
 const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_statement,
     plurnkParser.RULE_midStatement,
     plurnkParser.RULE_dispositionStatement,
-    plurnkParser.RULE_clientStatement,
 ]);
 
 // One-turn containers, flattened in source order for model and saved programs.
@@ -56,13 +53,13 @@ export default class PlurnkParser {
     }
 
     // {§statement-rendering} — one statement's heading in canonical slot order, without a fence.
-    static heading(statement: ClientStatement): string {
-        const [first] = PlurnkParser.stringify([{ ...statement, body: null } as ClientStatement]).split("\n");
+    static heading(statement: PlurnkStatement): string {
+        const [first] = PlurnkParser.stringify([{ ...statement, body: null } as PlurnkStatement]).split("\n");
         return (first ?? "").replace(/^`+/u, "");
     }
 
     // {§statement-rendering} — framing is syntax, never persisted AST state.
-    static stringify(statements: readonly ClientStatement[]): string {
+    static stringify(statements: readonly PlurnkStatement[]): string {
         return statements.map((statement) => {
             const name = writtenOp(statement);
             const modifiers: string[] = [];
@@ -150,8 +147,8 @@ export default class PlurnkParser {
             }];
         })[0];
         if (unread === undefined) return direct;
-        const absence = (item: ParseItem<PlurnkStatement>): boolean => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION;
-        const receipt: ParseItem<PlurnkStatement> = {
+        const absence = (item: ParseItem): boolean => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION;
+        const receipt: ParseItem = {
             kind: "error",
             error: new PlurnkParseError(unread.line, unread.column, "parser",
                 `\`${unread.markup}\` is tool-call markup and was not executed. Use ${unread.form}.`, "warning", undefined, true),
@@ -188,11 +185,11 @@ export default class PlurnkParser {
     // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
     // that explains it: a host admits a turn whose only diagnostic is this one as an empty turn
     // ({§empty-turn}) and rejects one that also carries a malformed heading.
-    static #requireSourceOperation(items: ParseItem<PlurnkStatement>[]): void {
+    static #requireSourceOperation(items: ParseItem[]): void {
         if (items.some((item) => item.kind === "statement")) return;
         // The grammar's end-of-input complaint only restates the absence; specific diagnostics
         // (an unclosed slot, a stray character) stay, so the host can tell prose from a malformed heading.
-        const restatesAbsence = (item: ParseItem<PlurnkStatement>): boolean =>
+        const restatesAbsence = (item: ParseItem): boolean =>
             item.kind === "error" && item.error.source === "parser" && /^unexpected end of input/u.test(item.error.message);
         const kept = items.filter((item) => !restatesAbsence(item));
         items.length = 0;
@@ -239,25 +236,13 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, options).result;
     }
 
-    // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
-    // op LOOK. The topmost subset (one above Script); never used for model output. The
-    // protocol entry points reject LOOK, so a client op only parses here.
-    static parseClient(input: string, options: ParseOptions = {}): ParseResult<ClientStatement> {
-        return PlurnkParser.#run<ClientStatement>(
-            input,
-            (parser) => parser.clientStatementSeq(),
-            (ctx) => AstBuilder.buildClient(ctx as ClientStatementContext),
-            options,
-        ).result;
-    }
-
-    static #run<S extends ClientStatement = PlurnkStatement>(
+    static #run(
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
-        buildFn: (ctx: any) => S[] = ((ctx: any) => AstBuilder.build(ctx) as S[]),
+        buildFn: (ctx: any) => PlurnkStatement[] = (ctx: any) => AstBuilder.build(ctx),
         options: ParseOptions = {},
         tier: "statements" | "model" | "reasoning" = "statements",
-    ): { result: ParseResult<S>; lexer: plurnkLexer } {
+    ): { result: ParseResult; lexer: plurnkLexer } {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         lexer.reasoning = tier === "reasoning";
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
@@ -287,7 +272,7 @@ export default class PlurnkParser {
         PlurnkParser.#dedupeLexerCascade(errors);
         const unparsedTail = PlurnkParser.#unparsedTail(lexer);
 
-        const items: ParseItem<S>[] = [];
+        const items: ParseItem[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
         PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
         // {§log-heading-notation} — the log's heading notation was read as the slot it stands for; each reading is
@@ -296,7 +281,7 @@ export default class PlurnkParser {
         for (const note of lexer.takeHeadingNotations()) {
             const at = items.findIndex((item) => item.kind === "statement" && item.statement.position.line === note.line);
             if (at === -1) continue;
-            const statement = (items[at] as { statement: S }).statement;
+            const statement = (items[at] as { statement: PlurnkStatement }).statement;
             const message = note.kind === "arrow"
                 ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
                 : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
@@ -344,7 +329,7 @@ export default class PlurnkParser {
             const unfenced = PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), lexer.knownExecutors, unparsedTail?.from);
             items.push(...PlurnkParser.#responseText(tokens, new Set(unfenced.map(({ line }) => line)), unparsedTail?.from));
             items.push(...unfenced.map(({ item }) => item));
-            const position = (item: ParseItem<S>): Position => item.kind === "statement" ? item.statement.position
+            const position = (item: ParseItem): Position => item.kind === "statement" ? item.statement.position
                 : item.kind === "text" ? item.position : item.error;
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
         }
@@ -352,7 +337,7 @@ export default class PlurnkParser {
     }
 
     // {§scope-on-scopeless} — the operation ran without the scope it cannot take; say which slots it has.
-    static #scopelessAdvisory(statement: ClientStatement, scope: string): string {
+    static #scopelessAdvisory(statement: PlurnkStatement, scope: string): string {
         const op = writtenOp(statement);
         const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
             : op === "SEND" ? "`SEND` without a recipient takes no scope"
@@ -444,12 +429,12 @@ export default class PlurnkParser {
     }
 
     // Walk statement containers in source order; bounded malformed statements become errors.
-    static #collect<S extends ClientStatement>(
+    static #collect(
         ctx: ParserRuleContext,
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
-        items: ParseItem<S>[],
-        buildFn: (ctx: any) => S[],
+        items: ParseItem[],
+        buildFn: (ctx: any) => PlurnkStatement[],
         boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {

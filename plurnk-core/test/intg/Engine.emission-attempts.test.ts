@@ -16,6 +16,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithC
 import { logEntries, packetSection, digestStems } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import { clientRead } from "./_client-read.ts";
 
 const requestUsage = (
     inputTokens: number,
@@ -901,7 +902,9 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");
-        const retained = await engine.look({ ...context, statement: readSource.statement });
+        // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
+        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const retained = await clientRead(engine, db, { workspaceId, workerId: observer, statement: readSource.statement });
         assert.equal(retained.status, 200);
         assert.ok("content" in retained);
         assert.equal(retained.content, source, "recovery never rewrites the original submitted program");
@@ -940,7 +943,9 @@ for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.
             const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
             const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
             assert.ok(readSource.kind === "statement");
-            const retained = await engine.look({ ...context, statement: readSource.statement });
+            // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
+            const observer = await insertWorker(db, workspaceId, null, "observer");
+            const retained = await clientRead(engine, db, { workspaceId, workerId: observer, statement: readSource.statement });
             assert.equal(retained.status, 200);
             assert.ok("content" in retained);
             assert.equal(retained.content, source, "recovery preserves the original emission");

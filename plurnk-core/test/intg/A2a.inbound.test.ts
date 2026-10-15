@@ -99,7 +99,7 @@ test("{§a2a-worker-ownership}: an absent configured parent cannot create an own
     } finally { await daemon.stop(); await http.close(); await db.close(); }
 });
 
-test("{§a2a-worker-ownership}: the parent owner approves operations and answers questions; the caller only converses", async () => {
+test("{§a2a-worker-ownership}: the parent owner approves operations and answers questions; the caller only sends messages", async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````sh\necho approved-by-owner\n````"),
@@ -113,7 +113,7 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
     const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-owned-parent", projectRoot: null });
     const owner = { address: "agui://operator", tools: ["request_approval", "question"], interactive: true };
     await daemon.registerWorkerOwner(workspaceId, owner);
-    const parent = await daemon.createConversationWorker({ workspaceId, name: "operator", owner: owner.address });
+    const parent = await daemon.createWorker({ workspaceId, name: "operator", owner: owner.address });
     daemon.registerModule(A2aExposure.init({
         ...A2A_EXPOSURE, parentWorker: parent.workerName,
         workspace: { name: workspaceName, projectRoot: null }, card: a2aCard(),
@@ -219,7 +219,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Task workers thro
         name: `a2a-inbound-${crypto.randomUUID()}`,
         projectRoot: null,
     });
-    const ordinaryRoot = await daemon.createConversationWorker({
+    const ordinaryRoot = await daemon.createWorker({
         workspaceId: workspace.workspaceId,
         name: crypto.randomUUID(),
     });
@@ -326,7 +326,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Task workers thro
             const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: child.id });
             assert.deepEqual(loops.map(({ promptSource }) => taskOf(promptSource)), [child.name]);
         }
-        // {§a2a-inbound-exposure} One conversation: the follow-up sees the request behind its question.
+        // {§a2a-inbound-exposure} One Context: the follow-up sees the request behind its question.
         const followUp = provider.received[3]!.map(chatMessageText).join("\n");
         assert.ok(followUp.includes("choose a branch"), "the follow-up Task sees the caller's earlier request");
         assert.ok(followUp.includes("Which branch should I use?"), "and the question it answers");
@@ -453,7 +453,7 @@ test("{§a2a-worker-ownership}: restart retains Tasks while a changed parent app
     });
     const owner = { address: "agui://supervisor", tools: ["request_approval"], interactive: true };
     await daemon.registerWorkerOwner(workspace.workspaceId, owner);
-    const parent = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "supervisor", owner: owner.address });
+    const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "supervisor", owner: owner.address });
     let firstListener: A2aExposure | null = null;
     const firstExposure = A2aExposure.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },

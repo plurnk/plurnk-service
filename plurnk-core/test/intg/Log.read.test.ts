@@ -10,6 +10,7 @@ import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { matchLocations } from "./_find.ts";
+import { clientRead } from "./_client-read.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -450,9 +451,9 @@ test("Log.read: #channel on an execution log item names the command's stream add
         assert.ok(String(miss.problem?.detail).includes(`${address}#stdout`));
 
         // The named address is real: the same READ against it returns the output.
-        const stream = await engine.look({
+        const stream = await clientRead(engine, db, {
             statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
-            workspaceId, workerId, loopId, origin: "model",
+            workspaceId, workerId,
         });
         assert.equal(stream.status, 200);
         assert.match(String((stream as { content?: unknown }).content), /hello/);
@@ -507,9 +508,9 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
         assert.equal(miss.problem?.retryable, false);
 
         // The named address is real: the same READ against it returns the output.
-        const stream = await engine.look({
+        const stream = await clientRead(engine, db, {
             statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
-            workspaceId, workerId, loopId, origin: "model",
+            workspaceId, workerId,
         });
         assert.equal(stream.status, 200);
         assert.match(String((stream as { content?: unknown }).content), /hello/);

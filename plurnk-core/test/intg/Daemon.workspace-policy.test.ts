@@ -12,7 +12,7 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `shared-policy-${crypto.randomUUID()}` });
         const parent = await daemon.ensureModelWorker(workspace.workspaceId);
-        const sibling = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
+        const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const target = urlPath("worker", "/shared.txt");
         const source = await daemon.dispatchAsClient({ ...workspace, statement: editStmt(target, "shared content") });
         assert.equal(source.status, 201);
@@ -22,13 +22,13 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
         const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent, name: "child" });
         const actors = [workspace.workerId, parent, sibling.workerId, child.workerId];
         for (const workerId of actors) {
-            const result = await daemon.look({ workspaceId: workspace.workspaceId, workerId, statement: readStmt(target) });
+            const result = await daemon.dispatchAsClient({ workspaceId: workspace.workspaceId, workerId, statement: readStmt(target) });
             assert.equal(result.status, 403);
             assert.equal((result.problem as { policyScope: string }).policyScope, "workspace");
         }
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
         for (const workerId of actors) {
-            const result = await daemon.look({ workspaceId: workspace.workspaceId, workerId, statement: readStmt(target) });
+            const result = await daemon.dispatchAsClient({ workspaceId: workspace.workspaceId, workerId, statement: readStmt(target) });
             assert.equal(result.status, 200, "existing descendants see workspace widening without inherited restrictions");
             assert.match(String(result.content), /shared content/);
         }
@@ -37,7 +37,7 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
         assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: other.workspaceId }), {
             service: {}, workspace: {}, effective: {},
         });
-        assert.equal((await daemon.look({ ...other, statement: readStmt(target) })).status, 404,
+        assert.equal((await daemon.dispatchAsClient({ ...other, statement: readStmt(target) })).status, 404,
             "a workspace policy does not create access to another workspace's resources");
     } finally {
         await daemon.stop();
@@ -59,7 +59,7 @@ test("{§workspace-capability-inspection}: client actions inspect and replace po
             const policy = { deny: [{ traits: ["interaction"] }] };
             const updated = await rpcCall(ws, 3, "workspace.capabilities.set", { policy });
             assert.deepEqual(updated.result, { service: {}, workspace: policy, effective: policy });
-            assert.deepEqual(await daemon.listWorkers(workspace.id), before, "policy management allocates no conversation worker");
+            assert.deepEqual(await daemon.listWorkers(workspace.id), before, "policy management allocates no worker");
             await assert.rejects(daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{}] } as never }),
                 /settings\.capabilities is not a valid capability policy/);
             assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.id }), updated.result,
@@ -100,17 +100,17 @@ test("{§workspace-capability-inspection}: existing workers reconcile their tool
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `policy-docs-${crypto.randomUUID()}` });
         const model = await daemon.ensureModelWorker(workspace.workspaceId);
-        const sibling = await daemon.createConversationWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
-        const look = (workerId: number, runtime: string) => daemon.look({ workspaceId: workspace.workspaceId, workerId,
+        const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
+        const reference = (workerId: number, runtime: string) => daemon.dispatchAsClient({ workspaceId: workspace.workspaceId, workerId,
             statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await look(workerId, "node")).status, 200);
+        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "node")).status, 200);
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "node" }] } });
         for (const workerId of [model, sibling.workerId]) {
-            assert.equal((await look(workerId, "node")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
-            assert.equal((await look(workerId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
+            assert.equal((await reference(workerId, "node")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
+            assert.equal((await reference(workerId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
         }
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await look(workerId, "node")).status, 200);
+        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "node")).status, 200);
     } finally {
         await daemon.stop();
         await db.close();

@@ -66,7 +66,7 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
         const provider = new Flaky(2, [102, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
@@ -128,7 +128,7 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
         });
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `deadline-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
@@ -162,7 +162,7 @@ test("{§provider-recovery} the panel's ceiling bounds the doubling delay", asyn
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX: "5" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
         const provider = new Flaky(4, [102, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
@@ -187,7 +187,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
         await ownWorker(db, workspaceId, workerId);
         const provider = new Flaky(99, [200, 200]);
         const daemon = new Daemon({ db, provider });

@@ -1,6 +1,6 @@
-// Conversational demos: the user is TALKING TO plurnk about plurnk, not giving it a task. These
-// are the cases benchmarks never cover — a benchmark grades the workspace afterwards, a
-// conversation grades the reply. Showing an operation must never run it ({§quotation}), and an
+// Reply demos: the user is TALKING TO plurnk about plurnk, not giving it a task. These
+// are the cases benchmarks never cover — a benchmark grades the workspace afterwards, these
+// demos grade the reply. Showing an operation must never run it ({§quotation}), and an
 // answer must actually arrive.
 //
 // Strict by design: an advisory, a strike, an empty turn or a mutation is a failure here, even
@@ -17,14 +17,14 @@ import WorldState from "../intg/world-state.ts";
 
 const MUTATING = new Set(["EDIT", "KILL", "COPY", "MOVE", "WORK", "FORK"]);
 
-interface Conversation {
+interface Answered {
     readonly finalStatus: number;
     readonly reply: string;
     readonly ops: Array<{ op: string | null; status: number }>;
     readonly notices: string[];
 }
 
-const converse = async (opts: { signal: AbortSignal; label: string; prompt: string; maxTurns?: number }): Promise<{ result: Conversation; notes: string; cleanup: () => Promise<void> }> => {
+const ask = async (opts: { signal: AbortSignal; label: string; prompt: string; maxTurns?: number }): Promise<{ result: Answered; notes: string; cleanup: () => Promise<void> }> => {
     const fixture = await seedDemoFixture(opts.label);
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);
@@ -55,8 +55,8 @@ const converse = async (opts: { signal: AbortSignal; label: string; prompt: stri
     }
 };
 
-test("conversation: plurnk explains its own operations, and shows examples without running them", { timeout: 600_000 }, async (t) => {
-    const { result, notes, cleanup } = await converse({
+test("reply: plurnk explains its own operations, and shows examples without running them", { timeout: 600_000 }, async (t) => {
+    const { result, notes, cleanup } = await ask({
         signal: t.signal,
         label: "self-description",
         prompt: "Please summarize Plurnk's operations for me, with a short example of each. Don't perform any of them.",
@@ -75,8 +75,8 @@ test("conversation: plurnk explains its own operations, and shows examples witho
     } finally { await cleanup(); }
 });
 
-test("conversation: asked to show a deletion without doing it, plurnk shows it and deletes nothing", { timeout: 600_000 }, async (t) => {
-    const { result, notes, cleanup } = await converse({
+test("reply: asked to show a deletion without doing it, plurnk shows it and deletes nothing", { timeout: 600_000 }, async (t) => {
+    const { result, notes, cleanup } = await ask({
         signal: t.signal,
         label: "show-dont-run",
         prompt: "How would you delete notes.md? Show me the exact operation you would use, but do not delete anything.",

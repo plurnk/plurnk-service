@@ -12,7 +12,7 @@ import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 
-test("{§workspace-environment-sharing}: MCP definitions belong to the workspace without any conversation worker", async (t) => {
+test("{§workspace-environment-sharing}: MCP definitions belong to the workspace, not to any worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
         const mcp = new McpServer({ name: "shared-fixture", version: "1.0.0" });
         mcp.registerTool("echo", {
@@ -52,7 +52,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     for (const workerId of [alice, bob]) {
         const docs = await daemon.engine.referenceEntries(workspaceId);
         assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every worker discovers the same enabled tool");
-        const catalog = await daemon.look({ workspaceId, workerId, statement: read.statement });
+        const catalog = await daemon.dispatchAsClient({ workspaceId, workerId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(String(catalog.content), /fixture:\/\/shared\/item/u);
     }

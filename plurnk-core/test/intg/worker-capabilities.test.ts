@@ -77,7 +77,7 @@ test("{§client-interaction-routing}: unsupported requests fail without parking;
     await assert.rejects(interactions.request(request, ids), (error: unknown) => {
         const result = (error as { result: { status: number; problem: { detail: string } } }).result;
         assert.equal(result.status, 501);
-        assert.equal(result.problem.detail, "No recipient implements 'question' for this conversation.");
+        assert.equal(result.problem.detail, "No recipient implements 'question' for this worker.");
         return true;
     });
     assert.deepEqual(await interactions.list(workspaceId), []);

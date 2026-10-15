@@ -2,11 +2,11 @@
 //
 // A client `op.*` lands in the connection's client worker; `loop.run` runs the model
 // in its own model worker; the packet renders the model worker, so no client-origin row ever
-// reaches the model's conversation — invisibility by worker, no origin filter. This
+// reaches the model's log — invisibility by worker, no origin filter. This
 // proves the server wiring (op.* → client worker, loop.run → model worker) that the
 // engine-level {§actor-boundary-isolation} guarantee rests on.
 //
-// {§machine-processes-model-worker-readable}: a conversation client READS the model worker by id —
+// {§machine-processes-model-worker-readable}: a client READS the model worker by id —
 // loop.run returns its modelWorkerId and log.read({ workerId }) targets it, ownership-gated.
 
 import test from "node:test";
@@ -81,7 +81,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
             const clientWorkerId = (created.result as { workerId: number }).workerId;
             // A client op lands in the connection's own client worker.
             await rpcCall(ws, 2, "op.edit", { target: "worker:///note", content: "client-only" });
-            // Drive the model — its conversation lives in its own worker, whose id loop.run returns.
+            // Drive the model — it works in its own worker, whose id loop.run returns.
             const result = await runLoopToTerminal(ws, 3, { prompt: "go" });
             const { loopId, modelWorkerId } = result as { loopId: number; modelWorkerId: number };
             assert.equal(typeof modelWorkerId, "number", "loop.run returns the model worker's id");
@@ -96,10 +96,10 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
 
             // log.read({ workerId }) → the MODEL worker's log: readable by id,
             // and a DISTINCT worker — the client's op is absent from it.
-            const conv = await rpcCall(ws, 5, "log.read", { workerId: modelWorkerId });
-            const convEntries = (conv.result as { entries: Array<{ origin: string; op: string }> }).entries;
-            assert.ok(convEntries.length > 0, "the model worker's log is readable by id");
-            assert.ok(!convEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "the model worker is distinct — the client's op is absent from it");
+            const modelRead = await rpcCall(ws, 5, "log.read", { workerId: modelWorkerId });
+            const modelEntries = (modelRead.result as { entries: Array<{ origin: string; op: string }> }).entries;
+            assert.ok(modelEntries.length > 0, "the model worker's log is readable by id");
+            assert.ok(!modelEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "the model worker is distinct — the client's op is absent from it");
 
             // Ownership: a worker in a DIFFERENT workspace is refused from this connection.
             const foreignWorkspace = await insertWorkspace(db, `foreign-${crypto.randomUUID()}`);
@@ -129,7 +129,7 @@ test("workspace.workers tags each worker with its actor — the model worker is 
             const client = listed.workers.find((r) => r.id === clientWorkerId);
             assert.equal(model?.origin, "model", "the model worker is tagged origin=model");
             assert.equal(client?.origin, "client", "the connection's own worker is tagged origin=client");
-            // The conversation client picks the model worker by actor — no name parsing.
+            // A client picks the model worker by actor — no name parsing.
             assert.deepEqual(listed.workers.filter((r) => r.origin === "model").map((r) => r.id), [modelWorkerId], "exactly one model worker, found by origin");
         } finally { ws.close(); }
     });

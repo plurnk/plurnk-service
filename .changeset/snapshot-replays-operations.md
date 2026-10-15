@@ -3,7 +3,7 @@
 "@plurnk/plurnk-service": minor
 ---
 
-A synchronization or reattachment `MESSAGES_SNAPSHOT` is the conversation
+A synchronization or reattachment `MESSAGES_SNAPSHOT` replays the messages
 the live projection built ({§agui-snapshot}): each model operation replays as
 its tool call and result, a WAIT that carries a body as speech, and every
 turn's reasoning once, all under their live identities. The official client
