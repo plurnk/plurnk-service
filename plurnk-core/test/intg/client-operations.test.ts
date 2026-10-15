@@ -332,31 +332,75 @@ test("{§worker-lifecycle-total-reap} shutdown cancels a person's operation stil
     assert.equal(await new LoopLifecycle(db).status((await loop.promise).loopId), 499, "the operation still dispatching settles cancelled");
 });
 
-test("{§machine-processes-worker-origin} a person's operation starts no worker: WORK or FORK that would create one is refused, WORK to a worker that exists is its message, and the runtime worker never forks", async (t) => {
+test("{§actor-boundary-client-operations} {§machine-processes-worker-origin} a person's operation speaks and delegates as that person: messages arrive from them, WORK starts a root worker they own, FORK branches the worker they act for", async (t) => {
     serverProposals(t, "accept");
-    const provider = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\nnoted\n````")] });
+    const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("````SEND [200]\nnoted\n````")) });
     const { daemon } = await boot(t, { provider });
     const { workspaceId } = await daemon.createWorkspace({ name: `client-delegation-${crypto.randomUUID()}` });
-    const workerId = await namedModelWorker(daemon, workspaceId, "main");
-    const person = async (source: string) => (await daemon.dispatchClientAction({
-        workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [parseOne(source)],
+    const main = await namedModelWorker(daemon, workspaceId, "main");
+    const person = async (source: string, contextWorkerId?: number) => (await daemon.dispatchClientAction({
+        workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [parseOne(source)],
     }))[0]!;
-    const workers = async () => (await daemon.listWorkers(workspaceId)).map(({ name, origin }) => `${name}:${origin}`).sort();
-    await daemon.ensureRuntimeWorker(workspaceId);
-    const before = await workers();
-    for (const source of ["````WORK (worker://helper)\nStart.\n````", "````WORK\nStart.\n````", "````FORK (worker://branch)\nContinue.\n````"]) {
-        const refused = await person(source);
-        assert.equal(refused.status, 409, `${source}: ${JSON.stringify(refused)}`);
-        assert.equal((refused.problem as { type?: string }).type, "https://problems.plurnk.xyz/engine/dispatcher/model-worker-required");
-    }
-    assert.deepEqual(await workers(), before, "a refused delegation creates nothing");
-    const delivered = await person("````WORK (worker://main)\nA note for you.\n````");
-    assert.equal(delivered.status, 200, JSON.stringify(delivered));
+    const firstLoop = (workerId: number) => waitForDb(async () => (await daemon.listWorkerLoops({ workspaceId, workerId }))[0], (loop) => loop?.status === 200);
+    const worker = async (name: string) => (await daemon.listWorkers(workspaceId)).find((row) => row.name === name);
+
+    const sent = await person("````SEND (worker://main)\nA note from a person.\n````", main);
+    assert.equal(sent.status, 200, JSON.stringify(sent));
+    assert.equal((await firstLoop(main))?.promptSource, TEST_OWNER, "a person's message arrives from that person, as a thread message does");
+    const runtime = await daemon.ensureRuntimeWorker(workspaceId);
+    assert.deepEqual((await daemon.readLog({ workspaceId, workerId: runtime })).filter(({ source }) => source !== null), [],
+        "the model's reply never lands in the runtime worker's journal");
+
+    const started = await person("````WORK (worker://helper)\nStart.\n````", main);
+    assert.equal(started.status, 200, JSON.stringify(started));
+    const helper = await worker("helper");
+    assert.deepEqual({ origin: helper?.origin, parent: helper?.parentWorkerId, owner: helper?.owner }, { origin: "model", parent: null, owner: TEST_OWNER },
+        "a person's WORK starts a root model worker that person owns");
+    assert.equal((await firstLoop(helper!.id))?.promptSource, TEST_OWNER, "its first prompt arrives from the person");
+    const unnamed = await person("````WORK\nStart too.\n````");
+    assert.equal(unnamed.status, 200, JSON.stringify(unnamed));
+    assert.equal((await worker(String(unnamed.body)))?.parentWorkerId, null, "an unnamed WORK starts a root worker too");
+
+    const branched = await person("````FORK (worker://branch)\nTry the other way.\n````", main);
+    assert.equal(branched.status, 200, JSON.stringify(branched));
+    const branch = await worker("branch");
+    assert.deepEqual({ parent: branch?.parentWorkerId, kind: branch?.kind }, { parent: main, kind: "fork" }, "FORK branches the worker the person acts for");
+    assert.ok((await daemon.listWorkerLoops({ workspaceId, workerId: branch!.id })).some(({ promptSource }) => promptSource === TEST_OWNER),
+        "the branch's task arrives from the person");
+    const unaddressed = await person("````FORK (worker://nowhere)\nContinue.\n````");
+    assert.equal(unaddressed.status, 404, JSON.stringify(unaddressed));
+    assert.equal((unaddressed.problem as { type?: string }).type, "https://problems.plurnk.xyz/engine/dispatcher/fork-unaddressed");
+    assert.equal(await worker("nowhere"), undefined, "acting for no worker, FORK branches nothing");
+
+    const delivered = await person("````WORK (worker://main)\nAnother note.\n````", main);
     assert.equal((delivered.attrs as { delivered?: string } | undefined)?.delivered, "message", "WORK to a worker that exists is its message");
-    await assert.rejects(daemon.forkWorker({ workspaceId, workerId: await daemon.ensureRuntimeWorker(workspaceId) }), (error: unknown) => {
+    await assert.rejects(daemon.forkWorker({ workspaceId, workerId: runtime }), (error: unknown) => {
         assert.ok(error instanceof OperationFailureError, String(error));
         assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
         return true;
     });
-    assert.deepEqual(await workers(), before, "the workspace keeps its one runtime worker");
+    assert.equal((await daemon.listWorkers(workspaceId)).filter(({ origin }) => origin === "_plurnk").length, 1, "the workspace keeps one runtime worker");
+});
+
+test("{§actor-boundary-client-operations} {§env-scheme} a person's env:/// is the workspace's: a model's commands receive it, and the runtime worker keeps no layer", async (t) => {
+    const { db, daemon } = await boot(t);
+    const { workspaceId } = await daemon.createWorkspace({ name: `client-env-${crypto.randomUUID()}` });
+    const workerId = await namedModelWorker(daemon, workspaceId, "main");
+    const person = async (source: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(source)] }))[0]!;
+    const modelReads = (name: string) => modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(`\`\`\`\`READ (env:///${name})\`\`\`\``) });
+    const definitions = async () => ((await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId })) as { definitions: Array<{ alias: string; origin: string }> })
+        .definitions.filter(({ alias }) => alias === "FRAME_NAME").map(({ origin }) => origin);
+
+    assert.equal((await person("````EDIT (env:///FRAME_NAME)\nworkspace-wide\n````")).status, 200);
+    assert.deepEqual(await definitions(), ["workspace"], "the definition is the workspace's own");
+    const read = await modelReads("FRAME_NAME");
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.equal(read.content, "workspace-wide", "a model's commands receive what a person set");
+    const runtime = await daemon.ensureRuntimeWorker(workspaceId);
+    const own = (await daemon.invokeModuleAction("worker.env.list", {}, { scope: "worker", workspaceId, workerId: runtime })) as { definitions: Array<{ origin: string }> };
+    assert.deepEqual(own.definitions.filter(({ origin }) => origin === "worker"), [], "the runtime worker keeps no layer of its own");
+
+    assert.equal((await person("````KILL (env:///FRAME_NAME)````")).status, 200);
+    assert.deepEqual(await definitions(), [], "a person's KILL removes the workspace's own entry");
+    assert.equal((await modelReads("FRAME_NAME")).status, 404);
 });

@@ -220,6 +220,7 @@ export class SqlRiteSync {
 	worker_generation_policy_selectable: SqlRiteSyncPreparedStatements;
 	envelope_list_workspace_prompts: SqlRiteSyncPreparedStatements;
 	envelope_insert_client_loop: SqlRiteSyncPreparedStatements;
+	envelope_client_operation_person: SqlRiteSyncPreparedStatements;
 	envelope_close_client_loop: SqlRiteSyncPreparedStatements;
 	envelope_list_workspaces: SqlRiteSyncPreparedStatements;
 	execution_output_claim: SqlRiteSyncPreparedStatements;
@@ -351,6 +352,7 @@ export class SqlRiteSync {
 	worker_live_obligations: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_owner_register: SqlRiteSyncPreparedStatements;
+	worker_owner_admit: SqlRiteSyncPreparedStatements;
 	worker_owner_registered: SqlRiteSyncPreparedStatements;
 	worker_owner_read: SqlRiteSyncPreparedStatements;
 	worker_owner_for_loop: SqlRiteSyncPreparedStatements;
@@ -835,6 +837,7 @@ export default class SqlRite {
 	worker_generation_policy_selectable: SqlRitePreparedStatements;
 	envelope_list_workspace_prompts: SqlRitePreparedStatements;
 	envelope_insert_client_loop: SqlRitePreparedStatements;
+	envelope_client_operation_person: SqlRitePreparedStatements;
 	envelope_close_client_loop: SqlRitePreparedStatements;
 	envelope_list_workspaces: SqlRitePreparedStatements;
 	execution_output_claim: SqlRitePreparedStatements;
@@ -966,6 +969,7 @@ export default class SqlRite {
 	worker_live_obligations: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_owner_register: SqlRitePreparedStatements;
+	worker_owner_admit: SqlRitePreparedStatements;
 	worker_owner_registered: SqlRitePreparedStatements;
 	worker_owner_read: SqlRitePreparedStatements;
 	worker_owner_for_loop: SqlRitePreparedStatements;

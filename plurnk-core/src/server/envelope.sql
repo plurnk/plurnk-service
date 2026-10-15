@@ -133,6 +133,13 @@ INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, max_turns
 VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', $prompt_source, -1)
 RETURNING id, sequence;
 
+-- PREP: envelope_client_operation_person
+-- {§actor-boundary-client-operations} The person a client operation speaks for: the prompt source of a
+-- runtime-worker loop. The daemon's own loops there name none.
+SELECT l.prompt_source AS person
+FROM loops l JOIN workers w ON w.id = l.worker_id
+WHERE l.id = $loop_id AND w.origin = '_plurnk' AND l.prompt_source IS NOT NULL;
+
 -- PREP: envelope_close_client_loop
 UPDATE loops
 SET status = $status,

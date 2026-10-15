@@ -272,12 +272,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Worker's commands run in.
         // {§env-scheme} — the family's face: reads project the dispatching Worker's effective
-        // environment, writes go through the family's own admission at the Worker's layer.
+        // environment, writes go through the family's own admission at the Worker's layer. The runtime
+        // worker keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
         this.#functionality.register(new EnvFunctionality(
             EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
             new EnvScheme(
                 (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId),
                 (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
+                async (workspaceId, workerId) => (await this.#db.runtime_worker_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === workerId
+                    ? "workspace" : "worker",
             ),
         ));
         this.#engine = new Engine({
@@ -303,7 +306,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
                     throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
                 }
-                const source = await this.#workerPromptSource(workspaceId, sender.worker_id, workerId);
+                const source = await this.#messageSource(workspaceId, sourceLoopId, sender.worker_id, workerId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
@@ -334,12 +337,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                         spawn_model_route_id: null,
                         effort: effort,
                         effort_source: "default" });
-                    // {§env-option} — explicit child overrides replace copied values and enable them.
-                    // Names were admitted at the operation; a refusal here is a defect and throws.
-                    for (const [alias, value] of Object.entries(environment ?? {})) {
-                        await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
-                        await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
-                    }
+                }
+                // {§env-option} — a created worker's explicit overrides replace copied values and enable them.
+                // Names were admitted at the operation; a refusal here is a defect and throws.
+                for (const [alias, value] of Object.entries(environment ?? {})) {
+                    await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
+                    await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
                 }
                 const { action, loopId } = await ContentUse.read(this.#db, async () => {
                     const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
@@ -975,11 +978,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    async #workerPromptSource(
+    // {§actor-boundary-client-operations} A message speaks for its loop's actor: a person's operation for that
+    // person, as a thread message does; any other loop for its worker.
+    async #messageSource(
         workspaceId: number,
+        sourceLoopId: number,
         sourceWorkerId: number,
         targetWorkerId: number,
     ): Promise<string | undefined> {
+        const person = await this.#db.envelope_client_operation_person.get<{ person: string }>({ loop_id: sourceLoopId });
+        if (person !== undefined) return person.person;
         if (sourceWorkerId === targetWorkerId) return undefined;
         const source = await this.#db.envelope_get_worker_by_id.get<{
             workspace_id: number;

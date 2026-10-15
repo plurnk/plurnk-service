@@ -466,10 +466,12 @@ export default class Functionality {
             return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options));
         }
         if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
-        return this.#withWorkspaceGate(
-            identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try",
-            () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options)),
-        );
+        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options));
+        // A context family (one that declares the worker scope) is read where it is used, so its workspace
+        // defaults change nothing resident either: they serialize on the family's lane, as a Worker's own do,
+        // and an operation inside its own held turn never waits on itself.
+        if (scopesOf(adapter).includes("worker")) return mutate();
+        return this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate);
     }
 
     // A worker-scoped verb that names no Worker is a defect at the projection, never a client

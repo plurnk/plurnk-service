@@ -364,6 +364,7 @@ test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's
                 VALUES (1, 1, 'main', 'model'), (2, 1, '_plurnk', '_plurnk'), (3, 1, 'person', 'client'), (5, 2, 'other', 'client');
             UPDATE workers SET owner = '${person}' WHERE id = 3;
             INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id) VALUES (4, 1, 'helper', 'model', 3);
+            UPDATE workers SET owner = '${person}' WHERE id = 4;
             INSERT INTO loops (id, worker_id, sequence, prompt, max_turns)
                 VALUES (1, 2, 1, 'narration', -1), (2, 3, 1, 'operation', -1), (3, 3, 2, 'operation', -1), (4, 1, 1, 'Work.', -1), (5, 5, 1, 'operation', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES
@@ -390,9 +391,10 @@ test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's
         assert.deepEqual(rows("SELECT id, workspace_id, name, origin, parent_worker_id FROM workers ORDER BY id"), [
             { id: 1, workspace_id: 1, name: "main", origin: "model", parent_worker_id: null },
             { id: 2, workspace_id: 1, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
-            { id: 4, workspace_id: 1, name: "helper", origin: "model", parent_worker_id: 2 },
+            { id: 4, workspace_id: 1, name: "helper", origin: "model", parent_worker_id: null },
             { id: 6, workspace_id: 2, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
-        ], "no client worker remains; a worker a person started is the runtime worker's child; a workspace gains its runtime worker");
+        ], "no client worker remains; a worker a client worker parented is a root worker; a workspace gains its runtime worker");
+        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, person, "the root keeps its owner");
         assert.deepEqual(rows("SELECT id, worker_id, sequence, prompt_source FROM loops ORDER BY id"), [
             { id: 1, worker_id: 2, sequence: 1, prompt_source: null },
             { id: 2, worker_id: 2, sequence: 2, prompt_source: person },

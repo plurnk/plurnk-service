@@ -4,6 +4,7 @@ import type { Db } from "./Db.ts";
 import WorkerName, { WorkerNameError, WorkerNameConflictError } from "./WorkerName.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Fork from "./fork.ts";
+import WorkerOwners from "./WorkerOwners.ts";
 import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
@@ -84,22 +85,11 @@ export default class WorkerControlHandler {
             if (held !== undefined) return this.#message(ctx, name, held.id, prompt, environment);
         }
 
-        // {§machine-processes-worker-origin} A model delegates: only a model worker starts a child.
-        const parent = await this.#db.worker_get.get<{ workspace_id: number; name: string; origin: string }>({ id: ctx.workerId });
-        if (parent?.workspace_id !== ctx.workspaceId) throw new Error("worker control: parent is absent from this workspace");
-        if (parent.origin !== "model") {
-            return this.#failure("model-worker-required", 409,
-                `${statement.op} starts a child of the worker that runs it, and '${parent.name}' is not a model worker.`, {}, {
-                    operation: statement.op,
-                    worker: parent.name,
-                    recovery: "WORK to the address of a worker that exists delivers its prompt as a message.",
-                    retryable: false,
-                });
-        }
-
         let workerId: number;
         try {
-            workerId = await this.#createWorker(statement, ctx, name);
+            const created = await this.#createWorker(statement, ctx, name);
+            if ("status" in created) return created;
+            workerId = created.id;
         } catch (error) {
             if (!(error instanceof WorkerNameConflictError)) throw error;
             if (statement.op === "WORK") {
@@ -128,7 +118,8 @@ export default class WorkerControlHandler {
             workerId,
             sourceLoopId: ctx.loopId,
             prompt,
-            spawn: true,
+            // {§worker-model-selection} A model's child inherits its loop's model; a worker a person starts runs its own.
+            ...(ctx.client === undefined ? { spawn: true } as const : {}),
             ...(Object.keys(environment).length === 0 ? {} : { environment }),
         });
         return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name) } };
@@ -158,16 +149,35 @@ export default class WorkerControlHandler {
         return { status: 200, body: name, attrs: { worker: WorkerControlAddress.render(name), delivered: "message" } };
     }
 
+    // {§machine-processes-worker-origin} Every worker WORK or FORK creates is a model's. A model's is its child; a
+    // person's operation acts for them ({§actor-boundary-client-operations}): their WORK starts a root worker they
+    // own, and their FORK branches the worker they act for.
     async #createWorker(
         statement: WorkStatement | ForkStatement,
         ctx: PlurnkSchemeContext,
         name: string | undefined,
-    ): Promise<number> {
-        if (statement.op === "FORK") return Fork.fork(this.#db, ctx.workerId, name);
-        const options = { workspaceId: ctx.workspaceId, parentWorkerId: ctx.workerId };
-        const row = name === undefined
-            ? await WorkerName.claimAuto(this.#db, options)
-            : await WorkerName.claimNamed(this.#db, name, options);
-        return row.id;
+    ): Promise<{ readonly id: number } | DispatchResult> {
+        const claim = (options: { workspaceId: number; parentWorkerId?: number; owner?: string }) => name === undefined
+            ? WorkerName.claimAuto(this.#db, options)
+            : WorkerName.claimNamed(this.#db, name, options);
+        if (ctx.client === undefined) {
+            if (statement.op === "FORK") return { id: await Fork.fork(this.#db, ctx.workerId, name) };
+            const parent = await this.#db.worker_get.get<{ workspace_id: number }>({ id: ctx.workerId });
+            if (parent?.workspace_id !== ctx.workspaceId) throw new Error("worker control: parent is absent from this workspace");
+            return claim({ workspaceId: ctx.workspaceId, parentWorkerId: ctx.workerId });
+        }
+        if (statement.op === "FORK") {
+            const acted = ctx.client.contextWorkerId;
+            if (acted === null) {
+                return this.#failure("fork-unaddressed", 404, "This client operation acts for no worker, so FORK has no log to branch.", {}, {
+                    operation: "FORK", retryable: false,
+                });
+            }
+            return { id: await Fork.fork(this.#db, acted, name) };
+        }
+        const person = await this.#db.envelope_client_operation_person.get<{ person: string }>({ loop_id: ctx.loopId });
+        if (person === undefined) throw new Error("worker control: a client operation's loop names no person");
+        await WorkerOwners.admit(this.#db, ctx.workspaceId, person.person);
+        return claim({ workspaceId: ctx.workspaceId, owner: person.person });
     }
 }

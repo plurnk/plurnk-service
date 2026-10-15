@@ -1,6 +1,7 @@
 // {§env-scheme} — the environment registry as an address space: the facet of the env family's own
 // namespace. Every name in effect for the dispatching Worker's commands is a resource at
-// env:///NAME whose body is its value; a write is the family's own admission at the Worker's layer.
+// env:///NAME whose body is its value; a write is the family's own admission at the Worker's layer,
+// which for the runtime worker is the workspace's ({§actor-boundary-client-operations}).
 import type { FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import {
     Results,
@@ -21,12 +22,12 @@ export interface EnvRegistry {
 }
 export type EnvResolve = (workspaceId: number, workerId: number) => Promise<EnvRegistry>;
 export type EnvWriteVerb = "replace" | "remove" | "disable";
-export interface EnvWriteIdentity {
-    readonly workspaceId: number;
-    readonly workerId: number;
-    readonly scope: "worker";
-}
+export type EnvWriteIdentity =
+    | { readonly workspaceId: number; readonly workerId: number; readonly scope: "worker" }
+    | { readonly workspaceId: number; readonly scope: "workspace" };
 export type EnvInvoke = (verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity) => Promise<unknown>;
+// The layer a dispatching Worker writes: its own, or the workspace's for a Worker with none of its own.
+export type EnvLayer = (workspaceId: number, workerId: number) => Promise<"worker" | "workspace">;
 
 const OWNER = "scheme:env";
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -45,10 +46,12 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     };
     readonly #resolve: EnvResolve;
     readonly #invoke: EnvInvoke;
+    readonly #layer: EnvLayer;
 
-    constructor(resolve: EnvResolve, invoke: EnvInvoke) {
+    constructor(resolve: EnvResolve, invoke: EnvInvoke, layer: EnvLayer) {
         this.#resolve = resolve;
         this.#invoke = invoke;
+        this.#layer = layer;
     }
 
     // The registry is the namespace: every coordinate but the manager's own output streams.
@@ -81,9 +84,11 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     }
 
     // The family's refusal is the operation's result.
-    async #write(verb: EnvWriteVerb, params: unknown, ctx: SchemeCtx): Promise<SchemeResult | null> {
+    async #write(verb: EnvWriteVerb, params: unknown, ctx: SchemeCtx, layer: "worker" | "workspace"): Promise<SchemeResult | null> {
         try {
-            await this.#invoke(verb, params, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, scope: "worker" });
+            await this.#invoke(verb, params, layer === "worker"
+                ? { workspaceId: ctx.workspaceId, workerId: ctx.workerId, scope: "worker" }
+                : { workspaceId: ctx.workspaceId, scope: "workspace" });
             return null;
         } catch (cause) {
             if (cause instanceof OperationFailureError) return cause.result;
@@ -139,21 +144,23 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "EDIT");
-        const refused = await this.#write("replace", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx);
+        const layer = await this.#layer(ctx.workspaceId, ctx.workerId);
+        const refused = await this.#write("replace", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx, layer);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);
         return { status: 200 };
     }
 
     // KILL retires the name from the Worker's commands: the family's `remove` for an entry the
-    // Worker owns, its `disable` for an inherited one, whose definition is kept.
+    // layer owns, its `disable` for an inherited one, whose definition is kept.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "KILL");
         const entry = (await this.#resolve(ctx.workspaceId, ctx.workerId)).record[named.name];
         if (entry === undefined || entry.source === "masked" || entry.value === undefined) return EnvScheme.#missing(named.name);
-        const refused = await this.#write(entry.source === "worker" ? "remove" : "disable", { alias: named.name }, ctx);
+        const layer = await this.#layer(ctx.workspaceId, ctx.workerId);
+        const refused = await this.#write(entry.source === layer ? "remove" : "disable", { alias: named.name }, ctx, layer);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);
         return { status: 200 };

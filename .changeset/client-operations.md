@@ -20,24 +20,29 @@ workspace's: each journals as one administrative loop in the runtime worker
   accepted with outcome `client_operation`, and `accept` and `reject` still
   apply ({§proposal-disposition}). A clarification it would need fails at once
   as unsupported.
-- `log:///` in an operation reads the log of the worker the person acts for
-  (`contextWorkerId`): READ and FIND answer, curation is refused as any client
-  write to the log is, and with no such worker it is 404 `log-unaddressed`
-  ({§actor-boundary-client-operations}). Every other address means the
-  runtime worker's, so `env:///` is the environment every person's commands in
-  the workspace receive.
+- An operation acts in three frames ({§actor-boundary-client-operations}):
+  - The world is the workspace's. `_plurnk` keeps no layer of its own, so a
+    person's `env:///` reads and writes the workspace layer.
+  - The voice is the person's. A message the operation delivers (SEND, or
+    WORK to a worker that exists) arrives from the person, as a thread
+    message does. WORK to a new worker starts a root model worker the person
+    owns, with its first prompt from them.
+  - The log is the worker the person acts for (`contextWorkerId`). READ and
+    FIND answer from it, FORK branches it, and curating it is refused as any
+    client write to the log is. Acting for no worker, `log:///` is 404
+    `log-unaddressed` and FORK is 404 `fork-unaddressed`.
 - Shutdown cancels every client operation still dispatching and reaps every
   execution an operation started.
 - Migration 30 carries existing databases forward: each client worker's loops,
   rows, subscriptions and events become its workspace's `_plurnk`'s (its loops
   numbered after `_plurnk`'s own, each naming the worker's owner as
-  `promptSource`), a worker it parented becomes `_plurnk`'s child, its own
+  `promptSource`), a worker it parented becomes a root worker, its own
   environment overrides go, and the client worker is removed. A worker's
   `origin` is `model` or `_plurnk`.
-- WORK and FORK are a model's delegation: the child is always a model worker,
-  and a worker that is not a model is refused `409 model-worker-required` when
-  it would start one; WORK to a worker that exists is still its message.
-  `forkWorker` forks only a model worker ({§machine-processes-worker-origin}).
+- Every worker WORK or FORK creates is a model worker, and `forkWorker` forks
+  only a model worker ({§machine-processes-worker-origin}).
+- A context family (env) takes no workspace exclusivity at either scope, so
+  `/env --scope workspace` applies while a model runs ({§functionality-scope}).
 - `cancelLoop({ workspaceId, loopId, reason? })` cancels exactly one operation:
   its dispatch while it runs, settling the loop 499 `operation-cancelled`, and
   every attached execution its rows started that still runs.

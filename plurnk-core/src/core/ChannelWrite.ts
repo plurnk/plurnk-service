@@ -73,10 +73,11 @@ export type InjectWorkerNotify = (args: {
     sourceLoopId: number;
     prompt: string;
     attachments?: readonly import("@plurnk/plurnk-contracts").MessageResource[];
-    // WORK/FORK inherit the source loop's spawn model; SEND retains the recipient's.
+    // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a worker a person
+    // starts included, runs the recipient's own.
     spawn?: true;
-    // {§env-option} — the child's starting environment from the heading: each name becomes the
-    // child's own entry through the family's add, after the copy it inherited at creation.
+    // {§env-option} — a created worker's starting environment from the heading: each name becomes the
+    // worker's own entry through the family's add, after the copy it inherited at creation.
     environment?: Readonly<Record<string, string>>;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
 

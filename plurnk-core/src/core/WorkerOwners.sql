@@ -23,6 +23,13 @@ INSERT INTO worker_owners (workspace_id, address, tools, interactive)
 VALUES ($workspace_id, $address, $tools, $interactive)
 ON CONFLICT (workspace_id, address) DO UPDATE SET tools = excluded.tools, interactive = excluded.interactive;
 
+-- PREP: worker_owner_admit
+-- {§actor-boundary-client-operations} A person who starts a worker by operation owns it; an owner already
+-- registered keeps its tools and attendance.
+INSERT INTO worker_owners (workspace_id, address, tools, interactive)
+VALUES ($workspace_id, $address, '[]', 0)
+ON CONFLICT (workspace_id, address) DO NOTHING;
+
 -- PREP: worker_owner_registered
 SELECT address, tools, interactive FROM worker_owners WHERE workspace_id = $workspace_id AND address = $address;
 

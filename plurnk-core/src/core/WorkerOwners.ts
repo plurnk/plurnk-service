@@ -16,6 +16,13 @@ export default class WorkerOwners {
         });
     }
 
+    // {§actor-boundary-client-operations} A person becomes an owner by starting a worker, with no tools until a
+    // client registers them.
+    static async admit(db: Db, workspaceId: number, address: string): Promise<void> {
+        const exact = Validator.assertWorkerOwner({ address, tools: [], interactive: false });
+        await db.worker_owner_admit.run({ workspace_id: workspaceId, address: exact.address });
+    }
+
     static #project(row: OwnerRow | undefined, identity: string): WorkerOwner {
         if (row === undefined) throw new Error(`${identity} has no owner.`);
         return Validator.assertWorkerOwner({ address: row.address, tools: JSON.parse(row.tools) as string[], interactive: row.interactive === 1 });

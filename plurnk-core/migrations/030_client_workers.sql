@@ -88,10 +88,9 @@ UPDATE client_interactions SET worker_id = moved.runtime_id
 FROM rehomed_workers moved
 WHERE moved.client_id = client_interactions.worker_id;
 
--- A worker a client worker parented becomes the runtime worker's child, as a hosted A2A task is.
-UPDATE workers SET parent_worker_id = moved.runtime_id
-FROM rehomed_workers moved
-WHERE moved.client_id = workers.parent_worker_id;
+-- A worker a client worker parented is a root worker, owned as before, as a person's WORK starts one now.
+UPDATE workers SET parent_worker_id = NULL
+WHERE parent_worker_id IN (SELECT client_id FROM rehomed_workers);
 
 -- {§env-scheme} A person's environment is the runtime worker's; overrides several persons kept have no one owner.
 DELETE FROM worker_module_state WHERE worker_id IN (SELECT client_id FROM rehomed_workers);

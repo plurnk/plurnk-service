@@ -561,7 +561,7 @@ existing workspace worker in its own right.
 
 §machine-processes-model-worker-readable **Packet membership is per-worker, not an access policy.** A packet contains its worker's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, workerId })` may inspect any worker belonging to that workspace, and `listWorkers` enumerates them. A client-interface module chooses its worker binding. Inspection does not inject another log into a model's packet.
 
-§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin`, set once at creation: `model` (a model's identity) or `_plurnk` (the workspace's runtime worker, where the daemon's own work and a person's client operations journal, {§connection-lifecycle}). WORK and FORK are a model's delegation, so their child is always a model worker, and a worker that is not a model is refused `409 model-worker-required` when it would start one; WORK to a worker that exists is still its message from any worker ({§worker-scheme-spawn}). `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
+§machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin`, set once at creation: `model` (a model's identity) or `_plurnk` (the workspace's runtime worker, where the daemon's own work and a person's client operations journal, {§connection-lifecycle}). Every worker WORK or FORK creates is a model worker: a model's is its child, and a person's operation starts a root worker or branches the worker it acts for ({§actor-boundary-client-operations}). `listWorkers` returns actor class without interpreting names; a retained worker's name is immutable ({§machine-processes-worker-is-its-log}).
 
 §worker-provider-identity **A worker owns a durable provider identity distinct
 from its database id.** Creation mints a globally unique, opaque 128-bit value;
@@ -629,7 +629,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
 | `KILL`    | existing literal name  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. A WORK whose name a worker already holds is the voice door ({§worker-scheme-irc}): its body is delivered to that worker as a message, nothing is created, the receipt names the worker and `delivered: message`, and an `env` option is refused by name since a message takes none. A FORK whose name a worker holds is `409 worker-name-conflict` whose recovery names the working forms, WORK or `SEND (worker://<name>)` to message the live worker, or a name no worker holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
+- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop; a person's operation starts a root worker that person owns instead ({§actor-boundary-client-operations}). WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. A WORK whose name a worker already holds is the voice door ({§worker-scheme-irc}): its body is delivered to that worker as a message, nothing is created, the receipt names the worker and `delivered: message`, and an `env` option is refused by name since a message takes none. A FORK whose name a worker holds is `409 worker-name-conflict` whose recovery names the working forms, WORK or `SEND (worker://<name>)` to message the live worker, or a name no worker holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
 - §worker-spawn-prompt-resource **The spawn slot is overloaded by scheme.** A `worker://` path is
   the child's address and keeps the address rules ({§worker-control-addressing}). A path of any
   other scheme is the child's prompt resource: it is read whole (`<1,-1>`) under the caller's read capabilities, composed with
@@ -643,7 +643,8 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 - §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** child: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
-  world is shared, never copied ({§machine-processes-fork-shares-the-world}).
+  world is shared, never copied ({§machine-processes-fork-shares-the-world}). A
+  person's operation branches the worker it acts for ({§actor-boundary-client-operations}).
   WORK and FORK are distinct verbs — WORK spawns a fresh worker, FORK branches
   the log. Both report the resulting `worker://name` address in receipt
   metadata `worker`, whether named explicitly or allocated automatically.
@@ -4894,7 +4895,8 @@ reserved or masked name is no resource. The family's manager exposes it as the f
 the value its commands receive now, FIND lists the names in effect and a pattern on it matches
 values, COPY carries a value out. The manager's own output streams, eight hexadecimal characters
 ({§execution-output-identity}), stay the executor's. A write is the Worker's own layer, never the
-workspace's or the operator's: EDIT sets the whole value through the family's `replace` for the
+workspace's or the operator's (the runtime worker keeps none, so a person's write is the workspace's,
+{§actor-boundary-client-operations}): EDIT sets the whole value through the family's `replace` for the
 Worker, and KILL retires the name from the Worker's commands — `remove` for an entry the Worker
 owns, which restores an inherited value, `disable` for an inherited one, which keeps its
 definition. Admission is the family's ({§env-functionality}) and its refusal is the operation's
@@ -4906,7 +4908,9 @@ effect is `entry-not-found` (404) on READ and KILL alike.
 §functionality-scope **A family declares its supported scopes.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
 that every Worker there shares. Environment describes how one **Worker** works — context rather
-than capability — with worker overrides above workspace defaults. The adapter declares
+than capability — with worker overrides above workspace defaults. A context family's definitions are read where they
+are used, so a change at either scope holds nothing resident and takes no workspace exclusivity: it serializes on
+the family's lane. The adapter declares
 `scopes` (absent means `["workspace"]`; the first is the model default), and the
 coordinator keys durable state and the locally-owned `origin`
 by it: a workspace-scoped family's own entries carry origin `workspace`, a worker-scoped
@@ -5341,7 +5345,10 @@ Functionality ({§actor-boundary-attached-functionality}). Binding a workspace m
 | Who answers its proposals | the worker's owner reviews them | nobody: it is that person's decision already ({§proposal-disposition}) |
 | Who answers its clarifications | its owner, while it can ({§client-interaction-routing}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
 | What is cancelled and observed together | the worker's loops | the operation's own administrative loop |
-| Whose `log:///` its addresses mean | its own | the worker the person acts for, read and never curated |
+| What its `env:///` means | its own layer, above the workspace's | the workspace's layer; `_plurnk` keeps none ({§env-scheme}) |
+| Whose voice its messages carry | its own | the person's, as a thread message's is |
+| Whose log its log addresses and FORK mean | its own | the worker the person acts for: read and branched, never curated |
+| What its WORK starts | its own child | a root worker the person owns |
 
 One client operation owns one administrative loop, and its statements become ordered
 `client` operation turns inside it. The loop carries its own cancellation scope, and
@@ -5356,17 +5363,20 @@ running. Shutdown cancels every operation the same way.
 worker's private log, so a client operation's rows are structurally absent from every
 model's packet ({§actor-boundary-isolation}); a person reaches a model through a message.
 
-§actor-boundary-client-operations **A client operation names its person and reads for its worker.**
-Its loop's `promptSource` ({§methods-worker-loops}) is the acting person's canonical address, the
-form arrivals use ({§message-causal-source}); the daemon's own loops in `_plurnk` have none. Its
-rows are acts, not arrivals: they keep writer `origin: "client"`, so a person never writes as the
-runtime ({§scheme-surface-writableby-403}), and `source` null, so a person's SEND replies and
-completes as any author's does. Its `log:///` addresses resolve in the log of the worker the person
-acts for, as that worker reads it: a READ or FIND answers from it, an operation that would curate it
-is a client write the log refuses ({§scheme-surface-writableby-403}), and an operation that acts for
-no worker addresses no log (404 `log-unaddressed`). Every other address means what it means for the
-runtime worker: `env:///` is the environment every person's commands in the workspace receive
-({§env-scheme}).
+§actor-boundary-client-operations **A client operation acts as the workspace on the world, as its person in
+what it says, and for one worker in what it reads of a log.** Its loop's `promptSource`
+({§methods-worker-loops}) is the acting person's canonical address, the form arrivals use
+({§message-causal-source}); the daemon's own loops in `_plurnk` have none. Its rows are acts, not arrivals:
+they keep writer `origin: "client"`, so a person never writes as the runtime
+({§scheme-surface-writableby-403}), and `source` null, so a person's SEND replies and completes as any
+author's does. Acting for no worker, an operation names no log: `log:///` is 404 `log-unaddressed` and
+FORK is 404 `fork-unaddressed`.
+
+| Frame | Covers | So |
+|---|---|---|
+| The workspace's world | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-scheme}) |
+| The person's voice | messages and delegated prompts | a message the operation delivers (SEND, or WORK to a worker that exists) arrives from the person, as a thread message does; WORK to a new worker starts a root model worker the person owns, its first prompt from them |
+| The worker it acts for | `log:///`, and the log FORK branches | READ and FIND answer from that worker's log as it reads it; FORK branches it as `forkWorker` does, its task from the person; curating the log is a client write it refuses ({§scheme-surface-writableby-403}) |
 
 ---
 
@@ -6552,7 +6562,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. A WORK to a held name with env: WORK to the existing worker '*name*' carries env; a message takes none. |
-| `model-worker-required` | 409 | *OP* starts a child of the worker that runs it, and '*name*' is not a model worker ({§machine-processes-worker-origin}). Recovery: WORK to the address of a worker that exists delivers its prompt as a message. |
+| `fork-unaddressed` | 404 | This client operation acts for no worker, so FORK has no log to branch ({§actor-boundary-client-operations}). |
 | `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: WORK or SEND (worker://*name*) delivers a message to the live worker; FORK with a name no worker holds. ({§worker-scheme-spawn}) |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
