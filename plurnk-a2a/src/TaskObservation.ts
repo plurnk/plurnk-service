@@ -1,8 +1,8 @@
 import { TaskState, type Task } from "@a2a-js/sdk";
 import type { ServerCallContext } from "@a2a-js/sdk/server";
 import { TaskNotFoundError } from "@a2a-js/sdk/errors";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type HostedTasks from "./HostedTasks.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 export type ObservationPort = Pick<ApplicationPort, "subscribeToEvents">;
 

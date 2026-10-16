@@ -21,10 +21,10 @@ import {
     TaskNotFoundError,
     UnsupportedOperationError,
 } from "@a2a-js/sdk/errors";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type TaskAdmission from "./TaskAdmission.ts";
 import type HostedTasks from "./HostedTasks.ts";
 import TaskObservation, { type ObservationPort } from "./TaskObservation.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 export type RequestHandlerPort = ObservationPort & Pick<ApplicationPort, "cancelWorker">;
 

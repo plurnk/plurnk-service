@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test, { after, before, mock, type TestContext } from "node:test";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { SkillTree } from "@plurnk/plurnk-agent-skills";
 import { Mock } from "@plurnk/plurnk-providers";
 import HostPaths from "../../src/core/HostPaths.ts";

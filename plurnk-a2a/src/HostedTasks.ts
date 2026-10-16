@@ -13,10 +13,10 @@ import {
     WORKER_NAME,
     type ApplicationMessage,
     type ApplicationLoopProjection,
-    type ApplicationPort,
     type ApplicationWorkerProjection,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
 // A2A ListTasks: a request that names no page size asks for fifty. The protocol's, not ours.

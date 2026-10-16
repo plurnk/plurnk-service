@@ -3,12 +3,12 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import type { HostSetupSeam } from "./ModuleHost.ts";
 import HostPaths from "../core/HostPaths.ts";
 import PluginSources from "./PluginSources.ts";
 import EnvDefaults from "../core/env-defaults.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 // {§module-discovery} Standard plugin bundles and extension packages
 // meet the same daemon lifecycle; project roots never supply native code.

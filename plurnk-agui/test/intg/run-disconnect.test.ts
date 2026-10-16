@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { ApplicationLoopProjection, ApplicationPort, OperationResult } from "@plurnk/plurnk-contracts";
+import type { ApplicationLoopProjection, OperationResult } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { AguiEvent } from "../../src/types.ts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 

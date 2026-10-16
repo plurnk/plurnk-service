@@ -9,7 +9,7 @@ on `@plurnk/plurnk-contracts` alone.
 Declare the package as a peer dependency, then type your module by the slices it uses:
 
 ```ts
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 
 type SetupSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment"> & FunctionalitySeam;

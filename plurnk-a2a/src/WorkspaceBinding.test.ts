@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import WorkspaceBinding from "./WorkspaceBinding.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 test("{§a2a-lazy-workspace}: passive misses do not create or conceal a subsequently existing workspace", async () => {
     let available = false;

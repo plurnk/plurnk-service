@@ -3,8 +3,8 @@
 // the daemon admits its listener only after every module has started ({§agui-listener-admission}).
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { HttpRouteHandler } from "@plurnk/plurnk-contracts";
 import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "../src/Module.ts";
+import type { HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 
 export interface Hosted {
     readonly module: Module;

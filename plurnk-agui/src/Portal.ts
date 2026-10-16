@@ -13,9 +13,9 @@ import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import type { TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
-    ApplicationPort,
     ApplicationWorkerProjection,
 } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 

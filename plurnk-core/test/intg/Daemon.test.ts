@@ -21,11 +21,11 @@ import { namedModelWorker } from "./_workers.ts";
 import {
     Validator,
     type ApplicationActionContext,
-    type ApplicationPort,
     type OperationResult,
     type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import skillsModule from "@plurnk/plurnk-skills/module";
 

@@ -16,7 +16,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
-| Exterior adapter application calls                                             | `ApplicationPort`                                   |
+| Exterior adapter application calls                                             | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}) |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpOAuth` |
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
 | Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
@@ -1385,8 +1385,8 @@ reports how many recorded turns concluded in a way the current contract would re
 
 ## 12. Public API
 
-The package root is the single JavaScript and TypeScript entry point. Shared AST
-and wire types come from generated schemas; the small hand-maintained parser
+The package root is the single JavaScript and TypeScript entry point for the language and wire
+contracts ({§runtime-neutral-root}). Shared AST and wire types come from generated schemas; the small hand-maintained parser
 types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
@@ -1420,6 +1420,14 @@ entry point also returns `text` items under {§response-text}. When present,
 {§unparsed-tail-boundary} governs the result's item
 extent. The statement `op` field discriminates the generated per-operation
 union.
+
+§runtime-neutral-root **The package root is runtime-neutral.** A browser type-checks it with DOM
+libraries and no Node globals: nothing it reaches names a Node module or global. The application port
+({§application-port}), whose HTTP host hands an adapter Node's request and response ({§http-host}), is
+the one Node-bound contract and its own types-only entry, `@plurnk/plurnk-contracts/port`, with
+`HttpHost` and `HttpRouteHandler`; the types it speaks stay in the root. A helper that reads a request
+takes only its headers (`RequestHeaders`), which a Node request satisfies. Lint checks the root's whole
+source graph under those settings (`tsconfig.browser.json`).
 
 §root-value-api The package-root runtime namespace is closed. Its exact membership has one home,
 `src/index.test.ts`, which fails on any addition or removal; the table names the families and
@@ -1676,7 +1684,8 @@ authority, and optional local `cardPath`, `headers`, and bearer
 
 `ApplicationPort` is the single transport-neutral TypeScript contract through
 which an exterior adapter drives and observes the Plurnk application. Core
-implements it; AG-UI, A2A, and other interface modules consume it. The port
+implements it; AG-UI, A2A, and other interface modules consume it from
+`@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}). The port
 contains typed application calls and a scoped event subscription, not wire
 route names, protocol framing, persistence access, or adapter-specific methods.
 An exterior adapter owns its own protocol validation, identity binding, and

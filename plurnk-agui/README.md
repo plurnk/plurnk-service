@@ -43,6 +43,10 @@ event schemas, and settlement rules live in [SPEC.md](./SPEC.md).
 
 ## Integration
 
+A browser client imports the state and action-outcome types from
+`@plurnk/plurnk-agui/client`, which needs no Node types ({§agui-client-types}); the
+package root is the server module.
+
 The daemon discovers this package as a module: its `package.json` declares
 `plurnk: { kind: "module", module: "./module" }`, and the service composes
 nothing by hand. The module mounts only `/agui` on the daemon's listener

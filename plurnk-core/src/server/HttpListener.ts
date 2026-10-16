@@ -4,7 +4,8 @@
 // ({§module-http-mounts}), every request is answered 503; after that each request goes to the
 // longest mounted prefix, or receives 404 when no mounted prefix claims it.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { Problems, type HttpHost, type HttpRouteHandler } from "@plurnk/plurnk-contracts";
+import { Problems } from "@plurnk/plurnk-contracts";
+import type { HttpHost, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 
 interface Mount {
     readonly prefix: string;

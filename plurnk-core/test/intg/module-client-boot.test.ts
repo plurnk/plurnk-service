@@ -5,11 +5,11 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const CALLBACK = "/consumer/callback";
 const STYLESHEET = "/consumer/authority.css";

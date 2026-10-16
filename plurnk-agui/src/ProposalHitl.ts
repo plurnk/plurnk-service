@@ -6,12 +6,12 @@ import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import {
     Problems,
     Validator,
-    type ApplicationPort,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ProblemDetails,
     type ProposalResolution,
 } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import {
     interactionInterrupt,
     interactionResolutionFromResume,

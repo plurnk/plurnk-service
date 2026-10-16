@@ -8,7 +8,8 @@ import { stateSnapshot, parseAction, actionResult, derivationActivity, type Acti
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
-import { type ApplicationPort, type ClientEnvelope } from "@plurnk/plurnk-contracts";
+import { type ClientEnvelope } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { type ResolvedModuleOptions } from "./config.ts";
 import { type OperationLoopListener } from "./BuiltinActions.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";

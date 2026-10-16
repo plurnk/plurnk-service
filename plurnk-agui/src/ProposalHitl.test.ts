@@ -6,12 +6,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import ProposalHitl, { type HitlDelivery } from "./ProposalHitl.ts";
 import type {
-    ApplicationPort,
     ClientInteractionProjection,
     ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const OWNER = "agui://anonymous/threads/tui";
 

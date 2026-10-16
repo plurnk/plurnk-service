@@ -18,7 +18,8 @@ import Portal, { type PortalPort } from "./Portal.ts";
 import { aliveChildren, spendState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
@@ -115,7 +116,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // reached this daemon at, else, with no request in hand, the listener's own ({§http-request-origin}).
     // The host binds its listener before any module sets up ({§http-host}), so the face published at
     // setup answers from publication.
-    #issuer(req: Pick<IncomingMessage, "headers"> = { headers: {} }): string {
+    #issuer(req: RequestHeaders = { headers: {} }): string {
         return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());
     }
 

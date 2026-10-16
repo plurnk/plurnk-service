@@ -1,5 +1,5 @@
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { RunAgentInput, UserMessage } from "./types.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]+)\/messages\/([^/]+)$/u;
 

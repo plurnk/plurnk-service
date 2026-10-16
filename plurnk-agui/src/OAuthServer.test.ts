@@ -6,11 +6,11 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { host, type Hosted } from "../test/host.ts";
 import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "./Module.ts";
 import type { AguiEvent } from "./types.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 type Authority = ApplicationPort["credentials"];

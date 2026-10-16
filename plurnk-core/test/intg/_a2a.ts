@@ -6,12 +6,12 @@ import {
 } from "@a2a-js/sdk";
 import assert from "node:assert/strict";
 import { A2a, type A2aClientResolver } from "@plurnk/plurnk-a2a";
-import type { HttpHost } from "@plurnk/plurnk-contracts";
 import type Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import HttpListener from "../../src/server/HttpListener.ts";
+import type { HttpHost } from "@plurnk/plurnk-contracts/port";
 
 // The exposure a test mounts, stated whole: the module holds no default of its own.
 export const A2A_EXPOSURE = Object.freeze({ endpointPath: "/a2a", parentWorker: "_plurnk" } as const);

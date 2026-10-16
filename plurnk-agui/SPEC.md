@@ -13,6 +13,12 @@ does not recompute them.
   listener ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
   registers the `agui` message scheme, and its start seam is `AguiPort`, the slice of
   {§application-port} it calls. A daemon without a listener leaves it out.
+- §agui-client-types **A client's contracts are runtime-neutral.** `@plurnk/plurnk-agui/client` exports,
+  types only, what a client of this interface consumes: the state its `STATE_SNAPSHOT` and
+  `STATE_DELTA` events carry (`AguiPlusState` and its parts, {§agui-state-patches}) and the outcome a
+  management action reports (`ActionOutcome`). A browser type-checks it with DOM libraries and no Node
+  globals ({§runtime-neutral-root}); lint checks its whole source graph that way
+  (`tsconfig.browser.json`). The package root is the server module.
 - §agui-listener-admission **Bound is not ready.** The socket is core's
   ({§startup-listener-admission}): bound before durable-state admission and answering a
   retryable `503 service-starting` until daemon activation admits it after every module has

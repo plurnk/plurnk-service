@@ -3,12 +3,12 @@
 // claimed, and the listener is admitted only after every module has started.
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
+import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 
 const reply = (label: string): HttpRouteHandler => (_req, res) => {
     res.writeHead(200);

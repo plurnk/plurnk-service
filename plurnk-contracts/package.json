@@ -31,6 +31,11 @@
             "types": "./dist/src/index.d.ts",
             "default": "./dist/src/index.js"
         },
+        "./port": {
+            "plurnk-dev": "./src/ApplicationPort.ts",
+            "types": "./dist/src/ApplicationPort.d.ts",
+            "default": "./dist/src/ApplicationPort.js"
+        },
         "./package.json": "./package.json",
         "./schema/*.json": {
             "plurnk-dev": "./schema/*.json",
@@ -54,7 +59,7 @@
         "build:dist": "tsc -p tsconfig.build.json",
         "build:schemas": "node --conditions=plurnk-dev scriptify/copy-schemas.ts",
         "build": "npm run build:clean && npm run build:types && npm run build:dist && npm run build:schemas",
-        "test:lint": "tsc --noEmit",
+        "test:lint": "tsc --noEmit && tsc --noEmit -p tsconfig.browser.json",
         "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --test src/*.test.ts test/unit/*.test.ts",
         "test:intg": "node --conditions=plurnk-dev --env-file=.env.defaults --test test/integration/*.test.ts",
         "test:installation": "node --conditions=plurnk-dev scriptify/smoke-test.ts",

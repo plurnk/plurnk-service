@@ -2,9 +2,9 @@
 // as specified. The `Assignable` witnesses are checked by `tsc --noEmit` (test:lint).
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import * as contract from "./index.ts";
 import type { DaemonModule, FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "./index.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 type Assignable<From, To> = [From] extends [To] ? true : false;
 

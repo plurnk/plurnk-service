@@ -1,4 +1,4 @@
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 // The port functions the binding calls.
 export type WorkspacePort = Pick<ApplicationPort, "createWorkspace" | "listWorkspaces">;

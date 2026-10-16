@@ -12,7 +12,7 @@ import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting } from "@plurnk/plurnk-contracts";
 import type {
     ApplicationLoopProjection,
-    ApplicationPort,
+    ApplicationProviderAlias,
     ClientInteractionProjection,
     ClientInteractionResolution,
     FunctionalityPreparationActivity,
@@ -133,7 +133,7 @@ export const interactionResolutionFromResume = (entry: ResumeEntry): Interaction
 // ── §2 — reads → shared STATE ────────────────────────────────────────
 // The client OBSERVES this; no providers.list / workspace.list round-trips.
 export interface AguiPlusState {
-    providers?: ReturnType<ApplicationPort["listProviders"]>["aliases"];
+    providers?: ApplicationProviderAlias[];
     workspace?: AguiWorkspaceState;
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;

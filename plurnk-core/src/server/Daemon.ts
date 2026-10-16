@@ -28,8 +28,8 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, ty
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
-import type { HttpRouteHandler, PlurnkStatement, RollbackReport } from "@plurnk/plurnk-contracts";
+import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, RollbackReport } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -66,6 +66,7 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { CapabilityPolicy, ClientEnvelope, FunctionalityFamilyHandle, ProposalResolution } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";

@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { hookConfig, type HookConfig } from "./config.ts";
 import EventProjection from "./EventProjection.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 interface Delivery {
     readonly method: string;

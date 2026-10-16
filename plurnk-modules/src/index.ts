@@ -4,7 +4,6 @@
 import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
-    ApplicationPort,
     FunctionalityCaller,
     FunctionalityCandidate,
     FunctionalityAdmission,
@@ -20,6 +19,7 @@ import type {
     Notice,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 export type ModuleActionScope = "worldless" | "workspace" | "worker";
 

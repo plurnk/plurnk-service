@@ -1,4 +1,3 @@
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 // The host's side of the module seam. Modules code against `@plurnk/plurnk-modules` and the slices
 // the frameworks own ({§module-seam-slices}); the daemon implements every slice and passes itself.
 // The capability-provider functions are the Functionality coordinator's host interface: core's own,
@@ -6,6 +5,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";

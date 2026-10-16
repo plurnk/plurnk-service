@@ -10,7 +10,6 @@ import Translator from "./Translator.ts";
 import { AGUI_BUILTIN_ACTIONS } from "./AguiSurface.ts";
 import type {
     ApplicationActionContext,
-    ApplicationPort,
     LogEntryWire,
     ProposalProjection,
     ProposalResolution,
@@ -38,6 +37,7 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
 import { isExecution } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { replayState } from "../test/state-replay.ts";
 
 

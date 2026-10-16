@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { SendMessageRequest, type Message } from "@a2a-js/sdk";
 import { ContentTypeNotSupportedError, RequestMalformedError, TaskNotFoundError, UnsupportedOperationError } from "@a2a-js/sdk/errors";
-import { Problems, type ApplicationPort } from "@plurnk/plurnk-contracts";
+import { Problems } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import HostedTasks from "./HostedTasks.ts";
 import A2aProjection from "./A2aProjection.ts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";

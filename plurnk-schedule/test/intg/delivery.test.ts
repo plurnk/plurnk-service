@@ -8,10 +8,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Module from "../../src/Module.ts";
 import type { SchedulerTimers } from "../../src/Scheduler.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 const NOW = Date.UTC(2026, 8, 16, 12, 30, 15, 250);

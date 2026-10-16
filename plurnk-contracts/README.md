@@ -52,7 +52,9 @@ Validator.assertOperationResult(result);
 
 Generated wire types, constructors, and validators share the package root entry
 point described by SPEC {§wire-entrypoint}. Owning JSON Schemas use the published
-`@plurnk/plurnk-contracts/schema/*.json` subpaths.
+`@plurnk/plurnk-contracts/schema/*.json` subpaths. The root is runtime-neutral, so
+a browser type-checks it without Node; the application port that modules consume,
+which names Node's HTTP types, is `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}).
 
 ## Development
 

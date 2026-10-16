@@ -49,8 +49,10 @@ export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
+export type { RequestHeaders } from "./HttpOrigin.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
-export type * from "./ApplicationPort.ts";
+// {§runtime-neutral-root} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
+export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
 export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, writtenOp, EFFORTS, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";

@@ -1,9 +1,9 @@
 import type { FunctionalityFamilyHandle, FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 // {§schedule-family} — the daemon module: registers the family at setup, arms every workspace's
 // enabled rules at start from the coordinator's persisted state ({§schedule-residency}), and
 // disarms during producer stop ({§module-shutdown-order}).
-import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import { readDefinition } from "./definition.ts";

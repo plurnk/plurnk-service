@@ -10,7 +10,8 @@ import {
     agentCardHandler,
     restHandler,
 } from "@a2a-js/sdk/server/express";
-import { requestOrigin, type ApplicationPort, type CredentialClaims, type HttpHost } from "@plurnk/plurnk-contracts";
+import { requestOrigin, type CredentialClaims } from "@plurnk/plurnk-contracts";
+import type { ApplicationPort, HttpHost } from "@plurnk/plurnk-contracts/port";
 import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import TaskAdmission, { type AdmissionPort } from "./TaskAdmission.ts";
