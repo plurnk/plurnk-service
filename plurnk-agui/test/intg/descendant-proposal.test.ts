@@ -23,7 +23,7 @@ const post = async (
             runId: crypto.randomUUID(),
             state: {},
             messages: [],
-            tools: [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }],
+            tools: [],
             context: [],
             ...input,
         }),
@@ -45,15 +45,17 @@ const interruptedBy = (events: readonly AguiEvent[], op: string): string => {
     } | undefined;
     assert.equal(terminal?.type, "RUN_FINISHED");
     assert.equal(terminal?.outcome?.type, "interrupt");
-    const interrupt = terminal.outcome.interrupts?.[0];
+    const interrupt = terminal.outcome.interrupts?.[0] as { id?: string; toolCallId?: string; metadata?: { plurnk?: { proposal?: { op?: unknown } } } } | undefined;
     const id = interrupt?.id;
     if (typeof id !== "string") assert.fail("the interrupt has no string identity");
-    const args = events.find((event) => event.type === "TOOL_CALL_ARGS"
-        && (event as { toolCallId?: unknown }).toolCallId === interrupt?.toolCallId) as {
-        delta?: string;
-    } | undefined;
-    assert.ok(args?.delta !== undefined, JSON.stringify(events));
-    assert.equal((JSON.parse(args.delta) as { op?: unknown }).op, op);
+    // {§agui-proposal-resolve} The gate carries Core's projection of the operation, and names its call on a Run that
+    // holds that worker's conversation.
+    assert.equal(interrupt?.metadata?.plurnk?.proposal?.op, op, JSON.stringify(events));
+    if (interrupt?.toolCallId !== undefined) {
+        const call = events.find((event) => event.type === "TOOL_CALL_START"
+            && (event as { toolCallId?: unknown }).toolCallId === interrupt.toolCallId) as { toolCallName?: string } | undefined;
+        assert.equal(call?.toolCallName, op, "the call it names is the operation's");
+    }
     return id;
 };
 

@@ -238,7 +238,7 @@ const aguiRun = async (address, plurnk, extra = {}) => {
             workerId: "installation-probe",
             state: {},
             messages: [],
-            tools: [{ name: "request_approval", description: "Review a proposed operation.", parameters: { type: "object" } }],
+            tools: [],
             context: [],
             forwardedProps: { plurnk },
             ...extra,

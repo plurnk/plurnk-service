@@ -29,6 +29,8 @@ export default class EventRouter {
         return Translator.replayAll([{ translator: this.#t, entries }, ...subagents], currentUser);
     }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
+    gateCall(entry: LogEntryNotification["entry"]): AguiEvent[] { return this.#t.gateCall(entry); }
+    subagentTranslator(args: Parameters<Translator["subagentTranslator"]>[0]): Translator { return this.#t.subagentTranslator(args); }
     get reasoningOpen(): boolean { return this.#t.reasoningOpen; }
     finish(): AguiEvent[] { return this.#t.finish(); }
     fail(): AguiEvent[] { return this.#t.fail(); }

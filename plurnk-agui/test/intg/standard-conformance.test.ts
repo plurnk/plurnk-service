@@ -199,6 +199,88 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     }
 });
 
+test("{§agui-proposal-resolve} {§agui-snapshot} {§agui-call-result} a reviewed operation is its own call: the gate names it, every vantage holds it unanswered, and the resume answers it once", { timeout: 60_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
+    const previousPolicy = process.env.PLURNK_SERVICE_PROPOSALS;
+    process.env.PLURNK_SERVICE_PROPOSALS = "review";
+    t.after(() => {
+        if (previousPolicy === undefined) delete process.env.PLURNK_SERVICE_PROPOSALS;
+        else process.env.PLURNK_SERVICE_PROPOSALS = previousPolicy;
+    });
+    const script = [
+        "````sh\nprintf 'approved\\n'\n````\n````WAIT\n````",
+        "````SEND [200]\nRan it.\n````",
+    ];
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        model: "standard-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => streamed([{ id: `reviewed-${calls}`, model: "standard-witness", choices: [{ index: 0,
+            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
+    });
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const agents: HttpAgent[] = [];
+    t.after(async () => {
+        for (const agent of agents) agent.abortRun();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    });
+    await daemon.start();
+    await daemon.createWorkspace({ name: "reviewed" });
+    const { host, port } = http.httpAddress();
+    const forwardedProps = { plurnk: { workspace: "reviewed" } };
+    const agent = (): HttpAgent => {
+        const made = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+        agents.push(made);
+        return made;
+    };
+    const commandOf = (made: HttpAgent) => made.messages.flatMap((message) => "toolCalls" in message ? message.toolCalls ?? [] : [])
+        .filter(({ function: call }) => call.name === "sh");
+    const answersOf = (made: HttpAgent, callId: string | undefined) => made.messages.filter((message) => message.role === "tool" && message.toolCallId === callId);
+
+    const submitter = agent();
+    submitter.messages = [{ id: "prompt-1", role: "user", content: "Run the command." }];
+    await submitter.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, maxTurns: 4 } } });
+    const [command] = commandOf(submitter);
+    assert.deepEqual(submitter.pendingInterrupts.map(({ toolCallId, reason }) => ({ toolCallId, reason })), [{ toolCallId: command?.id, reason: "tool_call" }],
+        "the Run ends interrupted on the operation's own call");
+    assert.equal(answersOf(submitter, command?.id).length, 0, "the gated call has no result while it awaits its decision");
+
+    const pending = agent();
+    await pending.runAgent({ forwardedProps });
+    assert.deepEqual(commandOf(pending).map(({ id }) => id), [command?.id], "a snapshot taken at the gate holds the call");
+    assert.equal(answersOf(pending, command?.id).length, 0, "unanswered");
+    assert.deepEqual(pending.pendingInterrupts.map(({ toolCallId }) => toolCallId), [command?.id], "and its Run is interrupted on the same call");
+    assert.notEqual(pending.pendingInterrupts[0]?.id, submitter.pendingInterrupts[0]?.id, "each presentation has its own interrupt");
+    assert.deepEqual(view(submitter.messages), view(pending.messages), "the Run the gate interrupted built exactly the conversation a snapshot at the gate holds");
+    assert.equal(calls, 1, "the gate holds the loop");
+
+    const resumedEvents: Array<{ type: string; toolCallId?: string }> = [];
+    await pending.runAgent({ forwardedProps, resume: [{ interruptId: pending.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }] },
+        { onEvent: ({ event }) => { resumedEvents.push(event as { type: string; toolCallId?: string }); } });
+    assert.deepEqual(resumedEvents.filter(({ toolCallId }) => toolCallId === command?.id).map(({ type }) => type), ["TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_RESULT"],
+        "the Run that resumes folds the settled facts onto the call its client holds, its arguments never resent, then answers it");
+    assert.deepEqual(pending.pendingInterrupts, [], "the resume settles the interrupt");
+    const refreshed = agent();
+    await refreshed.runAgent({ forwardedProps });
+
+    const truth = view(refreshed.messages);
+    assert.deepEqual(commandOf(refreshed).map(({ id }) => id), [command?.id], "the operation is one call: no approval call beside it");
+    assert.deepEqual(answersOf(refreshed, command?.id).map(({ content }) => {
+        const { status, exitCode, content: output } = JSON.parse(content as string) as Record<string, unknown>;
+        return { status, exitCode, output };
+    }), [{ status: 200, exitCode: 0, output: "approved\n" }], "answered once, by the approved command's output and conclusion");
+    assert.ok(refreshed.messages.some((message) => message.role === "assistant" && message.content === "Ran it."), "the loop continued past the gate");
+    assert.deepEqual(view(pending.messages), truth, "the client that resumed built exactly the refreshed conversation");
+});
+
 test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-progress-reply} every vantage sees a delegation answered by its child's conclusion, a message by its reply, and the peer's progress as its message", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));

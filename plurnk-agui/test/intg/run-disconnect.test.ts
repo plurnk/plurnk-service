@@ -33,7 +33,7 @@ const frames = (body: string): AguiEvent[] => body.split("\n\n")
             if (method === "stream/concluded") concluded.resolve(params as { workerId: number; result: OperationResult });
         });
         const input = {
-            threadId: "disconnect", messages: [], tools: [{ name: "request_approval", description: "Review", parameters: { type: "object" } }],
+            threadId: "disconnect", messages: [], tools: [],
             state: {}, context: [], forwardedProps: { plurnk: { workspace: "disconnect", projectRoot: null } },
         };
         const post = (extra: Record<string, unknown>, signal: AbortSignal) => fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {

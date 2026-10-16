@@ -158,13 +158,17 @@ export default class RunHandler {
             ? await this.#boundWorker(input.threadId, env, binding)
             : input.resume === undefined ? undefined : this.#portal().resumedWorker(workspaceId, input.threadId, input.resume);
         // {§agui-sync} A passive observation claims nothing; an owner's control connection claims as a message Run does.
+        // Either presents the gates addressed to its thread ({§agui-proposal-resolve}).
+        const address = MessageAddress.owner(principal, input.threadId);
         const control = forwarded?.control === true || (!synchronize && action === null);
-        const owner = control ? MessageAddress.owner(principal, input.threadId) : undefined;
+        const owner = control ? address : undefined;
         if (owner !== undefined) {
             // {§agui-worker-owner} The Run declares the owner's capability set: the tools it
             // implements, and whether a person attends it. Unstated, nobody does.
+            // An AG-UI owner answers a gate's interrupt ({§agui-proposal-resolve}), so the module declares its review for it:
+            // a client declares only the tools it implements.
             await this.#seam().registerWorkerOwner(workspaceId, {
-                address: owner, tools: [...new Set(input.tools.map(({ name }) => name))], interactive: forwarded?.interactive === true,
+                address: owner, tools: [...new Set(["request_approval", ...input.tools.map(({ name }) => name)])], interactive: forwarded?.interactive === true,
             });
             if (workerId !== undefined) await this.#seam().claimWorkerOwner({ workspaceId, workerId, owner });
             // {§agui-owner-activation} — an owner's arrival is the workspace's demand: activation starts now,
@@ -175,7 +179,6 @@ export default class RunHandler {
         }
 
         let finished = false;
-        const interrupts: Interrupt[] = [];
         const finish = (): void => {
             if (finished) return;
             finished = true;
@@ -183,18 +186,12 @@ export default class RunHandler {
             this.#portal().closeRun(workspaceId, boundRun);
             res.end();
         };
-        const emit = (events: AguiEvent[]): void => {
+        // Terminate-resume, the terminate half ({§agui-proposal-resolve}): the interrupts a gate presents end this AG-UI Run
+        // after its events, while their core owner remains paused.
+        const emit = (events: AguiEvent[], interrupts: Interrupt[] = []): void => {
             if (finished) return;
             for (const e of events) {
                 res.write(`data: ${JSON.stringify(e)}\n\n`);
-                // Terminate-resume, the terminate half: a stopped-world tool call
-                // ends this AG-UI Run while its core owner remains paused.
-                if (e.type === "TOOL_CALL_END") {
-                    const interrupt = this.#portal().interruptForToolCall(
-                        (e as { toolCallId: string }).toolCallId,
-                    );
-                    if (interrupt !== null) interrupts.push(interrupt);
-                }
                 if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") finish();
             }
             if (interrupts.length > 0 && !finished) {
@@ -202,7 +199,7 @@ export default class RunHandler {
                     type: EventType.RUN_FINISHED,
                     threadId: input.threadId,
                     runId: input.runId,
-                    outcome: { type: "interrupt", interrupts: interrupts.splice(0) },
+                    outcome: { type: "interrupt", interrupts },
                 })}\n\n`);
                 finish();
             }
@@ -212,11 +209,11 @@ export default class RunHandler {
         // before RUN_STARTED and the snapshot are written follows them, in order. A terminal ends it at once.
         // Each notification's events are held together, so a sync Run can tell the rows its snapshot holds.
         let presented = false;
-        const held: AguiEvent[][] = [];
-        const routed = (events: AguiEvent[]): void => {
-            if (presented) return emit(events);
+        const held: Array<{ events: AguiEvent[]; interrupts: Interrupt[] }> = [];
+        const routed = (events: AguiEvent[], interrupts: Interrupt[] = []): void => {
+            if (presented) return emit(events, interrupts);
             const terminal = events.filter(({ type }) => type === EventType.RUN_ERROR || type === EventType.RUN_FINISHED);
-            if (terminal.length === 0) return void held.push(events);
+            if (terminal.length === 0) return void held.push({ events, interrupts });
             held.length = 0;
             emit(terminal);
         };
@@ -234,7 +231,7 @@ export default class RunHandler {
             workerId: notificationScope === "operation" ? null : workerId ?? null,
             threadId: input.threadId,
             notificationScope,
-            ...(owner === undefined ? {} : { owner }),
+            owner: address,
             family,
             descendants,
             emit: routed,
@@ -282,7 +279,7 @@ export default class RunHandler {
         ));
         if (!synchronize) {
             presented = true;
-            emit(held.splice(0).flat());
+            for (const batch of held.splice(0)) emit(batch.events, batch.interrupts);
         }
         if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
@@ -304,7 +301,7 @@ export default class RunHandler {
             // already holds as it arrived is not built a second time.
             const replayed = new Map([...history, ...subagents.flatMap(({ entries }) => entries)].map((row) => [row.id, RunHandler.#version(row)]));
             presented = true;
-            emit(held.splice(0).flatMap((events) => RunHandler.#unreplayed(events, replayed)));
+            for (const batch of held.splice(0)) emit(RunHandler.#unreplayed(batch.events, replayed), batch.interrupts);
             if (finished) return;
             await this.#portal().synchronize(workspaceId, boundRun, connect);
             return;
@@ -437,15 +434,22 @@ export default class RunHandler {
         return JSON.stringify([row.status_rx ?? null, row.signal ?? null, row.attrs ?? null]);
     }
 
-    // {§agui-sync} One notification's events, without the parts of a row the snapshot already holds as it arrived.
+    // {§agui-sync} One notification's events, without the parts of a row the snapshot already holds: none of them when it
+    // holds the row as it arrived; when it holds an earlier version, whose call it holds, the later facts folded onto that
+    // call, a repeated START and END without arguments ({§agui-proposal-resolve}), and the call's result.
     static #unreplayed(events: AguiEvent[], replayed: ReadonlyMap<unknown, string>): AguiEvent[] {
         const facts = events.map((event) => (event as { metadata?: { plurnk?: { id?: unknown; status?: unknown; signal?: unknown; attrs?: unknown } } }).metadata?.plurnk)
             .find((plurnk) => plurnk?.id !== undefined);
         const whole = events.find((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient") as { value?: Record<string, unknown> } | undefined;
         const row = facts !== undefined ? { id: facts.id, version: RunHandler.#version({ status_rx: facts.status, signal: facts.signal, attrs: facts.attrs }) }
             : whole?.value !== undefined ? { id: whole.value.id, version: RunHandler.#version(whole.value) } : null;
-        if (row === null || replayed.get(row.id) !== row.version) return events;
-        return events.filter((event) => !(event.type.startsWith("TOOL_CALL_") || event.type.startsWith("TEXT_MESSAGE_") || event.type.startsWith("REASONING_")
+        if (row === null || !replayed.has(row.id)) return events;
+        const held = (event: AguiEvent): boolean => (event.type.startsWith("TOOL_CALL_") && event.type !== EventType.TOOL_CALL_RESULT)
+            || event.type.startsWith("TEXT_MESSAGE_") || event.type.startsWith("REASONING_");
+        if (replayed.get(row.id) !== row.version) {
+            return events.filter((event) => !held(event) || event.type === EventType.TOOL_CALL_START || event.type === EventType.TOOL_CALL_END);
+        }
+        return events.filter((event) => !(held(event) || event.type === EventType.TOOL_CALL_RESULT
             || (event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient")));
     }
 

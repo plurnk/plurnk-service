@@ -4,10 +4,10 @@
 //
 // This is the single external client interface:
 //   POST /agui — a Run; POST /agui/connect — an observer that also waits while idle.
-//   A worker streams SSE. HITL is terminate-resume: a
-//   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
-//   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's
-//   standard resume entries resolve the durable proposal and continue the exact loop.
+//   A worker streams SSE. HITL is terminate-resume: a stopped-world presents the call it
+//   gates (the operation's own, or a client interaction's) and finishes with an AG-UI
+//   interrupt outcome (the loop stays paused in-engine); the next AG-UI Run's standard
+//   resume entries resolve the durable gate and continue the exact loop.
 //   Reads ride STATE_SNAPSHOT on RUN_STARTED; there are no side-channel action
 //   or proposal-resolution endpoints.
 // An AG-UI threadId names one worker inside the explicitly forwarded

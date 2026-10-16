@@ -32,5 +32,6 @@ export const wireRow = (over: Partial<LogEntryWire> = {}): LogEntryWire => ({
     status_rx: 200,
     weight: 0,
     attrs: {},
+    state: "resolved",
     ...over,
 });

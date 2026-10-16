@@ -47,8 +47,10 @@ export const streamConclusion = (
 export const proposal = Object.freeze({
     logEntryId: 42,
     workerId: 10,
+    worker: "main",
     loopId: 1,
     turnId: 1,
+    coordinate: "1/1/42",
     op: "EDIT",
     target: { scheme: "file", authority: null, pathname: "/tmp/example" },
     body: "replacement",

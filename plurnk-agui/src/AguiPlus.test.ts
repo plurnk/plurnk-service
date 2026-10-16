@@ -1,7 +1,7 @@
 // {§agui-proposal-resolve} The AG-UI+ choreography is unit-tested as logic to de-risk the
 // terminate-resume HITL before any module code. The load-bearing assertion is the
-// two-Run round-trip: a proposal terminates AG-UI Run N as a tool-call, and AG-UI Run N+1's
-// tool-result maps back to the EXACT pending proposal via the toolCallId.
+// two-Run round-trip: a gate terminates AG-UI Run N with its interrupt, and AG-UI Run N+1's
+// resume maps back to the EXACT pending proposal through its key.
 
 import { test } from "node:test";
 import type { JsonPatch } from "@ag-ui/core";
@@ -14,9 +14,7 @@ import {
     interactionToolCall,
     parseAction,
     proposalInterrupt,
-    proposalToolCall,
-    proposalToolCallId,
-    proposalToolName,
+    proposalKey,
     resolutionFromResume,
     stateDelta,
     stateSnapshot,
@@ -47,7 +45,7 @@ test("{§agui-state-patches}: the replay witness refuses non-replace or undefine
 });
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
-    logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
+    logEntryId: 42, workerId: 2, worker: "main", loopId: 3, turnId: 4, coordinate: "1/2/3",
     op: "EDIT", target: { scheme: "file", authority: null, pathname: "README.md" },
     body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, owner: OWNER,
     disposition: { decision: "review" },
@@ -73,31 +71,21 @@ const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInt
     ...over,
 });
 
-test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
-    const evs = proposalToolCall(proposal());
-    assert.equal(evs.length, 3);
-    assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "request_approval" });
-    assert.equal(evs[1].type, "TOOL_CALL_ARGS");
-    const args = JSON.parse((evs[1] as { delta: string }).delta);
-    assert.equal(args.op, "EDIT");
-    assert.equal(args.target.pathname, "README.md");
-    assert.equal(args.body, "@@ -1 +1 @@\n-old\n+new");
-    assert.equal(args.owner, OWNER, "the durable approval owner reaches the AG-UI tool call unchanged");
-    assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
-});
-
-test("AG-UI-conventional names: every side-effecting proposal requests approval", () => {
-    assert.equal(proposalToolName("EDIT"), "request_approval");
-    assert.equal((proposalToolCall(proposal({ op: "EDIT" }))[0] as { toolCallName: string }).toolCallName, "request_approval");
+test("{§agui-proposal-resolve} a gate's interrupt is a tool approval of no call of its own, carrying Core's projection and its deadline when it has one", () => {
+    const untimed = proposalInterrupt(proposal());
+    assert.equal(untimed.reason, "tool_call");
+    assert.deepEqual(untimed.metadata, { plurnk: { proposal: proposal() } }, "what the reviewer reviews, as Core projects it");
+    assert.deepEqual([untimed.toolCallId, untimed.expiresAt], [undefined, undefined], "the Portal names, per Run, the call it concerns");
+    assert.deepEqual((untimed.responseSchema as { required: string[] }).required, ["decision"]);
+    assert.equal(proposalInterrupt(proposal({ expiresAt: "2026-10-16T12:00:00.000Z" })).expiresAt, "2026-10-16T12:00:00.000Z",
+        "a gate that times out names when");
 });
 
 test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {
-    // AG-UI Run N: two concurrent stopped worlds terminate their Runs as tool-calls.
-    const a = proposalToolCall(proposal({ logEntryId: 42, op: "EDIT" }));
-    const b = proposalToolCall(proposal({ logEntryId: 99, op: "sh" }));
-    const idA = (a[0] as { toolCallId: string }).toolCallId;
-    const idB = (b[0] as { toolCallId: string }).toolCallId;
-    assert.notEqual(idA, idB, "distinct proposals get distinct toolCallIds");
+    // AG-UI Run N: two concurrent stopped worlds, each known by its proposal's key.
+    const idA = proposalKey(42);
+    const idB = proposalKey(99);
+    assert.notEqual(idA, idB, "distinct proposals get distinct keys");
 
     // AG-UI Run N+1 for each: the frontend resumes the exact interrupt.
     const resA = resolutionFromResume({ interruptId: idA, status: "resolved", payload: { decision: "accept" } });
@@ -107,33 +95,32 @@ test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps ba
 });
 
 test("an edited-body approval carries the frontend's body through to resolveProposal", () => {
-    const id = proposalToolCallId(7);
-    const res = resolutionFromResume({ interruptId: id, status: "resolved", payload: { decision: "accept", body: "the human's edit" } });
+    const res = resolutionFromResume({ interruptId: proposalKey(7), status: "resolved", payload: { decision: "accept", body: "the human's edit" } });
     assert.deepEqual(res, { logEntryId: 7, decision: "accept", body: "the human's edit" });
 });
 
 test("{§agui-proposal-resolve} proposal resumes preserve the resolver's outcome", () => {
-    const schema = proposalInterrupt(7).responseSchema as { properties: Record<string, unknown> };
+    const schema = proposalInterrupt(proposal({ logEntryId: 7 })).responseSchema as { properties: Record<string, unknown> };
     assert.deepEqual(schema.properties.outcome, { type: "string" });
     for (const decision of ["accept", "reject", "cancel"] as const) {
         for (const outcome of ["auto: brave", "client_no_review_channel", ""]) {
-            assert.deepEqual(resolutionFromResume({ interruptId: "prop:7", status: "resolved", payload: { decision, outcome } }),
+            assert.deepEqual(resolutionFromResume({ interruptId: proposalKey(7), status: "resolved", payload: { decision, outcome } }),
                 { logEntryId: 7, decision, outcome });
         }
     }
-    assert.deepEqual(resolutionFromResume({ interruptId: "prop:7", status: "cancelled", payload: { outcome: "client_cancelled" } }),
+    assert.deepEqual(resolutionFromResume({ interruptId: proposalKey(7), status: "cancelled", payload: { outcome: "client_cancelled" } }),
         { logEntryId: 7, decision: "cancel", outcome: "client_cancelled" });
     for (const outcome of [null, false, 3, {}, []]) {
         for (const status of ["resolved", "cancelled"] as const) {
-            assert.equal(resolutionFromResume({ interruptId: "prop:7", status, payload: { decision: "accept", outcome } }), null);
+            assert.equal(resolutionFromResume({ interruptId: proposalKey(7), status, payload: { decision: "accept", outcome } }), null);
         }
     }
 });
 
 test("resolutionFromResume: standard cancellation and strict payload validation", () => {
-    assert.deepEqual(resolutionFromResume({ interruptId: "prop:5", status: "cancelled" }), { logEntryId: 5, decision: "cancel" });
+    assert.deepEqual(resolutionFromResume({ interruptId: proposalKey(5), status: "cancelled" }), { logEntryId: 5, decision: "cancel" });
     assert.equal(resolutionFromResume({ interruptId: "call_openai_xyz", status: "resolved", payload: { decision: "accept" } }), null, "a non-plurnk interrupt isn't a proposal resolution");
-    assert.equal(resolutionFromResume({ interruptId: "prop:5", status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
+    assert.equal(resolutionFromResume({ interruptId: proposalKey(5), status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
 });
 
 test("client interaction projects its exact tool call, interrupt guidance, and response schema", () => {
@@ -144,7 +131,6 @@ test("client interaction projects its exact tool call, interrupt guidance, and r
         { type: "TOOL_CALL_END", toolCallId: "int:8" },
     ]);
     assert.deepEqual(interactionInterrupt(value), {
-        id: "int:8",
         reason: "tool_call",
         toolCallId: "int:8",
         message: "Choose one repository.",
@@ -169,7 +155,7 @@ test("client interaction resume preserves an arbitrary resolved payload or stand
         { interactionId: 8, resolution: { status: "cancelled" } },
     );
     assert.equal(
-        interactionResolutionFromResume({ interruptId: "prop:8", status: "resolved", payload: {} }),
+        interactionResolutionFromResume({ interruptId: proposalKey(8), status: "resolved", payload: {} }),
         null,
     );
 });

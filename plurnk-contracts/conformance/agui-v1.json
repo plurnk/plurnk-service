@@ -258,15 +258,30 @@
             "events": [
                 {
                     "type": "TOOL_CALL_START",
-                    "toolCallId": "prop:42",
-                    "toolCallName": "request_approval"
+                    "toolCallId": "1/2/3",
+                    "toolCallName": "sh",
+                    "metadata": {
+                        "plurnk": {
+                            "id": 42,
+                            "coordinate": "1/2/3",
+                            "worker": 7,
+                            "origin": "model",
+                            "op": "sh",
+                            "source": null,
+                            "address": null,
+                            "signal": null,
+                            "status": 202,
+                            "attrs": { "runtime": "sh", "body": "printf ok" },
+                            "state": "proposed"
+                        }
+                    }
                 },
                 {
                     "type": "TOOL_CALL_ARGS",
-                    "toolCallId": "prop:42",
-                    "delta": "{\"op\":\"EDIT\",\"target\":{\"scheme\":\"file\",\"pathname\":\"example.txt\"},\"body\":\"change\",\"attrs\":{},\"flags\":{}}"
+                    "toolCallId": "1/2/3",
+                    "delta": "{\"runtime\":\"sh\",\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":\"printf ok\"}"
                 },
-                { "type": "TOOL_CALL_END", "toolCallId": "prop:42" },
+                { "type": "TOOL_CALL_END", "toolCallId": "1/2/3" },
                 {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
@@ -275,9 +290,91 @@
                         "type": "interrupt",
                         "interrupts": [
                             {
-                                "id": "prop:42",
+                                "id": "6f1c0a52-0b7e-4a39-9d55-2f0c7a1e9b13",
                                 "reason": "tool_call",
-                                "toolCallId": "prop:42"
+                                "message": "Review the requested action.",
+                                "toolCallId": "1/2/3",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "decision": { "type": "string", "enum": ["accept", "reject", "cancel"] },
+                                        "body": { "type": "string" },
+                                        "outcome": { "type": "string" }
+                                    },
+                                    "required": ["decision"]
+                                },
+                                "metadata": {
+                                    "plurnk": {
+                                        "proposal": {
+                                            "logEntryId": 42,
+                                            "workerId": 7,
+                                            "worker": "main",
+                                            "loopId": 3,
+                                            "turnId": 5,
+                                            "coordinate": "1/2/3",
+                                            "op": "sh",
+                                            "target": { "scheme": "sh", "authority": null, "pathname": "" },
+                                            "body": "printf ok",
+                                            "attrs": { "runtime": "sh", "body": "printf ok" },
+                                            "owner": "agui://anonymous/threads/fixture",
+                                            "disposition": { "decision": "review" }
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/proposal"],
+                "interrupt": "proposal"
+            }
+        },
+        {
+            "name": "proposal-interrupt-without-call",
+            "events": [
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "proposal-without-call",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "0d4e7b18-93a2-4c61-8f0e-5b2a9c7d1e46",
+                                "reason": "tool_call",
+                                "message": "Review the requested action.",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "decision": { "type": "string", "enum": ["accept", "reject", "cancel"] },
+                                        "body": { "type": "string" },
+                                        "outcome": { "type": "string" }
+                                    },
+                                    "required": ["decision"]
+                                },
+                                "expiresAt": "2026-10-16T12:00:00.000Z",
+                                "metadata": {
+                                    "plurnk": {
+                                        "proposal": {
+                                            "logEntryId": 43,
+                                            "workerId": 9,
+                                            "worker": "background",
+                                            "loopId": 4,
+                                            "turnId": 6,
+                                            "coordinate": "1/1/2",
+                                            "op": "EDIT",
+                                            "target": { "scheme": "file", "authority": null, "pathname": "notes.md" },
+                                            "body": "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-before\n+after",
+                                            "attrs": {},
+                                            "owner": "agui://anonymous/threads/fixture",
+                                            "disposition": { "decision": "review" },
+                                            "expiresAt": "2026-10-16T12:00:00.000Z"
+                                        }
+                                    }
+                                }
                             }
                         ]
                     }

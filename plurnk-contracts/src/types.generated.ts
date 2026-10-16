@@ -1147,8 +1147,16 @@ export type ProposalPolicy = ("review" | "accept" | "reject")
 export interface ProposalProjection {
 logEntryId: number
 workerId: number
+/**
+ * The requesting worker's name.
+ */
+worker: string
 loopId: number
 turnId: number
+/**
+ * The gated operation's log coordinate, loop/turn/sequence: the id of the call it is.
+ */
+coordinate: string
 /**
  * An operation keyword, or a runtime tag: an execution's operation is its runtime.
  */
@@ -1164,6 +1172,10 @@ attrs: {
 }
 owner: string
 disposition: ProposalDisposition
+/**
+ * When the gate stops waiting and core cancels it (ISO 8601); absent while it waits indefinitely.
+ */
+expiresAt?: string
 }
 
 export type ProviderCost = ({

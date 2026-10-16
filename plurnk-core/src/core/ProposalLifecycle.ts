@@ -45,6 +45,8 @@ export interface AppliedProposalResolution extends ProposalResolution {
 }
 interface ProposalWaiter {
     disposition: ProposalDisposition | null;
+    // {§proposal-timeout-cancels} When the armed timeout cancels it; null while it waits indefinitely.
+    readonly expiresAt: string | null;
     resolve: (resolution: AppliedProposalResolution) => void;
     reject: (cause: unknown) => void;
     // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
@@ -101,8 +103,12 @@ interface ProposalRow {
     logEntryId: number;
     workspaceId: number;
     workerId: number;
+    worker: string;
     loopId: number;
     turnId: number;
+    loopSeq: number;
+    turnSeq: number;
+    sequence: number;
     op: string;
     signal: string | null;
     scheme: string | null;
@@ -356,14 +362,17 @@ export default class ProposalLifecycle {
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
             workerId: row.workerId,
+            worker: row.worker,
             loopId: row.loopId,
             turnId: row.turnId,
+            coordinate: `${row.loopSeq}/${row.turnSeq}/${row.sequence}`,
             op,
             target,
             body: typeof result.body === "string" ? result.body : "",
             attrs,
             owner: row.owner,
             disposition: waiter.disposition,
+            ...(waiter.expiresAt === null ? {} : { expiresAt: waiter.expiresAt }),
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
@@ -466,6 +475,7 @@ export default class ProposalLifecycle {
             const timeoutHandle = timeoutMs === null ? null : setTimeout(() => cancel("timeout"), timeoutMs);
             this.#pending.set(logEntryId, {
                 disposition: null,
+                expiresAt: timeoutMs === null ? null : new Date(Date.now() + timeoutMs).toISOString(),
                 resolve,
                 reject,
                 release: () => {

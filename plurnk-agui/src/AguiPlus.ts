@@ -3,7 +3,7 @@
 // engine state → AG-UI events, and the inverse resume-mapping. No transport, no I/O
 // — so it ports into the in-process module unchanged when the seam lands.
 //
-// §1 proposals → tool-calls (terminate-resume HITL); §2 reads →
+// §1 proposals → interrupts (terminate-resume HITL); §2 reads →
 // shared STATE. This is the flagship choreography de-risked as logic before code.
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
@@ -21,37 +21,18 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 
-// ── §1 — stop-the-world → tool-call ──────────────────────────────────
-// toolCallId correlates the terminating AG-UI Run's TOOL_CALL and interrupt with the next
-// AG-UI Run's ResumeEntry → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
-export const proposalToolCallId = (logEntryId: number): string => `prop:${logEntryId}`;
-export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
-    const m = /^prop:(\d+)$/.exec(toolCallId);
+// ── §1 — stop-the-world → interrupt ──────────────────────────────────
+// {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
+// interrupt names it there. The interrupt carries Core's projection, what the reviewer reviews; the resume names the
+// proposal by this key, which no client sees.
+export const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
+const logEntryIdFromKey = (key: string): number | null => {
+    const m = /^proposal:(\d+)$/.exec(key);
     return m === null ? null : Number(m[1]);
 };
 
-// Tool-call NAME — AG-UI terminology all the way up to the seam: the client-facing
-// name is AG-UI-conventional, not plurnk-namespaced.
-// A side-effecting proposal is an approval request. The plurnk correlation rides
-// the opaque toolCallId (`prop:<logEntryId>`), so the generic name carries no
-// plurnk vocabulary upward.
-export const proposalToolName = (_op: string): string => "request_approval";
-
-// The worker's tail when it hits a pause: the tool-call, then the CALLER emits
-// RUN_FINISHED to terminate. The loop stays paused in-engine — untouched.
-export const proposalToolCall = (p: ProposalNotification): AguiEvent[] => {
-    const toolCallId = proposalToolCallId(p.logEntryId);
-    return [
-        { type: EventType.TOOL_CALL_START, toolCallId, toolCallName: proposalToolName(p.op) },
-        { type: EventType.TOOL_CALL_ARGS, toolCallId, delta: JSON.stringify({ op: p.op, target: p.target, body: p.body, attrs: p.attrs, owner: p.owner }) },
-        { type: EventType.TOOL_CALL_END, toolCallId },
-    ];
-};
-
-export const proposalInterrupt = (logEntryId: number): Interrupt => ({
-    id: proposalToolCallId(logEntryId),
+export const proposalInterrupt = (proposal: ProposalNotification): Omit<Interrupt, "id"> => ({
     reason: "tool_call",
-    toolCallId: proposalToolCallId(logEntryId),
     message: "Review the requested action.",
     responseSchema: {
         type: "object",
@@ -62,12 +43,14 @@ export const proposalInterrupt = (logEntryId: number): Interrupt => ({
         },
         required: ["decision"],
     },
+    ...(proposal.expiresAt === undefined ? {} : { expiresAt: proposal.expiresAt }),
+    metadata: { plurnk: { proposal } },
 });
 
 // The inverse — a standard resume entry resolves the durable PLURNK proposal.
 export interface Resolution extends ProposalResolution { logEntryId: number }
 export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
-    const logEntryId = logEntryIdFromToolCallId(entry.interruptId);
+    const logEntryId = logEntryIdFromKey(entry.interruptId);
     if (logEntryId === null) return null;
     const payload = entry.payload as { decision?: unknown; body?: unknown; outcome?: unknown } | undefined;
     if (payload?.outcome !== undefined && typeof payload.outcome !== "string") return null;
@@ -102,8 +85,7 @@ export const interactionToolCall = (interaction: ClientInteractionProjection): A
     ];
 };
 
-export const interactionInterrupt = (interaction: ClientInteractionProjection): Interrupt => ({
-    id: interactionToolCallId(interaction.interactionId),
+export const interactionInterrupt = (interaction: ClientInteractionProjection): Omit<Interrupt, "id"> => ({
     reason: "tool_call",
     toolCallId: interactionToolCallId(interaction.interactionId),
     message: interaction.request.message ?? "Provide the requested input.",

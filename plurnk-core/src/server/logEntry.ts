@@ -54,6 +54,7 @@ export default class LogEntry {
             status_rx: row.status_rx as number,
             weight: row.weight as number,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
+            state: row.state as LogEntryWire["state"],
             ...(typeof row.reasoning === "string" ? { reasoning: row.reasoning } : {}),
             ...(typeof row.reasoning === "string" && typeof row.reasoning_model_call_id === "number"
                 ? { reasoning_model_call_id: row.reasoning_model_call_id, reasoning_request_sequence: row.reasoning_request_sequence as number }

@@ -63,7 +63,7 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
     }
 });
 
-test("{§proposal-disposition} a person's command runs at once under review, whether or not the client reviews", { timeout: 15_000 }, async (t) => {
+test("{§proposal-disposition} a person's command runs at once under review", { timeout: 15_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const db = await openTestDatabase();
@@ -71,19 +71,17 @@ test("{§proposal-disposition} a person's command runs at once under review, whe
     const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32768, responses: [] }), nodeModulesPath: join(SERVICE, "node_modules"), http });
     try {
         await daemon.start();
-        for (const tools of [[], [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }]]) {
-            const events = await post(http.httpAddress().port, {
-                threadId: "own-command", tools,
-                forwardedProps: { plurnk: { workspace: "own-command", action: { kind: "op.exec", command: "printf mine" } } },
-            }, t.signal);
-            const result = (events.find(({ type }) => type === "RUN_FINISHED") as { result?: { ok?: boolean } } | undefined)?.result;
-            assert.equal(result?.ok, true, JSON.stringify(events));
-            const receipt = events.find((event) => label(event) === "plurnk.ambient") as { value?: { rx?: { outcome?: string } } } | undefined;
-            assert.equal(receipt?.value?.rx?.outcome, "client_operation", "the person's own decision, never routed for review");
-            const finish = events.at(-1) as { type?: string; outcome?: { type?: string } } | undefined;
-            assert.equal(finish?.type, "RUN_FINISHED");
-            assert.equal(finish?.outcome?.type, "success", "no interrupt: nothing waits for a decision");
-        }
+        const events = await post(http.httpAddress().port, {
+            threadId: "own-command",
+            forwardedProps: { plurnk: { workspace: "own-command", action: { kind: "op.exec", command: "printf mine" } } },
+        }, t.signal);
+        const result = (events.find(({ type }) => type === "RUN_FINISHED") as { result?: { ok?: boolean } } | undefined)?.result;
+        assert.equal(result?.ok, true, JSON.stringify(events));
+        const receipt = events.find((event) => label(event) === "plurnk.ambient") as { value?: { rx?: { outcome?: string } } } | undefined;
+        assert.equal(receipt?.value?.rx?.outcome, "client_operation", "the person's own decision, never routed for review");
+        const finish = events.at(-1) as { type?: string; outcome?: { type?: string } } | undefined;
+        assert.equal(finish?.type, "RUN_FINISHED");
+        assert.equal(finish?.outcome?.type, "success", "no interrupt: nothing waits for a decision");
         const [workspace] = await daemon.listWorkspaces();
         assert.deepEqual(await daemon.pendingProposals(workspace!.id), []);
     } finally {

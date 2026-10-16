@@ -684,6 +684,8 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
         workerId: 2,
         loopId: 3,
         turnId: 4,
+        worker: "primary",
+        coordinate: "1/4/2",
         op: "SEND" as const,
         target: { scheme: null, authority: null, pathname: null },
         body: "",
@@ -692,8 +694,12 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
         disposition: { decision: "review" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);
+    const timed = { ...proposal, expiresAt: "2026-10-16T12:00:00.000Z" };
+    assert.equal(Validator.assertProposalProjection(timed), timed, "a gate that times out names its deadline");
 
     for (const invalid of [
+        { ...proposal, coordinate: "1/4" },
+        { ...proposal, worker: "" },
         { ...proposal, disposition: { owner: "loop" } },
         { ...proposal, owner: "" },
         { ...proposal, target: { scheme: null, pathname: null } },

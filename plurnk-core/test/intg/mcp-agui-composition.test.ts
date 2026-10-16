@@ -322,7 +322,11 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.equal(outcome?.interrupts?.length, 1);
         const interruptId = outcome?.interrupts?.[0]?.id;
         assert.ok(interruptId);
-        assert.match(outcome?.interrupts?.[0]?.toolCallId ?? "", /^prop:\d+$/);
+        // {§agui-proposal-resolve} The gate names the operation's own call, which its Run presented before it.
+        const gated = outcome?.interrupts?.[0]?.toolCallId;
+        assert.match(gated ?? "", /^\d+\/\d+\/\d+$/);
+        assert.ok(interrupted.some((event) => event.type === "TOOL_CALL_START" && (event as { toolCallId?: unknown }).toolCallId === gated),
+            "the gated call precedes its interrupt");
 
         const resumed = await post(port, runInput(workspace, "host-tool-b", {
             resume: [{

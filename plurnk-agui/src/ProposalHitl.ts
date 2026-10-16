@@ -17,10 +17,11 @@ import {
     interactionResolutionFromResume,
     interactionToolCall,
     proposalInterrupt,
-    proposalToolCall,
+    proposalKey,
     resolutionFromResume,
 } from "./AguiPlus.ts";
 import type { AguiEvent, ProposalNotification } from "./types.ts";
+import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type HitlPort = Pick<
     ApplicationPort,
@@ -29,11 +30,30 @@ type HitlPort = Pick<
     | "resolveProposal"
     | "pendingClientInteractions"
     | "resolveClientInteraction"
+    | "readLog"
 >;
+
+// {§agui-proposal-resolve} The operation a gate awaits a decision on: its worker, loop and coordinate, and its row, whose
+// call the gate presents on a Run that holds that worker's conversation.
+export interface GatedCall {
+    readonly workerId: number;
+    readonly loopId: number;
+    readonly coordinate: string;
+    readonly entry: LogEntryWire;
+}
+
+// One gate: the key its resume entry resolves, its interrupt before the Portal identifies it per Run, and, for a
+// proposal, the call it concerns. A client interaction is its own call.
+export interface HitlGate {
+    readonly key: string;
+    readonly kind: "proposal" | "interaction";
+    readonly interrupt: Omit<Interrupt, "id">;
+    readonly call?: GatedCall;
+}
 
 export interface HitlBatch {
     readonly events: AguiEvent[];
-    readonly interrupts: Interrupt[];
+    readonly gates: HitlGate[];
 }
 
 export interface HitlDelivery {
@@ -97,7 +117,7 @@ const proposalItem = (value: ProposalNotification): PendingItem => {
     return {
         kind: "proposal",
         id: projection.logEntryId,
-        key: `prop:${projection.logEntryId}`,
+        key: proposalKey(projection.logEntryId),
         workerId: projection.workerId,
         loopId: projection.loopId,
         turnId: projection.turnId,
@@ -127,24 +147,6 @@ const comparePending = (left: PendingItem, right: PendingItem): number =>
 
 const recipient = (item: PendingItem): string => item.kind === "proposal" ? item.projection.owner : item.projection.recipient;
 
-const render = (item: PendingItem): HitlBatch => item.kind === "proposal"
-    ? {
-        events: proposalToolCall(item.projection),
-        interrupts: [proposalInterrupt(item.id)],
-    }
-    : {
-        events: interactionToolCall(item.projection),
-        interrupts: [interactionInterrupt(item.projection)],
-    };
-
-const combine = (items: readonly PendingItem[]): HitlBatch => {
-    const batches = items.map(render);
-    return {
-        events: batches.flatMap(({ events }) => events),
-        interrupts: batches.flatMap(({ interrupts }) => interrupts),
-    };
-};
-
 const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
     const proposal = resolutionFromResume(entry);
     if (proposal !== null) {
@@ -169,12 +171,14 @@ const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
 
 export default class ProposalHitl {
     readonly #seam: HitlPort;
-    readonly #emit: (workspaceId: number, delivery: HitlDelivery) => void;
+    // {§agui-proposal-resolve} A gate is handed over the moment its event arrives, while its row is still being read, so
+    // whatever the workspace publishes after it waits behind its presentation.
+    readonly #emit: (workspaceId: number, delivery: Promise<HitlDelivery>) => void;
     #off: (() => void) | null = null;
 
     constructor(
         seam: HitlPort,
-        emit: (workspaceId: number, delivery: HitlDelivery) => void,
+        emit: (workspaceId: number, delivery: Promise<HitlDelivery>) => void,
     ) {
         this.#seam = seam;
         this.#emit = emit;
@@ -183,29 +187,32 @@ export default class ProposalHitl {
     start(): void {
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId === null) return;
-            if (method === "loop/proposal") {
-                const item = proposalItem(params as ProposalNotification);
-                if (item.kind !== "proposal" || item.projection.disposition.decision !== "review") return;
-                this.#emit(workspaceId, {
-                    recipient: recipient(item),
-                    workerId: item.workerId,
-                    loopId: item.loopId,
-                    turnId: item.turnId,
-                    batch: render(item),
-                });
-                return;
-            }
-            if (method === "loop/interaction") {
-                const item = interactionItem(params as ClientInteractionProjection);
-                this.#emit(workspaceId, {
-                    recipient: recipient(item),
-                    workerId: item.workerId,
-                    loopId: item.loopId,
-                    turnId: item.turnId,
-                    batch: render(item),
-                });
-            }
+            const item = method === "loop/proposal" ? proposalItem(params as ProposalNotification)
+                : method === "loop/interaction" ? interactionItem(params as ClientInteractionProjection)
+                : null;
+            if (item === null || (item.kind === "proposal" && item.projection.disposition.decision !== "review")) return;
+            this.#emit(workspaceId, this.#render(workspaceId, item).then((batch) => (
+                { recipient: recipient(item), workerId: item.workerId, loopId: item.loopId, turnId: item.turnId, batch })));
         });
+    }
+
+    // {§agui-proposal-resolve} A proposal's gate is the operation's own call and an interrupt naming it: the gate carries
+    // the operation's row, read by its coordinate, and the Portal presents its call on each Run.
+    async #render(workspaceId: number, item: PendingItem): Promise<HitlBatch> {
+        if (item.kind === "interaction") {
+            return { events: interactionToolCall(item.projection), gates: [{ key: item.key, kind: "interaction", interrupt: interactionInterrupt(item.projection) }] };
+        }
+        const { workerId, loopId, coordinate } = item.projection;
+        const [loopSeq, turnSeq, sequence] = coordinate.split("/").map(Number) as [number, number, number];
+        const [row] = await this.#seam.readLog({ workspaceId, workerId, loopSeq, turnSeq, sequence });
+        if (row === undefined) throw new Error(`Pending proposal ${item.id} has no row at ${coordinate}.`);
+        return { events: [], gates: [{ key: item.key, kind: "proposal", interrupt: proposalInterrupt(item.projection),
+            call: { workerId, loopId, coordinate, entry: row } }] };
+    }
+
+    async #combine(workspaceId: number, items: readonly PendingItem[]): Promise<HitlBatch> {
+        const batches = await Promise.all(items.map((item) => this.#render(workspaceId, item)));
+        return { events: batches.flatMap(({ events }) => events), gates: batches.flatMap(({ gates }) => gates) };
     }
 
     stop(): void {
@@ -230,7 +237,7 @@ export default class ProposalHitl {
     async resurface(workspaceId: number, address: string): Promise<HitlDelivery[]> {
         const pending = (await this.#pending(workspaceId)).filter((item) => recipient(item) === address);
         const workerIds = [...new Set(pending.map(({ workerId }) => workerId))];
-        return workerIds.map((workerId) => {
+        return await Promise.all(workerIds.map(async (workerId) => {
             const workerPending = pending.filter((item) => item.workerId === workerId);
             const first = workerPending[0];
             const loopIds = new Set(workerPending.map(({ loopId }) => loopId));
@@ -242,9 +249,9 @@ export default class ProposalHitl {
                 workerId,
                 loopId: first.loopId,
                 turnId: first.turnId,
-                batch: combine(workerPending),
+                batch: await this.#combine(workspaceId, workerPending),
             };
-        });
+        }));
     }
 
     async resolve(

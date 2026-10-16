@@ -41,7 +41,7 @@ export const runInput = (
     runId,
     state: {},
     messages: [],
-    tools: [{ name: "request_approval", description: "Review proposals.", parameters: { type: "object" } }],
+    tools: [],
     context: [],
     forwardedProps: { plurnk: { workspace } },
     ...additions,

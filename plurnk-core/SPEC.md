@@ -3727,6 +3727,9 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | Projection field      | Durable authority                                                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | identity              | proposed log row `id`, `worker_id`, `loop_id`, `turn_id`, and validated `op`                                       |
+| `worker`              | the worker's name ({§worker-name})                                                                                 |
+| `coordinate`          | the row's log coordinate `L/T/S` ({§methods-log-coordinate})                                                       |
+| `expiresAt`           | when the operator's decision deadline cancels the proposal ({§proposal-timeout-cancels}); absent for an untimed wait |
 | `target`              | canonical `{ scheme, authority, pathname }` from `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target |
 | `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
 | `attrs`               | proposed log row `attrs` object                                                                                    |
@@ -5295,7 +5298,8 @@ beside database ids, so a client can render and resolve the logical `L/T/S`
 coordinate without fetching all rows and matching locally.
 
 §methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
-preserve causal `source` and parse the row's JSON `attrs` into structured data.
+preserve causal `source` and the row's lifecycle `state` (`proposed` while a proposal awaits its
+decision, then `resolved`, `failed` or `cancelled`), and parse the row's JSON `attrs` into structured data.
 Client interfaces do not reconstruct these fields from operation or origin.
 
 §methods-readable-reasoning **Readable provider reasoning remains derived

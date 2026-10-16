@@ -36,7 +36,7 @@ test("{§hooks-event-projection} operation phase/status select hooks without tre
 });
 
 test("{§hooks-event-projection} only client-owned proposals request permission", () => {
-    const proposal: ProposalProjection = { logEntryId: 12, workerId: 7, loopId: 9, turnId: 11, op: "sh",
+    const proposal: ProposalProjection = { logEntryId: 12, workerId: 7, worker: "client", loopId: 9, turnId: 11, coordinate: "1/1/12", op: "sh",
         target: { scheme: "exec", authority: "sh", pathname: "" }, body: "echo 42", attrs: {},
         owner: "agui://anonymous/threads/client", disposition: { decision: "review" } };
     const event = EventProjection.project(42, "loop/proposal", proposal);

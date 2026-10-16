@@ -37,13 +37,14 @@ import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@p
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
-    source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown;
+    source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown; state?: unknown;
     scheme?: unknown; hostname?: unknown; port?: unknown; pathname?: unknown; query?: unknown; fragment?: unknown };
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
     readonly modelWorkerId: number | null;
     readonly completedReasoning: ReadonlyArray<readonly [number, readonly string[]]>;
+    readonly held: readonly string[];
 }
 
 export default class Translator {
@@ -57,6 +58,9 @@ export default class Translator {
     #completedReasoning = new Map<number, string[]>();
     // {§agui-snapshot} The messages this Run submitted: its client already holds them.
     #submitted = new Set<string>();
+    // {§agui-call-result} The calls this Run's client holds without their result: a gate's call it presented, or a
+    // pending one its snapshot held. A later delivery of that row only answers it.
+    #held = new Set<string>();
     // {§agui-subagents} A delegation this Run observes: the subagent run its events are attributed to, and the worker
     // whose rows' identities it namespaces; null for the Run's own worker.
     #subagent: { readonly runId: string; readonly worker: string } | null;
@@ -68,6 +72,8 @@ export default class Translator {
         workspaceId?: number | null;
         continuation?: TranslatorContinuation;
         subagent?: { readonly runId: string; readonly worker: string };
+        // {§agui-subagents} A subagent's translator shares its Run's held calls: one client holds them all.
+        held?: Set<string>;
     }) {
         this.#subagent = args.subagent ?? null;
         this.#threadId = args.threadId;
@@ -77,6 +83,7 @@ export default class Translator {
         this.#completedReasoning = new Map(
             args.continuation?.completedReasoning.map(([turnId, values]) => [turnId, [...values]]) ?? [],
         );
+        this.#held = args.held ?? new Set(args.continuation?.held ?? []);
         this.#workspaceId = args.workspaceId ?? null;
     }
 
@@ -88,6 +95,7 @@ export default class Translator {
             currentTurn: this.#currentTurn,
             modelWorkerId: this.#modelWorkerId,
             completedReasoning: [...this.#completedReasoning].map(([turnId, values]) => [turnId, [...values]]),
+            held: [...this.#held],
         };
     }
 
@@ -159,6 +167,21 @@ export default class Translator {
         return this.#attributed(this.#project(n));
     }
 
+    // {§agui-subagents} The translator of a subagent run this Run presents: its own namespace, this Run's client.
+    subagentTranslator(args: { readonly modelWorkerId: number; readonly subagent: { readonly runId: string; readonly worker: string } }): Translator {
+        return new Translator({ threadId: this.#threadId, runId: this.#runId, modelWorkerId: args.modelWorkerId, workspaceId: this.#workspaceId,
+            subagent: args.subagent, held: this.#held });
+    }
+
+    // {§agui-proposal-resolve} A gate's call: the operation awaiting its decision, built as its row builds it and so
+    // unanswered. Its client then holds it, and the settled row updates and answers it ({§agui-call-result}).
+    gateCall(entry: LogEntryNotification["entry"]): AguiEvent[] {
+        if (this.#held.has(this.#id(entry))) return [];
+        const events = this.#project({ entry });
+        this.#held.add(this.#id(entry));
+        return this.#attributed(events);
+    }
+
     #project(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
@@ -208,6 +231,20 @@ export default class Translator {
             return events;
         }
         const id = this.#id(e);
+        // {§agui-proposal-resolve} The client holds this gated call: its settlement is a repeated START and END, which the
+        // reducer folds onto the call it holds, its arguments untouched, then its answer unless something later answers it
+        // ({§agui-call-result}).
+        if (this.#held.has(id)) {
+            if (e.state === "proposed") return events;
+            this.#held.delete(id);
+            const metadata = Translator.#rowMetadata(e);
+            events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: Translator.#callOf(e)!.name, metadata });
+            events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
+            if (!Translator.#answeredLater(e)) {
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
+            }
+            return events;
+        }
         if (e.op !== null) {
             events.push(...Translator.#readableReasoningEvents(Translator.#reasoningId(e, id),
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
@@ -239,8 +276,8 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: call.name, metadata });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: call.args });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
-        // {§agui-call-result} A call is answered by its receipt, unless it opened an obligation.
-        if (!Translator.#opensObligation(e)) {
+        // {§agui-call-result} A call is answered by its receipt, unless something later answers it.
+        if (!Translator.#answeredLater(e)) {
             events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
         }
         return events;
@@ -422,7 +459,8 @@ export default class Translator {
         const call = Translator.#callOf(e as LogEntryNotification["entry"]);
         if (call === null) return;
         messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: call.name, arguments: call.args }, metadata }] }));
-        if (Translator.#opensObligation(e)) return;
+        if (e.state === "proposed") this.#held.add(id);
+        if (Translator.#answeredLater(e)) return;
         Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: Translator.#asText(e.rx), metadata }));
     }
 
@@ -609,6 +647,12 @@ export default class Translator {
         };
     }
 
+    // {§agui-call-result} A call its receipt does not answer: a gated one awaits its own settlement ({§proposal-202-pauses}),
+    // and one that opened an obligation the delivery that discharges it.
+    static #answeredLater(e: { attrs?: unknown; status_rx?: unknown; state?: unknown }): boolean {
+        return e.state === "proposed" || Translator.#opensObligation(e);
+    }
+
     // {§agui-call-result} A call that opened an obligation is answered by the delivery that discharges it, never by its
     // receipt, which rides the row: an execution its stream, a message the reply or conclusion ({§worker-obligations}).
     static #opensObligation(e: { attrs?: unknown; status_rx?: unknown }): boolean {
@@ -632,11 +676,11 @@ export default class Translator {
     }
 
     // {§agui-plurnk-metadata} What the row that builds a message, tool call or result holds beyond the standard fields: its
-    // durable id, log coordinate, worker, origin, operation, source, address, signal, status and attrs, the same live and
-    // on snapshot.
+    // durable id, log coordinate, worker, origin, operation, source, address, signal, status, attrs and state, the same live
+    // and on snapshot.
     static #rowMetadata(e: RowFacts): { plurnk: Record<string, unknown> } {
         return { plurnk: { id: e.id, coordinate: Translator.idOf(e), worker: e.worker_id, origin: e.origin, op: e.op, source: e.source,
-            address: Translator.addressOf(e), signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+            address: Translator.addressOf(e), signal: e.signal, status: e.status_rx, attrs: e.attrs, state: e.state } };
     }
 
     // {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a

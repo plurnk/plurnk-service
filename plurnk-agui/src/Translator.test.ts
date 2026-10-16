@@ -153,6 +153,28 @@ test("{§agui-call-result} {§worker-obligations} {§agui-progress-reply} a dele
     ], "replay answers each call beside it, and keeps the progress message");
 });
 
+test("{§agui-call-result} {§proposal-202-pauses} a gated call is answered by its own settlement, live and on replay", () => {
+    const edit = (state: "proposed" | "resolved" | "cancelled", status: number) => entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "EDIT",
+        tx: authored("````EDIT (notes.md)\nnew\n````"), pathname: "notes.md", attrs: { patch: "+new" }, status_rx: status, rx: { status }, state });
+    const tr = t();
+    const pending = tr.logEntry(edit("proposed", 202));
+    assert.deepEqual(pending.filter(({ type }) => type.startsWith("TOOL_CALL")).map(({ type }) => type),
+        [EventType.TOOL_CALL_START, EventType.TOOL_CALL_ARGS, EventType.TOOL_CALL_END], "awaiting its decision, the call has no result");
+    assert.equal((pending.find(({ type }) => type === EventType.TOOL_CALL_START) as { metadata?: { plurnk?: { state?: string } } }).metadata?.plurnk?.state,
+        "proposed", "its facts say it awaits its decision");
+    for (const [state, status] of [["resolved", 200], ["cancelled", 499]] as const) {
+        const settled = t().logEntry(edit(state, status));
+        const [result] = settled.filter(({ type }) => type === EventType.TOOL_CALL_RESULT) as Array<{ toolCallId: string; content: string }>;
+        assert.deepEqual([result?.toolCallId, JSON.parse(result?.content ?? "null")], ["1/1/1", { status }], `${state}, its receipt answers its call`);
+    }
+    for (const [state, status, answered] of [["proposed", 202, false], ["resolved", 200, true]] as const) {
+        const [snapshot] = t().replay([edit(state, status).entry]);
+        if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+        assert.deepEqual(snapshot.messages.map(({ id, role }) => [id, role]), answered ? [["1/1/1", "assistant"], ["1/1/1/result", "tool"]] : [["1/1/1", "assistant"]],
+            answered ? "settled, the snapshot holds the call and its receipt" : "pending, the snapshot holds the call alone");
+    }
+});
+
 test("{§agui-subagents} {§agui-snapshot} a subagent's conversation is its own: attributed to its run and identified in its worker's namespace, live and in one replay with its delegator's", () => {
     const helper = new Translator({ threadId: "th-1", runId: "run-1", modelWorkerId: 20, subagent: { runId: "ops://helper/1", worker: "helper" } });
     const own = [
@@ -859,7 +881,7 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
 test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
     const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}`,
         worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, address: Translator.addressOf(row), signal: row.signal, status: row.status_rx,
-        attrs: row.attrs } });
+        attrs: row.attrs, state: row.state } });
     const speech = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
     const rows = [
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),

@@ -24,20 +24,20 @@ import { wireRow } from "../test/log-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
 
-const capture = (portal: Portal, events: AguiEvent[]) => {
-    const interrupts = new Map<string, Interrupt>();
+// What a Run receives: its events, and the interrupts that end it after them ({§agui-proposal-resolve}). A gate's
+// interrupt names the call it concerns, or, on a Run that does not hold that call, carries its row's facts.
+const capture = (events: AguiEvent[]) => {
+    const interrupts: Interrupt[] = [];
     return {
-        emit(batch: AguiEvent[]): void {
+        interrupts,
+        emit(batch: AguiEvent[], presented: Interrupt[] = []): void {
             events.push(...batch);
-            for (const event of batch) {
-                if (event.type !== "TOOL_CALL_END") continue;
-                const interrupt = portal.interruptForToolCall(event.toolCallId);
-                if (interrupt !== null) interrupts.set(event.toolCallId, interrupt);
-            }
+            interrupts.push(...presented);
         },
-        interrupt(toolCallId: string): Interrupt {
-            const interrupt = interrupts.get(toolCallId);
-            assert.ok(interrupt, `missing presented interrupt for ${toolCallId}`);
+        interrupt(call: string): Interrupt {
+            const interrupt = interrupts.findLast((candidate) => candidate.toolCallId === call
+                || (candidate.metadata as { plurnk?: { proposal?: { coordinate?: unknown } } } | undefined)?.plurnk?.proposal?.coordinate === call);
+            assert.ok(interrupt, `missing presented interrupt for ${call}`);
             return interrupt;
         },
     };
@@ -46,8 +46,10 @@ const capture = (portal: Portal, events: AguiEvent[]) => {
 const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
     workerId: 10,
+    worker: `worker-${over.workerId ?? 10}`,
     loopId: 1,
     turnId: 1,
+    coordinate: `1/1/${over.logEntryId ?? 5}`,
     op: "EDIT",
     target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
@@ -144,7 +146,9 @@ const mockSeam = (
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
         cancelLoop: async (args) => { cancelledLoops.push(args); return true; },
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
-        readLog: async () => [],
+        // A gate's row, read by its coordinate while it awaits its decision; a history read finds no rows.
+        readLog: async ({ workerId, loopSeq, turnSeq, sequence }) => loopSeq === undefined ? [] : [wireRow({ id: sequence, worker_id: workerId,
+            loop_seq: loopSeq, turn_seq: turnSeq, sequence, op: "EDIT", status_rx: 202, rx: { status: 202 }, state: "proposed" })],
         listProviders: () => ({ aliases: [] }),
     } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
@@ -243,20 +247,24 @@ test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and 
     assert.throws(() => portal.openThread(args), /The PLURNK service is shutting down/u);
 });
 
-test("{§agui-worker-owner}: an idle owner receives a gate without an ancestor loop; an observer cannot claim it", async () => {
+test("{§agui-worker-owner} {§agui-proposal-resolve}: an idle owner receives a gate without an ancestor loop; an observer cannot claim it", async () => {
     const m = mockSeam([], [], { workers: [worker(10), worker(20)] });
-    const ownerEvents: AguiEvent[] = [];
-    const observerEvents: AguiEvent[] = [];
+    const owner = capture([]);
+    const observer = capture([]);
     const portal = new Portal(m.seam);
     portal.start();
     portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER,
-        notificationScope: "worker", emit: (events) => ownerEvents.push(...events) });
+        notificationScope: "worker", emit: owner.emit });
     portal.openThread({ workspaceId: 3, workerId: 20, threadId: "observer",
-        notificationScope: "worker", emit: (events) => observerEvents.push(...events) });
+        notificationScope: "worker", emit: observer.emit });
     m.fire(3, "loop/proposal", proposal({ workerId: 20, loopId: 22 }));
     await nextTask();
-    assert.ok(ownerEvents.some(({ type }) => type === "TOOL_CALL_START"));
-    assert.equal(observerEvents.some(({ type }) => type === "TOOL_CALL_START"), false);
+    assert.equal(owner.interrupts.length, 1, "the owner receives the gate");
+    const [gate] = owner.interrupts;
+    assert.equal(gate!.toolCallId, undefined, "the owner's Run holds no call of that worker: the gate names none");
+    assert.deepEqual([gate!.metadata?.plurnk?.proposal?.worker, gate!.metadata?.plurnk?.proposal?.coordinate], ["worker-20", "1/1/5"],
+        "its interrupt carries Core's projection: the worker by name, the row by its coordinate");
+    assert.equal(observer.interrupts.length, 0);
     portal.stop();
 });
 
@@ -368,6 +376,7 @@ test("{§agui-sync}: synchronization observes an already-active loop without tak
 test("live stopped-worlds select their exact loop Run before the worker fallback", async () => {
     const m = mockSeam();
     const owningSeen: AguiEvent[] = [];
+    const owningView = capture(owningSeen);
     const concurrentSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
@@ -376,7 +385,7 @@ test("live stopped-worlds select their exact loop Run before the worker fallback
         workerId: 10,
         threadId: "owning", owner: OWNER,
         notificationScope: "worker",
-        emit: (events) => owningSeen.push(...events),
+        emit: owningView.emit,
     });
     await portal.run(owning, { workspaceId: 3, workerId: 10, prompt: "go" });
     portal.openThread({
@@ -388,17 +397,17 @@ test("live stopped-worlds select their exact loop Run before the worker fallback
     });
 
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 77 }));
-    assert.ok(
-        owningSeen.some((event) => event.type === "TOOL_CALL_END"),
-        "the proposal reaches its loop-bound Run",
-    );
+    await nextTask();
+    assert.deepEqual(owningView.interrupts.map(({ toolCallId }) => toolCallId), ["1/1/42"],
+        "the proposal reaches its loop-bound Run, naming the operation's own call");
     assert.equal(concurrentSeen.length, 0, "the proposal does not interrupt an unbound action Run");
 
     owningSeen.length = 0;
     m.fire(3, "loop/interaction", interaction({ interactionId: 43, loopId: 77 }));
+    await nextTask();
     assert.ok(
         owningSeen.some((event) => event.type === "TOOL_CALL_END"),
-        "the generic interaction reaches its loop-bound Run",
+        "the generic interaction reaches its loop-bound Run as its own call",
     );
     assert.equal(concurrentSeen.length, 0, "the interaction does not interrupt an unbound action Run");
     portal.stop();
@@ -444,9 +453,11 @@ test("{§agui-message-before-gate}: a message run during a durable proposal is d
     const deliveredBeforeGate: number[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events) => {
+    const presented: Interrupt[] = [];
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events, interrupts = []) => {
         seen.push(...events);
-        if (events.some((event) => event.type === "TOOL_CALL_END")) deliveredBeforeGate.push(m.workers.length);
+        presented.push(...interrupts);
+        if (interrupts.length > 0) deliveredBeforeGate.push(m.workers.length);
     } });
 
     assert.equal(
@@ -456,7 +467,7 @@ test("{§agui-message-before-gate}: a message run during a durable proposal is d
     );
     assert.deepEqual(m.workers, [{ workspaceId: 3, prompt: "new work" }], "the message reaches Core");
     assert.deepEqual(deliveredBeforeGate, [1], "the message is durable before the gate is re-presented");
-    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"), "the durable interrupt is presented again");
+    assert.deepEqual(presented.map(({ toolCallId }) => toolCallId), ["1/1/5"], "the durable interrupt is presented again, on its call");
     portal.stop();
 });
 
@@ -468,17 +479,11 @@ test("{§agui-gate-deferral}: a descendant gate arriving during the bound worker
             [20, [loop(20, 88)]],
         ]),
     });
-    const seen: AguiEvent[] = [];
-    const registered: Array<Interrupt | null> = [];
+    const batches: Array<{ events: AguiEvent[]; interrupts: Interrupt[] }> = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events) => {
-        seen.push(...events);
-        for (const event of events) {
-            if (event.type !== "TOOL_CALL_END") continue;
-            registered.push(portal.interruptForToolCall((event as { toolCallId: string }).toolCallId));
-        }
-    } });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker",
+        emit: (events, interrupts = []) => { batches.push({ events, interrupts }); } });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
     const call = { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1 };
@@ -486,14 +491,14 @@ test("{§agui-gate-deferral}: a descendant gate arriving during the bound worker
     m.fire(3, "reasoning/event", { ...call, phase: "content", delta: "weighing the child's request" });
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, workerId: 20, loopId: 88 }));
     await nextTask();
-    assert.ok(!seen.some((event) => event.type === "TOOL_CALL_END"), "a gate cannot split the open reasoning lifecycle");
+    assert.ok(!batches.some(({ interrupts }) => interrupts.length > 0), "a gate cannot split the open reasoning lifecycle");
 
     m.fire(3, "reasoning/event", { ...call, phase: "end" });
-    const types = seen.map((event) => event.type);
-    assert.ok(types.includes(EventType.TOOL_CALL_END), "the held gate is presented once the lifecycle ends");
-    assert.ok(types.indexOf(EventType.REASONING_END) < types.indexOf(EventType.TOOL_CALL_END), "the reasoning message closes before the gate");
-    assert.ok(types.indexOf(EventType.TOOL_CALL_END) < types.lastIndexOf(EventType.STEP_FINISHED), "the active step closes after the gate, before the interrupt terminal");
-    assert.deepEqual(registered.map((interrupt) => interrupt?.toolCallId ?? null), ["prop:42"], "the interrupt is registered while its tool call is emitted");
+    const gate = batches.findIndex(({ interrupts }) => interrupts.length > 0);
+    assert.ok(gate >= 0, "the held gate is presented once the lifecycle ends");
+    assert.ok(batches.slice(0, gate).some(({ events }) => events.some(({ type }) => type === EventType.REASONING_END)), "the reasoning message closes before the gate");
+    assert.ok(batches[gate]!.events.some(({ type }) => type === EventType.STEP_FINISHED), "the active step closes with the gate, before the interrupt ends the Run");
+    assert.deepEqual(batches[gate]!.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"], "the child's gate carries its projection");
     portal.stop();
 });
 
@@ -508,9 +513,10 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
         ]),
     });
     const seen: AguiEvent[] = [];
+    const view = capture(seen);
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
     m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
@@ -525,25 +531,22 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
         usage: loopUsage({ curationBudget: 1000 }),
     }));
     assert.ok(seen.some((event) => event.type === "RUN_FINISHED"), "the bound terminal settles the Run");
-    assert.ok(!seen.some((event) => event.type === "TOOL_CALL_END"), "a settled Run presents no gate");
+    assert.deepEqual(view.interrupts, [], "a settled Run presents no gate");
     portal.closeRun(3, thread);
 
     pending.push(gate);
-    const next: AguiEvent[] = [];
-    const nextThread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events) => next.push(...events) });
+    const next = capture([]);
+    const nextThread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: next.emit });
     assert.equal(await portal.run(nextThread, { workspaceId: 3, workerId: 10, prompt: "again" }), null);
-    assert.deepEqual(
-        next.filter((event) => event.type === "TOOL_CALL_END").map((event) => (event as { toolCallId: string }).toolCallId),
-        ["prop:42"],
-        "the durable gate is re-presented by the next Run",
-    );
+    assert.deepEqual(next.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"],
+        "the durable gate is re-presented by the next Run");
     portal.stop();
 });
 
 test("a durable client interaction re-surfaces with its exact standard Interrupt and resumes through core", async () => {
     const m = mockSeam([], [interaction({ interactionId: 30, loopId: 7 })]);
     const seen: AguiEvent[] = [];
-    let interrupt: Interrupt | null = null;
+    const view = capture(seen);
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({
@@ -551,17 +554,12 @@ test("a durable client interaction re-surfaces with its exact standard Interrupt
         workerId: 10,
         threadId: "tui", owner: OWNER,
         notificationScope: "worker",
-        emit: (events) => {
-            seen.push(...events);
-            const end = events.find((event) => event.type === "TOOL_CALL_END") as { toolCallId?: string } | undefined;
-            if (end?.toolCallId !== undefined) interrupt = portal.interruptForToolCall(end.toolCallId);
-        },
+        emit: view.emit,
     });
 
     assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
     assert.equal(m.workers.length, 1, "{§agui-message-before-gate}: the message reaches Core before the gate is re-presented");
-    const presented = interrupt as Interrupt | null;
-    assert.ok(presented);
+    const presented = view.interrupt("int:30");
     assert.deepEqual(presented, {
         id: presented.id,
         reason: "tool_call",
@@ -582,21 +580,30 @@ test("a durable client interaction re-surfaces with its exact standard Interrupt
     portal.stop();
 });
 
-test("a live proposal reaches the bound thread as a tool-call; resume resolves it; cancel cancels", async () => {
+test("{§agui-proposal-resolve} a live proposal is the operation's call and an interrupt naming it; resume resolves it, its settlement answers it; cancel cancels", async () => {
     const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, seen);
+    const view = capture(seen);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
 
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
-    const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
-    assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
-    assert.equal(start?.toolCallName, "request_approval");
+    await nextTask();
+    const parts = () => seen.filter(({ type }) => type.startsWith("TOOL_CALL")).map((event) => [event.type, (event as { toolCallId: string }).toolCallId]);
+    assert.deepEqual(parts(), [["TOOL_CALL_START", "1/1/42"], ["TOOL_CALL_ARGS", "1/1/42"], ["TOOL_CALL_END", "1/1/42"]],
+        "the gate is the operation's own call, unanswered");
+    const gate = view.interrupt("1/1/42");
+    assert.deepEqual([gate.reason, gate.subagentRunId, gate.metadata?.plurnk?.proposal?.logEntryId], ["tool_call", undefined, 42], "its interrupt names that call");
 
-    await portal.resolve(3, thread, [{ interruptId: view.interrupt("prop:42").id, status: "resolved", payload: { decision: "accept" } }]);
+    await portal.resolve(3, thread, [{ interruptId: gate.id, status: "resolved", payload: { decision: "accept" } }]);
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept" } });
+    assert.equal(parts().length, 3, "the decision is no result");
+    m.fire(3, "log/entry", { entry: wireRow({ id: 42, worker_id: 10, loop_id: 7, sequence: 42, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
+    assert.deepEqual(parts().slice(3), [["TOOL_CALL_START", "1/1/42"], ["TOOL_CALL_END", "1/1/42"], ["TOOL_CALL_RESULT", "1/1/42"]],
+        "the operation's settlement folds onto the call the client holds, its arguments never resent, and answers it");
+    const settled = seen.filter(({ type }) => type === "TOOL_CALL_START").at(-1) as { metadata?: { plurnk?: { state?: unknown; status?: unknown } } };
+    assert.deepEqual([settled.metadata?.plurnk?.state, settled.metadata?.plurnk?.status], ["resolved", 200], "with the settled facts");
 
     assert.equal(portal.cancel(10), true);
     assert.equal(m.cancelled(), 10, "cancel cancels the worker's drain");
@@ -615,7 +622,7 @@ test("a descendant proposal interrupts its owning thread and resumes the exact c
     const firstSeen: AguiEvent[] = [];
     const resumedSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, firstSeen);
+    const view = capture(firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
@@ -628,14 +635,12 @@ test("a descendant proposal interrupts its owning thread and resumes the exact c
 
     m.fire(3, "loop/proposal", pending);
     await nextTask();
-    assert.ok(
-        firstSeen.some((event) => event.type === "TOOL_CALL_END"),
-        "the owning thread receives the child's gate",
-    );
+    assert.ok(view.interrupts.length > 0 && view.interrupts.every(({ metadata }) => metadata?.plurnk?.proposal?.coordinate === "1/1/42"),
+        "the owning thread receives the child's gate");
     portal.closeRun(3, first);
 
     const resume = [{
-        interruptId: view.interrupt("prop:42").id,
+        interruptId: view.interrupt("1/1/42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
@@ -679,6 +684,7 @@ test("a queued descendant gate precedes a later controlling terminal", async () 
     });
     m.seam.listWorkers = () => workers.promise;
     const controlling: AguiEvent[] = [];
+    const gates: Interrupt[] = [];
     const independent: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
@@ -688,11 +694,10 @@ test("a queued descendant gate precedes a later controlling terminal", async () 
         workerId: 10,
         threadId: "controlling", owner: OWNER,
         notificationScope: "worker",
-        emit: (events) => {
+        emit: (events, interrupts = []) => {
             controlling.push(...events);
-            if (events.some((event) => event.type === "TOOL_CALL_END")) {
-                portal.closeRun(3, thread);
-            }
+            gates.push(...interrupts);
+            if (interrupts.length > 0) portal.closeRun(3, thread);
         },
     });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
@@ -730,7 +735,7 @@ test("a queued descendant gate precedes a later controlling terminal", async () 
     workers.resolve([worker(10), worker(20, 10)]);
     await nextTask();
     await nextTask();
-    assert.ok(controlling.some((event) => event.type === "TOOL_CALL_END"));
+    assert.equal(gates.length, 1, "the queued gate is presented");
     assert.equal(
         controlling.some((event) => event.type === "RUN_FINISHED"),
         false,
@@ -750,7 +755,7 @@ test("an owning thread re-surfaces a durable descendant interaction after reconn
     });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, seen);
+    const view = capture(seen);
     portal.start();
     const thread = portal.openThread({
         workspaceId: 3,
@@ -808,7 +813,7 @@ test("multiple descendant gates serialize through one owning thread", async () =
     const firstSeen: AguiEvent[] = [];
     const secondSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, firstSeen);
+    const view = capture(firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
@@ -823,36 +828,27 @@ test("multiple descendant gates serialize through one owning thread", async () =
         workerId: 10,
         prompt: "continue",
     }), null);
-    assert.deepEqual(
-        firstSeen
-            .filter((event) => event.type === "TOOL_CALL_END")
-            .map((event) => (event as { toolCallId: string }).toolCallId),
-        ["prop:42"],
-        "only one descendant Worker is exposed in each stopped AG-UI Run",
-    );
+    assert.deepEqual(view.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"],
+        "only one descendant Worker is exposed in each stopped AG-UI Run");
     portal.closeRun(3, first);
 
     const firstResume = [{
-        interruptId: view.interrupt("prop:42").id,
+        interruptId: view.interrupt("1/1/42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
+    const secondView = capture(secondSeen);
     const second = portal.openThread({
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
         notificationScope: "worker",
         resume: firstResume,
-        emit: (events) => secondSeen.push(...events),
+        emit: secondView.emit,
     });
     await portal.resolve(3, second, firstResume);
-    assert.deepEqual(
-        secondSeen
-            .filter((event) => event.type === "TOOL_CALL_END")
-            .map((event) => (event as { toolCallId: string }).toolCallId),
-        ["prop:43"],
-        "resolving one child immediately presents the next durable child gate",
-    );
+    assert.deepEqual(secondView.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/43"],
+        "resolving one child immediately presents the next durable child gate");
     assert.deepEqual(m.resolves, [{
         logEntryId: 42,
         resolution: { decision: "accept" },
@@ -886,7 +882,7 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     const m = mockSeam([pending]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, seen);
+    const view = capture(seen);
     portal.start();
     const thread = portal.openThread({
         workspaceId: 3,
@@ -908,7 +904,7 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     };
 
     await portal.resolve(3, thread, [{
-        interruptId: view.interrupt("prop:42").id,
+        interruptId: view.interrupt("1/1/42").id,
         status: "resolved",
         payload: { decision: "accept" },
     }]);
@@ -927,7 +923,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     const firstSeen: AguiEvent[] = [];
     const resumedSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, firstSeen);
+    const view = capture(firstSeen);
     portal.start();
     const first = portal.openThread({
         workspaceId: 3,
@@ -943,10 +939,11 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
     m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
     m.fire(3, "loop/proposal", pending);
+    await nextTask();
     portal.closeRun(3, first);
 
     const resume = [{
-        interruptId: view.interrupt("prop:42").id,
+        interruptId: view.interrupt("1/1/42").id,
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
@@ -1335,7 +1332,7 @@ test("{§agui-subagents} {§agui-snapshot}: a snapshot replays each subagent's c
     portal.stop();
 });
 
-test("{§agui-subagents}: an interrupt that finishes the Run suspends its running subagents after the gate's call", async () => {
+test("{§agui-subagents}: an interrupt that finishes the Run suspends its running subagents first", async () => {
     const gate = proposal({ logEntryId: 42, loopId: 77 });
     const m = delegation(new Map([
         [10, [loop(10, 77)]],
@@ -1343,7 +1340,7 @@ test("{§agui-subagents}: an interrupt that finishes the Run suspends its runnin
     ]), [gate]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
-    const view = capture(portal, seen);
+    const view = capture(seen);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
@@ -1351,11 +1348,30 @@ test("{§agui-subagents}: an interrupt that finishes the Run suspends its runnin
     await nextTask();
     m.fire(3, "loop/proposal", gate);
     await nextTask();
-    assert.ok(view.interrupt("prop:42"), "the gate is presented");
-    const order = attributed(seen);
-    const call = seen.findIndex((event) => event.type === EventType.TOOL_CALL_END && event.toolCallId === "prop:42");
-    assert.ok(call !== -1 && order.indexOf("SUBAGENT_FINISHED:ops://worker-20/1") > call, "the subagent's segment ends after the gate's call, before the interrupt finishes the Run");
-    assert.deepEqual(lifecycle(seen).at(-1), { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "suspended" } });
+    assert.ok(view.interrupt("1/1/42"), "the gate is presented on the bound worker's call");
+    assert.deepEqual(lifecycle(seen).at(-1), { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "suspended" } },
+        "the subagent's segment ends before the interrupt finishes the Run");
+    portal.stop();
+});
+
+test("{§agui-proposal-resolve} {§agui-subagents}: a subagent's gate names its call in the subagent's namespace, and the subagent run", async () => {
+    const gate = proposal({ logEntryId: 42, workerId: 20, loopId: 100 });
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" })]],
+    ]));
+    const view = capture([]);
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(2, 20, 100));
+    await nextTask();
+    m.fire(3, "loop/proposal", gate);
+    await nextTask();
+    const [presented] = view.interrupts;
+    assert.deepEqual([presented?.toolCallId, presented?.subagentRunId, presented?.metadata?.plurnk?.proposal?.logEntryId], ["worker://worker-20#1/1/42", "ops://worker-20/1", 42],
+        "the Run holds the subagent's call, so the gate names it and the run it belongs to");
     portal.stop();
 });
 

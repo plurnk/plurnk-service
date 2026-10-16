@@ -663,19 +663,19 @@ test("a read-only management Run does not duplicate the message Run's model sett
     } finally { await mod.close(); }
 });
 
-test("{§agui-worker-owner} a control Run declares its owner's capability set: tools, and whether a person attends", async () => {
+test("{§agui-worker-owner} a control Run declares its owner's capability set: the review every AG-UI owner gives, its tools, and whether a person attends", async () => {
     const { seam, owners } = mockSeam();
     existingWorld(seam, "t1");
     seam.readWorkerModel = async () => ({ model: null, spawnModel: null });
     const mod = await host(seam);
     try {
         const port = mod.address().port;
-        const tools = [{ name: "request_approval", description: "Review a proposed operation.", parameters: { type: "object" } }];
+        const tools = [{ name: "question", description: "Ask the person a question.", parameters: { type: "object" } }];
         for (const [stated, interactive] of [[true, true], [false, false], [undefined, false]] as const) {
             await post(port, { threadId: "t1", tools, forwardedProps: { plurnk: {
                 workspace: "t1", control: true, ...(stated === undefined ? {} : { interactive: stated }), action: { kind: "worker.model.get" },
             } } });
-            assert.deepEqual(owners.get("agui://anonymous/threads/t1"), { address: "agui://anonymous/threads/t1", tools: ["request_approval"], interactive },
+            assert.deepEqual(owners.get("agui://anonymous/threads/t1"), { address: "agui://anonymous/threads/t1", tools: ["request_approval", "question"], interactive },
                 `interactive ${String(stated)}: unstated, nobody attends`);
         }
         const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
@@ -1506,8 +1506,10 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
         emit(3, "loop/proposal", {
             logEntryId: 42,
             workerId: 77,
+            worker: "interrupt-ownership",
             loopId: 9,
             turnId: 1,
+            coordinate: "1/1/42",
             op: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
@@ -1668,7 +1670,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
             const workerId = 77;
             const gateWorkerId = 88;
             let pending: ProposalProjection[] = [{
-                logEntryId: 42, workerId: gateWorkerId, loopId: 1, turnId: 1,
+                logEntryId: 42, workerId: gateWorkerId, worker: "child", loopId: 1, turnId: 1, coordinate: "1/1/42",
                 op: "EDIT", target: { scheme: "file", authority: null, pathname: "a" },
                 body: "replacement", attrs: {}, owner: "agui://anonymous/threads/lifetime",
                 disposition: { decision: "review" },
@@ -1776,7 +1778,7 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
     const { seam, resolves } = mockSeam();
     existingWorld(seam, "w");
     let pending: ProposalProjection[] = [41, 42].map((logEntryId) => ({
-        logEntryId, workerId: 77, loopId: 1, turnId: 1, op: "EDIT",
+        logEntryId, workerId: 77, worker: "presentations", loopId: 1, turnId: 1, coordinate: `1/1/${logEntryId}`, op: "EDIT",
         target: { scheme: "file", authority: null, pathname: `file-${logEntryId}` }, body: "replacement", attrs: {},
         owner: "agui://anonymous/threads/presentations", disposition: { decision: "review" },
     }));
@@ -1828,7 +1830,7 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
 
 test("{§agui-run-disconnect}: disconnect during resume validation cancels controlled work without releasing its approval", async () => {
     const { seam, resolves } = mockSeam();
-    const pending: ProposalProjection[] = [{ logEntryId: 42, workerId: 77, loopId: 9, turnId: 1, op: "EDIT",
+    const pending: ProposalProjection[] = [{ logEntryId: 42, workerId: 77, worker: "validating", loopId: 9, turnId: 1, coordinate: "1/1/42", op: "EDIT",
         target: { scheme: "file", authority: null, pathname: "file" }, body: "replacement", attrs: {},
         owner: "agui://anonymous/threads/validating", disposition: { decision: "review" } }];
     seam.pendingProposals = async () => pending;
@@ -1867,8 +1869,10 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     let pending: ProposalProjection[] = [{
         logEntryId: 42,
         workerId: 77,
+        worker: "t2",
         loopId: 1,
         turnId: 1,
+        coordinate: "1/1/42",
         op: "EDIT",
         target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
@@ -2061,10 +2065,12 @@ test("a descendant client interaction round-trips through its owning AG-UI threa
 test("the official AG-UI client reattaches to and resumes a durable proposal interrupt", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     const proposal: ProposalProjection = {
-        logEntryId: 42,
+        logEntryId: 41,
         workerId: 20,
+        worker: "verified-interrupt",
         loopId: 9,
         turnId: 12,
+        coordinate: "1/12/2",
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
@@ -2072,6 +2078,14 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         disposition: { decision: "review" },
     };
     let pending: ProposalProjection[] = [];
+    // The gated operation's row: read by its coordinate while it awaits its decision, and published once settled.
+    const gated = (state: "proposed" | "resolved") => wireRow({ id: 41, worker_id: 20, loop_id: 9, turn_id: 12, loop_seq: 1, turn_seq: 12, sequence: 2,
+        op: "sh", tx: { runtime: "sh", body: "printf ok" }, status_rx: state === "proposed" ? 202 : 200,
+        rx: state === "proposed" ? { status: 202 } : { status: 200, outcome: "accepted" }, state });
+    seam.readLog = async ({ sequence }) => sequence === 2 ? [gated(pending.length > 0 ? "proposed" : "resolved")] : [];
+    // {§message-idempotency} Core's keyed answer: a message it admitted is accepted, so a copy ending with it is not new.
+    const admitted = new Set<string>();
+    seam.messageAdmission = async ({ address }) => admitted.has(address) ? "accepted" : "new";
     seam.pendingProposals = async () => pending;
     seam.listWorkspaces = async () => [workspaceRow(3, "verified-interrupt")];
     seam.attachWorkspace = async () => ({
@@ -2081,7 +2095,8 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         projectLabel: null,
     });
     directory(seam, [workerRow(20, "verified-interrupt")]);
-    seam.runLoop = async () => {
+    seam.runLoop = async ({ messageAddress }) => {
+        if (messageAddress !== undefined) admitted.add(messageAddress);
         setImmediate(() => {
             emit(3, "log/entry", {
                 entry: {
@@ -2103,6 +2118,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
     seam.resolveProposal = async () => {
         pending = [];
         setImmediate(() => {
+            emit(3, "log/entry", { entry: gated("resolved") });
             emit(3, "log/entry", {
                 entry: {
                     id: 43,
@@ -2134,7 +2150,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
 
         await agent.runAgent({ forwardedProps: { plurnk: { workspace: "verified-interrupt" } } });
 
-        assert.deepEqual(agent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["prop:42"]);
+        assert.deepEqual(agent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["1/12/2"], "the gate names the operation's own call");
         const reattachedAgent = new HttpAgent({
             url: `http://127.0.0.1:${mod.address().port}/agui`,
             threadId: "verified-interrupt",
@@ -2145,7 +2161,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
             forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
         });
 
-        assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["prop:42"]);
+        assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["1/12/2"]);
         assert.notEqual(reattachedAgent.pendingInterrupts[0]!.id, agent.pendingInterrupts[0]!.id);
         assert.equal(loopRuns.length, 0, "reattaching to a durable interrupt does not start new model work");
         const resumedEvents: string[] = [];
@@ -2158,6 +2174,12 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         assert.deepEqual(resumedEvents.slice(0, 3), ["RUN_STARTED", "STATE_SNAPSHOT", "STEP_STARTED"]);
         assert.equal(resumedEvents.at(-1), "RUN_FINISHED");
         assert.equal((reattachedAgent.messages.at(-1) as { content?: unknown }).content, "Command approved.");
+        // {§agui-proposal-resolve} The approved operation is one call, answered by its own settlement.
+        const calls = reattachedAgent.messages.flatMap((message) => "toolCalls" in message ? message.toolCalls ?? [] : []);
+        assert.deepEqual(calls.map(({ id, function: { name } }) => [id, name]), [["1/12/2", "sh"]], "no approval call beside the operation's own");
+        const answers = reattachedAgent.messages.filter((message) => message.role === "tool" && message.toolCallId === "1/12/2");
+        assert.deepEqual(answers.map(({ content }) => JSON.parse(content as string)), [{ status: 200, outcome: "accepted" }],
+            "the operation's call is answered once, by its settled receipt");
     } finally {
         await mod.close();
     }
@@ -2310,14 +2332,17 @@ test("{§agui-sync} rows that reach a sync Run while its log is read follow its 
     try {
         const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy" } } });
         const snapshot = events.findIndex((event) => event.type === "MESSAGES_SNAPSHOT");
-        const calls = events.flatMap((event, index) => event.type === "TOOL_CALL_START"
-            ? [[index > snapshot, (event as { metadata?: { plurnk?: { id?: number; status?: number } } }).metadata?.plurnk]] : []);
-        assert.deepEqual(calls, [[true, expectedFacts(3)], [true, expectedFacts(2, 404)]],
-            "after the snapshot: the row it could not hold, and the settled receipt of the one it held; never the held row again");
+        const parts = events.flatMap((event, index) => event.type.startsWith("TOOL_CALL_")
+            ? [[event.type, index > snapshot, (event as { toolCallId?: string }).toolCallId, (event as { metadata?: { plurnk?: { id?: number; status?: number } } }).metadata?.plurnk]] : []);
+        assert.deepEqual(parts, [
+            ["TOOL_CALL_START", true, "1/1/3", expectedFacts(3)], ["TOOL_CALL_ARGS", true, "1/1/3", undefined], ["TOOL_CALL_END", true, "1/1/3", undefined],
+            ["TOOL_CALL_RESULT", true, "1/1/3", expectedFacts(3)],
+            ["TOOL_CALL_START", true, "1/1/2", expectedFacts(2, 404)], ["TOOL_CALL_END", true, "1/1/2", undefined], ["TOOL_CALL_RESULT", true, "1/1/2", expectedFacts(2, 404)],
+        ], "after the snapshot: the row it could not hold, then the later facts folded onto the call it held and its settled receipt, its arguments never sent again");
     } finally { await mod.close(); }
 
     function expectedFacts(id: number, status = 200) {
-        return { id, coordinate: `1/1/${id}`, worker: 20, origin: "model", op: "READ", source: null, address: null, signal: null, status, attrs: {} };
+        return { id, coordinate: `1/1/${id}`, worker: 20, origin: "model", op: "READ", source: null, address: null, signal: null, status, attrs: {}, state: "resolved" };
     }
 });
 
@@ -2507,10 +2532,12 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
 test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the model", async () => {
     const { seam, loopRuns } = mockSeam();
     const proposal: ProposalProjection = {
-        logEntryId: 42,
+        logEntryId: 41,
         workerId: 20,
+        worker: "sync-interrupt",
         loopId: 9,
         turnId: 12,
+        coordinate: "1/12/2",
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
@@ -2526,7 +2553,10 @@ test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the mo
         projectLabel: null,
     });
     directory(seam, [workerRow(20, "sync-interrupt")]);
-    seam.readLog = async () => [];
+    // {§proposal-202-pauses} The log holds the operation awaiting its decision.
+    const pendingRow = wireRow({ id: 41, worker_id: 20, loop_id: 9, turn_id: 12, loop_seq: 1, turn_seq: 12, sequence: 2, op: "sh",
+        tx: { runtime: "sh", body: "printf ok" }, status_rx: 202, rx: { status: 202 }, state: "proposed" });
+    seam.readLog = async ({ beforeId }) => beforeId === undefined ? [pendingRow] : [];
     const mod = await host(seam);
     try {
         const events = await post(mod.address().port, {
@@ -2539,13 +2569,16 @@ test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the mo
             "STATE_SNAPSHOT",
             "MESSAGES_SNAPSHOT",
         ]);
-        assert.ok(events.some(({ type }) => type === "TOOL_CALL_END"), "the pending proposal is visible");
+        const snapshot = events.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Replayed[] & Array<{ toolCallId?: string }> };
+        assert.deepEqual(transcript(snapshot.messages), [{ id: "1/12/2", role: "assistant", calls: ["sh"] }],
+            "the snapshot holds the operation awaiting its decision as its call, unanswered");
+        assert.equal(events.some(({ type }) => type === "TOOL_CALL_START"), false, "the gate re-presented on it sends no second call: the client holds it");
         const outcome = (events.at(-1) as {
             outcome?: { type?: unknown; interrupts?: Array<{ id?: unknown; reason?: unknown; toolCallId?: unknown }> };
         }).outcome;
         assert.equal(outcome?.type, "interrupt");
         assert.deepEqual(outcome?.interrupts?.map(({ id, reason, toolCallId }) => ({ id, reason, toolCallId })), [
-            { id: presentedInterrupt(events).id, reason: "tool_call", toolCallId: "prop:42" },
+            { id: presentedInterrupt(events).id, reason: "tool_call", toolCallId: "1/12/2" },
         ]);
         assert.equal(loopRuns.length, 0, "interrupt synchronization creates no model work");
     } finally {

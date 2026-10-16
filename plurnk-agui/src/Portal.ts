@@ -11,7 +11,7 @@ import { Problems, Validator, selectWorkerLoop } from "@plurnk/plurnk-contracts"
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
-import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
+import ProposalHitl, { type HitlDelivery, type HitlGate } from "./ProposalHitl.ts";
 import type {
     ApplicationLoopProjection,
     ApplicationWorkerProjection,
@@ -34,7 +34,8 @@ interface Thread {
     // {§agui-action-binding} The model worker this Run binds and reports the gauge of; null when it binds none.
     modelWorkerId: number | null;
     router: EventRouter;
-    emit: (events: AguiEvent[]) => void;
+    // A Run receives its events, and the interrupts that end it after them.
+    emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void;
     threadId: string;
     inputRunId: string;
     openStreams: Set<string>;   // stream addresses this Run owns until their stream/concluded
@@ -114,7 +115,8 @@ interface InterruptContinuation {
 }
 
 interface PresentedInterrupt {
-    readonly toolCallId: string;
+    readonly key: string;
+    readonly kind: HitlGate["kind"];
     readonly continuation: InterruptContinuation;
 }
 
@@ -127,6 +129,7 @@ export type PortalPort = Pick<
     | "resolveProposal"
     | "pendingClientInteractions"
     | "resolveClientInteraction"
+    | "readLog"
     | "listWorkers"
     | "listWorkerLoops"
     | "workerAccounting"
@@ -141,7 +144,6 @@ export default class Portal {
     // each notification selects its owner; a Run is not a second broadcast subscription.
     #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
-    #activeInterrupts = new Map<string, Interrupt>();
     #continuations = new Map<string, PresentedInterrupt>();
     #deliveryTails = new Map<number, Promise<void>>();
     // {§agui-subagents} The loops whose terminal the daemon has published and the Runs have yet to receive, in order.
@@ -153,7 +155,7 @@ export default class Portal {
         this.#seam = seam;
         this.#hitl = new ProposalHitl(
             seam,
-            (workspaceId, delivery) => this.#routeHitl(workspaceId, delivery),
+            (workspaceId, delivery) => this.#enqueueDelivery(workspaceId, async () => this.#routeHitl(workspaceId, await delivery)),
         );
     }
 
@@ -354,8 +356,7 @@ export default class Portal {
         const runId = `ops://${node.name}/${loop.sequence}`;
         const subagent: Subagent = {
             runId, loopId: loop.id, workerId: node.workerId, worker: node.name, descendant: node, loopSequence: loop.sequence, parent,
-            translator: new Translator({ threadId: thread.threadId, runId: thread.inputRunId, modelWorkerId: node.workerId,
-                workspaceId: thread.workspaceId, subagent: { runId, worker: node.name } }),
+            translator: thread.router.subagentTranslator({ modelWorkerId: node.workerId, subagent: { runId, worker: node.name } }),
             // A conclusion still on its way to this Run ends the segment when it arrives.
             result: this.#terminalsDue.has(loop.id) ? null : loop.terminalResult,
             segment: "unstarted",
@@ -564,7 +565,7 @@ export default class Portal {
         delivery: HitlDelivery,
         threads: readonly Thread[],
     ): void {
-        if (delivery.batch.events.length === 0) return;
+        if (delivery.batch.gates.length === 0) return;
         for (const thread of threads) {
             const controlLoopId = thread.loopId
                 ?? (thread.workerId === delivery.workerId ? delivery.loopId : null);
@@ -574,6 +575,9 @@ export default class Portal {
                 thread.deferredDelivery ??= delivery;
                 continue;
             }
+            // {§agui-proposal-resolve} Each gate's call reaches this Run before its interrupt, then the continuation records
+            // it as held, so the Run that resumes folds the settlement onto the call its client holds.
+            const shaped = delivery.batch.gates.map((gate) => ({ gate, ...Portal.#concerning(thread, gate) }));
             const paused = thread.router.interrupt();
             const continuation: InterruptContinuation = {
                 cancelOnDisconnect: thread.cancelOnDisconnect,
@@ -589,20 +593,29 @@ export default class Portal {
                         ?? (thread.workerId === delivery.workerId ? delivery.turnId : null),
                 },
             };
-            const interrupts = delivery.batch.interrupts.map((original) => {
-                const interrupt = { ...original, id: crypto.randomUUID() };
-                this.#continuations.set(interrupt.id, {
-                    toolCallId: original.toolCallId ?? original.id,
-                    continuation,
-                });
-                return interrupt;
+            const interrupts = shaped.map(({ gate, concerns }): Interrupt => {
+                const id = crypto.randomUUID();
+                this.#continuations.set(id, { key: gate.key, kind: gate.kind, continuation });
+                return { ...gate.interrupt, id, ...concerns };
             });
             // {§agui-subagents} The interrupt finishes the Run, so its subagents' segments end before it.
-            const closed = interrupts.length > 0 ? Portal.#closeSubagents(thread) : [];
-            this.#withHitl({ events: delivery.batch.events, interrupts }, () => {
-                thread.emit([...delivery.batch.events, ...paused.events, ...closed]);
-            });
+            thread.emit([...delivery.batch.events, ...shaped.flatMap(({ events }) => events), ...paused.events, ...Portal.#closeSubagents(thread)], interrupts);
         }
+    }
+
+    // {§agui-proposal-resolve} The call a gate's interrupt names on this Run, and the events that present it: the operation's
+    // own call, its worker's or an open subagent's, sent unless this Run's client holds it; none on a Run whose conversation
+    // holds no call of that worker.
+    static #concerning(thread: Thread, gate: HitlGate): { concerns: Partial<Interrupt>; events: AguiEvent[] } {
+        if (gate.call === undefined) return { concerns: {}, events: [] };
+        const { workerId, loopId, coordinate, entry } = gate.call;
+        if (thread.workerId === workerId) return { concerns: { toolCallId: coordinate }, events: thread.router.gateCall(entry) };
+        const subagent = thread.subagents.get(loopId);
+        if (subagent?.workerId === workerId && subagent.segment === "open") {
+            return { concerns: { toolCallId: `${Translator.subagentIds(subagent.worker)}#${coordinate}`, subagentRunId: subagent.runId },
+                events: subagent.translator.gateCall(entry) };
+        }
+        return { concerns: {}, events: [] };
     }
 
     #presentDeferred(workspaceId: number, thread: Thread): void {
@@ -610,19 +623,6 @@ export default class Portal {
         if (delivery === null || thread.router.reasoningOpen) return;
         thread.deferredDelivery = null;
         this.#emitDelivery(workspaceId, delivery, [thread]);
-    }
-
-    #withHitl(batch: HitlBatch, emit: (events: AguiEvent[]) => void): void {
-        for (const interrupt of batch.interrupts) {
-            this.#activeInterrupts.set(interrupt.toolCallId ?? interrupt.id, interrupt);
-        }
-        try {
-            emit(batch.events);
-        } finally {
-            for (const interrupt of batch.interrupts) {
-                this.#activeInterrupts.delete(interrupt.toolCallId ?? interrupt.id);
-            }
-        }
     }
 
     // {§agui-worker-owner} A gate reaches its owner's Runs that observe a worker: the one bound to its worker, else
@@ -701,16 +701,12 @@ export default class Portal {
         return first.modelWorkerId ?? undefined;
     }
 
-    interruptForToolCall(toolCallId: string): Interrupt | null {
-        return this.#activeInterrupts.get(toolCallId) ?? null;
-    }
-
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
     // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
     // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -854,10 +850,10 @@ export default class Portal {
     async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
         if (thread.owner === null) return false;
         const deliveries = await this.#hitl.resurface(workspaceId, thread.owner);
-        const pendingIds = new Set(deliveries.flatMap(({ batch }) => batch.interrupts.map(({ toolCallId, id }) => toolCallId ?? id)));
+        const pendingKeys = new Set(deliveries.flatMap(({ batch }) => batch.gates.map(({ key }) => key)));
         for (const [id, candidate] of this.#continuations) {
             if (candidate.continuation.workspaceId === workspaceId && candidate.continuation.owner === thread.owner
-                && !pendingIds.has(candidate.toolCallId)) this.#continuations.delete(id);
+                && !pendingKeys.has(candidate.key)) this.#continuations.delete(id);
         }
         if (deliveries.length === 0) return false;
         const delivery = deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
@@ -944,7 +940,7 @@ export default class Portal {
             throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
                 "The resume combines interrupts from different Runs."));
         }
-        const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index]!.toolCallId }));
+        const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index]!.key }));
         await this.#hitl.resolve(workspaceId, bound.owner, resolutions, (resolution) => {
             if (continuation.workspaceId !== workspaceId
                 || continuation.owner !== bound.owner
@@ -960,7 +956,9 @@ export default class Portal {
             if (bound.disconnected) throw new HttpProblemError(Problems.create("agui:interrupt", "connection-closed", 499,
                 "The connection closed before the interrupt was resolved."));
         });
-        bound.emit(resolutions.map((entry) => ({
+        // A client interaction is its own call, answered by the response; a proposal's call is answered by its
+        // operation's settlement, which arrives as that row.
+        bound.emit(resolutions.filter((_entry, index) => recorded[index]!.kind === "interaction").map((entry) => ({
             type: EventType.TOOL_CALL_RESULT,
             toolCallId: entry.interruptId,
             messageId: `${entry.interruptId}/result`,
@@ -972,7 +970,7 @@ export default class Portal {
         if (bound.loopId !== null) this.#bindLoop(bound, bound.loopId);
         const resolvedIds = new Set(resolutions.map(({ interruptId }) => interruptId));
         for (const [id, candidate] of this.#continuations) {
-            if (candidate.continuation.workspaceId === workspaceId && resolvedIds.has(candidate.toolCallId)) this.#continuations.delete(id);
+            if (candidate.continuation.workspaceId === workspaceId && resolvedIds.has(candidate.key)) this.#continuations.delete(id);
         }
         if (this.#threads.get(workspaceId)?.has(bound)) {
             const surfaced = await this.#resurfaceControlled(workspaceId, bound);

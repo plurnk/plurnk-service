@@ -225,6 +225,46 @@ test("{§proposal-decision-evidence}: effect-policy acceptance records runtime a
     } finally { await db.close(); }
 });
 
+test("{§proposal-projection}: a pending proposal names its worker and log coordinate, and the operator's decision deadline only when one is set", async (t) => {
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
+    });
+    const db = await openMigrated();
+    try {
+        for (const timeout of ["", "60000"]) {
+            process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = timeout;
+            const schemes = new SchemeRegistry();
+            schemes.register("proposing-test", new ProposingTest());
+            const engine = new Engine({ db, schemes });
+            const workspaceId = await insertWorkspace(db, `prop-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId, null, "reviewed-worker");
+            await ownWorker(db, workspaceId, workerId);
+            const loopId = await insertLoop(db, workerId, 2, "proposal projection");
+            const turnId = await insertTurn(db, loopId, 3, 102);
+            const announced = deferred<void>();
+            engine.onProposalPending(() => announced.resolve());
+            const dispatched = deferred<number>();
+            const before = Date.now();
+            const pending = engine.dispatch({ statement: editStmt("/x", "y"), workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+                onDispatch: (id) => dispatched.resolve(id) });
+            const logEntryId = await dispatched.promise;
+            await announced.promise;
+            const [projection] = await engine.pendingProposals(workspaceId);
+            assert.deepEqual([projection?.logEntryId, projection?.workerId, projection?.worker, projection?.coordinate],
+                [logEntryId, workerId, "reviewed-worker", "2/3/4"], "the worker by name and the row by its log coordinate");
+            if (timeout === "") assert.equal(projection !== undefined && Object.hasOwn(projection, "expiresAt"), false, "an untimed wait has no deadline");
+            else {
+                const deadline = Date.parse(projection?.expiresAt ?? "");
+                assert.ok(deadline >= before + 60_000 && deadline <= Date.now() + 60_000, `the deadline is the operator's wait from the proposal: ${projection?.expiresAt}`);
+            }
+            await engine.resolveProposal(logEntryId, { decision: "reject" }, TEST_OWNER);
+            await pending;
+        }
+    } finally { await db.close(); }
+});
+
 test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     const db = await openMigrated();
     try {

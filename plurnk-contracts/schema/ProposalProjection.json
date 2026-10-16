@@ -7,8 +7,10 @@
     "required": [
         "logEntryId",
         "workerId",
+        "worker",
         "loopId",
         "turnId",
+        "coordinate",
         "op",
         "target",
         "body",
@@ -18,31 +20,105 @@
     ],
     "additionalProperties": false,
     "properties": {
-        "logEntryId": { "type": "integer", "minimum": 1 },
-        "workerId": { "type": "integer", "minimum": 1 },
-        "loopId": { "type": "integer", "minimum": 1 },
-        "turnId": { "type": "integer", "minimum": 1 },
+        "logEntryId": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "workerId": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "worker": {
+            "description": "The requesting worker's name.",
+            "type": "string",
+            "minLength": 1
+        },
+        "loopId": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "turnId": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "coordinate": {
+            "description": "The gated operation's log coordinate, loop/turn/sequence: the id of the call it is.",
+            "type": "string",
+            "pattern": "^[0-9]+/[0-9]+/[0-9]+$"
+        },
         "op": {
             "description": "An operation keyword, or a runtime tag: an execution's operation is its runtime.",
             "anyOf": [
-                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL", "NOTE", "WAIT"] },
-                { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$" }
+                {
+                    "enum": [
+                        "FIND",
+                        "READ",
+                        "EDIT",
+                        "COPY",
+                        "MOVE",
+                        "SEND",
+                        "BARE",
+                        "WORK",
+                        "FORK",
+                        "KILL",
+                        "NOTE",
+                        "WAIT"
+                    ]
+                },
+                {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9+.-]*$"
+                }
             ],
             "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"NOTE\" | \"WAIT\" | Lowercase<string>"
         },
         "target": {
             "type": "object",
-            "required": ["scheme", "authority", "pathname"],
+            "required": [
+                "scheme",
+                "authority",
+                "pathname"
+            ],
             "additionalProperties": false,
             "properties": {
-                "scheme": { "type": ["string", "null"] },
-                "authority": { "type": ["string", "null"] },
-                "pathname": { "type": ["string", "null"] }
+                "scheme": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "authority": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "pathname": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
             }
         },
-        "body": { "type": "string" },
-        "attrs": { "type": "object", "additionalProperties": true },
-        "owner": { "type": "string", "minLength": 1 },
-        "disposition": { "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json" }
+        "body": {
+            "type": "string"
+        },
+        "attrs": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "owner": {
+            "type": "string",
+            "minLength": 1
+        },
+        "disposition": {
+            "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json"
+        },
+        "expiresAt": {
+            "description": "When the gate stops waiting and core cancels it (ISO 8601); absent while it waits indefinitely.",
+            "type": "string",
+            "format": "date-time"
+        }
     }
 }

@@ -68,13 +68,15 @@ does not recompute them.
 
 ## §agui-worker-owner Approval ownership
 
-An owner is `agui://anonymous/threads/<encoded threadId>`, scoped by
-workspace. It is not a socket, a Run, or a worker. `RunAgentInput.tools`
-declares its supported client-tool names, and `forwardedProps.plurnk.interactive` (a boolean)
-states whether a person attends it; unstated, nobody does. Control attachment registers that
-capability set and claims only runtime-owned work under {§worker-ownership}; observation does
-neither. Capabilities survive disconnection and a later declaration replaces them for future
-requests.
+An owner is its thread's address, `agui://<principal>/threads/<encoded threadId>` ({§agui-run-source}),
+scoped by workspace. It is not a socket, a Run, or a worker. `RunAgentInput.tools`
+declares the client tools it implements, and `forwardedProps.plurnk.interactive` (a boolean)
+states whether a person attends it; unstated, nobody does. Every AG-UI owner reviews, because a gate
+is answered by a standard interrupt resume ({§agui-proposal-resolve}): the module registers core's
+review capability, `request_approval` ({§worker-ownership}), beside the declared tools, and a client
+declares no tool for it. Control attachment registers that capability set and claims only
+runtime-owned work under {§worker-ownership}; observation does neither. Capabilities survive
+disconnection and a later declaration replaces them for future requests.
 
 | Request | Ownership effect |
 |---|---|
@@ -90,12 +92,14 @@ nothing.
 Approval delivery matches the recorded owner; interaction delivery matches its recorded
 recipient. No connected-ancestor fallback or topology-based authority exists. An owner may
 review an independently active child while its own worker is idle. Concurrent connections
-to one owner can see the same gate; Core settles it at most once. A matching worker's Run
+to one owner can see the same gate; Core settles it at most once. The owner's Runs are the Runs
+on its thread, a passive observation included: claiming is not presenting. A matching worker's Run
 receives its own gate; only when none is connected does delivery use the owner's Runs that
 observe its worker. An operation or other management Run never receives one.
-Each presentation of a gate retains its own Run continuation. Successful resume emits
-the standard `TOOL_CALL_RESULT` for each settled interrupt before continuing; this acknowledges
-the decision, not completion of the approved operation.
+Each presentation of a gate retains its own Run continuation. A resumed client interaction is
+acknowledged with the standard `TOOL_CALL_RESULT` of its call before the Run continues; a decision
+on a proposal is no result of its own, since the operation's settlement answers its call
+({§agui-proposal-resolve}).
 Server approval policy belongs to Core.
 
 ## §agui-run-disconnect Run lifetime
@@ -150,7 +154,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, its receipt in the speech's metadata ({§agui-plurnk-metadata}); a bodiless WAIT is an operation like any other, `TOOL_CALL_START/ARGS/END` + its receipt. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END`, the row's signal and status in its metadata ({§agui-plurnk-metadata}) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` + `TOOL_CALL_RESULT` carrying its receipt, except for a call that opened an obligation, which what discharges it answers {§agui-call-result} |
+| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` + `TOOL_CALL_RESULT` carrying its receipt, except for a call that opened an obligation, which what discharges it answers {§agui-call-result}, and a gated call the Run's client already holds, which its settlement updates and answers ({§agui-proposal-resolve}) |
 | §agui-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | `CUSTOM plurnk.ambient` ({§agui-ambient}); no assistant speech or reasoning replay. |
 | §agui-parse-refusal `log/entry` model `error` row, a parse refusal | The call the worker attempted ({§parse-attempt}): `TOOL_CALL_START` named by the attempt's verb, its arguments `{ text }` the statement as written, then `TOOL_CALL_RESULT` with the refusal, its status the failure; a refusal that names no attempt is no call and rides `CUSTOM plurnk.ambient` ({§agui-ambient}) |
@@ -159,7 +163,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | §agui-progress-reply `log/entry` reply reporting progress on a message this worker's operation sent ({§methods-answering}) | A user `TEXT_MESSAGE_START/CONTENT/END` named by its source, as on replay; a reply that completes the message answers its call instead ({§agui-call-result}), and one to a message this worker did not send rides `CUSTOM plurnk.ambient` |
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations, {§agui-ambient}) |
 | `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§agui-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
-| client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
+| client-owned `loop/proposal`               | The gated operation's own call, unless the Run's client holds it or the Run holds no conversation of its worker ({§agui-proposal-resolve}), `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | §agui-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. The Run's end, finished or failed, carries its loop's token `usage`: AG-UI's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§agui-cost-evidence}). It also carries the complete daemon terminal record as its metadata, physical-request accounting and top-level attribution included ({§agui-plurnk-metadata}). |
 | transport failure after SSE opens          | `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`, the exact Problem Details as its metadata, {§agui-plurnk-metadata}) |
@@ -233,7 +237,8 @@ sequence.
   |---|---|
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
-  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag) and attributes. Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). A gated call's settlement folds its settled facts onto the call ({§agui-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
@@ -350,8 +355,11 @@ every other daemon surface.
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
   `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). What reaches the Run while its log is
   read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already
-  holds as it arrived, which are not built a second time. A durable pending interrupt is re-presented
-  through the standard terminate-resume contract; an active Loop remains observed through its
+  holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only
+  the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and
+  its result follow. A durable pending gate addressed to the
+  Run's thread ({§agui-worker-owner}) is re-presented through the standard terminate-resume contract,
+  passive or not; an active Loop remains observed through its
   terminal; an idle worker emits `RUN_FINISHED`. Synchronization admits no prompt,
   creates no turn, and performs no model inference. Disconnecting this observer never cancels
   independently-owned work.
@@ -368,13 +376,13 @@ complete set:
 | Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
 | A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation, a bodiless WAIT and a parse refusal's attempt included ({§agui-parse-refusal}) | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}) |
+| Any other model operation, a bodiless WAIT and a parse refusal's attempt included ({§agui-parse-refusal}) | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}), nor does a proposal awaiting its decision ({§agui-proposal-resolve}) |
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
 | A reply reporting progress on a message this worker sent | `user` identified by its coordinate and named by its source ({§agui-progress-reply}) |
 | Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
 
-Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,
-and a settled one's evidence is its operation's receipt. Transient reasoning of failed or rejected
+Interrupts are not snapshot messages: a pending gate is re-presented as an interrupt naming the call
+the snapshot holds, and a settled one's evidence is its operation's call and result. Transient reasoning of failed or rejected
 requests is not retained ({§agui-readable-reasoning}).
 
 ## §agui-first-party-client-conformance First-party client conformance
@@ -420,14 +428,30 @@ explicit path fails rather than falling back or skipping conformance.
 
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 
-Every client-owned daemon proposal—file edits and `[300]` operator questions—and
-every contracts-owned client interaction emits an AG-UI tool call and terminates AG-UI Run A with
-`RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
-by default; absence is not an answer. AG-UI Run B on the same thread supplies standard
-`RunAgentInput.resume` entries. Each entry echoes the supplied opaque `Interrupt.id`;
-`Interrupt.toolCallId` separately identifies the underlying tool call (`prop:<logEntryId>`
-for proposals, `int:<interactionId>` for client interactions). Separate presentations of
-one gate have separate interrupt IDs, so an observer cannot inherit another Run's
+A client-owned gate, a proposal its owner reviews ({§worker-owner-resolution}) or a contracts-owned
+client interaction, terminates AG-UI Run A with `RUN_FINISHED.outcome.type = "interrupt"`. The
+durable loop remains paused until the decision, indefinitely unless the operator sets a decision
+deadline, which a proposal's interrupt carries as `expiresAt` ({§proposal-projection}); absence is
+not an answer. AG-UI Run B on the same thread supplies standard `RunAgentInput.resume` entries, each
+echoing the opaque `Interrupt.id` it answers.
+
+| Gate | What Run A presents before its interrupt | The interrupt |
+|---|---|---|
+| A proposal of the Run's bound worker | The operation's own call, `TOOL_CALL_START/ARGS/END` as its row builds it, unanswered, unless the Run's client holds it | `toolCallId` its coordinate |
+| A proposal of a worker whose subagent segment the Run has open ({§agui-subagents}) | That call in the subagent's namespace | `toolCallId` the namespaced coordinate, and `subagentRunId` |
+| A proposal of any other worker the owner reviews | Nothing: the Run holds no conversation of that worker | No `toolCallId` |
+| A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, and the request's `message` and `responseSchema` |
+
+A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its
+decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what
+the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and
+the decision is no result of its own. The operation's settlement answers it: the Run that holds the
+call receives a repeated `TOOL_CALL_START` and `TOOL_CALL_END` under the call's id carrying the settled
+facts, which the official reducer folds onto the call it holds, its arguments untouched, then the
+call's result, unless the operation opened an obligation, which what discharges it answers
+({§agui-call-result}). A snapshot holds a pending proposal as its call without a result
+({§agui-snapshot}), so a client that resumed holds exactly what a refreshed one builds. Separate
+presentations of one gate have separate interrupt IDs, so an observer cannot inherit another Run's
 cancellation responsibility ({§agui-run-disconnect}). Unknown presentations require
 rediscovery; pending proposals and interactions remain durable in Core. The module
 resolves the complete pending interrupt set for one worker, restores the thread's live projection
@@ -466,19 +490,16 @@ initial state, and a new `STEP_STARTED` for that same durable turn before releas
 operation. The continued loop later closes that Run B step normally. No AG-UI Run may finish
 while a step remains active.
 
-Proposal tool-call arguments and resume payloads retain the proposal review contract.
-Resolved proposal payloads carry `decision`, optional edited `body`, and optional string
-`outcome`; a cancelled entry may also carry `payload.outcome`. The outcome reaches Core
+A proposal's resume payload carries the review contract: a resolved one carries `decision`,
+optional edited `body`, and optional string `outcome`; a cancelled entry may also carry `payload.outcome`. The outcome reaches Core
 unchanged under {§proposal-outcome-terse-error}; invalid outcome types refuse the resume
 before any proposal is released. An omitted outcome leaves Core's existing default intact.
-Client-interaction tool calls use the request's exact `toolName` and `arguments`; their standard
-interrupt carries its optional `message` and `responseSchema`. A resolved resume payload becomes
-the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI
+An interaction's resolved resume payload becomes the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI
 never sees or reconstructs an upstream protocol's continuation state.
 
 §agui-proposal-disposition AG-UI consumes Core's `ProposalProjection` identically
-for live delivery and reconnect. A `review` disposition becomes a tool call and
-standard interrupt only for the matching owner. `accept` and `reject` remain
+for live delivery and reconnect. A `review` disposition becomes a standard interrupt
+only for the matching owner. `accept` and `reject` remain
 Core's automatic settlements and never become client review work. Operation,
 attrs and stale-target facts remain evidence, not authority inputs.
 

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
-const tools = [{ name: "request_approval", description: "Review operations", parameters: { type: "object" } }];
 interface Frame {
     type: string;
     delta?: string;
@@ -28,7 +27,7 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
     const cancellation = new AbortController();
     const post = (path: string, threadId: string, input: Record<string, unknown> = {}) => fetch(`http://127.0.0.1:${http.httpAddress().port}${path}`, {
         method: "POST", headers: { "content-type": "application/json" }, signal: cancellation.signal,
-        body: JSON.stringify({ threadId, runId: crypto.randomUUID(), state: {}, messages: [], tools, context: [],
+        body: JSON.stringify({ threadId, runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
             forwardedProps: { plurnk: { workspace: "ownership", control: true } }, ...input }),
     });
     try {
@@ -48,9 +47,10 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
         assert.equal(terminal?.outcome?.type, "interrupt");
         const interruptId = terminal?.outcome?.interrupts?.[0]?.id;
         assert.ok(interruptId);
-        const args = events.find(({ type }) => type === "TOOL_CALL_ARGS");
-        assert.ok(args?.delta);
-        assert.equal(JSON.parse(args.delta).owner, parent.owner);
+        // {§agui-proposal-resolve} The owner's Run holds no call of the child: the gate names none and carries the child's
+        // operation as Core projects it.
+        const gate = terminal?.outcome?.interrupts?.[0] as { toolCallId?: string; metadata?: { plurnk?: { proposal?: { worker?: string; op?: string } } } } | undefined;
+        assert.deepEqual([gate?.toolCallId, gate?.metadata?.plurnk?.proposal?.worker, gate?.metadata?.plurnk?.proposal?.op], [undefined, "background", "sh"]);
 
         const answer = { resume: [{ interruptId, status: "resolved", payload: { decision: "accept" } }] };
         const wrong = frames(await (await post("/agui", "observer", answer)).text());
@@ -59,9 +59,7 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
         assert.equal((await daemon.readWorker({ workspaceId: workspace.id, identity: { id: child.workerId } })).owner, parent.owner);
         const resolved = frames(await (await post("/agui", "operator", answer)).text());
         assert.equal(resolved.at(-1)?.outcome?.type, "success", JSON.stringify(resolved));
-        const acknowledgement = resolved.find(({ type, toolCallId }) => type === "TOOL_CALL_RESULT"
-            && toolCallId === terminal?.outcome?.interrupts?.[0]?.toolCallId);
-        assert.deepEqual(JSON.parse(acknowledgement?.content ?? "null"), { status: "resolved", payload: { decision: "accept" } });
+        assert.equal(resolved.some(({ type }) => type === "TOOL_CALL_RESULT"), false, "the decision is no result of its own");
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId: workspace.id, workerId: child.workerId }),
             (loops: Array<{ terminalResult: { status: number } | null }>) => loops.some(({ terminalResult }) => terminalResult?.status === 200));
         assert.deepEqual(await daemon.pendingProposals(workspace.id), []);
