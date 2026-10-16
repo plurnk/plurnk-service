@@ -10,6 +10,7 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
+import type { MessageOpener } from "./ChannelWrite.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -629,13 +630,13 @@ export default class Engine {
     //
     // The admission owner selects the exact loop before checking its policy.
     // This writer never reselects a recipient across an asynchronous boundary.
-    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string, evidence: MessageEvidence = {}, messageAddress?: string): Promise<
-        { loopId: number; turnSeq: number } | null
+    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string, evidence: MessageEvidence = {}, messageAddress?: string, opener?: MessageOpener): Promise<
+        { loopId: number; turnSeq: number; messageId: number } | null
     > {
         if (source !== undefined && source.length === 0) {
             throw new TypeError("Engine.injectIntoLoop: source must be a non-empty string when present");
         }
-        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source, evidence, messageAddress));
+        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source, evidence, messageAddress, opener));
     }
 
     #withPromptWriteLock<T>(loopId: number, write: () => Promise<T>): Promise<T> {
@@ -649,8 +650,8 @@ export default class Engine {
         return run;
     }
 
-    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}, messageAddress?: string): Promise<
-        { loopId: number; turnSeq: number } | null
+    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}, messageAddress?: string, opener?: MessageOpener): Promise<
+        { loopId: number; turnSeq: number; messageId: number } | null
     > {
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
@@ -659,9 +660,10 @@ export default class Engine {
             loop_id: loopId, source: source ?? null, body: prompt, open_paths: JSON.stringify(openPaths),
             evidence: JSON.stringify(evidence),
             address: messageAddress ?? null,
+            opened_turn_id: opener?.turnId ?? null, opened_sequence: opener?.sequence ?? null,
         });
         if (appended === undefined) return null;
-        return { loopId, turnSeq };
+        return { loopId, turnSeq, messageId: appended.id };
     }
 
     async runLoop(...args: Parameters<LoopDriver["runLoop"]>): ReturnType<LoopDriver["runLoop"]> {

@@ -205,11 +205,12 @@ END;
 -- INIT: log_entries_advance_subscription_publication
 -- The generated READ and its cursor transition are one SQLite statement. A
 -- later log KILL removes evidence from active context without rewinding the
--- subscription/channel publication state. {§exec-stream}
+-- subscription/channel publication state. {§exec-stream} A FORK's copy records
+-- what its original published and advances nothing.
 DROP TRIGGER IF EXISTS log_entries_advance_subscription_publication;
 CREATE TRIGGER log_entries_advance_subscription_publication
 AFTER INSERT ON log_entries
-WHEN NEW.subscription_publication_id IS NOT NULL
+WHEN NEW.subscription_publication_id IS NOT NULL AND NEW.inherited_history = 0
 BEGIN
     SELECT CASE WHEN
         NEW.origin != '_plurnk'

@@ -1,4 +1,4 @@
-// {§agui-snapshot} {§agui-projection} {§agui-execution-result} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
+// {§agui-snapshot} {§agui-projection} {§agui-call-result} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
 // alone, CUSTOM events ignored. The official HttpAgent and its own reducer watch one worker from every vantage: attached
 // before the prompt, the client that submits it, attached mid-request, attached while a command runs, and refreshed after.
 // Every view holds the same messages, in the same order, under the same identities.
@@ -48,7 +48,7 @@ const streamed = (frames: readonly object[], hold?: Promise<void>): Response => 
     },
 }), { headers: { "content-type": "text/event-stream" } });
 
-test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-execution-result} every vantage on one worker builds the same conversation from standard events", { timeout: 60_000 }, async (t) => {
+test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-call-result} every vantage on one worker builds the same conversation from standard events", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
@@ -128,7 +128,7 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     await new Promise((resolve) => setTimeout(resolve, 100));
     held.resolve();
 
-    // {§agui-execution-result} A command is one tool call whose result is its stream's observation, whenever that arrives.
+    // {§agui-call-result} A command is one tool call whose result is its stream's observation, whenever that arrives.
     const command = (agent: HttpAgent): string | undefined => agent.messages.flatMap((message) => "toolCalls" in message ? message.toolCalls ?? [] : [])
         .find(({ function: call }) => call.name === "sh")?.id;
     const answered = (agent: HttpAgent, callId: string) => agent.messages.some((message) => message.role === "tool" && message.toolCallId === callId);
@@ -167,6 +167,78 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     }), [{ status: 200, exitCode: 0, terminal: true, output: "hello\n" }], "the command's result is its output and conclusion, not its start receipt");
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late],
         ["attached while the command ran", running]] as const) {
+        assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
+    }
+});
+
+test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} every vantage sees a delegation answered by its child's conclusion and a message by its reply", { timeout: 60_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
+    const previousPolicy = process.env.PLURNK_SERVICE_PROPOSALS;
+    process.env.PLURNK_SERVICE_PROPOSALS = "accept";
+    t.after(() => {
+        if (previousPolicy === undefined) delete process.env.PLURNK_SERVICE_PROPOSALS;
+        else process.env.PLURNK_SERVICE_PROPOSALS = previousPolicy;
+    });
+
+    // The WAITs serialize the calls: main delegates, the helper concludes, main asks its peer, the peer answers, main replies.
+    const script = [
+        "````WORK (worker://helper)\nSay hello.\n````\n````WAIT\n````",
+        "````SEND [200]\nhello from the helper\n````",
+        "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND [200]\nforty-two\n````",
+        "````SEND [200]\nThe helper said hello; the answer is forty-two.\n````",
+    ];
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        model: "standard-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => streamed([{ id: `delegation-${calls}`, model: "standard-witness", choices: [{ index: 0,
+            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
+    });
+
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const agents: HttpAgent[] = [];
+    t.after(async () => {
+        for (const agent of agents) agent.abortRun();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "delegation" });
+    await daemon.createWorker({ workspaceId, name: "main" });
+    await daemon.createWorker({ workspaceId, name: "peer" });
+    const { host, port } = http.httpAddress();
+    const forwardedProps = { plurnk: { workspace: "delegation" } };
+    const before = new Observer({ url: `http://${host}:${port}/agui/connect`, threadId: "main" });
+    agents.push(before);
+    void before.connectAgent({ forwardedProps }).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const submitter = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(submitter);
+    submitter.messages = [{ id: "prompt-1", role: "user", content: "Ask the helper and the peer." }];
+    await submitter.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, maxTurns: 8 } } });
+    const finished = (agent: HttpAgent) => agent.messages.some((message) => message.role === "assistant" && message.content === "The helper said hello; the answer is forty-two.");
+    await until("the observer to hear the reply", () => finished(before));
+    const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(refreshed);
+    await refreshed.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, mode: "sync" } } });
+
+    const truth = view(refreshed.messages);
+    const callOf = (name: string) => truth.flatMap(({ calls: made }) => (made as Array<{ callId: string; name: string }> | undefined) ?? [])
+        .find((call) => call.name === name)?.callId;
+    const answersOf = (callId: string | undefined) => truth.filter(({ role, toolCallId }) => role === "tool" && toolCallId === callId).map(({ content }) => content);
+    const conclusion = answersOf(callOf("WORK"));
+    assert.equal(conclusion.length, 1, "the WORK has one result: no receipt beside its child's conclusion");
+    assert.equal((JSON.parse(conclusion[0] as string) as { content?: unknown }).content, "hello from the helper", "the child's conclusion answers the WORK");
+    assert.deepEqual(answersOf(callOf("SEND")), ["forty-two"], "the peer's completion answers the SEND, in its own words");
+    for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }
 });

@@ -77,12 +77,13 @@ BEGIN
 
     -- Log rows: durable events with their attribution, as inherited history. Each copied row
     -- passes through the log's own triggers exactly as the original did.
+    -- {§methods-invocation} A copied stream observation keeps the publication it records, so it still names its execution.
     INSERT INTO log_entries (
-        worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, inherited_history,
+        worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, subscription_publication_id, inherited_history,
         op, signal, scheme, username, password, hostname, port, pathname, query, fragment,
         lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded, patch
     )
-    SELECT NEW.id, nl.id, nt.id, e.sequence, e.at, e.origin, e.source, e.ambient_event_id, 1,
+    SELECT NEW.id, nl.id, nt.id, e.sequence, e.at, e.origin, e.source, e.ambient_event_id, e.subscription_publication_id, 1,
            e.op, e.signal, e.scheme, e.username, e.password, e.hostname, e.port, e.pathname, e.query, e.fragment,
            e.lineMarker, e.tx, e.mimetype_tx, e.rx, e.mimetype_rx, e.status_rx, e.weight, e.state, e.outcome, e.attrs, e.initial_folded, e.patch
     FROM log_entries e

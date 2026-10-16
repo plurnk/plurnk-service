@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
+import type { MessageOpener } from "../../src/core/ChannelWrite.ts";
 import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 import { sqliteSynchronous } from "../../src/core/sqlite-synchronous.ts";
 import GitMembership from "../../src/core/git-membership.ts";
@@ -79,7 +80,7 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
-        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, address: null, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
+        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, address: null, source: null, body: prompt, open_paths: "[]", evidence: "{}", opened_turn_id: null, opened_sequence: null });
         if (message === undefined) throw new Error("insertLoop: message enqueue returned no row");
     }
     return row.id;
@@ -131,6 +132,14 @@ export const insertTurn = async (db: Db, loopId: number, sequence: number, statu
     });
     if (row === undefined) throw new Error("insertTurn: insert returned no row");
     return row.id;
+};
+
+// {§worker-obligations} The operation by which a worker sends a message: a completed turn of the sender's loop, at its
+// next sequence, with the sending row first in it. Fixtures name it as the message's opener, as a SEND, WORK or FORK does.
+export const sendingOperation = async (db: Db, loopId: number): Promise<MessageOpener> => {
+    const next = await db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
+    if (next === undefined) throw new Error("sendingOperation: the sender's loop has no next turn");
+    return { turnId: await insertTurn(db, loopId, next.next, 200), sequence: 1 };
 };
 
 export const insertOperationTurn = async (

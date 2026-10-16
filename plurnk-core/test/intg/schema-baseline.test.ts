@@ -603,6 +603,28 @@ test("{§db-migrations} {§worker-wait-timing} {§log-history-projection}: a rel
     } finally { after.close(); }
 });
 
+// {§worker-obligations} The migration before 31 identified a message's sender by its name; 31 records the operation
+// that sent it. A message sent before that record keeps its every fact and opens no worker's obligation.
+test("{§db-migrations} {§worker-obligations}: a version-30 database keeps its messages, and one sent before openers were recorded holds no worker", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-openers-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dir = join(root, "migrations");
+    await mkdir(dir);
+    const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= 30);
+    await Promise.all(chapters.map((name) => copyFile(join(MIGRATIONS_DIR, name), join(dir, name))));
+    const path = join(root, "openers.db");
+    const before = new SqlRiteSync({ path, dir: [dir, join(import.meta.dirname, "migration-031")] });
+    try { before.test_seed_message_openers(); } finally { before.close(); }
+    const db = await openMigrated(path);
+    try {
+        assert.deepEqual((await db.test_message_openers.all({})).map((row) => ({ ...row })), [
+            { id: 1, source: "worker://main", opened_turn_id: null, opened_sequence: null, sender_worker_id: null },
+        ], "the message keeps its source and body and names no opener");
+        assert.deepEqual({ ...(await db.test_worker_obligations.get({ worker_id: 1 })) }, { worker_id: 1, streams: 0, workers: 0, messages: 0 },
+            "a message with no recorded opener holds no worker");
+    } finally { await db.close(); }
+});
+
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");

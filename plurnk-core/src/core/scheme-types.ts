@@ -35,6 +35,8 @@ export interface PlurnkSchemeContext {
     readonly replyToMessage?: MessageCaps["reply"];
     readonly loopId: number;
     readonly turnId: number;
+    // The dispatching operation's sequence in its turn: with turnId, the row it writes. Absent outside a dispatch.
+    readonly sequence?: number;
     // {§log-mutation-patch} — the operation row an accepted application settles; a scheme keeps what
     // it did (its diff) on that row. Absent outside proposal application.
     readonly logEntryId?: number;

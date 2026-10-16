@@ -79,12 +79,17 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_enqueue_message
 -- {§message-arrival}: append one message to the loop's inbox in arrival order. Ordinal 1 is the
--- loop's initial message; a later arrival takes the next ordinal.
-INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths, evidence, address)
+-- loop's initial message; a later arrival takes the next ordinal. {§worker-obligations}: a worker's own
+-- operation names itself as the message's opener, by the row it writes.
+INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths, evidence, address, opened_turn_id, opened_sequence)
 SELECT $loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
-       $source, $body, $open_paths, $evidence, $address
+       $source, $body, $open_paths, $evidence, $address, $opened_turn_id, $opened_sequence
 WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
-RETURNING id, ordinal;
+RETURNING id, ordinal, message_key;
+-- PREP: drain_message_path
+-- {§worker-obligations}: an admitted message's durable address, the one Open Work names.
+SELECT path FROM message_sources WHERE id = $id;
+
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-loop-containment}: the messages the loop contains but has not yet published, oldest
 -- first; the next turn boundary publishes each as an inbound SEND row exactly once.

@@ -240,7 +240,7 @@ test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery 
         injectPrompt: async (loopId) => {
             writing.resolve();
             await release.promise;
-            return { loopId, turnSeq: 2 };
+            return { loopId, turnSeq: 2, messageId: 1 };
         },
     });
     drains.start();
@@ -249,7 +249,7 @@ test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery 
     await writing.promise;
     drains.beginStop("daemon_stopping");
     release.resolve();
-    assert.deepEqual(await admitted, { action: "injected_next_turn", loopId: 7, turnSeq: 2 });
+    assert.deepEqual(await admitted, { action: "injected_next_turn", loopId: 7, messageId: 1, turnSeq: 2 });
     assert.equal(wakes, 0, "accepted prompt content survives for restart without reopening its parked loop");
     await drains.idle();
 });
@@ -331,7 +331,7 @@ test("{§worker-causal-admission}: cancellation follows accepted delivery withou
         injectPrompt: async (loopId) => {
             if (loopId === 2) { writing.resolve(); await release.promise; }
             order.push(`deliver:${loopId}`);
-            return { loopId, turnSeq: 2 };
+            return { loopId, turnSeq: 2, messageId: 1 };
         },
     });
     t.mock.method(drains, "ensureDrain", async () => null);
@@ -368,7 +368,7 @@ test("{§worker-causal-admission}: cancellation wins before a queued causal deli
                 return { workerIds: [], loops: [] };
             },
         } as never,
-        injectPrompt: async (loopId, prompt) => { messages.push(prompt); return { loopId, turnSeq: 2 }; },
+        injectPrompt: async (loopId, prompt) => { messages.push(prompt); return { loopId, turnSeq: 2, messageId: messages.length }; },
     });
     t.mock.method(drains, "ensureDrain", async () => null);
     drains.start();

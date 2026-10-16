@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import TerminalResult from "../../src/core/TerminalResult.ts";
 import { lastReply } from "./_packet.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, sendingOperation } from "./_db.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 import { namedModelWorker } from "./_workers.ts";
 
@@ -117,7 +117,12 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
             const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Collect the child's answer." });
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 202);
             await lifecycle.finish(held, TerminalResult.success("The held dependency completed."));
-            const resumed = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Answer now.", source: `worker://${parentWorker.name}` });
+            // {§worker-obligations} main's own operation sends the follow-up, so the reply to it is main's.
+            const resumed = await daemon.inject({
+                workspaceId, workerId: childId, prompt: "Answer now.", source: `worker://${parentWorker.name}`,
+                providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" }, effort: "adaptive", systemPrompt: "test system",
+                opener: await sendingOperation(db, parent.loopId),
+            });
             assert.equal(resumed.loopId, child.loopId);
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 200);
             assert.equal((await lifecycle.result(parent.loopId))?.content, undefined);

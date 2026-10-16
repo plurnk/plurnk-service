@@ -34,7 +34,7 @@ const enqueueLoop = async (
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
     // {§message-arrival} — as the daemon's enqueue does: the assignment is ordinal 1 of the inbox.
-    const seeded = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
+    const seeded = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]", evidence: "{}", address: null, opened_turn_id: null, opened_sequence: null });
     if (seeded === undefined) throw new Error("recovery fixture failed to seed the loop's message");
     return row.id;
 };
@@ -234,7 +234,7 @@ for (const staged of ["loop", "messages"] as const) {
             const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
             const sourceLoopId = await enqueueLoop(db, workerId, "concluded source");
             for (const [index, content] of ["first orphan", "second orphan"].entries()) {
-                const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
+                const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}", address: null, opened_turn_id: null, opened_sequence: null });
                 assert.ok(message !== undefined, "the unfinished source admitted the message before forced termination");
             }
             await db.test_set_loop_status.run({
@@ -318,7 +318,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
         const workspaceId = await insertWorkspace(db, "cancelled-prompt-recovery");
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, "Original task.");
-        await db.drain_enqueue_message.get({ loop_id: loopId, source: null, body: "A follow-up admitted before cancellation.", open_paths: "[]", evidence: "{}" });
+        await db.drain_enqueue_message.get({ loop_id: loopId, source: null, body: "A follow-up admitted before cancellation.", open_paths: "[]", evidence: "{}", address: null, opened_turn_id: null, opened_sequence: null });
         const lifecycle = new LoopLifecycle(db);
         await lifecycle.cancelTree(workerId, "Cancel the whole assignment.", true);
         await daemon.start();

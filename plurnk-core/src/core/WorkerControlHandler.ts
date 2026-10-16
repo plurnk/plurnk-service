@@ -7,6 +7,7 @@ import Fork from "./fork.ts";
 import WorkerOwners from "./WorkerOwners.ts";
 import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
+import type { MessageOpener } from "./ChannelWrite.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import EnvFunctionality from "../server/EnvFunctionality.ts";
@@ -113,7 +114,8 @@ export default class WorkerControlHandler {
         }
         const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });
         if (worker === undefined) throw new Error("worker control: created worker was not found");
-        await ctx.injectWorker({
+        const opener = WorkerControlHandler.opener(ctx);
+        const { message } = await ctx.injectWorker({
             workspaceId: ctx.workspaceId,
             workerId,
             sourceLoopId: ctx.loopId,
@@ -121,8 +123,15 @@ export default class WorkerControlHandler {
             // {§worker-model-selection} A model's child inherits its loop's model; a worker a person starts runs its own.
             ...(ctx.client === undefined ? { spawn: true } as const : {}),
             ...(Object.keys(environment).length === 0 ? {} : { environment }),
+            ...(opener === undefined ? {} : { opener }),
         });
-        return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name) } };
+        return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name), ...(opener === undefined ? {} : { message }) } };
+    }
+
+    // {§worker-obligations} A worker's own operation opens the obligation its message carries; a person's act opens none
+    // of a worker's, since the voice is the person's ({§actor-boundary-client-operations}).
+    static opener(ctx: PlurnkSchemeContext): MessageOpener | undefined {
+        return ctx.client === undefined && ctx.sequence !== undefined ? { turnId: ctx.turnId, sequence: ctx.sequence } : undefined;
     }
 
     // {§worker-scheme-irc} — the message takes the receiver as it is: its environment is its own, so the
@@ -140,13 +149,15 @@ export default class WorkerControlHandler {
             });
         }
         if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");
-        await ctx.injectWorker({
+        const opener = WorkerControlHandler.opener(ctx);
+        const { message } = await ctx.injectWorker({
             workspaceId: ctx.workspaceId,
             workerId,
             sourceLoopId: ctx.loopId,
             prompt,
+            ...(opener === undefined ? {} : { opener }),
         });
-        return { status: 200, body: name, attrs: { worker: WorkerControlAddress.render(name), delivered: "message" } };
+        return { status: 200, body: name, attrs: { worker: WorkerControlAddress.render(name), delivered: "message", ...(opener === undefined ? {} : { message }) } };
     }
 
     // {§machine-processes-worker-origin} Every worker WORK or FORK creates is a model's. A model's is its child; a

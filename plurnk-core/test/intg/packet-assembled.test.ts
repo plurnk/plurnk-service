@@ -39,7 +39,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
                 children.push(args.workerId);
                 const history = await db.test_fork_loops.all({ worker_id: args.workerId });
                 const childLoopId = await insertLoop(db, args.workerId, history.length + 1, args.prompt);
-                return { action: "enqueued_new_loop", loopId: childLoopId };
+                return { action: "enqueued_new_loop", loopId: childLoopId, message: `message://child/${childLoopId}` };
             },
         });
         const parsed = PlurnkParser.parseStatements([

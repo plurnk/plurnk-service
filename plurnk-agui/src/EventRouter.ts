@@ -57,7 +57,7 @@ export default class EventRouter {
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
             case "outside/event": return this.#t.outside(params as OutsideEventNotification);
             // {§agui-projection} Execution metadata: a stream's progress and its exact conclusion as they happen. The
-            // conversation receives an execution's result through its stream's observation ({§agui-execution-result}).
+            // conversation receives an execution's result through its stream's observation ({§agui-call-result}).
             case "stream/event":
             case "stream/concluded": return [{ type: EventType.CUSTOM, name: "plurnk.stream", value: params }];
             case "loop/proposal":

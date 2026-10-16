@@ -3,7 +3,7 @@ import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import type { MessageEvidence, Effort } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
-import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
+import type { MessageOpener, WakeWorkerPayload } from "../core/ChannelWrite.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
@@ -50,11 +50,14 @@ export type DrainInjectionArgs = {
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
     openPaths?: string[];
+    // {§worker-obligations} — the worker's own operation that sends the message.
+    opener?: MessageOpener;
 };
 
 export type DrainInjectionResult = {
     action: "injected_next_turn" | "enqueued_new_loop";
     loopId: number;
+    messageId: number;
     turnSeq?: number;
     firstLoopPromise?: Promise<DrainLoopResult>;
     drainPromise?: Promise<unknown>;
@@ -94,7 +97,8 @@ type InjectPrompt = (
     source?: string,
     evidence?: MessageEvidence,
     messageAddress?: string,
-) => Promise<{ loopId: number; turnSeq: number } | null>;
+    opener?: MessageOpener,
+) => Promise<{ loopId: number; turnSeq: number; messageId: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 // {§message-abandonment} — completes, 499, the messages other workers sent that an ended loop left unanswered.
 type CompleteAbandonedMessages = (workspaceId: number, workerId: number, loopId: number, status: number) => Promise<unknown>;
@@ -253,13 +257,13 @@ export default class DrainSupervisor {
                 });
             }
             const result = active === undefined ? null
-                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress);
+                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress, args.opener);
             if (result !== null) {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
                 // the serialized park-boundary check below supplies the wake edge.
                 await this.#wakeLoop(workspaceId, workerId, result.loopId);
-                return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
+                return { action: "injected_next_turn", loopId: result.loopId, messageId: result.messageId, turnSeq: result.turnSeq } as const;
             }
             if (args.loopId !== undefined) {
                 throw new OperationFailureError(Results.failure(
@@ -279,6 +283,7 @@ export default class DrainSupervisor {
                 openPaths: args.openPaths,
                 evidence: args.evidence,
                 messageAddress: args.messageAddress,
+                ...(args.opener === undefined ? {} : { opener: args.opener }),
             });
             return { action: "enqueued_new_loop", ...accepted } as const;
         }));
@@ -297,7 +302,8 @@ export default class DrainSupervisor {
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
         openPaths?: string[];
-    }): Promise<{ loopId: number }> {
+        opener?: MessageOpener;
+    }): Promise<{ loopId: number; messageId: number }> {
         // {§worker-model-selection} — resolve the complete route before persistence;
         // the loop snapshot stores the immutable route ids, never re-serialized JSON.
         const modelRouteId = await routeForSpec(this.#db, args.providerSpec);
@@ -318,9 +324,10 @@ export default class DrainSupervisor {
             loop_id: loopRow.id, source: args.source ?? null, body: args.prompt, open_paths: JSON.stringify(args.openPaths ?? []),
             evidence: JSON.stringify(args.evidence ?? {}),
             address: args.messageAddress ?? null,
+            opened_turn_id: args.opener?.turnId ?? null, opened_sequence: args.opener?.sequence ?? null,
         });
         if (seeded === undefined) throw new Error("enqueueFreshLoop: message enqueue returned no row");
-        return { loopId: loopRow.id };
+        return { loopId: loopRow.id, messageId: seeded.id };
     }
 
     // Consume one worker's durable queue until a lock-held empty re-claim

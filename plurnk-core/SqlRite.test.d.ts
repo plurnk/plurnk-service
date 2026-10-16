@@ -68,6 +68,7 @@ export class SqlRiteSync {
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): SqlRiteResult;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): SqlRiteResult;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): SqlRiteResult;
+	test_seed_message_openers(params?: Record<string, unknown>): SqlRiteResult;
 	test_make_historical_actionless_rows(params?: Record<string, unknown>): SqlRiteResult;
 	test_workers_insert_default_values(params?: Record<string, unknown>): SqlRiteResult;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
@@ -190,6 +191,7 @@ export class SqlRiteSync {
 	drain_next_turn_seq_for_loop: SqlRiteSyncPreparedStatements;
 	drain_get_worker_workspace: SqlRiteSyncPreparedStatements;
 	drain_enqueue_message: SqlRiteSyncPreparedStatements;
+	drain_message_path: SqlRiteSyncPreparedStatements;
 	drain_unpublished_messages_for_loop: SqlRiteSyncPreparedStatements;
 	drain_unpublished_arrivals_for_loop: SqlRiteSyncPreparedStatements;
 	drain_publish_message: SqlRiteSyncPreparedStatements;
@@ -598,6 +600,8 @@ export class SqlRiteSync {
 	test_loops_index_meta: SqlRiteSyncPreparedStatements;
 	test_loops_list_ids: SqlRiteSyncPreparedStatements;
 	test_loops_get_prompt: SqlRiteSyncPreparedStatements;
+	test_message_openers: SqlRiteSyncPreparedStatements;
+	test_worker_obligations: SqlRiteSyncPreparedStatements;
 	test_parser_entries_first: SqlRiteSyncPreparedStatements;
 	test_parser_body_first: SqlRiteSyncPreparedStatements;
 	test_parser_pathnames: SqlRiteSyncPreparedStatements;
@@ -685,6 +689,7 @@ export default class SqlRite {
 	test_entries_insert_no_pathname(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_entries_insert_null_authority(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	test_seed_message_openers(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_make_historical_actionless_rows(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workers_insert_default_values(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
@@ -807,6 +812,7 @@ export default class SqlRite {
 	drain_next_turn_seq_for_loop: SqlRitePreparedStatements;
 	drain_get_worker_workspace: SqlRitePreparedStatements;
 	drain_enqueue_message: SqlRitePreparedStatements;
+	drain_message_path: SqlRitePreparedStatements;
 	drain_unpublished_messages_for_loop: SqlRitePreparedStatements;
 	drain_unpublished_arrivals_for_loop: SqlRitePreparedStatements;
 	drain_publish_message: SqlRitePreparedStatements;
@@ -1215,6 +1221,8 @@ export default class SqlRite {
 	test_loops_index_meta: SqlRitePreparedStatements;
 	test_loops_list_ids: SqlRitePreparedStatements;
 	test_loops_get_prompt: SqlRitePreparedStatements;
+	test_message_openers: SqlRitePreparedStatements;
+	test_worker_obligations: SqlRitePreparedStatements;
 	test_parser_entries_first: SqlRitePreparedStatements;
 	test_parser_body_first: SqlRitePreparedStatements;
 	test_parser_pathnames: SqlRitePreparedStatements;

@@ -6,10 +6,9 @@
 -- 102 processing, 202 parked. A completed message, or one whose recipient loop ended, is no longer held.
 SELECT m.path, l.status
 FROM message_sources m
+JOIN message_senders s ON s.message_id = m.id
 JOIN loops l ON l.id = m.loop_id
-JOIN workers w ON w.id = $worker_id
-WHERE m.workspace_id = w.workspace_id
-  AND m.source = 'worker://' || w.name
+WHERE s.sender_worker_id = $worker_id
   AND l.status IN (100, 102, 202)
   AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
 ORDER BY m.id ASC;

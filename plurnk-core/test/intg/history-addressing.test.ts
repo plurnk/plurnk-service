@@ -12,7 +12,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
@@ -180,9 +180,9 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
                 assert.equal(workerId, parent);
                 assert.equal(sourceLoopId, childLoop);
                 const message = await db.drain_enqueue_message.get({ loop_id: parentLoop, address: null,
-                    source: "worker://child", body: prompt, open_paths: "[]", evidence: "{}" });
+                    source: "worker://child", body: prompt, open_paths: "[]", evidence: "{}", opened_turn_id: null, opened_sequence: null });
                 assert.ok(message);
-                return { action: "injected_next_turn", loopId: parentLoop };
+                return { action: "injected_next_turn", loopId: parentLoop, message: "message://parent/1" };
             },
         });
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
@@ -221,7 +221,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         const childLoop = await insertLoop(db, child, 1);
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        await engine.injectIntoLoop(childLoop, "Run the executor and report the result.", [], "worker://parent");
+        await engine.injectIntoLoop(childLoop, "Run the executor and report the result.", [], "worker://parent", {}, undefined, await sendingOperation(db, parentLoop));
         const executors = await testExecutors();
         engine.setExecutors(executors);
         schemes.registerRuntimeSchemes(executors);
@@ -264,7 +264,7 @@ test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable;
             injectWorker: async ({ workerId, prompt }) => {
                 const history = await db.test_fork_loops.all({ worker_id: workerId });
                 const loopId = await insertLoop(db, workerId, history.length + 1, prompt);
-                return { action: "enqueued_new_loop", loopId };
+                return { action: "enqueued_new_loop", loopId, message: `message://child/${loopId}` };
             },
         });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {

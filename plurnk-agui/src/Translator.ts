@@ -189,7 +189,7 @@ export default class Translator {
         if (e.origin !== "model" && !response) {
             const answered = Translator.#answered(e);
             if (answered !== null) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: Translator.idOf(e), content: Translator.#asText(e.rx) });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: Translator.idOf(e), content: Translator.#delivered(e) });
                 return events;
             }
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
@@ -223,7 +223,7 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: Translator.#argsFor(e) });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
-        if (Translator.#streamStarted(e)) return events;
+        if (Translator.#opensObligation(e)) return events;
         const rxText = Translator.#asText(e.rx);
         if (rxText.length > 0) {
             events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: rxText });
@@ -369,7 +369,7 @@ export default class Translator {
             const response = Translator.isResponse(e, this.#threadId);
             if (e.origin !== "model" && !response) {
                 const answered = Translator.#answered(e);
-                if (answered !== null) Translator.#placeResult(messages, { id, role: "tool", toolCallId: answered, content: Translator.#asText(e.rx) });
+                if (answered !== null) Translator.#placeResult(messages, { id, role: "tool", toolCallId: answered, content: Translator.#delivered(e) });
                 continue;
             }
             if (typeof e.op !== "string") {
@@ -385,7 +385,7 @@ export default class Translator {
             if (response || TurnDisposition.isOp(e.op)) continue;
             const entry = e as LogEntryNotification["entry"];
             messages.push({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] });
-            if (Translator.#streamStarted(e)) continue;
+            if (Translator.#opensObligation(e)) continue;
             const result = Translator.#asText(e.rx);
             if (result.length > 0) Translator.#placeResult(messages, { id: `${id}/result`, role: "tool", toolCallId: id, content: result });
         }
@@ -578,19 +578,25 @@ export default class Translator {
         };
     }
 
-    // {§agui-execution-result} An execution whose receipt started its stream is answered by the stream's observation, which
-    // carries its output and conclusion; its receipt rides the row ({§exec-stream}).
-    static #streamStarted(e: { attrs?: unknown; status_rx?: unknown }): boolean {
+    // {§agui-call-result} A call that opened an obligation is answered by the delivery that discharges it, never by its
+    // receipt, which rides the row: an execution its stream, a message the reply or conclusion ({§worker-obligations}).
+    static #opensObligation(e: { attrs?: unknown; status_rx?: unknown }): boolean {
         const attrs = typeof e.attrs === "string" ? JSON.parse(e.attrs) as unknown : e.attrs;
-        const stream = attrs !== null && typeof attrs === "object" ? (attrs as { stream?: unknown }).stream : undefined;
-        return typeof stream === "string" && typeof e.status_rx === "number" && e.status_rx < 400;
+        const opened = attrs !== null && typeof attrs === "object" ? attrs as { stream?: unknown; message?: unknown } : {};
+        return (typeof opened.stream === "string" || typeof opened.message === "string") && typeof e.status_rx === "number" && e.status_rx < 400;
     }
 
-    // {§agui-execution-result} The call a stream observation answers: the execution it names ({§methods-stream-invocation}).
+    // {§agui-call-result} What the worker received for its call: a reply's words, as an arrival's ({§agui-snapshot}),
+    // or an observation's result.
+    static #delivered(e: { op?: unknown; tx?: unknown; rx?: unknown }): string {
+        return e.op === "SEND" ? Translator.#txBody(e.tx) : Translator.#asText(e.rx);
+    }
+
+    // {§agui-call-result} The call a discharging row answers: the operation it names ({§methods-invocation}).
     static #answered(e: { invocation?: unknown }): string | null {
         if (e.invocation === undefined) return null;
         const match = typeof e.invocation === "string" ? /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(e.invocation) : null;
-        if (match === null) throw new TypeError(`A stream observation names its execution's log address: ${String(e.invocation)}`);
+        if (match === null) throw new TypeError(`A discharging row names its operation's log address: ${String(e.invocation)}`);
         return `${match[1]}/${match[2]}/${match[3]}`;
     }
 

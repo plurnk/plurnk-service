@@ -58,6 +58,12 @@ export interface WakeWorkerPayload {
 
 export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 
+// {§worker-obligations} The operation that sent a message, by the row it writes: its turn and its sequence there.
+export interface MessageOpener {
+    readonly turnId: number;
+    readonly sequence: number;
+}
+
 // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
 // (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary-two-doors} voice
 // door). The daemon wires this to Daemon.inject: an active sister incorporates the
@@ -79,7 +85,9 @@ export type InjectWorkerNotify = (args: {
     // {§env-option} — a created worker's starting environment from the heading: each name becomes the
     // worker's own entry through the family's add, after the copy it inherited at creation.
     environment?: Readonly<Record<string, string>>;
-}) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
+    // {§worker-obligations} — the worker's own operation that sends the message; absent when a person acts.
+    opener?: MessageOpener;
+}) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;
 
 // Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
 // (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's

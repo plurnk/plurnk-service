@@ -24,9 +24,23 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
             JOIN provider_requests pr ON pr.inference_call_id = s.model_call_id
             WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0 AND pr.outcome = 'response')
        END AS reasoning_request_sequence,
-       -- {§methods-stream-invocation} The execution a stream observation observes, as its subscription recorded it.
-       (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
-        WHERE sp.id = le.subscription_publication_id) AS invocation
+       -- {§methods-invocation} The operation whose obligation this row discharges: a stream observation's execution,
+       -- as its subscription recorded it; or the operation that sent the message a child's conclusion or a completion
+       -- reply answers, when that operation is this log's.
+       COALESCE(
+           (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
+            WHERE sp.id = le.subscription_publication_id),
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN loop_messages m
+              ON (ae.kind = 'loop_termination' AND m.loop_id = ae.source_record_id AND m.ordinal = 1)
+              OR (ae.kind = 'reply' AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+            LIMIT 1)
+       ) AS invocation
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
@@ -55,9 +69,23 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
             JOIN provider_requests pr ON pr.inference_call_id = s.model_call_id
             WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0 AND pr.outcome = 'response')
        END AS reasoning_request_sequence,
-       -- {§methods-stream-invocation} The execution a stream observation observes, as its subscription recorded it.
-       (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
-        WHERE sp.id = le.subscription_publication_id) AS invocation
+       -- {§methods-invocation} The operation whose obligation this row discharges: a stream observation's execution,
+       -- as its subscription recorded it; or the operation that sent the message a child's conclusion or a completion
+       -- reply answers, when that operation is this log's.
+       COALESCE(
+           (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
+            WHERE sp.id = le.subscription_publication_id),
+           (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+            FROM ambient_events ae
+            JOIN loop_messages m
+              ON (ae.kind = 'loop_termination' AND m.loop_id = ae.source_record_id AND m.ordinal = 1)
+              OR (ae.kind = 'reply' AND m.id IN (SELECT c.message_id FROM message_completions c WHERE c.response_id = ae.source_record_id))
+            JOIN turns opened ON opened.id = m.opened_turn_id
+            JOIN loops sender ON sender.id = opened.loop_id
+            JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+            WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+            LIMIT 1)
+       ) AS invocation
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id

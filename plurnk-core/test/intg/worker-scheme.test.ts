@@ -78,7 +78,7 @@ const recordingInjectWorker = () => {
     const calls: Array<Parameters<InjectWorkerNotify>[0]> = [];
     const injectWorker = async (args: typeof calls[number]) => {
         calls.push(args);
-        return { action: "enqueued_new_loop" as const, loopId: -1 };
+        return { action: "enqueued_new_loop" as const, loopId: -1, message: `message://recorded/${calls.length}` };
     };
     return { calls, injectWorker };
 };
@@ -171,7 +171,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const spawnRest = calls[0];
-        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true }, "the new worker is started with its delegator's causal identity");
+        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true, opener: { turnId, sequence: 1 } }, "the new worker is started with its delegator's causal identity, the operation that sent it");
     } finally { await db.close(); }
 });
 
@@ -254,14 +254,18 @@ for (const op of ["WORK", "FORK"] as const) {
                 statement, workspaceId, workerId: parentId, loopId, turnId, sequence: 1, origin: "model",
             });
             assert.equal(first.status, 200, "an omitted address allocates a worker rather than refusing the operation");
-            assert.deepEqual(first.attrs, { worker: "worker://e6a78901" });
+            assert.deepEqual(first.attrs, { worker: "worker://e6a78901", message: "message://recorded/1" }, "the receipt names the worker and the message it sent");
 
             const results = await Promise.all([2, 3].map((sequence) => engine.dispatch({
                 statement, workspaceId, workerId: parentId, loopId, turnId, sequence, origin: "model",
             })));
             assert.deepEqual(results.map(({ status }) => status), [200, 200]);
             assert.deepEqual(results.map(({ body }) => body).toSorted(), ["c4e56789", "d5f67890"]);
-            for (const result of results) assert.deepEqual(result.attrs, { worker: `worker://${result.body}` });
+            for (const result of results) {
+                const { worker, message, ...rest } = result.attrs as { worker?: unknown; message?: unknown };
+                assert.deepEqual([worker, rest], [`worker://${result.body}`, {}], "the receipt names the worker it created");
+                assert.match(String(message), /^message:\/\//u, "and the message it sent");
+            }
             assert.equal(calls.length, 3);
             for (const call of calls) {
                 const child = await db.worker_get.get<{ name: string }>({ id: call.workerId });
@@ -473,7 +477,7 @@ test("{§worker-scheme-spawn}: WORK naming a RUNNING sister delivers its body to
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the held name is the voice door");
-        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" }, "the receipt says what happened");
+        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message", message: "message://recorded/1" }, "the receipt says what happened");
         assert.equal(calls.length, 1, "one delivery");
         assert.equal(calls[0]!.workerId, sister, "to the running sister");
         assert.equal(calls[0]!.prompt, "do it again", "her message is the WORK's body");
@@ -503,7 +507,7 @@ test("{§worker-scheme-spawn}: WORK naming a PARKED sister delivers its body to 
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "a parked worker keeps its name and takes the message");
-        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" });
+        assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message", message: "message://recorded/1" });
         assert.equal(calls.length, 1, "the message reached injection once");
         assert.equal(calls[0]!.workerId, sister);
         assert.notEqual(calls[0]!.spawn, true, "a message, not a spawn");
@@ -563,7 +567,7 @@ test("{§op-execution-order}: one model program creates workers before cancellin
             injectWorker: async ({ workerId: child, prompt }) => {
                 const childLoop = await insertLoop(db, child, 1, prompt);
                 children.set(await WorkerName.forId(db, child), childLoop);
-                return { action: "enqueued_new_loop", loopId: childLoop };
+                return { action: "enqueued_new_loop", loopId: childLoop, message: `message://${await WorkerName.forId(db, child)}/1` };
             },
             cancelWorker: async (child, reason) => { await lifecycle.cancelTree(child, reason, true); },
         });
@@ -606,7 +610,7 @@ test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch i
         // The retained name is still that worker's: WORK reaches it as a message, FORK cannot branch into it.
         const work = await engine.dispatch({ statement: spawnedWorker("worker", "fresh work"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(work.status, 200, "WORK to the completed worker is its next message");
-        assert.deepEqual((work as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message" });
+        assert.deepEqual((work as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message", message: "message://recorded/1" });
         const fork = await engine.dispatch({ statement: forkWorker("worker", "branch"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(fork.status, 409);
         assert.equal(fork.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-conflict");
@@ -735,7 +739,7 @@ test("{§worker-scheme-irc} SEND(worker://name):msg delivers to a sister; a miss
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
         const ircRest = calls.at(-1)!;
-        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
+        assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "what's your status?", opener: { turnId, sequence: 1 } }, "the message is delivered with the sender's causal identity, the operation that sent it");
 
         const missing = await engine.dispatch({
             statement: sendStmt(workerPath("ghost"), "anyone there?"),
@@ -793,7 +797,7 @@ test("{§worker-ownership}: SEND between unrelated workers cannot transfer appro
         workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
     });
     assert.equal(result.status, 200);
-    assert.deepEqual(calls, [{ workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "continue this work" }]);
+    assert.deepEqual(calls, [{ workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "continue this work", opener: { turnId, sequence: 1 } }]);
     assert.equal((await WorkerOwners.read(db, sisterId)).address, "_plurnk");
     assert.equal((await WorkerOwners.read(db, workerId)).address, TEST_OWNER);
 });
@@ -844,7 +848,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
         const forkRest = calls.at(-1)!;
-        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true }, "the branch is continued with its delegator's causal identity");
+        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true, opener: { turnId, sequence: 1 } }, "the branch is continued with its delegator's causal identity, the operation that sent it");
     } finally { await db.close(); }
 });
 

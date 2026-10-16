@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, sendingOperation } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { makeRawMockResponse } from "./_mock.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -151,7 +151,7 @@ test("{§message-source-scheme} one source address identifies one immutable mess
     for (const workspaceId of workspaces) {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Initial assignment.");
-        const envelope = { loop_id: loopId, source: address, body: "Accepted.", open_paths: "[]", evidence: "{}", address };
+        const envelope = { loop_id: loopId, source: address, body: "Accepted.", open_paths: "[]", evidence: "{}", address, opened_turn_id: null, opened_sequence: null };
         await db.drain_enqueue_message.get(envelope);
         await assert.rejects(db.drain_enqueue_message.get({ ...envelope, body: "Replacement." }),
             /message address already accepted in this workspace/);
@@ -279,7 +279,7 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         const loopId = await insertLoop(db, workerId, 1, "Summarize Bob's answer.");
         const peerLoop = await insertLoop(db, peerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await engine.injectIntoLoop(peerLoop, "What did you find?", [], "worker://alice");
+        await engine.injectIntoLoop(peerLoop, "What did you find?", [], "worker://alice", {}, undefined, await sendingOperation(db, loopId));
         const note = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("NOTE", "Awaiting Bob."))] });
         assert.equal((await engine.runTurn({ messages: [], provider: note, workspaceId, workerId, loopId })).status, 102);
         const answer = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("SEND [200]", "Distinct answer from Bob."))] });
@@ -323,7 +323,7 @@ test("{§message-reply-delivery} another worker's addressed answer reaches both 
         const ownerLoop = await insertLoop(db, ownerId, 1);
         const responderLoop = await insertLoop(db, responderId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await engine.injectIntoLoop(ownerLoop, "A shared assignment.", [], "worker://alice");
+        await engine.injectIntoLoop(ownerLoop, "A shared assignment.", [], "worker://alice", {}, undefined, await sendingOperation(db, senderLoop));
         const messages = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const path = messages.find(({ body }) => body === "A shared assignment.")!.path;
         const run = (workerId: number, loopId: number, program: string) => engine.runTurn({

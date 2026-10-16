@@ -24,7 +24,7 @@ test("SchemeCtxImpl exposes only the public extension context", () => {
         turnId: 4,
         writer: "model",
         signal: undefined,
-        injectWorker: async () => ({ action: "enqueued_new_loop", loopId: 1 }),
+        injectWorker: async () => ({ action: "enqueued_new_loop", loopId: 1, message: "message://child/1" }),
         weigh: () => 0,
     };
 

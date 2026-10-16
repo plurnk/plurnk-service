@@ -148,8 +148,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is `CUSTOM plurnk.send` alone. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists, except for an execution its receipt started, which its stream's observations answer {§agui-execution-result}) |
-| §agui-execution-result `log/entry` stream observation, naming its execution ({§methods-stream-invocation}) | `TOOL_CALL_RESULT` answering that execution's call under the observation's own coordinate, its receipt the content: the output's first page, terminal status and exit code, exactly as the worker received them ({§exec-stream}). An execution whose receipt started its stream (`200` or `202` with `attrs.stream`) is answered only by its observations, one per channel its conclusion published, whenever they land; its receipt rides the row. Never `plurnk.ambient`. |
+| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists, except for a call that opened an obligation, which what discharges it answers {§agui-call-result}) |
+| §agui-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id and goes to every Run but the one that submitted it; any other is named by its source |
@@ -162,7 +162,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
-| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` alone: execution metadata, the stream's progress and its exact universal `result`, including RFC 9457 Problem Details, as they happen. Never a conversation message; the execution's result reaches the conversation through its observation {§agui-execution-result}. AG-UI does not reconstruct failure from a status or summary. |
+| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` alone: execution metadata, the stream's progress and its exact universal `result`, including RFC 9457 Problem Details, as they happen. Never a conversation message; the execution's result reaches the conversation through its observation {§agui-call-result}. AG-UI does not reconstruct failure from a status or summary. |
 
 §agui-lifecycle-projection **Lifecycle, memory and speech remain distinct.** Live
 events, replay and `log.read` preserve literal native bodies. No task inventory
@@ -205,8 +205,8 @@ sequence.
   ({§methods-log-coordinate}), is the `toolCallId`; its durable statement is the args, every
   operand exactly as parsed (host, scope, pattern, aside, both COPY/MOVE selections) without the
   verb that is the tool's name or its source position, in one delta because a dispatched plurnk op
-  is atomic; its rx is the result, except for an execution its receipt started, whose stream's
-  observations are ({§agui-execution-result}). The log-shaped richness the core vocabulary can't hold
+  is atomic; its rx is the result, except for a call that opened an obligation, whose discharge
+  is ({§agui-call-result}). The log-shaped richness the core vocabulary can't hold
   (curation metadata, the ordinals) stays on the row inside `plurnk.row`.
 - §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
   AG-UI defines encrypted-reasoning events and message values; plurnk emits none and
@@ -345,8 +345,8 @@ client rebuilds them. It is built from the bound worker's whole log, read page b
 | Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
 | A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one; an execution its receipt started carries none ({§agui-execution-result}) |
-| Stream observation | `tool` identified by its coordinate, answering the execution it names: after that call and the results already beside it, or last when the call is not in view ({§agui-execution-result}) |
+| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one; a call that opened an obligation carries none ({§agui-call-result}) |
+| A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
 | Bodiless WAIT, emission attempt, ambient row | No message of its own |
 
 Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,

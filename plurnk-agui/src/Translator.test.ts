@@ -84,7 +84,7 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.equal(JSON.parse(args.delta).target.raw, "worker:///notes.md", "the target rides the args");
 });
 
-test("{§agui-execution-result} {§methods-stream-invocation} a started execution is answered by its stream's observations, live and on replay", () => {
+test("{§agui-call-result} {§methods-invocation} a started execution is answered by its stream's observations, live and on replay", () => {
     const command = authored("````sh\nprintf 'hi\\n'; printf 'warn\\n' >&2\n````");
     const rows = [
         entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "sh", tx: command, attrs: { stream: "sh:///ab3d5678" }, rx: { status: 200, outcome: "started" } }),
@@ -114,6 +114,34 @@ test("{§agui-execution-result} {§methods-stream-invocation} a started executio
     ], "each result sits after its call, where the official reducer puts one that arrives live");
     assert.throws(() => t().logEntry(entry({ origin: "_plurnk", op: "READ", invocation: "sh:///ab3d5678" })), /log address/u,
         "an observation names its execution by log address");
+});
+
+test("{§agui-call-result} {§worker-obligations} a delegation and a message are answered by what discharges them, and a progress reply by nothing", () => {
+    const rows = [
+        entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"),
+            attrs: { worker: "worker://helper", message: "message://helper/ab12" }, rx: { status: 200, body: "helper" } }),
+        entry({ id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "SEND", tx: authored("````SEND (worker://peer)\nWhat is the answer?\n````"),
+            attrs: { message: "message://peer/cd34" }, rx: { status: 200 } }),
+        entry({ id: 3, loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer", attrs: { kind: "reply" },
+            tx: { target: null, body: { raw: "Still looking." } }, rx: { status: 200, answers: ["message://peer/cd34"] } }),
+        entry({ id: 4, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, origin: "_plurnk", op: "READ", source: "worker://helper", tx: null,
+            attrs: { kind: "loop_termination" }, invocation: "log:///1/1/1/WORK", rx: { status: 200, resource: "ops://helper/1", content: "hello" } }),
+        entry({ id: 5, loop_seq: 1, turn_seq: 2, sequence: 3, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer", attrs: { kind: "reply" },
+            invocation: "log:///1/1/2/SEND", tx: { target: null, body: { raw: "forty-two" } }, rx: { status: 200, answers: ["message://peer/cd34"], completion: 200 } }),
+    ];
+    const tr = t();
+    const live = rows.flatMap((row) => tr.logEntry(row));
+    assert.deepEqual(live.filter((event) => event.type === EventType.TOOL_CALL_RESULT).map((event) => [event.toolCallId, event.messageId, event.content]),
+        [["1/1/1", "1/2/2", JSON.stringify({ status: 200, resource: "ops://helper/1", content: "hello" })], ["1/1/2", "1/2/3", "forty-two"]],
+        "neither receipt is a result; the child's conclusion answers the WORK and the reply's words the SEND");
+    assert.ok(!live.some((event) => event.type === EventType.TEXT_MESSAGE_START), "a reply that discharges nothing is no message of this thread");
+
+    const [snapshot] = tr.replay(rows.map(({ entry: row }) => row));
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.map((message) => [message.id, message.role, "toolCallId" in message ? message.toolCallId : "name" in message ? message.name : undefined]), [
+        ["1/1/1", "assistant", undefined], ["1/2/2", "tool", "1/1/1"],
+        ["1/1/2", "assistant", undefined], ["1/2/3", "tool", "1/1/2"],
+    ], "replay answers each call beside it");
 });
 
 // {§agui-projection} The arguments are the operation as authored: every operand exactly as parsed, without the verb

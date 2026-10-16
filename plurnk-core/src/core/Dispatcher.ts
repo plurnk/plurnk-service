@@ -1088,13 +1088,14 @@ export default class Dispatcher {
     // ({§actor-boundary-attached-functionality}); consumers read the built PlurnkSchemeContext
     // and never re-derive.
     #buildSchemeCtx(ids: {
-        workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence?: number; origin: WriterTier;
         client?: { readonly contextWorkerId: number | null };
     }): PlurnkSchemeContext {
-        const { workspaceId, workerId, loopId, turnId, origin, client } = ids;
+        const { workspaceId, workerId, loopId, turnId, sequence, origin, client } = ids;
         const context: PlurnkSchemeContext = {
             db: this.#db,
             workspaceId, workerId, loopId, turnId,
+            ...(sequence === undefined ? {} : { sequence }),
             writer: origin,
             ...(client === undefined ? {} : { client }),
             resources: { capture: (targets) => ResourceBindings.using(this.#schemes, context,

@@ -6,10 +6,10 @@
 
 A command's tool result is what its worker received: the stream's observation,
 with the output's first page, terminal status and exit code, live and on
-snapshot alike ({§agui-execution-result}):
+snapshot alike ({§agui-call-result}):
 
 - A row that observes a stream names the execution that opened it, as
-  `invocation` on `readLog` and `log/entry` ({§methods-stream-invocation}).
+  `invocation` on `readLog` and `log/entry` ({§methods-invocation}).
 - A started or queued receipt is no longer the command's `TOOL_CALL_RESULT`;
   the observation answers the call under its own coordinate, whenever it lands,
   and a snapshot places it after its call as the official reducer places a live

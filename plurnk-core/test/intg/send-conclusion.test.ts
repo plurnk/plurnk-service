@@ -8,7 +8,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -23,6 +23,8 @@ const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `send-conclusion-${crypto.randomUUID()}`);
     const parentId = await insertWorker(db, workspaceId, null, "lead");
+    // {§worker-obligations} lead sends alice her messages from its own loop.
+    const leadLoop = await insertLoop(db, parentId, 1, "Lead the work.");
     const workerId = await insertWorker(db, workspaceId, parentId, "alice");
     const loopId = await insertLoop(db, workerId, 1);
     // Source identity never depends on the reader ({§turn-source-resources}); alice's turns and history are under test.
@@ -31,11 +33,11 @@ const setup = async (responses: MockResponse[]) => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
         noticeNotify: (_id, payload) => notices.push(payload.notice as Notice),
     });
-    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead", {}, message);
+    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead", {}, message, await sendingOperation(db, leadLoop));
     const provider = new Mock({ contextWindow: 100_000, responses });
     const ids = { workspaceId, workerId, loopId };
     return {
-        db, engine, provider, ids, parentId, notices,
+        db, engine, provider, ids, parentId, leadLoop, notices,
         turn: () => engine.runTurn({ provider, ...ids, messages: [] }),
         answer: () => clientRead(engine, db, { workspaceId, workerId: observer, statement: statement("````READ (ops://alice/1)````") }),
     };
@@ -43,7 +45,7 @@ const setup = async (responses: MockResponse[]) => {
 
 for (const final of ["Four, precisely.", "", " \n\t"]) {
     test(`{§send-response-receipt}: a ${final ? "corrected" : "empty-body"} final reply retains the child's answer for its parent`, async () => {
-        const { db, engine, turn, answer, ids, parentId } = await setup([said(send("Four.")), said(conclude(final))]);
+        const { db, engine, turn, answer, ids, parentId, leadLoop } = await setup([said(send("Four.")), said(conclude(final))]);
         try {
             const sent = await turn();
             assert.equal(sent.status, 102, "a SEND answers but cannot conclude");
@@ -68,7 +70,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             });
             assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Four.", ...(final.trim() ? [final] : [])], "an empty completion is evidence, not another spoken message");
 
-            const loopId = await insertLoop(db, parentId, 1, "Observe the result.");
+            const loopId = leadLoop;
             await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
                 provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
             });
@@ -82,12 +84,12 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
 
 test("{§slot-order} {§message-completion}: leading completion metadata resolves only its addressed Open Message", async () => {
     const followup = "message://alice/followup";
-    const { db, engine, turn, answer, ids } = await setup([
+    const { db, engine, turn, answer, ids, leadLoop } = await setup([
         said(PlurnkParser.frame(`SEND [200] (${followup})`, "Follow-up deliverable.")),
         said(PlurnkParser.frame(`SEND [200] (${message})`, "Four.")),
     ]);
     try {
-        await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, followup);
+        await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, followup, await sendingOperation(db, leadLoop));
         const first = await turn();
         assert.equal(first.status, 102, "the original message remains unresolved");
         const second = await turn();
@@ -106,7 +108,7 @@ test("{§slot-order} {§message-completion}: leading completion metadata resolve
 });
 
 test("{§message-completion} {§loop-answer}: an empty completion succeeds without a fabricated answer", async () => {
-    const { db, engine, turn, answer, ids, parentId } = await setup([said(conclude())]);
+    const { db, engine, turn, answer, ids, parentId, leadLoop } = await setup([said(conclude())]);
     try {
         assert.equal((await turn()).status, 200);
         const outcome = await answer();
@@ -115,7 +117,7 @@ test("{§message-completion} {§loop-answer}: an empty completion succeeds witho
         assert.equal(outcome.content, "", "READ represents successful silence as an empty body");
         const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_worker_id: parentId });
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }]);
-        const loopId = await insertLoop(db, parentId, 1, "Observe the result.");
+        const loopId = leadLoop;
         await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
         });
@@ -131,12 +133,12 @@ test("{§message-completion} {§loop-answer}: an empty completion succeeds witho
 });
 
 test("{§send-response-receipt}: FIFO targeting cannot acknowledge an unpublished arrival", async (t) => {
-    const { db, engine, provider, turn, answer, ids } = await setup([
+    const { db, engine, provider, turn, answer, ids, leadLoop } = await setup([
         said("Provisional answer."), said(conclude("Four, precisely.")), said(conclude("The follow-up is answered too.")),
     ]);
     const generate = provider.generate.bind(provider);
     t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
-        if (provider.received.length === 1) await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead");
+        if (provider.received.length === 1) await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, undefined, await sendingOperation(db, leadLoop));
         return generate(...args);
     });
     try {

@@ -25,6 +25,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly #fileRevision: string | undefined;
     readonly #client: PlurnkSchemeContext["client"];
+    readonly #sequence: number | undefined;
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
@@ -57,6 +58,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.#editPrecondition = options.editPrecondition ?? null;
         this.#fileRevision = ctx.fileRevision;
         this.#client = ctx.client;
+        this.#sequence = ctx.sequence;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -105,5 +107,10 @@ export default class SchemeCtxImpl implements SchemeCtx {
     // {§actor-boundary-client-operations} — a person's operation carries the worker it acts for to core adapters.
     static clientOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["client"] {
         return ctx instanceof SchemeCtxImpl ? ctx.#client : "db" in ctx ? ctx.client : undefined;
+    }
+
+    // {§worker-obligations} The dispatching operation's sequence, which with the turn names the row it writes.
+    static sequenceOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): number | undefined {
+        return ctx instanceof SchemeCtxImpl ? ctx.#sequence : "db" in ctx ? ctx.sequence : undefined;
     }
 }

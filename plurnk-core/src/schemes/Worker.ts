@@ -20,6 +20,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import { loopOutcome } from "../core/LoopOutcome.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
+import WorkerControlHandler from "../core/WorkerControlHandler.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import { MessageAttachments } from "@plurnk/plurnk-schemes";
 
@@ -332,13 +333,19 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         // {§worker-ownership} Messages preserve the receiving worker’s owner.
-        await core.injectWorker({
+        const opener = WorkerControlHandler.opener(core);
+        const { message } = await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
             sourceLoopId: core.loopId,
             prompt,
             ...(captured.attachments.length === 0 ? {} : { attachments: captured.attachments }),
+            ...(opener === undefined ? {} : { opener }),
         });
-        return { status: 200, ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
+        return {
+            status: 200,
+            ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }),
+            ...(opener === undefined ? {} : { attrs: { message } }),
+        };
     }
 }

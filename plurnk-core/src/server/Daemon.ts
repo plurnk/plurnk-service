@@ -301,7 +301,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments, opener }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -345,7 +345,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
                     await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
                 }
-                const { action, loopId } = await ContentUse.read(this.#db, async () => {
+                const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
                     const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
                     return this.inject({
                         workspaceId,
@@ -354,12 +354,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                         evidence: delivered.evidence,
                         sourceLoopId,
                         ...(source === undefined ? {} : { source }),
+                        ...(opener === undefined ? {} : { opener }),
                         providerSpec,
                         effort,
                         childProviderSpec,
                         systemPrompt });
                 });
-                return { action, loopId };
+                // {§worker-obligations} — the message's durable address, as Open Work names it.
+                const message = await this.#db.drain_message_path.get<{ path: string }>({ id: messageId });
+                if (message === undefined) throw new Error(`injectWorker: message ${messageId} has no address`);
+                return { action, loopId, message: message.path };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
             // {§functionality-hotload} — skills and plugins change out of band.
@@ -382,7 +386,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             completeAbandonedMessages: (workspaceId, workerId, loopId, status) =>
                 MessageAbandonment.complete(this.#engine, this.#db, workspaceId, workerId, loopId, status),
             lifecycle: this.#lifecycle,
-            injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress),
+            injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress, opener) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress, opener),
             assertInjectionCompatibility: async ({
                 workerId,
                 loopId,

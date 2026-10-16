@@ -3078,7 +3078,12 @@ The notice creates no state and does not demand another final reply.
 §worker-obligations A worker holds its unresolved children, its open non-detached
 streams, and the messages it sent to other workers that await completion while the
 recipient's loop is live (`worker_obligations`); `loop_obligations` names them per
-loop. The packet's Open Work list, WAIT, completion and drain wake settlement use
+loop. Each obligation records the operation that opened it, by identity: a stream its
+execution ({§subscriptions-causal-resource}), a message the SEND, WORK or FORK that sent it,
+by the row that operation writes; a child's loop is opened by its first message's. The
+opening row names what it opened: an execution's `attrs.stream`, a message's `attrs.message`
+(its durable address). A message holds, and its reply reaches, the worker whose own operation
+sent it; a message a person, a client or the daemon sends opens no worker's obligation. The packet's Open Work list, WAIT, completion and drain wake settlement use
 that same durable liveness: a worker that messaged another worker parks on an
 authored WAIT until the completion arrives ({§message-completion}), and with no WAIT
 joins that work with the bounded park rather than concluding idle.
@@ -5300,13 +5305,20 @@ watched stream; history a FORK inherited was streamed by no request of this work
 core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 
-§methods-stream-invocation **A stream observation names the execution it observes.** On a row that
-observes a stream ({§exec-stream}), `readLog` and `log/entry` project `invocation`: the log address
-of the execution that opened the stream, exactly as its subscription recorded it
-({§subscriptions-causal-resource}), so a client can pair the observation with its operation without
-matching addresses. It is derived from the publication the row advanced; the row's own `source` keeps
-its attribution meaning ({§env-delta-attribution}). A stream whose subscription recorded no
-causal address, and every other row, omits the field.
+§methods-invocation **A row that discharges an obligation names the operation that opened it.** `readLog`
+and `log/entry` project `invocation`, the log address of that operation ({§worker-obligations}), on every
+row that discharges one, so a client pairs the answer with its call without matching addresses:
+
+| Discharging row | Its invocation |
+|---|---|
+| A stream observation ({§exec-stream}) | The execution, as its subscription recorded it ({§subscriptions-causal-resource}) |
+| A child's conclusion ({§env-delta-child-termination}) | The operation that sent the first message of the concluded loop |
+| A completion reply delivered to the sender ({§message-reply-delivery}), including {§message-abandonment} | The operation that sent the message it completed |
+
+Each is derived from what the row records: the publication it advanced, or the occurrence it materialized.
+A message names an invocation only to the worker whose operation sent it; history a FORK inherited names the
+same invocation as its original, at the same coordinate. The row's own `source` keeps its attribution meaning
+({§env-delta-attribution}). An obligation whose opener was not recorded, and every other row, omits the field.
 
 ### §notifications Core events
 
