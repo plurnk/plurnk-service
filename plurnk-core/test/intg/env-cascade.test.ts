@@ -97,6 +97,10 @@ const migratedPath = (result: { code: number | null; stdout: string; stderr: str
     return match[1];
 };
 
+// {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+const outcomeOf = <Outcome>(events: ReadonlyArray<{ type?: string; result?: Outcome }>): Outcome | undefined =>
+    events.find(({ type }) => type === "RUN_FINISHED")?.result;
+
 test("{§operator-config-precedence} launcher cascade: the working directory's .env is ignored; the XDG user config supplies values; the derived DB uses XDG data", async () => {
     const fx = await fixture();
     try {
@@ -313,10 +317,10 @@ for (const built of [false, true]) {
             });
             assert.equal(response.status, 200);
             const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-                .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean; result: unknown } });
-            const value = events.find(({ name }) => name === "plurnk.action.result")?.value;
-            assert.equal(value?.ok, true, JSON.stringify(value));
-            return value?.result;
+                .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean; result: unknown } });
+            const outcome = outcomeOf(events);
+            assert.equal(outcome?.ok, true, JSON.stringify(outcome));
+            return outcome?.result;
         };
         const listed = await action("workspace.mcp.list") as FunctionalityListResult;
         assert.equal(listed.definitions[0]?.alias, "fixture");
@@ -358,8 +362,8 @@ for (const built of [false, true]) {
         });
         assert.equal(response.status, 200, "the actual client interface remains available for repair");
         const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean; result: { actions: object } } });
-        const result = events.find(({ name }) => name === "plurnk.action.result")?.value;
+            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean; result: { actions: object } } });
+        const result = outcomeOf(events);
         assert.equal(result?.ok, true);
         assert.ok(result?.result.actions && "workspace.mcp.list" in result.result.actions,
             "the broken family's inspection action is still advertised to the client");
@@ -406,7 +410,7 @@ for (const built of [false, true]) {
         });
         assert.equal(response.status, 200);
         const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown });
+            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; name?: string; value?: unknown; result?: unknown });
         const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
         for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
@@ -427,7 +431,7 @@ for (const built of [false, true]) {
             assert.equal(notice?.level, "warn");
             assert.ok(notice?.message?.includes(key!));
         }
-        const result = events.find(({ name }) => name === "plurnk.action.result")?.value as { ok: boolean; result: { actions: object } };
+        const result = outcomeOf(events) as { ok: boolean; result: { actions: object } };
         assert.equal(result.ok, true);
         assert.ok("providers.list" in result.result.actions, "model selection remains discoverable without a working default model");
         // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
@@ -441,8 +445,8 @@ for (const built of [false, true]) {
         });
         assert.equal(created.status, 200);
         const creation = (await created.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean } });
-        assert.equal(creation.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(creation));
+            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean } });
+        assert.equal(outcomeOf(creation)?.ok, true, JSON.stringify(creation));
         const sync = await fetch(daemon.url, {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -496,15 +500,14 @@ for (const built of [false, true]) {
             assert.equal(response.status, 200);
             return (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
                 .map((frame) => JSON.parse(frame.slice(6)) as {
-                    type: string; name?: string; snapshot?: { providers?: unknown }; value?: {
-                        ok: boolean; key?: string; result: unknown; problem?: { status: number; key?: string };
-                    };
+                    type: string; name?: string; snapshot?: { providers?: unknown }; value?: { key?: string };
+                    result?: { ok: boolean; result: unknown; problem?: { status: number; key?: string } };
                 });
         };
         // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
         // worker creates it, and inheriting the child model resolves no provider.
         const created = await request({ action: { kind: "worker.child.set", selector: null } });
-        assert.equal(created.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(created));
+        assert.equal(outcomeOf(created)?.ok, true, JSON.stringify(created));
         const sync = await request({ mode: "sync", control: true });
         assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
         assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
@@ -513,14 +516,14 @@ for (const built of [false, true]) {
         assert.equal(Object.hasOwn(snapshot, "providers"), false, "unavailable is not a fabricated empty catalog");
         assert.deepEqual(requests, [], "startup, creating the worker and passive attachment perform no provider I/O");
         const rejected = await request({ action: { kind: "worker.model.set", selector: "missing/model" } });
-        const failure = rejected.find(({ name }) => name === "plurnk.action.result")?.value;
+        const failure = outcomeOf(rejected);
         assert.equal(failure?.ok, false);
         assert.equal(failure?.problem?.status, 503);
         const unchanged = await request({ action: { kind: "worker.model.get" } });
-        assert.deepEqual(unchanged.find(({ name }) => name === "plurnk.action.result")?.value?.result, { model: null, spawnModel: null });
+        assert.deepEqual(outcomeOf(unchanged)?.result, { model: null, spawnModel: null });
         for (let attempt = 0; attempt < 2; attempt++) {
             const selected = await request({ action: { kind: "worker.model.set", selector: "openai/lazy-fixture" } });
-            assert.equal(selected.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(selected));
+            assert.equal(outcomeOf(selected)?.ok, true, JSON.stringify(selected));
         }
         assert.deepEqual(requests, ["/v1/models"], "selection verifies once; repeated selection reuses the existing provider cache");
     });

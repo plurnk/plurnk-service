@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
-import { aliveChildren, spendState, statusState, actionResult, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
@@ -482,7 +482,6 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                     ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
                     : { ok: false, problem };
             });
-        emit(actionResult(action.kind, outcome));
         emit({ type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" }, result: actionRunResult(action.kind, outcome) });
         res.end();
     }

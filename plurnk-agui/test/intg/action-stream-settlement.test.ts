@@ -47,8 +47,10 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
         const conclusion = events.findIndex((e) => label(e) === "plurnk.stream"
             && typeof (e as { value?: { result?: { status?: unknown } } }).value?.result?.status === "number");
         assert.notEqual(conclusion, -1, `the conclusion rides the Run that launched the command: ${order.join(" → ")}`);
-        const result = order.indexOf("plurnk.action.result");
-        assert.ok(conclusion < result && result < order.lastIndexOf("RUN_FINISHED"), `conclusion, then result, then finish: ${order.join(" → ")}`);
+        const finished = order.lastIndexOf("RUN_FINISHED");
+        assert.ok(conclusion < finished, `conclusion, then the finish that carries the result: ${order.join(" → ")}`);
+        assert.equal((events[finished] as { result?: { kind?: string } } | undefined)?.result?.kind, "op.exec",
+            "{§agui-plurnk-metadata} the Run finishes with the action's outcome as its result");
         const concluded = events[conclusion] as { value: { target: string; result: { status: number } } };
         assert.equal(concluded.value.result.status, 200);
         assert.equal(concluded.value.target, started.value.attrs.stream, "the conclusion names the address the row announced");
@@ -74,8 +76,8 @@ test("{§proposal-disposition} a person's command runs at once under review, whe
                 threadId: "own-command", tools,
                 forwardedProps: { plurnk: { workspace: "own-command", action: { kind: "op.exec", command: "printf mine" } } },
             }, t.signal);
-            const result = events.find((event) => label(event) === "plurnk.action.result") as { value?: { ok?: boolean } } | undefined;
-            assert.equal(result?.value?.ok, true, JSON.stringify(events));
+            const result = (events.find(({ type }) => type === "RUN_FINISHED") as { result?: { ok?: boolean } } | undefined)?.result;
+            assert.equal(result?.ok, true, JSON.stringify(events));
             const receipt = events.find((event) => label(event) === "plurnk.row") as { value?: { rx?: { outcome?: string } } } | undefined;
             assert.equal(receipt?.value?.rx?.outcome, "client_operation", "the person's own decision, never routed for review");
             const finish = events.at(-1) as { type?: string; outcome?: { type?: string } } | undefined;

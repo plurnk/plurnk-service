@@ -4,7 +4,7 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { stateSnapshot, parseAction, actionResult, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
@@ -306,7 +306,7 @@ export default class RunHandler {
         // A client operation's Run observes the loop its dispatch opens ({§agui-broadcast-fan}).
         if (action !== null) {
             const finishAction = (outcome: ActionOutcome): void => {
-                if (!finished) this.#portal().finishThread(boundRun, [actionResult(action.kind, outcome)], actionRunResult(action.kind, outcome));
+                if (!finished) this.#portal().finishThread(boundRun, [], actionRunResult(action.kind, outcome));
             };
             const onLoop: OperationLoopListener | undefined = notificationScope === "operation"
                 ? (loop) => { this.#portal().bindOperation(boundRun, loop); }

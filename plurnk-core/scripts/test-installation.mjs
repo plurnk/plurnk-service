@@ -257,8 +257,8 @@ const aguiAction = async (address, kind, params = {}, workspace) => {
         ...(workspace === undefined ? {} : { workspace }),
         action: { kind, ...params },
     });
-    const outcome = events.find((event) =>
-        event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
+    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    const outcome = events.find((event) => event.type === "RUN_FINISHED")?.result;
     if (!response.ok || outcome?.ok !== true) {
         throw new Error(`packed ${kind} failed (${response.status}): ${body}`);
     }
@@ -662,7 +662,7 @@ raw stdin
     const resumed = await aguiRun(address, { workspace: attached.name }, {
         resume: [{ interruptId: interrupts[0].id, status: "resolved", payload: { decision: "accept" } }],
     });
-    const completed = resumed.events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
+    const completed = resumed.events.find((event) => event.type === "RUN_FINISHED")?.result;
     if (!resumed.response.ok || completed?.ok !== true) throw new Error(`packed Skill execution resume failed: ${resumed.body}`);
     const skillExec = completed.result.results[0];
     const deadline = Date.now() + 5000;

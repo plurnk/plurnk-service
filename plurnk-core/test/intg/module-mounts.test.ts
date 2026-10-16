@@ -81,7 +81,10 @@ test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", asyn
         } else {
             assert.equal(response.status, 200);
             assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
-            assert.match(await response.text(), /plurnk.action.result/u);
+            const frames = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+                .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { kind?: string } });
+            // {§agui-plurnk-metadata} The Run finishes with the action's outcome as its result.
+            assert.equal(frames.find(({ type }) => type === "RUN_FINISHED")?.result?.kind, "discover");
         }
     }
     assert.equal((await get("/")).status, 404);

@@ -27,7 +27,8 @@ test("{§model-catalog}: AG-UI delivers route reasoning choices without creating
     const events = (await response.text()).split("\n\n")
         .filter((frame) => frame.startsWith("data: "))
         .map((frame) => JSON.parse(frame.slice(6)));
-    const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
+    // {§agui-plurnk-metadata} The Run finishes with the action's outcome as its result.
+    const result = events.find((event) => event.type === "RUN_FINISHED")?.result;
     assert.equal(result?.ok, true, JSON.stringify(result));
     const page = Validator.assertModelCatalogPage(result.result);
     assert.deepEqual(page, daemon.listModels(query));

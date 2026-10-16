@@ -368,7 +368,8 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
         workspace: "mcp-interaction-composition", projectRoot: null, action: { kind, alias: "fixture" },
     } } });
     const rejected = await mutate("workspace.mcp.disable");
-    const outcome = rejected.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value as {
+    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    const outcome = rejected.find((event) => event.type === "RUN_FINISHED")?.result as {
         ok: boolean; problem?: { status: number; type: string };
     };
     assert.equal(outcome.ok, false, JSON.stringify(rejected));
@@ -381,7 +382,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     } }] }), provider, /Ada reviewed MCP/u);
     assert.deepEqual(fixture.cancellations, [], "the failed mutation neither cancels nor replaces the original Task");
     const disabled = await mutate("workspace.mcp.disable");
-    const result = disabled.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value as { ok: boolean };
+    const result = disabled.find((event) => event.type === "RUN_FINISHED")?.result as { ok: boolean };
     assert.equal(result.ok, true, JSON.stringify(disabled));
     assert.deepEqual(fixture.cancellations, [], "completed Tasks are not cancelled again at connection close");
 });

@@ -1009,7 +1009,8 @@ const openOperation = (portal: Portal, inputRunId: string, seen: AguiEvent[], lo
     portal.bindOperation(thread, { workerId: 10, loopId });
     return thread;
 };
-const actionResult: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } };
+// {§agui-plurnk-metadata} The outcome an operation Run finishes with, as its RUN_FINISHED's result.
+const execOutcome = { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } };
 const concluded = (target: string) => ({ entryId: 170, workerId: 10, target, subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: `${target} completed (exit 0)`, wakeAction: "no-loop" });
 
 for (const status of [400, 403, 499, 503]) {
@@ -1021,7 +1022,7 @@ for (const status of [400, 403, 499, 503]) {
         const thread = openOperation(portal, "refused-op", seen);
         const { entry } = startedExec();
         m.fire(3, "log/entry", { entry: { ...entry, status_rx: status, rx: { status } } });
-        portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status } } }]);
+        portal.finishThread(thread, [], { kind: "op.exec", ok: true, result: { status } });
         assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "a stream address is not evidence that execution started");
         portal.stop();
     });
@@ -1036,7 +1037,7 @@ test("{§agui-broadcast-fan} queued execution remains an obligation even when ap
     const { entry } = startedExec();
     m.fire(3, "log/entry", { entry: { ...entry, status_rx: 202, rx: { status: 202, outcome: "auto: sh" } } });
     const outcome = { kind: "op.exec", ok: true, result: { status: 202 } };
-    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: outcome }], outcome);
+    portal.finishThread(thread, [], outcome);
     assert.equal(seen.some(({ type }) => type === "RUN_FINISHED"), false);
     m.fire(3, "stream/concluded", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: "completed", wakeAction: "no-loop" });
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED");
@@ -1051,16 +1052,16 @@ test("{§agui-broadcast-fan} an operation Run owns an execution from the row tha
     portal.start();
     const thread = openOperation(portal, "op-1", seen);
     m.fire(3, "log/entry", startedExec());
-    const result: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } };
-    portal.finishThread(thread, [result]);
+    portal.finishThread(thread, [], execOutcome);
     assert.equal(seen.some((e) => e.type === "RUN_FINISHED"), false, "the result waits for the execution the row announced, no channel write needed");
 
     m.fire(3, "stream/event", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", channel: "stdout", state: "active", contentLength: 4 });
     m.fire(3, "stream/concluded", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: "sh:///b1e0977e completed (exit 0)", wakeAction: "no-loop" });
     const order = seen.map(label);
     const conclusion = order.lastIndexOf("plurnk.stream");
-    assert.ok(conclusion !== -1 && conclusion < order.indexOf("plurnk.action.result") && order.indexOf("plurnk.action.result") < order.indexOf("RUN_FINISHED"),
-        `the conclusion, then the result, then the finish: ${order.join(" → ")}`);
+    const finished = order.indexOf("RUN_FINISHED");
+    assert.ok(conclusion !== -1 && conclusion < finished, `the conclusion, then the finish that carries the result: ${order.join(" → ")}`);
+    assert.deepEqual((seen[finished] as { result?: unknown }).result, execOutcome, "{§agui-plurnk-metadata} the Run finishes with the action's outcome as its result");
     portal.stop();
 });
 
@@ -1071,7 +1072,7 @@ test("{§agui-broadcast-fan} a detached execution (<-1>) is nobody's obligation:
     portal.start();
     const thread = openOperation(portal, "op-2", seen);
     m.fire(3, "log/entry", startedExec({ detached: true }));
-    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } }]);
+    portal.finishThread(thread, [], execOutcome);
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "the Run settles at once; the detached spawn outlives it");
     portal.stop();
 });
@@ -1092,7 +1093,7 @@ test("{§agui-broadcast-fan} an operation Run observes exactly its own loop of t
     m.fire(3, "stream/event", streamEvent({ entryId: 171, workerId: 10, target: "sh:///7777aaaa", scheme: "sh", contentLength: 9 }));
     m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 6 }));
     m.fire(3, "stream/concluded", concluded("sh:///b1e0977e"));
-    portal.finishThread(thread, [actionResult]);
+    portal.finishThread(thread, [], execOutcome);
 
     const rows = (events: AguiEvent[]) => events.filter((event) => label(event) === "plurnk.row").map((event) => (event as { value: { loop_id: number } }).value.loop_id);
     assert.deepEqual(rows(mine), [6], "only its own loop's rows");
@@ -1120,7 +1121,7 @@ test("{§agui-broadcast-fan} stream activity that precedes the row announcing it
     assert.deepEqual(order.filter((name) => name === "plurnk.row" || name === "plurnk.stream"), ["plurnk.row", "plurnk.stream", "plurnk.stream"],
         `the row, then the latest snapshot, then the conclusion: ${order.join(" → ")}`);
     assert.equal((seen.find((event) => label(event) === "plurnk.stream") as { value: { contentLength: number } }).value.contentLength, 4);
-    portal.finishThread(thread, [actionResult]);
+    portal.finishThread(thread, [], execOutcome);
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "a concluded stream leaves nothing open");
     portal.stop();
 });

@@ -44,8 +44,9 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
             assert.equal(terminals[0]?.type, "RUN_ERROR");
             if (terminals[0]?.type === "RUN_ERROR") {
                 assert.equal(terminals[0].code, "https://problems.plurnk.xyz/agui/http/service-stopping");
+                // {§agui-plurnk-metadata} Shutdown ended the Run, not its loop: the end carries no terminal record.
+                assert.equal((terminals[0].metadata as { plurnk?: { terminal?: unknown } } | undefined)?.plurnk?.terminal, undefined);
             }
-            assert.ok(!events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
         }
         await daemon.stop();
     } finally {

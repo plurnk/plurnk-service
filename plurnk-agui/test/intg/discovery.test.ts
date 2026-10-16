@@ -33,11 +33,10 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
             .split("\n\n")
             .filter((frame) => frame.startsWith("data: "))
             .map((frame) => JSON.parse(frame.slice(6)) as Record<string, unknown>);
-        const event = frames.find((frame) => frame.type === "CUSTOM" && frame.name === "plurnk.action.result") as {
-            value: { ok: boolean; result: unknown };
-        } | undefined;
-        assert.equal(event?.value.ok, true);
-        const discovery = Validator.assertAguiDiscovery(event?.value.result);
+        // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+        const outcome = (frames.find((frame) => frame.type === "RUN_FINISHED") as { result?: { ok: boolean; result: unknown } } | undefined)?.result;
+        assert.equal(outcome?.ok, true);
+        const discovery = Validator.assertAguiDiscovery(outcome?.result);
         const display = discovery.display;
         assert.deepEqual(
             display.find((capability) => capability.kind === "scheme" && capability.scheme === "https"),
@@ -114,18 +113,16 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
                 .filter((frame) => frame.startsWith("data: "))
                 .map((frame) => JSON.parse(frame.slice(6)) as {
                     type: string;
-                    name?: string;
-                    value?: { ok?: boolean; problem?: { type?: string; status?: number } };
+                    result?: { ok?: boolean; problem?: { type?: string; status?: number } };
                 });
-            const result = invalidFrames.find((frame) =>
-                frame.type === "CUSTOM" && frame.name === "plurnk.action.result");
-            assert.equal(result?.value?.ok, false, `${name} rejects fields absent from discovery`);
+            const result = invalidFrames.find((frame) => frame.type === "RUN_FINISHED")?.result;
+            assert.equal(result?.ok, false, `${name} rejects fields absent from discovery`);
             assert.equal(
-                result?.value?.problem?.type,
+                result?.problem?.type,
                 "https://problems.plurnk.xyz/agui/action/invalid-action-parameters",
                 `${name} preserves the shared admission Problem`,
             );
-            assert.equal(result?.value?.problem?.status, 400);
+            assert.equal(result?.problem?.status, 400);
         }
     } finally {
         await daemon.stop();

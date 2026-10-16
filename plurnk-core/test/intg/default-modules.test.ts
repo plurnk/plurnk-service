@@ -83,10 +83,11 @@ test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listene
         }),
     });
     assert.equal(response.status, 200);
-    const result = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-        .map((frame) => JSON.parse(frame.slice(6)) as { type: string; name?: string; value?: { ok?: boolean } })
-        .find(({ type, name }) => type === "CUSTOM" && name === "plurnk.action.result");
-    assert.equal(result?.value?.ok, true, "the discovered client interface answers discover");
+    // {§agui-plurnk-metadata} The Run finishes with the action's outcome as its result.
+    const finished = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+        .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { ok?: boolean } })
+        .find(({ type }) => type === "RUN_FINISHED");
+    assert.equal(finished?.result?.ok, true, "the discovered client interface answers discover");
 });
 
 test("{§a2a-module} {§module-contained-configuration} an invalid exposure setting is reported and outbound A2A keeps working", async (t) => {

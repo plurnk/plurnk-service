@@ -89,7 +89,7 @@ definition and enabled state. Use `disable` to suppress an inherited server.
 MCP management neither installs nor deletes plugins or configuration files.
 
 An AG-UI client sends each as the ordinary management action under
-`forwardedProps.plurnk.action`, and the standard `plurnk.action.result` event reports the result or
+`forwardedProps.plurnk.action`, and the Run's `RUN_FINISHED.result` reports the result or
 exact RFC 9457 Problem Details:
 
 ```json

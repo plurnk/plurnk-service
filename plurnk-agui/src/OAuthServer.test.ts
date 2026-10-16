@@ -66,7 +66,8 @@ const pinged = async (base: string, headers: Record<string, string>): Promise<vo
     const text = await response.text();
     assert.equal(response.status, 200, text);
     const events = text.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
-    assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"), "the action answered");
+    // {§agui-plurnk-metadata} An action Run answers with its outcome as the RUN_FINISHED's result.
+    assert.notEqual((events.find(({ type }) => type === "RUN_FINISHED") as { result?: unknown } | undefined)?.result, undefined, "the action answered");
 };
 const refused = async (base: string, headers: Record<string, string>): Promise<{ status: number; type: string; challenge: string }> => {
     const response = await ping(base, headers);

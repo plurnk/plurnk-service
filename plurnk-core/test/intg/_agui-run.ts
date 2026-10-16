@@ -47,21 +47,19 @@ export const runInput = (
     ...additions,
 });
 
+// {§agui-plurnk-metadata} An action Run finishes with the action's whole outcome as its result.
 export const actionResult = (events: readonly Event[]): {
     readonly ok: boolean;
     readonly result?: Readonly<Record<string, unknown>>;
     readonly problem?: Readonly<Record<string, unknown>>;
 } => {
-    const event = events.find((candidate) =>
-        candidate.type === "CUSTOM" && candidate.name === "plurnk.action.result") as {
-        readonly value?: {
-            readonly ok: boolean;
-            readonly result?: Readonly<Record<string, unknown>>;
-            readonly problem?: Readonly<Record<string, unknown>>;
-        };
+    const outcome = events.find((candidate) => candidate.type === "RUN_FINISHED")?.result as {
+        readonly ok: boolean;
+        readonly result?: Readonly<Record<string, unknown>>;
+        readonly problem?: Readonly<Record<string, unknown>>;
     } | undefined;
-    assert.ok(event?.value !== undefined, "the AG-UI action returned its standard result event");
-    return event.value;
+    assert.ok(outcome !== undefined, "the AG-UI action Run finished with its outcome as its result");
+    return outcome;
 };
 
 export const packet = (requests: PacketCapturingMock["requests"], index: number): string =>

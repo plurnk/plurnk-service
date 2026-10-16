@@ -320,13 +320,6 @@ export default class Translator {
                 { op: "replace", path: "/budget/contextCapacity", value: n.usage.contextCapacity },
             ],
         });
-        // Family channel — the full terminal truth the core STATE_DELTA can't hold
-        // (loopId, turnIds, physical-request accounting, usage meta, attribution) PLUS the daemon workspaceId, so a
-        // plurnk client rebuilds its json record from the stream with ONE schema
-        // and no second round-trip. Numbers verbatim
-        // ({§agui-numbers-passthrough}). Generic frontends ignore it; the RUN_FINISHED/
-        // RUN_ERROR below is their terminal signal.
-        events.push({ type: EventType.CUSTOM, name: "plurnk.terminated", value: { ...n, workspaceId: this.#workspaceId } });
         // The standard RAW channel (§475): the provider's NATIVE completion frame rides
         // usage.meta (finish_reason, model, timings, id, …) — AG-UI's RAW is exactly this,
         // a passthrough of an external system's own event with a source tag. Generic
@@ -336,7 +329,8 @@ export default class Translator {
         }
         // {§agui-run-outcome} A loop that completed finishes the Run with its result; one stopped without failing (499)
         // finishes it cancelled; any other failure is the Run's error. Usage is each physical request's own counts, and
-        // the loop's complete terminal record rides the end's metadata ({§agui-plurnk-metadata}).
+        // the end's metadata is the loop's complete terminal record with the daemon's workspaceId, numbers verbatim, so
+        // a plurnk client rebuilds its record from the stream alone ({§agui-plurnk-metadata}, {§agui-numbers-passthrough}).
         const usage = Translator.#tokenUsage(n.usage.accounting);
         const metadata = { plurnk: { terminal: { ...n, workspaceId: this.#workspaceId } } };
         if (result.status < 400) {

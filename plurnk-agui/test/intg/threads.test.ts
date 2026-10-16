@@ -18,9 +18,10 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     });
     assert.equal(res.status, 200);
     const events = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
-    const r = events.find((e) => e.type === "CUSTOM" && (e as { name?: string }).name === "plurnk.action.result") as { value: { ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> } } | undefined;
-    assert.ok(r !== undefined, `no action result for ${kind}`);
-    return r.value;
+    // {§agui-plurnk-metadata} The action's outcome is its Run's result.
+    const outcome = (events.find((e) => e.type === "RUN_FINISHED") as { result?: { ok: boolean; result?: Record<string, unknown>; problem?: Record<string, unknown> } } | undefined)?.result;
+    assert.ok(outcome !== undefined, `no action result for ${kind}`);
+    return outcome;
 };
 
 test("two threads, one world: each thread's operations under its own address, one shared filesystem (the environment door)", { timeout: 60_000 }, async () => {

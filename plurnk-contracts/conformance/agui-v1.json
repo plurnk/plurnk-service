@@ -125,27 +125,6 @@
                     ]
                 },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": { "status": 200 },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
-                {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "run",
@@ -185,15 +164,6 @@
             "events": [
                 { "type": "RUN_STARTED", "threadId": "fixture", "runId": "action" },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.action.result",
-                    "value": {
-                        "kind": "workspace.list",
-                        "ok": true,
-                        "result": { "workspaces": [] }
-                    }
-                },
-                {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "action",
@@ -231,20 +201,6 @@
                     }
                 },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.action.result",
-                    "value": {
-                        "kind": "workspace.rename",
-                        "ok": false,
-                        "problem": {
-                            "type": "https://problems.plurnk.xyz/daemon/workspace/name-conflict",
-                            "title": "Name conflict",
-                            "status": 409,
-                            "detail": "The workspace name is already in use."
-                        }
-                    }
-                },
-                {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "action-problem",
@@ -270,20 +226,6 @@
         {
             "name": "loop-injection",
             "events": [
-                {
-                    "type": "CUSTOM",
-                    "name": "plurnk.action.result",
-                    "value": {
-                        "kind": "loop.inject",
-                        "ok": true,
-                        "result": {
-                            "status": 100,
-                            "action": "injected_next_turn",
-                            "loopId": 9,
-                            "turnSeq": 2
-                        }
-                    }
-                },
                 {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
@@ -417,27 +359,6 @@
                     "messageId": "model-call-11/reasoning"
                 },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": { "status": 200 },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
-                {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "reasoning",
@@ -482,27 +403,6 @@
                     "value": { "coordinate": "worker-1-1", "text": "Thinking out loud.", "tokens": 9 }
                 },
                 { "type": "STEP_FINISHED", "stepName": "turn-1" },
-                {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": { "status": 200 },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
                 {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
@@ -574,27 +474,6 @@
                     }
                 },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": { "status": 200 },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
-                {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "stream",
@@ -633,16 +512,6 @@
             "name": "problem-run",
             "events": [
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.problem",
-                    "value": {
-                        "type": "https://problems.plurnk.xyz/fixture/conflict",
-                        "title": "Fixture conflict",
-                        "status": 409,
-                        "detail": "The fixture deliberately conflicts."
-                    }
-                },
-                {
                     "type": "RUN_ERROR",
                     "message": "The fixture deliberately conflicts.",
                     "code": "https://problems.plurnk.xyz/fixture/conflict",
@@ -667,35 +536,6 @@
         {
             "name": "cancelled-run",
             "events": [
-                {
-                    "type": "CUSTOM",
-                    "name": "plurnk.terminated",
-                    "value": {
-                        "workspaceId": 1,
-                        "workerId": 7,
-                        "loopId": 1,
-                        "result": {
-                            "status": 499,
-                            "problem": {
-                                "type": "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled",
-                                "title": "Loop cancelled",
-                                "status": 499,
-                                "detail": "The loop was cancelled."
-                            }
-                        },
-                        "hitMaxTurns": false,
-                        "turnIds": [1],
-                        "attributions": [],
-                        "usage": {
-                            "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
-                            "curationWeight": null,
-                            "curationBudget": null,
-                            "contextTokens": null,
-                            "contextCapacity": null,
-                            "meta": {}
-                        }
-                    }
-                },
                 {
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",

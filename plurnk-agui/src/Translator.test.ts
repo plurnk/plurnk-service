@@ -576,10 +576,10 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.deepEqual(second.slice(0, 2).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
-    assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
+    assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "RUN_FINISHED"]);
 });
 
-test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, including attribution outside usage", () => {
+test("{§agui-cost-evidence} {§agui-plurnk-metadata} a Run's end carries the full terminal record as metadata, including attribution outside usage", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
@@ -598,17 +598,18 @@ test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, 
             meta: { balance: { amount: "0.99", currency: "XMR" } },
         }),
     };
-    const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
-    assert.equal(custom.value.workspaceId, 512, "daemon workspaceId — one json schema across transports");
-    assert.equal(custom.value.workerId, 2, "workerId stays paired with its owning loop");
-    assert.equal(custom.value.loopId, 77, "loopId — absent from core events");
-    assert.deepEqual(custom.value.turnIds, [1, 2, 3], "turn count for the record");
-    assert.deepEqual(custom.value.attributions, ["creator:ada"], "opaque tags stay top-level rather than becoming usage or provider meta");
-    assert.equal(custom.value.usage.accounting.costUsd, null, "unknown cost is not projected as zero");
-    assert.deepEqual(custom.value.usage.accounting.requests[0]?.cost, { kind: "unknown", reason: "no provider rate" }, "cardinal monetary authority survives the custom event");
-    assert.equal(custom.value.usage.accounting.usage?.outputTokenDetails?.reasoningTokens, 2);
-    assert.equal(custom.value.usage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 3);
-    assert.deepEqual(custom.value.usage.meta, { balance: { amount: "0.99", currency: "XMR" } }, "opaque provider meta, verbatim");
+    const end = tr.terminated(term).find(({ type }) => type === EventType.RUN_FINISHED) as { metadata?: { plurnk?: { terminal?: TerminatedNotification & { workspaceId: number | null } } } } | undefined;
+    const terminal = end?.metadata?.plurnk?.terminal;
+    assert.equal(terminal?.workspaceId, 512, "daemon workspaceId — one json schema across transports");
+    assert.equal(terminal?.workerId, 2, "workerId stays paired with its owning loop");
+    assert.equal(terminal?.loopId, 77, "loopId — absent from core events");
+    assert.deepEqual(terminal?.turnIds, [1, 2, 3], "turn count for the record");
+    assert.deepEqual(terminal?.attributions, ["creator:ada"], "opaque tags stay top-level rather than becoming usage or provider meta");
+    assert.equal(terminal?.usage.accounting.costUsd, null, "unknown cost is not projected as zero");
+    assert.deepEqual(terminal?.usage.accounting.requests[0]?.cost, { kind: "unknown", reason: "no provider rate" }, "cardinal monetary authority survives the Run's metadata");
+    assert.equal(terminal?.usage.accounting.usage?.outputTokenDetails?.reasoningTokens, 2);
+    assert.equal(terminal?.usage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 3);
+    assert.deepEqual(terminal?.usage.meta, { balance: { amount: "0.99", currency: "XMR" } }, "opaque provider meta, verbatim");
 });
 
 // {§agui-run-outcome} Every way a loop ends, as the official schema reads it.
@@ -684,15 +685,11 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
         usage: loopUsage(),
     };
     const events = tr.terminated(term);
-    const error = events.find((e) => e.type === "RUN_ERROR") as { code?: string; message?: string };
+    const error = events.find((e) => e.type === "RUN_ERROR") as { code?: string; message?: string; metadata?: { plurnk?: { terminal?: unknown } } };
     assert.deepEqual(
-        events.find((e) => (e as { name?: string }).name === "plurnk.terminated"),
-        {
-            type: "CUSTOM",
-            name: "plurnk.terminated",
-            value: { ...term, workspaceId: null },
-        },
-        "the family event carries the exact Problem without translation loss",
+        error?.metadata?.plurnk?.terminal,
+        { ...term, workspaceId: null },
+        "{§agui-plurnk-metadata} the Run's error carries the exact Problem in its terminal record, without translation loss",
     );
     assert.equal(error?.code, problem.type);
     assert.equal(error?.message, problem.detail);

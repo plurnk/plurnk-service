@@ -11,6 +11,7 @@ import { AGUI_BUILTIN_ACTIONS } from "./AguiSurface.ts";
 import type {
     ApplicationActionContext,
     LogEntryWire,
+    ProblemDetails,
     ProposalProjection,
     ProposalResolution,
     WorkerOwner,
@@ -262,6 +263,16 @@ const presentedInterrupt = (events: AguiEvent[]): Interrupt => {
     return last.outcome.interrupts[0]!;
 };
 
+// {§agui-plurnk-metadata} What a Run's end carries: an action Run's RUN_FINISHED has the action's whole outcome as its
+// result; the end a bound loop's terminal produces has that loop's terminal record; a Run that fails without one has
+// its exact Problem.
+const actionOutcome = (events: readonly AguiEvent[]): unknown =>
+    (events.find(({ type }) => type === "RUN_FINISHED") as { result?: unknown } | undefined)?.result;
+const loopTerminal = (events: readonly AguiEvent[]): unknown =>
+    (events.find(({ type }) => type === "RUN_FINISHED" || type === "RUN_ERROR") as { metadata?: { plurnk?: { terminal?: unknown } } } | undefined)?.metadata?.plurnk?.terminal;
+const runProblem = (events: readonly AguiEvent[]): ProblemDetails | undefined =>
+    (events.find(({ type }) => type === "RUN_ERROR") as { metadata?: { plurnk?: { problem?: ProblemDetails } } } | undefined)?.metadata?.plurnk?.problem;
+
 for (const status of [200, 502]) {
     test(`{§agui-state-patches}: HTTP deltas reconstruct the complete gauge through ${status} termination`, async () => {
         const { seam, emit } = mockSeam();
@@ -409,17 +420,13 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
             threadId: "history",
             forwardedProps: { plurnk: { workspace: "history", action: { kind: "log.read", limit: 20 } } },
         });
-        const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result");
-        assert.equal(result?.type, "CUSTOM");
-        if (result?.type !== "CUSTOM") throw new Error("missing log.read result");
-        assert.deepEqual(result.value, { kind: "log.read", ok: true, result: { entries: rows } });
-        const finished = events.find((event) => event.type === "RUN_FINISHED") as { result?: unknown } | undefined;
-        assert.deepEqual(finished?.result, result.value, "{§agui-plurnk-metadata} the Run's result is the action's outcome");
+        const outcome = actionOutcome(events) as { kind: string; ok: boolean; result: { entries: unknown[] } } | undefined;
+        assert.deepEqual(outcome, { kind: "log.read", ok: true, result: { entries: rows } }, "{§agui-plurnk-metadata} the Run's result is the action's outcome");
         const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
         for (const [index, row] of rows.entries()) {
             const live = translator.logEntry({ entry: row }).find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
             assert.equal(live?.type, "CUSTOM");
-            if (live?.type === "CUSTOM") assert.deepEqual(result.value.result.entries[index], live.value);
+            if (live?.type === "CUSTOM") assert.deepEqual(outcome?.result.entries[index], live.value);
         }
         assert.deepEqual(rows, before, "the standards boundary does not rewrite stored notes");
         assert.deepEqual(loopRuns, [], "reading history does not invoke a model");
@@ -469,8 +476,8 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
         assert.equal(problem.stage, "shutdown");
         finish(3, 77);
         const events = await stream;
-        assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
         assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+        assert.notEqual(loopTerminal(events), undefined, "the Run's end carries its loop's terminal record");
     } finally { await mod.close(); }
 });
 
@@ -500,14 +507,11 @@ test("{§agui-shutdown} close ends every idle connection without cancelling work
             const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
             assert.equal(events.filter(({ type }) => type === "RUN_STARTED").length, 1);
             assert.equal(events.filter(({ type }) => type === "RUN_ERROR").length, 1);
-            const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
-            assert.equal(problem?.type, "CUSTOM");
-            if (problem?.type === "CUSTOM") {
-                assert.equal(problem.value.type, "https://problems.plurnk.xyz/agui/http/service-stopping");
-                assert.equal(problem.value.status, 503);
-            }
+            const problem = runProblem(events);
+            assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/http/service-stopping");
+            assert.equal(problem?.status, 503);
             assert.equal(events.at(-1)?.type, "RUN_ERROR");
-            assert.ok(!events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
+            assert.equal(loopTerminal(events), undefined);
         }
         assert.deepEqual(cancellations, []);
         mod.module.close();
@@ -678,7 +682,7 @@ test("{§agui-worker-owner} a control Run declares its owner's capability set: t
     } finally { await mod.close(); }
 });
 
-test("{§agui-management-plane} a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
+test("{§agui-management-plane} a management-action AG-UI Run executes via the seam and finishes with its outcome as the Run's result, no loop", async () => {
     const { seam, modelQueries } = mockSeam();
     // loop.inject below addresses a live world; it never mints one.
     seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
@@ -686,46 +690,44 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
     const mod = await host(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "providers.list" } } } });
-        const result = events.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } } };
-        assert.equal(result.value.ok, true);
-        assert.equal(result.value.result.aliases[0].alias, "opus");
+        const result = actionOutcome(events) as { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } };
+        assert.equal(result.kind, "providers.list", "{§agui-plurnk-metadata} the Run's result is the action's whole outcome");
+        assert.equal(result.ok, true);
+        assert.equal(result.result.aliases[0].alias, "opus");
         assert.equal(events[events.length - 1].type, "RUN_FINISHED", "management-action AG-UI Run finishes clean");
-        assert.deepEqual((events[events.length - 1] as { result?: unknown }).result, result.value, "{§agui-plurnk-metadata} with the action's outcome as its result");
         const models = await post(mod.address().port, { threadId: "t1", workerId: "models", forwardedProps: { plurnk: { action: { kind: "models.list", provider: "google", search: "flash", limit: 10 } } } });
-        const modelResult = models.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { items: Array<{ selector: string }> } } };
-        assert.equal(modelResult.value.ok, true);
-        assert.equal(modelResult.value.result.items[0]?.selector, "google/gemini-3-flash");
+        const modelResult = actionOutcome(models) as { ok: boolean; result: { items: Array<{ selector: string }> } };
+        assert.equal(modelResult.ok, true);
+        assert.equal(modelResult.result.items[0]?.selector, "google/gemini-3-flash");
         assert.deepEqual(modelQueries, [{ provider: "google", search: "flash", limit: 10 }]);
 
         const invalidModels = await post(mod.address().port, { threadId: "t1", workerId: "models-invalid", forwardedProps: { plurnk: { action: { kind: "models.list", limit: 101 } } } });
-        const invalidModelResult = invalidModels.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; problem: { status: number; type: string } } };
-        assert.equal(invalidModelResult.value.ok, false);
-        assert.equal(invalidModelResult.value.problem.status, 400);
+        const invalidModelResult = actionOutcome(invalidModels) as { ok: boolean; problem: { status: number; type: string } };
+        assert.equal(invalidModelResult.ok, false);
+        assert.equal(invalidModelResult.problem.status, 400);
         // inject rides the same surface
         const inj = await post(mod.address().port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "loop.inject", prompt: "steer" } } } });
-        const ack = inj.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { action: string } } };
-        assert.equal(ack.value.result.action, "injected_next_turn", "inject folds into the active drain via the unified runLoop");
+        const ack = actionOutcome(inj) as { ok: boolean; result: { action: string } };
+        assert.equal(ack.result.action, "injected_next_turn", "inject folds into the active drain via the unified runLoop");
         // an unknown kind errors honestly
         const bad = await post(mod.address().port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "nope.nothing" } } } });
-        const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: {
-                ok: boolean;
-                problem: {
-                    type: string;
-                    detail: string;
-                    requestedAction: string;
-                    recovery: string;
-                    retryable: boolean;
-                };
+        const err = actionOutcome(bad) as {
+            ok: boolean;
+            problem: {
+                type: string;
+                detail: string;
+                requestedAction: string;
+                recovery: string;
+                retryable: boolean;
             };
         };
-        assert.equal(err.value.ok, false);
-        assert.equal(err.value.problem.type, "https://problems.plurnk.xyz/agui/action/unknown-action");
-        assert.equal(err.value.problem.detail, "Action 'nope.nothing' is not registered."); // {§pinned-wording-agui}
-        assert.equal(err.value.problem.requestedAction, "nope.nothing");
-        assert.equal(err.value.problem.recovery, "Use an action advertised by discover."); // {§pinned-wording-agui}
-        assert.equal(err.value.problem.retryable, false);
-        assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
+        assert.equal(err.ok, false);
+        assert.equal(err.problem.type, "https://problems.plurnk.xyz/agui/action/unknown-action");
+        assert.equal(err.problem.detail, "Action 'nope.nothing' is not registered."); // {§pinned-wording-agui}
+        assert.equal(err.problem.requestedAction, "nope.nothing");
+        assert.equal(err.problem.recovery, "Use an action advertised by discover."); // {§pinned-wording-agui}
+        assert.equal(err.problem.retryable, false);
+        assert.doesNotMatch(err.problem.detail, /seam surface/, "no internal jargon leaks to the client");
     } finally { await mod.close(); }
 });
 
@@ -824,12 +826,10 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
     try {
         const port = mod.address().port;
         const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.get" } } } });
-        const got = get.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; result: { model: { alias: string } | null; spawnModel: { alias: string } | null } };
-        };
-        assert.equal(got.value.ok, true);
-        assert.equal(got.value.result.model?.alias, "opus");
-        assert.equal(got.value.result.spawnModel?.alias, "tiny");
+        const got = actionOutcome(get) as { ok: boolean; result: { model: { alias: string } | null; spawnModel: { alias: string } | null } };
+        assert.equal(got.ok, true);
+        assert.equal(got.result.model?.alias, "opus");
+        assert.equal(got.result.spawnModel?.alias, "tiny");
 
         const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set", selector: "fresh" } } } });
         assert.equal(set[set.length - 1].type, "RUN_FINISHED");
@@ -840,11 +840,9 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
         assert.deepEqual(modelSets, [{ selector: "fresh" }, { childSelector: null }], "child selector null forwards as inherit");
 
         const noSelector = await post(port, { threadId: "t1", workerId: "r4", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set" } } } });
-        const refused = noSelector.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; problem: { type: string; status: number } };
-        };
-        assert.equal(refused.value.ok, false);
-        assert.equal(refused.value.problem.status, 400, "a selectorless set is an invalid action, not a silent no-op");
+        const refused = actionOutcome(noSelector) as { ok: boolean; problem: { type: string; status: number } };
+        assert.equal(refused.ok, false);
+        assert.equal(refused.problem.status, 400, "a selectorless set is an invalid action, not a silent no-op");
     } finally { await mod.close(); }
 });
 
@@ -856,23 +854,19 @@ test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as
     try {
         const port = mod.address().port;
         const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.get" } } } });
-        const got = get.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; result: { effort: string | null; supportedEfforts: string[] } };
-        };
-        assert.equal(got.value.ok, true);
-        assert.equal(got.value.result.effort, "adaptive");
-        assert.deepEqual(got.value.result.supportedEfforts, ["off", "adaptive", "high"]);
+        const got = actionOutcome(get) as { ok: boolean; result: { effort: string | null; supportedEfforts: string[] } };
+        assert.equal(got.ok, true);
+        assert.equal(got.result.effort, "adaptive");
+        assert.deepEqual(got.result.supportedEfforts, ["off", "adaptive", "high"]);
 
         const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.set", effort: "adaptive" } } } });
         assert.equal(set[set.length - 1].type, "RUN_FINISHED");
         assert.deepEqual(effortSets, ["adaptive"]);
 
         const missing = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.set" } } } });
-        const refused = missing.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; problem: { type: string; status: number } };
-        };
-        assert.equal(refused.value.ok, false);
-        assert.equal(refused.value.problem.status, 400);
+        const refused = actionOutcome(missing) as { ok: boolean; problem: { type: string; status: number } };
+        assert.equal(refused.ok, false);
+        assert.equal(refused.problem.status, 400);
     } finally { await mod.close(); }
 });
 
@@ -921,12 +915,9 @@ test("entry.read defaults to the thread actor, honors an explicit actor, and pre
             channel: "body",
             offset: 0,
         }]);
-        const event = events.find((candidate) => candidate.type === "CUSTOM"
-            && (candidate as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; result?: unknown };
-        } | undefined;
-        assert.equal(event?.value?.ok, true);
-        assert.deepEqual(event?.value?.result, { status: 200, entry });
+        const outcome = actionOutcome(events) as { ok?: boolean; result?: unknown } | undefined;
+        assert.equal(outcome?.ok, true);
+        assert.deepEqual(outcome?.result, { status: 200, entry });
 
         await post(mod.address().port, {
             threadId: "entry-wire-thread",
@@ -992,25 +983,22 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
                 },
             },
         });
-        const event = events.find((candidate) => candidate.type === "CUSTOM"
-            && (candidate as { name?: string }).name === "plurnk.action.result") as {
-            value?: {
-                result?: {
-                    results?: Array<{
-                        status?: number;
-                        problem?: {
-                            detail?: string;
-                            line?: number;
-                            column?: number;
-                            source?: string;
-                            severity?: string;
-                            recovery?: string;
-                        };
-                    }>;
-                };
+        const outcome = actionOutcome(events) as {
+            result?: {
+                results?: Array<{
+                    status?: number;
+                    problem?: {
+                        detail?: string;
+                        line?: number;
+                        column?: number;
+                        source?: string;
+                        severity?: string;
+                        recovery?: string;
+                    };
+                }>;
             };
         } | undefined;
-        const failure = event?.value?.result?.results?.find(({ status }) => status === 400)?.problem;
+        const failure = outcome?.result?.results?.find(({ status }) => status === 400)?.problem;
         assert.ok(failure !== undefined, "the malformed statement surfaces as a child operation failure");
         const diagnostic = PlurnkParser.parseStatements(text).items.find((item) => item.kind === "error");
         assert.ok(diagnostic?.kind === "error");
@@ -1044,12 +1032,9 @@ test("{§agui-op-parse} {§target-group}: each compiled target returns its own r
             assert.ok(statement.op === "READ");
             return [statement.target?.raw, statement.lineMarker?.marks, statement.matcher?.raw];
         }), [["worker:///a", [1, 3], "/local/"], ["worker:///b", [4, 6], "/shared/"]]);
-        const event = events.find((candidate) => candidate.type === "CUSTOM"
-            && (candidate as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok: boolean; result?: { results?: unknown[] } };
-        } | undefined;
-        assert.equal(event?.value?.ok, true);
-        assert.deepEqual(event?.value?.result?.results, [{ status: 200, content: "result 0" }, { status: 200, content: "result 1" }]);
+        const outcome = actionOutcome(events) as { ok: boolean; result?: { results?: unknown[] } } | undefined;
+        assert.equal(outcome?.ok, true);
+        assert.deepEqual(outcome?.result?.results, [{ status: 200, content: "result 0" }, { status: 200, content: "result 1" }]);
     } finally { await mod.close(); }
 });
 
@@ -1074,15 +1059,12 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
                 },
             },
         });
-        const event = events.find((candidate) => candidate.type === "CUSTOM"
-            && (candidate as { name?: string }).name === "plurnk.action.result") as {
-            value?: {
-                result?: {
-                    results?: Array<{
-                        status?: number;
-                        problem?: Record<string, unknown>;
-                    }>;
-                };
+        const outcome = actionOutcome(events) as {
+            result?: {
+                results?: Array<{
+                    status?: number;
+                    problem?: Record<string, unknown>;
+                }>;
             };
         } | undefined;
 
@@ -1091,7 +1073,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
         assert.equal(dispatched[0][0].op, "EDIT");
         assert.equal(dispatched[0][0].target?.raw, "worker:///ok");
 
-        const results = event?.value?.result?.results;
+        const results = outcome?.result?.results;
         assert.deepEqual(results?.map(({ status }) => status), [201, 400]);
         assert.deepEqual(results?.[1]?.problem, {
             type: "https://problems.plurnk.xyz/agui/action/parse-failed",
@@ -1157,17 +1139,12 @@ test("module actions are advertised and invoked without AG-UI importing their ow
                 },
             },
         });
-        const discovery = discovered.find(
-            (event) => event.type === "CUSTOM"
-                && (event as { name: string }).name === "plurnk.action.result",
-        ) as {
-            value: {
-                result: {
-                    actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>;
-                };
+        const discovery = actionOutcome(discovered) as {
+            result: {
+                actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>;
             };
         };
-        assert.deepEqual(discovery.value.result.actions["example.inspect"], {
+        assert.deepEqual(discovery.result.actions["example.inspect"], {
             scope: "worldless",
             inputSchema: MODULE_INPUT_SCHEMA,
             outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -1184,19 +1161,14 @@ test("module actions are advertised and invoked without AG-UI importing their ow
                 },
             },
         });
-        const result = invoked.find(
-            (event) => event.type === "CUSTOM"
-                && (event as { name: string }).name === "plurnk.action.result",
-        ) as {
-            value: {
-                ok: boolean;
-                result: {
-                    prompt: string;
-                };
+        const result = actionOutcome(invoked) as {
+            ok: boolean;
+            result: {
+                prompt: string;
             };
         };
-        assert.equal(result.value.ok, true);
-        assert.equal(result.value.result.prompt, "review");
+        assert.equal(result.ok, true);
+        assert.equal(result.result.prompt, "review");
         assert.deepEqual(calls, [{
             name: "example.inspect",
             params: {
@@ -1217,13 +1189,10 @@ test("{§agui-action-schema-enforcement} human-readable input failures retain th
             threadId: "invalid-workspace-id",
             forwardedProps: { plurnk: { workspace: "agui-t", action: { kind: "workspace.workers", id: 0 } } },
         });
-        const failure = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; problem: { detail: string; issues: unknown[] } };
-        };
-        assert.equal(failure.value.ok, false);
-        assert.equal(failure.value.problem.detail, "Action 'workspace.workers' rejected parameters. #/id: 0 is less than 1."); // {§pinned-wording-agui}
-        assert.ok(failure.value.problem.issues.length > 0, "structured validation evidence also survives");
+        const failure = actionOutcome(events) as { ok: boolean; problem: { detail: string; issues: unknown[] } };
+        assert.equal(failure.ok, false);
+        assert.equal(failure.problem.detail, "Action 'workspace.workers' rejected parameters. #/id: 0 is less than 1."); // {§pinned-wording-agui}
+        assert.ok(failure.problem.issues.length > 0, "structured validation evidence also survives");
     } finally { await mod.close(); }
 });
 
@@ -1257,25 +1226,19 @@ test("advertised action schemas admit inputs and reject undeclared parameters be
             threadId: "module-schema-reject",
             forwardedProps: { plurnk: { action: { kind: "example.inspect", target: "x", surprise: true } } },
         });
-        const failure = rejected.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: { status?: number; type?: string } };
-        } | undefined;
-        assert.equal(failure?.value?.ok, false);
-        assert.equal(failure?.value?.problem?.status, 400);
-        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
+        const failure = actionOutcome(rejected) as { ok?: boolean; problem?: { status?: number; type?: string } } | undefined;
+        assert.equal(failure?.ok, false);
+        assert.equal(failure?.problem?.status, 400);
+        assert.equal(failure?.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
         assert.equal(calls, 0, "the owner never receives schema-invalid parameters");
 
         const accepted = await post(mod.address().port, {
             threadId: "module-schema-admit",
             forwardedProps: { plurnk: { action: { kind: "example.inspect", target: "x" } } },
         });
-        const success = accepted.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; result?: { prompt?: string } };
-        } | undefined;
-        assert.equal(success?.value?.ok, true);
-        assert.equal(success?.value?.result?.prompt, "review");
+        const success = actionOutcome(accepted) as { ok?: boolean; result?: { prompt?: string } } | undefined;
+        assert.equal(success?.ok, true);
+        assert.equal(success?.result?.prompt, "review");
         assert.equal(calls, 1);
     } finally { await mod.close(); }
 });
@@ -1301,13 +1264,10 @@ test("an owner output violating its advertised schema fails at the AG-UI boundar
             threadId: "module-output-schema",
             forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
         });
-        const failure = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: { status?: number; type?: string } };
-        } | undefined;
-        assert.equal(failure?.value?.ok, false);
-        assert.equal(failure?.value?.problem?.status, 500);
-        assert.equal(failure?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
+        const failure = actionOutcome(events) as { ok?: boolean; problem?: { status?: number; type?: string } } | undefined;
+        assert.equal(failure?.ok, false);
+        assert.equal(failure?.problem?.status, 500);
+        assert.equal(failure?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
     } finally { await mod.close(); }
 });
 
@@ -1341,12 +1301,9 @@ test("{§agui-module-action-scope} workspace module actions receive authority fr
                 },
             },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; result?: { configured?: boolean } };
-        } | undefined;
-        assert.equal(result?.value?.ok, true);
-        assert.equal(result?.value?.result?.configured, true);
+        const result = actionOutcome(events) as { ok?: boolean; result?: { configured?: boolean } } | undefined;
+        assert.equal(result?.ok, true);
+        assert.equal(result?.result?.configured, true);
         assert.deepEqual(calls, [{
             params: { workspaceId: 999 },
             context: { scope: "workspace", workspaceId: 3 },
@@ -1386,12 +1343,9 @@ test("{§agui-module-action-scope} worker module actions receive authority from 
                 },
             },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; result?: { configured?: boolean } };
-        } | undefined;
-        assert.equal(result?.value?.ok, true);
-        assert.equal(result?.value?.result?.configured, true);
+        const result = actionOutcome(events) as { ok?: boolean; result?: { configured?: boolean } } | undefined;
+        assert.equal(result?.ok, true);
+        assert.equal(result?.result?.configured, true);
         assert.deepEqual(calls, [{
             params: { workspaceId: 999, workerId: 999 },
             context: { scope: "worker", workspaceId: 3, workerId: 77 },
@@ -1423,12 +1377,9 @@ test("a module action preserves its owner-defined validation Problem", async () 
             threadId: "module-action-validation",
             forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: typeof problem };
-        } | undefined;
-        assert.equal(result?.value?.ok, false);
-        assert.deepEqual(result?.value?.problem, problem);
+        const result = actionOutcome(events) as { ok?: boolean; problem?: typeof problem } | undefined;
+        assert.equal(result?.ok, false);
+        assert.deepEqual(result?.problem, problem);
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
     } finally { await mod.close(); }
 });
@@ -1449,13 +1400,10 @@ test("{§agui-module-actions} a throwing module action becomes one generic actio
             runId: "module-action-failure-run",
             forwardedProps: { plurnk: { action: { kind: "example.inspect" } } },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: { type?: string; detail?: string } };
-        } | undefined;
-        assert.equal(result?.value?.ok, false);
-        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
-        assert.doesNotMatch(result?.value?.problem?.detail ?? "", /private extension detail/);
+        const result = actionOutcome(events) as { ok?: boolean; problem?: { type?: string; detail?: string } } | undefined;
+        assert.equal(result?.ok, false);
+        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
+        assert.doesNotMatch(result?.problem?.detail ?? "", /private extension detail/);
         assert.equal(events.at(-1)?.type, "RUN_FINISHED", "a management failure is the action result, not a failed AG-UI transport Run");
     } finally { await mod.close(); }
 });
@@ -1488,12 +1436,9 @@ test("an action failure preserves its originating Problem instead of rebuilding 
                 },
             },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: typeof problem };
-        } | undefined;
-        assert.equal(result?.value?.ok, false);
-        assert.deepEqual(result?.value?.problem, problem);
+        const result = actionOutcome(events) as { ok?: boolean; problem?: typeof problem } | undefined;
+        assert.equal(result?.ok, false);
+        assert.deepEqual(result?.problem, problem);
     } finally { await mod.close(); }
 });
 
@@ -1582,11 +1527,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             false,
             "the loop-owned proposal does not leak into the concurrent action Run",
         );
-        const result = injectionEvents.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { kind?: string; ok?: boolean; result?: { action?: string } };
-        } | undefined;
-        assert.deepEqual(result?.value, {
+        assert.deepEqual(actionOutcome(injectionEvents), {
             kind: "loop.inject",
             ok: true,
             result: {
@@ -1619,14 +1560,11 @@ test("an unexpected action exception becomes one generic Problem without leaking
                 },
             },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; problem?: { type?: string; detail?: string; stage?: string } };
-        } | undefined;
-        assert.equal(result?.value?.ok, false);
-        assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
-        assert.equal(result?.value?.problem?.detail, "The action failed unexpectedly."); // {§pinned-wording-agui}
-        assert.equal(result?.value?.problem?.stage, "action-execution");
+        const result = actionOutcome(events) as { ok?: boolean; problem?: { type?: string; detail?: string; stage?: string } } | undefined;
+        assert.equal(result?.ok, false);
+        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
+        assert.equal(result?.problem?.detail, "The action failed unexpectedly."); // {§pinned-wording-agui}
+        assert.equal(result?.problem?.stage, "action-execution");
         assert.doesNotMatch(JSON.stringify(events), /private adapter detail/);
     } finally { await mod.close(); }
 });
@@ -1673,7 +1611,7 @@ test("{§agui-broadcast-fan} an operation Run stays open until the stream its ow
         emit(3, "stream/concluded", streamConclusion({ entryId: 81, workerId: OPERATION.workerId, target: "sh:///1/1/81/sh", scheme: "sh", summary: "done" }));
         const events = await run;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
-        assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));
+        assert.notEqual(actionOutcome(events), undefined, "the Run finishes with its action's outcome");
         assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.stream"
             && (event as { value?: { entryId?: number } }).value?.entryId === 81), "the operation's Run carries its stream");
     } finally { await mod.close(); }
@@ -2242,10 +2180,10 @@ test("a workspace name is its identity; attach rebinds", async () => {
         assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
         // 3) workspace.attach is a REAL action kind returning the envelope.
         const att = await post(mod.address().port, { threadId: "alpha", workerId: "r3", forwardedProps: { plurnk: { workspace: "alpha", action: { kind: "workspace.attach", id: 4 } } } });
-        const result = att.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { id: number; name: string } } };
-        assert.equal(result.value.ok, true, "workspace.attach is wired, not unknown-kind");
+        const result = actionOutcome(att) as { ok: boolean; result: { id: number; name: string } };
+        assert.equal(result.ok, true, "workspace.attach is wired, not unknown-kind");
         assert.deepEqual(
-            result.value.result,
+            result.result,
             { id: 4, name: "alpha" },
             "{§agui-thread-binding} attach returns the selected workspace and mints nothing",
         );
@@ -2898,9 +2836,9 @@ test("{§workspace-label} the workspace list and the snapshot carry each folder'
     const mod = await host(seam);
     try {
         const listed = await post(mod.address().port, { threadId: "probe", forwardedProps: { plurnk: { action: { kind: "workspace.list" } } } });
-        const result = listed.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result") as { value: { ok: boolean; result: { workspaces: Array<{ project_label: string | null }> } } };
-        assert.equal(result.value.ok, true, "the list's output schema admits the label");
-        assert.equal(result.value.result.workspaces[0]?.project_label, "~/proj");
+        const result = actionOutcome(listed) as { ok: boolean; result: { workspaces: Array<{ project_label: string | null }> } };
+        assert.equal(result.ok, true, "the list's output schema admits the label");
+        assert.equal(result.result.workspaces[0]?.project_label, "~/proj");
         const observed = await post(mod.address().port, { threadId: "proj", runId: "observe", forwardedProps: { plurnk: { workspace: "proj", mode: "sync" } } });
         const snapshot = observed.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: unknown } } };
         assert.deepEqual(snapshot.snapshot.plurnk.workspace, { id: 3, name: "proj", projectRoot: "/home/u/proj", projectLabel: "~/proj", preparation: [], activity: null });
@@ -2918,9 +2856,9 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
     try {
         // workspace.list with NO workspace prop — control plane, so no world required, none forged.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.list" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { workspaces: unknown[] } } };
-        assert.equal(r.value.ok, true);
-        assert.equal(r.value.result.workspaces.length, 2, "listed the real workspaces");
+        const r = actionOutcome(ev) as { ok: boolean; result: { workspaces: unknown[] } };
+        assert.equal(r.ok, true);
+        assert.equal(r.result.workspaces.length, 2, "listed the real workspaces");
         assert.equal(ev[ev.length - 1].type, "RUN_FINISHED");
         assert.equal(created, 0, "no ephemeral workspace was created");
         assert.equal(bound, 0, "no model worker was looked up or minted for a control-plane action");
@@ -2946,12 +2884,9 @@ test("run.fork admits the contract's anonymous-fork form", async () => {
                 },
             },
         });
-        const result = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.action.result") as {
-            value?: { ok?: boolean; result?: { workerName?: string | null } };
-        } | undefined;
-        assert.equal(result?.value?.ok, true);
-        assert.equal(result?.value?.result?.workerName, "main-fork");
+        const result = actionOutcome(events) as { ok?: boolean; result?: { workerName?: string | null } } | undefined;
+        assert.equal(result?.ok, true);
+        assert.equal(result?.result?.workerName, "main-fork");
         assert.equal(calls.length, 1);
         assert.equal(calls[0].name, undefined);
     } finally { await mod.close(); }
@@ -2966,15 +2901,15 @@ test("{§discovery} discover returns the exact public action and notification me
     const mod = await host(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { schemaVersion: number; actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>; notifications: Record<string, { payloadSchema: unknown }>; display: unknown[] } } };
-        assert.equal(r.value.ok, true);
-        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["actions", "display", "notifications", "schemaVersion"]);
-        assert.equal(r.value.result.schemaVersion, 1);
-        assert.deepEqual(r.value.result.display, [
+        const r = actionOutcome(ev) as { ok: boolean; result: { schemaVersion: number; actions: Record<string, { scope: string; inputSchema: unknown; outputSchema: unknown }>; notifications: Record<string, { payloadSchema: unknown }>; display: unknown[] } };
+        assert.equal(r.ok, true);
+        assert.deepEqual(Object.keys(r.result).toSorted(), ["actions", "display", "notifications", "schemaVersion"]);
+        assert.equal(r.result.schemaVersion, 1);
+        assert.deepEqual(r.result.display, [
             { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
         ]);
-        assert.deepEqual(Object.keys(r.value.result.actions).toSorted(), [
+        assert.deepEqual(Object.keys(r.result.actions).toSorted(), [
             "discover",
             "entry.read",
             "log.read",
@@ -3002,7 +2937,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "workspace.share",
             "workspace.workers",
         ]);
-        assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [
+        assert.deepEqual(Object.keys(r.result.notifications).toSorted(), [
             "log/entry",
             "loop/interaction",
             "loop/packet",
@@ -3015,12 +2950,12 @@ test("{§discovery} discover returns the exact public action and notification me
             "stream/event",
             "workspace/preparation",
         ]);
-        for (const action of Object.values(r.value.result.actions)) {
+        for (const action of Object.values(r.result.actions)) {
             assert.ok(action.scope === "worldless" || action.scope === "workspace");
             assert.equal(typeof action.inputSchema, "object");
             assert.equal(typeof action.outputSchema, "object");
         }
-        for (const notification of Object.values(r.value.result.notifications)) {
+        for (const notification of Object.values(r.result.notifications)) {
             assert.equal(typeof notification.payloadSchema, "object");
         }
     } finally { await mod.close(); }
@@ -3034,9 +2969,9 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
     try {
         // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-world" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { name: string } } };
-        assert.equal(r.value.ok, true);
-        assert.equal(r.value.result.name, "fresh-world", "created the named world, no workspace-required throw");
+        const r = actionOutcome(ev) as { ok: boolean; result: { name: string } };
+        assert.equal(r.ok, true);
+        assert.equal(r.result.name, "fresh-world", "created the named world, no workspace-required throw");
     } finally { await mod.close(); }
 });
 
@@ -3053,9 +2988,9 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     const mod = await host(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "w", workerId: "r1", forwardedProps: { plurnk: { workspace: "w", action: { kind: "loop.cancel", reason: "user_stop" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean } } };
-        assert.equal(r.value.ok, true, "loop.cancel must be a known kind");
-        assert.equal(r.value.result.cancelled, true);
+        const r = actionOutcome(ev) as { ok: boolean; result: { cancelled: boolean } };
+        assert.equal(r.ok, true, "loop.cancel must be a known kind");
+        assert.equal(r.result.cancelled, true);
         assert.deepEqual(cancelled, [{ workerId: 20, reason: "user_stop" }], "the drain of the model worker the thread names was cancelled with the client's reason");
     } finally { await mod.close(); }
 });
@@ -3312,8 +3247,8 @@ for (const present of [true, false]) {
         try {
             for (const action of [{ kind: "op.exec", command: "true" }, { kind: "op.parse", text: "````READ (worker:///a)````" }]) {
                 const events = await post(mod.address().port, { threadId: "page", forwardedProps: { plurnk: { workspace: "world", action } } });
-                const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result") as { value: { ok: boolean } } | undefined;
-                assert.equal(result?.value.ok, true, JSON.stringify(result?.value));
+                const result = actionOutcome(events) as { ok: boolean } | undefined;
+                assert.equal(result?.ok, true, JSON.stringify(result));
             }
             const actor = "agui://anonymous/threads/page";
             assert.deepEqual(dispatched, Array.from({ length: 2 }, () => ({ workspaceId: 3, actor, ...(present ? { contextWorkerId: 44 } : {}) })));
@@ -3342,8 +3277,8 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
         const mod = await host(seam);
         try {
             const events = await post(mod.address().port, formInput("page", input));
-            const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result") as { value: { ok: boolean } } | undefined;
-            assert.equal(result?.value.ok, true, JSON.stringify(result?.value));
+            const result = actionOutcome(events) as { ok: boolean } | undefined;
+            assert.equal(result?.ok, true, JSON.stringify(result));
             // {§actor-boundary-client-operations} A client operation looks up the worker its thread names, to act for it.
             const operation = formKind(input) === "op.exec" || formKind(input) === "op.parse";
             assert.deepEqual(lookups, operation ? [{ name: "page" }] : [], "no worker is looked up for the thread but by a client operation");
@@ -3443,7 +3378,7 @@ test("{§agui-thread-binding}: concurrent threads create one world, and each thr
             threadId: `thread-${index}`, runId: `run-${index}`, messages: [{ role: "user", content: "go" }],
             forwardedProps: { plurnk: { workspace: "cold", projectRoot: `/root-${index}` } },
         })));
-        assert.ok(runs.every((events) => events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated")));
+        assert.ok(runs.every((events) => loopTerminal(events) !== undefined), "every Run ends with its loop's terminal record");
         assert.equal(created.length, 1);
         assert.match(created[0]!.projectRoot!, /^\/root-\d$/);
         assert.equal(workerId, 48, "each thread minted its own worker");
@@ -3475,7 +3410,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         const refused = await action;
         assert.equal(refused.status, 404);
         assert.equal((await refused.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
-        assert.ok((await run).some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
+        assert.notEqual(loopTerminal(await run), undefined, "the message Run ends with its loop's terminal record");
         assert.equal(calls, 2, "the creating request performs its own lookup after the failed action");
     } finally { release.resolve(); await mod.close(); }
 });
@@ -3508,7 +3443,7 @@ for (const stage of ["envelope", "worker"] as const) {
             assert.deepEqual(await refused.json(), problem);
             fail = false;
             const events = await post(mod.address().port, input);
-            assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result" && (event.value as { ok: boolean }).ok));
+            assert.equal((actionOutcome(events) as { ok?: boolean } | undefined)?.ok, true);
             assert.equal(attached, stage === "envelope" ? 2 : 1);
             assert.equal(created, stage === "worker" ? 2 : 1);
         } finally { await mod.close(); }
@@ -3790,7 +3725,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.equal(res.status, 200, "the SSE opened before the throw");
-        const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
+        const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string; metadata?: { plurnk?: { problem?: unknown } } });
         const err = frames.find((e) => e.type === "RUN_ERROR");
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
         assert.equal(err.message, problem.detail);
@@ -3800,11 +3735,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
             ["STEP_STARTED", "STEP_FINISHED"],
             "a failed AG-UI Run closes the Plurnk turn step it opened",
         );
-        const exact = frames.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.problem") as {
-            value?: typeof problem;
-        } | undefined;
-        assert.deepEqual(exact?.value, problem, "the lossless custom event preserves every Problem field");
+        assert.deepEqual(err.metadata?.plurnk?.problem, problem, "{§agui-plurnk-metadata} the Run's error carries every Problem field, losslessly");
         // The leak pin: the error path must release the AG-UI Run's handles (heartbeat
         // interval, portal binding) — a survivor here wedges `node --test` (no
         // force-exit in the drill) forever.
@@ -3826,13 +3757,10 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
             messages: [{ role: "user", content: "hi" }],
             forwardedProps: { plurnk: { workspace: "w" } },
         });
-        const exact = events.find((event) => event.type === "CUSTOM"
-            && (event as { name?: string }).name === "plurnk.problem") as {
-            value?: { type?: string; detail?: string; stage?: string };
-        } | undefined;
-        assert.equal(exact?.value?.type, "https://problems.plurnk.xyz/agui/http/run-failed");
-        assert.equal(exact?.value?.detail, "The AG-UI Run failed unexpectedly."); // {§problems-agui}
-        assert.equal(exact?.value?.stage, "run");
+        const exact = runProblem(events);
+        assert.equal(exact?.type, "https://problems.plurnk.xyz/agui/http/run-failed");
+        assert.equal(exact?.detail, "The AG-UI Run failed unexpectedly."); // {§problems-agui}
+        assert.equal(exact?.stage, "run");
         assert.doesNotMatch(JSON.stringify(events), /secret internal failure/);
     } finally { await mod.close(); }
 });
@@ -3986,8 +3914,7 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         assert.equal(revocation.status, 200);
         const body = await ending.text();
         const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
-        const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
-        assert.ok(problem?.type === "CUSTOM" && problem.value.type === "https://problems.plurnk.xyz/agui/http/credential-revoked", JSON.stringify(events.map(({ type }) => type)));
+        assert.equal(runProblem(events)?.type, "https://problems.plurnk.xyz/agui/http/credential-revoked", JSON.stringify(events.map(({ type }) => type)));
         assert.equal(events.at(-1)?.type, "RUN_ERROR");
         assert.deepEqual(cancellations, [], "a revoked observer is not a cancelling one");
         const stillOpen = await Promise.race([surviving.text().then(() => false), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 200))]);
@@ -4016,8 +3943,7 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
         const order: string[] = events.map(({ type }) => type);
         const terminal = order.indexOf("RUN_ERROR");
         assert.equal(terminal, order.length - 1, `RUN_ERROR ends the Run: ${order.join(" ")}`);
-        const problem = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.problem");
-        assert.ok(problem?.type === "CUSTOM" && problem.value.type === problemType, order.join(" "));
+        assert.equal(runProblem(events)?.type, problemType, order.join(" "));
         for (const [open, close] of [["REASONING_MESSAGE_START", "REASONING_MESSAGE_END"], ["REASONING_START", "REASONING_END"]] as const) {
             const opened = events.filter((event) => event.type === open).map((event) => (event as { messageId: string }).messageId);
             const closed = events.filter((event, index) => event.type === close && index < terminal).map((event) => (event as { messageId: string }).messageId);

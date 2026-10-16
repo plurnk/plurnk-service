@@ -131,7 +131,7 @@ This is the transport implementation of the AG-UI `connect()` extension, not ano
 §agui-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new
 requests while admitted Runs retain terminal-event delivery. In `close`, after core
 settlement ({§module-shutdown-order}), each still-open Run receives `service-stopping`
-as `CUSTOM plurnk.problem` and `RUN_ERROR`, then its response and heartbeat end. This
+as a `RUN_ERROR` carrying that Problem ({§agui-plurnk-metadata}), then its response and heartbeat end. This
 ends the transport Run, not a worker obligation. Already-ended Runs receive nothing
 further; repeated closure is inert. Preparation finishing after closure cannot open
 a new stream. Clients need not disconnect for the daemon to stop.
@@ -157,8 +157,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§agui-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
-| §agui-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. The Run's end, finished or failed, carries its loop's token `usage`: AG-UI's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§agui-cost-evidence}). It also carries the complete terminal record as its metadata ({§agui-plurnk-metadata}). |
-| transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`, the Problem itself as its metadata, {§agui-plurnk-metadata}) |
+| §agui-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. The Run's end, finished or failed, carries its loop's token `usage`: AG-UI's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§agui-cost-evidence}). It also carries the complete daemon terminal record as its metadata, physical-request accounting and top-level attribution included ({§agui-plurnk-metadata}). |
+| transport failure after SSE opens          | `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`, the exact Problem Details as its metadata, {§agui-plurnk-metadata}) |
 | `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/workspace/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
 | `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
@@ -216,10 +216,10 @@ sequence.
   service cannot read would add surface without adding capability. Readable reasoning
   streams and snapshot replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
-  `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
-  `plurnk.notice`, `plurnk.outside`, `plurnk.stream`, `plurnk.terminated` — the full loop
-  outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent). Generic frontends skip unknown customs; plurnk-aware frontends render
-  them richly. Nothing plurnk-specific ever masquerades as a core event.
+  `CUSTOM` events named `plurnk.*` (`plurnk.row`, `plurnk.send`, `plurnk.ambient`, `plurnk.notice`,
+  `plurnk.outside`, `plurnk.stream`, `plurnk.descendant`, and `plurnk.problem` for a Problem that ends no Run,
+  such as an unavailable provider catalog): facts with no standard subject. Generic frontends skip unknown
+  customs; plurnk-aware frontends render them richly. Nothing plurnk-specific ever masquerades as a core event.
 - §agui-plurnk-metadata **plurnk facts ride standard metadata.** A plurnk fact about something the
   standard conversation or Run holds rides that thing's `metadata` under the one key `plurnk`, on the event
   that builds it and on its snapshot message alike, so the official reducer folds the same metadata live and
@@ -228,7 +228,7 @@ sequence.
 
   | Carrier | `metadata.plurnk` |
   |---|---|
-  | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, as `CUSTOM plurnk.terminated` carries it |
+  | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
@@ -257,7 +257,7 @@ The module reads it beside `children`, at the same moments, and republishes `STA
 /plurnk/status/spend` under the same rule ({§agui-status-children}): only when the projection differs
 from the one the Run's client holds, never before the snapshot; a `turn_generated` notice is the moment
 a turn's spend settles. Descendant notices, packets and terminals themselves
-are not promoted ({§agui-delegation-observation}); one loop's own `turn_generated` and `plurnk.terminated`
+are not promoted ({§agui-delegation-observation}); one loop's own `turn_generated` and terminal-record
 accounting keep their meaning. With the lifecycle beat ({§loop-status-notice}) a parked parent's clock
 and its children's cost both move.
 
@@ -305,13 +305,13 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 | `STATE_DELTA /budget/contextCapacity`        | `loop/terminated.usage.contextCapacity`   | That same latest emission call's request-shaped physical input capacity, or `null` when unknown. |
 
 §agui-cost-evidence AG-UI carries token usage on `RUN_FINISHED` ({§agui-run-outcome}), but it defines
-no monetary accounting and no per-request record. `plurnk.terminated.usage.accounting` therefore
+no monetary accounting and no per-request record. The terminal record's `usage.accounting` ({§agui-plurnk-metadata}) therefore
 preserves the daemon's complete
 {§provider-accounting} verbatim: ordered physical request records, conventional
 input/output totals with cache/reasoning details, and exact-decimal nullable
-`costUsd`. The custom event distinguishes charged, Models.dev-estimated,
+`costUsd`. The terminal record distinguishes charged, Models.dev-estimated,
 unknown, and exact-zero evidence without fabricating a value. Generic clients
-ignore the extension; PLURNK clients consume the same contracts-owned shape as
+ignore the metadata; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
@@ -497,15 +497,15 @@ flowchart LR
     resume --> events
     builtIn --> events
     events --> projection["AG-UI projection"]
-    extension --> result["plurnk.action.result"]
+    extension --> result["RUN_FINISHED result"]
     projection --> client
     result --> client
 ```
 
 A management-action Run carries
-`forwardedProps.plurnk.action = { kind, ...params }`. Once settled, it returns
-one `CUSTOM plurnk.action.result` shaped as `{ kind, ok, result | problem }`,
-followed by `RUN_FINISHED` whose `result` is that same outcome ({§agui-plurnk-metadata}), on the Run that asked; no action presents an
+`forwardedProps.plurnk.action = { kind, ...params }`. Once settled, the Run that asked finishes with
+`RUN_FINISHED` whose `result` is the outcome, shaped as `{ kind, ok, result | problem }`
+({§agui-plurnk-metadata}); no action presents an
 interrupt ({§agui-client-operation}). A failed
 action preserves exact RFC 9457 Problem Details and is the result of a
 successfully transported management Run; it does not turn the Run into
@@ -733,9 +733,8 @@ interrupt-resume Run restores its predecessor's projection and notification
 scope. A same-worker interrupt remains bound to the pending item's Worker and
 Loop. A foreign-worker interrupt preserves the owner's controlling Run binding,
 using the pending item's Worker and Loop only as its release identity. Only the
-controlling Run's bound Loop terminal may emit
-`plurnk.terminated` and close the SSE.
-The custom event preserves the daemon's exact universal `result`; failures use
+controlling Run's bound Loop terminal may end the Run with its terminal record and close the SSE.
+The terminal record preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
 Gate routing follows {§agui-worker-owner}; topology does not confer authority.
@@ -968,10 +967,10 @@ authorization.
 
 §agui-http-failure Failures before SSE headers are sent use
 `application/problem+json` with exact
-RFC 9457 Problem Details. Once SSE has opened, `CUSTOM plurnk.problem` preserves
-that same object and `RUN_ERROR` maps it to the standard AG-UI fields. The custom
-event and `plurnk.terminated.result.problem` are lossless; `RUN_ERROR.code` and
-`message` are the required standard projection, not a second failure object.
+RFC 9457 Problem Details. Once SSE has opened, `RUN_ERROR` maps that same object to the standard AG-UI fields
+and carries it whole as its metadata ({§agui-plurnk-metadata}). That metadata and the terminal record's
+`result.problem` are lossless; `RUN_ERROR.code` and `message` are the required standard projection, not a second
+failure object.
 Consumers preserve the exact Problem from the lossless surface and never
 reconstruct one from `RUN_ERROR`.
 

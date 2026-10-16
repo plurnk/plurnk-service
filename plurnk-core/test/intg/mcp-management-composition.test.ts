@@ -70,9 +70,10 @@ const setup = async (
     };
     const action = async (workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<ActionResult> => {
         const events = await post(workspace, { kind, ...params });
-        const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result");
+        // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+        const result = events.find((event) => event.type === "RUN_FINISHED")?.result;
         assert.ok(result, `no action result for ${kind}: ${JSON.stringify(events)}`);
-        return result.value as ActionResult;
+        return result as ActionResult;
     };
     return { provider, post, action, hostPaths };
 };

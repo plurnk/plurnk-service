@@ -160,11 +160,10 @@ const action = async (
         .filter((frame) => frame.startsWith("data: "))
         .map((frame) => JSON.parse(frame.slice(6)) as {
             type?: string;
-            name?: string;
-            value?: { ok?: boolean; result?: unknown; problem?: unknown };
+            result?: { ok?: boolean; result?: unknown; problem?: unknown };
         });
-    const outcome = frames.find(({ type, name }) =>
-        type === "CUSTOM" && name === "plurnk.action.result")?.value;
+    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    const outcome = frames.find(({ type }) => type === "RUN_FINISHED")?.result;
     assert.equal(outcome?.ok, true, `action ${kind} failed: ${JSON.stringify(outcome?.problem)}`);
     return outcome?.result;
 };

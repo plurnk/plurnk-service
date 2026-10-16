@@ -7,7 +7,7 @@ import { test } from "node:test";
 import type { JsonPatch } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import {
-    actionResult,
+    actionRunResult,
     derivationActivity,
     interactionInterrupt,
     interactionResolutionFromResume,
@@ -286,17 +286,13 @@ test("actions: parse a forwardedProps request, project the outcome", () => {
     assert.equal(parseAction({ plurnk: {} }), null, "no action → null");
     assert.equal(parseAction({ plurnk: { action: { name: "x" } } }), null, "an action without a kind → null");
     assert.equal(parseAction(undefined), null, "no forwardedProps → null");
-    const ok = actionResult("workspace.rename", { ok: true, result: { name: "new-name" } });
-    assert.deepEqual(ok, { type: "CUSTOM", name: "plurnk.action.result", value: { kind: "workspace.rename", ok: true, result: { name: "new-name" } } });
+    // {§agui-plurnk-metadata} The Run's result is the action's whole outcome, a refusal included.
+    assert.deepEqual(actionRunResult("workspace.rename", { ok: true, result: { name: "new-name" } }), { kind: "workspace.rename", ok: true, result: { name: "new-name" } });
     const problem = {
         type: "https://problems.plurnk.xyz/agui/action/rejected",
         title: "Rejected",
         status: 403,
         detail: "The action was rejected.",
     };
-    const err = actionResult("op.exec", { ok: false, problem });
-    assert.deepEqual(
-        (err as { value: { ok: boolean; problem: typeof problem } }).value,
-        { kind: "op.exec", ok: false, problem },
-    );
+    assert.deepEqual(actionRunResult("op.exec", { ok: false, problem }), { kind: "op.exec", ok: false, problem });
 });
