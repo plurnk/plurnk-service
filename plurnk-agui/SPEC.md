@@ -145,10 +145,10 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable `MESSAGES_SNAPSHOT` of the bound worker, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-sync} |
 | `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
-| `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is `CUSTOM plurnk.send` alone. No invented plan, no invented speech (#1003). |
+| `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is an operation like any other, `TOOL_CALL_START/ARGS/END` + its receipt, then `CUSTOM plurnk.send`. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists, except for a call that opened an obligation, which what discharges it answers {§agui-call-result}) |
+| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` + `TOOL_CALL_RESULT` carrying its receipt, except for a call that opened an obligation, which what discharges it answers {§agui-call-result} |
 | §agui-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
@@ -172,7 +172,7 @@ or ACP plan is inferred from prose.
 | Projection | Standard representation |
 | ---------- | ----------------------- |
 | NOTE | Ordinary tool-call operation and durable row, not assistant speech or a substitute reasoning stream |
-| WAIT | Durable row and lifecycle signal; its text does not become a response |
+| WAIT | Ordinary tool-call operation and durable row, its receipt the result; a WAIT that carries a body speaks it instead ({§agui-projection}) and never becomes a response |
 | SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
 | Completion | Standard run lifecycle without an invented message |
 | Replay | The live projection's messages, in log order {§agui-snapshot} |
@@ -230,7 +230,7 @@ sequence.
   |---|---|
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
-  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, worker, origin, source, signal, status, attrs }`, its durable id, worker, origin, causal source, signal, receipt status (the failure flag) and attributes |
+  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, worker, origin, op, source, signal, status, attrs }`, its durable id, worker, origin, operation, causal source, signal, receipt status (the failure flag) and attributes. Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
@@ -361,9 +361,9 @@ complete set:
 | Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
 | A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one; a call that opened an obligation carries none ({§agui-call-result}) |
+| Any other model operation, a bodiless WAIT included | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}) |
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
-| Bodiless WAIT, emission attempt, ambient row | No message of its own |
+| Emission attempt, ambient row | No message of its own |
 
 Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,
 and a settled one's evidence is its operation's receipt. Transient reasoning of failed or rejected

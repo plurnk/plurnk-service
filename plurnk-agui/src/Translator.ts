@@ -3,10 +3,10 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
 //   log/entry response (model) → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
-//                                 (assistant speech; the signal rides plurnk.send)
+//                                 (assistant speech, a reply or a WAIT's body; the signal rides plurnk.send)
 //   log/entry rejected emission → forensic row only, no message event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
-//                                 tool call: tx is the args, rx the result, coordinate the id)
+//                                 tool call: tx is the args, rx the result, coordinate the id; a bodiless WAIT too)
 //   log/entry arrival  (plurnk) → TEXT_MESSAGE triple, role user, named by its source (another client's
 //                                 prompt, a worker's message), except the Run's own submission
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (deltas, narrations — the environment
@@ -37,6 +37,7 @@ import MessageAddress from "./MessageAddress.ts";
 import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
+type RowFacts = { id?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown; source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown };
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
@@ -218,16 +219,15 @@ export default class Translator {
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
         }
         if (delayedRow) events.push(row);
+        const signal = { type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: id } } as const;
         // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
-        // teaches both as the worker's words to the user. A bodiless WAIT is lifecycle alone.
+        // teaches both as the worker's words to the user. A bodiless WAIT is an operation like any other.
         const text = Translator.#txBody(e.tx);
         if (response || Translator.#waitSpeech(e, text)) {
-            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant", metadata: Translator.#rowMetadata(e) });
+            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant", metadata: Translator.#speechMetadata(e) });
             events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
-        }
-        if (response || lifecycle) {
-            events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: id } });
+            events.push(signal);
             return events;
         }
         if (e.op === null) {
@@ -241,11 +241,11 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op, metadata });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: Translator.#argsFor(e) });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
-        if (Translator.#opensObligation(e)) return events;
-        const rxText = Translator.#asText(e.rx);
-        if (rxText.length > 0) {
-            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: rxText, metadata });
+        // {§agui-call-result} A call is answered by its receipt, unless it opened an obligation.
+        if (!Translator.#opensObligation(e)) {
+            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
         }
+        if (lifecycle) events.push(signal);
         return events;
     }
 
@@ -414,13 +414,14 @@ export default class Translator {
         const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
         if (reasoning.length > 0) messages.push(attributed({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning }));
         const text = Translator.#txBody(e.tx);
-        if (response || Translator.#waitSpeech(e, text)) messages.push(attributed({ id, role: "assistant", content: text, metadata }));
-        if (response || TurnDisposition.isOp(e.op)) return;
+        if (response || Translator.#waitSpeech(e, text)) {
+            messages.push(attributed({ id, role: "assistant", content: text, metadata: Translator.#speechMetadata(e) }));
+            return;
+        }
         const entry = e as LogEntryNotification["entry"];
         messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) }, metadata }] }));
         if (Translator.#opensObligation(e)) return;
-        const result = Translator.#asText(e.rx);
-        if (result.length > 0) Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: result, metadata }));
+        Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: Translator.#asText(e.rx), metadata }));
     }
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
@@ -629,9 +630,23 @@ export default class Translator {
     }
 
     // {§agui-plurnk-metadata} What the row that builds a message, tool call or result holds beyond the standard fields: its
-    // durable id, worker, origin, source, signal, status and attrs, the same live and on snapshot.
-    static #rowMetadata(e: { id?: unknown; worker_id?: unknown; origin?: unknown; source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown }): { plurnk: Record<string, unknown> } {
-        return { plurnk: { id: e.id, worker: e.worker_id, origin: e.origin, source: e.source, signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+    // durable id, worker, origin, operation, source, signal, status and attrs, the same live and on snapshot.
+    static #rowMetadata(e: RowFacts): { plurnk: Record<string, unknown> } {
+        return { plurnk: { id: e.id, worker: e.worker_id, origin: e.origin, op: e.op, source: e.source, signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+    }
+
+    // {§agui-plurnk-metadata} Speech holds the body; its heading's aside and its receipt have no field in a text message.
+    static #speechMetadata(e: RowFacts & { tx?: unknown; rx?: unknown }): { plurnk: Record<string, unknown> } {
+        const statement = Translator.#parsed(e.tx);
+        const aside = statement !== null && typeof statement === "object" ? (statement as { aside?: unknown }).aside ?? null : null;
+        return { plurnk: { ...Translator.#rowMetadata(e).plurnk, aside, receipt: Translator.#parsed(e.rx) } };
+    }
+
+    // A wire field as its value: the live wire ships it parsed, a replayed one may carry its JSON text.
+    static #parsed(value: unknown): unknown {
+        if (value === undefined || value === "") return null;
+        if (typeof value !== "string") return value;
+        try { return JSON.parse(value) as unknown; } catch { return value; }
     }
 
     // {§methods-invocation} The coordinate of the operation a log address names in its own worker's log.

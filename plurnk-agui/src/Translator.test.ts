@@ -59,7 +59,7 @@ test("{§agui-replay} successful replies to the thread are assistant responses i
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) throw new Error("missing snapshot");
     assert.deepEqual(speech(snapshot.messages), ["First.", "Second."]);
     assert.ok(live.some((event) => event.type === EventType.TOOL_CALL_START && event.toolCallId === "1/1/2"), "directed messages remain real operations, not missing events");
-    assert.deepEqual(calls(snapshot.messages), [["1/1/2", "SEND"], ["1/1/3", "SEND"]], "and replay as the operations they were live");
+    assert.deepEqual(calls(snapshot.messages), [["1/1/2", "SEND"], ["1/1/3", "SEND"], ["1/1/5", "WAIT"]], "and replay as the operations they were live, a bodiless WAIT among them");
 });
 
 test("{§agui-replay} a SEND without a delivered recipient is an operation in live and replay", () => {
@@ -232,14 +232,16 @@ test("{§message-completion}: delivered completion replies enter live and replay
     assert.deepEqual(speech(snapshot.messages), ["Cancelled this request.", "The answer is **42**."]);
 });
 
-test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT conveys lifecycle alone and fabricates none", () => {
+test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT is an operation and speaks nothing", () => {
     const tr = t();
     const events = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 1, sequence: 3, tx: { body: "Pilot at 12 of 30, 9 passes; next read in ten minutes." } }));
     assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     assert.equal((events[3] as { delta: string }).delta, "Pilot at 12 of 30, 9 passes; next read in ten minutes.", "the body is delivered as it was written");
     assert.equal((events[5] as { name: string }).name, "plurnk.send");
     const silent = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 2, sequence: 3, turn_id: 2, tx: { body: null } }));
-    assert.deepEqual(silent.filter((e) => e.type !== "STEP_FINISHED" && e.type !== "STEP_STARTED").map((e) => e.type), ["CUSTOM", "CUSTOM"], "no body, no speech");
+    assert.deepEqual(silent.filter((e) => e.type !== "STEP_FINISHED" && e.type !== "STEP_STARTED").map((e) => e.type),
+        ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT", "CUSTOM"], "no body, no speech: the WAIT and its receipt");
+    assert.equal((silent.find((e) => e.type === "TOOL_CALL_START") as { toolCallName?: string } | undefined)?.toolCallName, "WAIT");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
@@ -863,23 +865,28 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
 });
 
 test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
-    const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, worker: row.worker_id, origin: row.origin, source: row.source,
+    const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, worker: row.worker_id, origin: row.origin, op: row.op, source: row.source,
         signal: row.signal, status: row.status_rx, attrs: row.attrs } });
+    const speech = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
     const rows = [
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),
         wireRow({ id: 2, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", tx: authored("````READ (worker:///notes.md)\n````"), status_rx: 404,
             rx: { status: 404, problem: { type: "https://problems.plurnk.xyz/scheme/worker/missing", title: "Missing", status: 404, detail: "No such entry." } } }),
-        wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, aside: "the answer", body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        wireRow({ id: 4, turn_id: 3, turn_seq: 3, sequence: 2, op: "WAIT", signal: 202, status_rx: 102, tx: authored("````WAIT\n````"), rx: { status: 102, detail: "Nothing is in flight. Continuing." } }),
+        wireRow({ id: 5, turn_id: 3, turn_seq: 3, sequence: 3, op: "WAIT", signal: 202, status_rx: 202, tx: authored("````WAIT <!-- parked -->\nBack soon.\n````"), rx: { status: 202, attrs: { waiting: 1 } } }),
     ];
     const live = rows.flatMap((row) => t().logEntry({ entry: row }));
     const carried = (type: string) => live.filter((event) => event.type === type).map((event) => (event as { metadata?: unknown }).metadata);
-    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]!), facts(rows[2]!)], "an arrival and speech carry their rows' facts");
-    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]!)], "a call carries its row's facts");
-    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]!)], "and so does its result, its status the failure");
+    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]!), speech(rows[2]!, "the answer"), speech(rows[4]!, "parked")],
+        "an arrival carries its row's facts, and speech its heading's aside and its receipt too");
+    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]!), facts(rows[3]!)], "a call carries its row's facts, a bodiless WAIT's among them");
+    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]!), facts(rows[3]!)], "and so does its result, its status the failure");
     const [snapshot] = t().replay(rows);
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(snapshot.messages.map((message) => "toolCalls" in message && message.toolCalls !== undefined
-        ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata), [facts(rows[0]!), facts(rows[1]!), facts(rows[1]!), facts(rows[2]!)],
+        ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata),
+        [facts(rows[0]!), facts(rows[1]!), facts(rows[1]!), speech(rows[2]!, "the answer"), facts(rows[3]!), facts(rows[3]!), speech(rows[4]!, "parked")],
         "the snapshot holds the same metadata on the same parts");
 });
 
