@@ -237,6 +237,8 @@ test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and 
     portal.stop();
     assert.equal(events.filter(({ type }) => type === "RUN_ERROR").length, 1);
     assert.equal(events.at(-1)?.type, "RUN_ERROR");
+    assert.equal((events.at(-1) as { metadata?: { plurnk?: { problem?: { type?: string } } } }).metadata?.plurnk?.problem?.type,
+        "https://problems.plurnk.xyz/agui/http/service-stopping", "{§agui-plurnk-metadata} the Run's error carries its exact Problem");
     assert.equal(m.cancelled(), null);
     assert.throws(() => portal.openThread(args), /The PLURNK service is shutting down/u);
 });
@@ -1033,10 +1035,12 @@ test("{§agui-broadcast-fan} queued execution remains an obligation even when ap
     const thread = openOperation(portal, "queued-op", seen);
     const { entry } = startedExec();
     m.fire(3, "log/entry", { entry: { ...entry, status_rx: 202, rx: { status: 202, outcome: "auto: sh" } } });
-    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 202 } } }]);
+    const outcome = { kind: "op.exec", ok: true, result: { status: 202 } };
+    portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: outcome }], outcome);
     assert.equal(seen.some(({ type }) => type === "RUN_FINISHED"), false);
     m.fire(3, "stream/concluded", { entryId: 170, workerId: 10, target: "sh:///b1e0977e", subscriptionId: 1, scheme: "sh", result: { status: 200, exitCode: 0 }, summary: "completed", wakeAction: "no-loop" });
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED");
+    assert.deepEqual((seen.at(-1) as { result?: unknown }).result, outcome, "{§agui-plurnk-metadata} a deferred finish keeps the action's outcome as its result");
     portal.stop();
 });
 

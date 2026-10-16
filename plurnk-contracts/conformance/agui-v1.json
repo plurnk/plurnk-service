@@ -149,7 +149,29 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "run",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -175,7 +197,12 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "action",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "workspace.list",
+                        "ok": true,
+                        "result": { "workspaces": [] }
+                    }
                 }
             ],
             "expect": {
@@ -221,7 +248,17 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "action-problem",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "workspace.rename",
+                        "ok": false,
+                        "problem": {
+                            "type": "https://problems.plurnk.xyz/daemon/workspace/name-conflict",
+                            "title": "Name conflict",
+                            "status": 409,
+                            "detail": "The workspace name is already in use."
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -251,7 +288,17 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "inject",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "loop.inject",
+                        "ok": true,
+                        "result": {
+                            "status": 100,
+                            "action": "injected_next_turn",
+                            "loopId": 9,
+                            "turnSeq": 2
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -394,7 +441,29 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "reasoning",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -438,7 +507,29 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "outside",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -507,7 +598,29 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "stream",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -532,7 +645,17 @@
                 {
                     "type": "RUN_ERROR",
                     "message": "The fixture deliberately conflicts.",
-                    "code": "https://problems.plurnk.xyz/fixture/conflict"
+                    "code": "https://problems.plurnk.xyz/fixture/conflict",
+                    "metadata": {
+                        "plurnk": {
+                            "problem": {
+                                "type": "https://problems.plurnk.xyz/fixture/conflict",
+                                "title": "Fixture conflict",
+                                "status": 409,
+                                "detail": "The fixture deliberately conflicts."
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {
@@ -577,7 +700,36 @@
                     "type": "RUN_FINISHED",
                     "threadId": "fixture",
                     "runId": "cancel",
-                    "outcome": { "type": "success" }
+                    "outcome": { "type": "cancelled" },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "result": {
+                                    "status": 499,
+                                    "problem": {
+                                        "type": "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled",
+                                        "title": "Loop cancelled",
+                                        "status": 499,
+                                        "detail": "The loop was cancelled."
+                                    }
+                                },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
                 }
             ],
             "expect": {

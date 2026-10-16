@@ -266,4 +266,6 @@ export const parseAction = (forwardedProps: unknown): ActionRequest | null => {
 };
 export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; problem: ProblemDetails };
 export const actionResult = (kind: string, outcome: ActionOutcome): AguiEvent =>
-    ({ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind, ...outcome } });
+    ({ type: EventType.CUSTOM, name: "plurnk.action.result", value: actionRunResult(kind, outcome) });
+// {§agui-plurnk-metadata} An action Run's result: the action's whole outcome, a failure included.
+export const actionRunResult = (kind: string, outcome: ActionOutcome): Record<string, unknown> => ({ kind, ...outcome });

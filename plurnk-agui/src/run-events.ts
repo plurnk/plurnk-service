@@ -20,7 +20,8 @@ export const credentialRevokedProblem = (): ProblemDetails => httpProblem(
     { stage: "authorization", retryable: false },
 );
 
+// {§agui-plurnk-metadata} A Run that fails without its loop's end carries the exact Problem as its error's metadata.
 export const runErrorEvents = (problem: ProblemDetails): AguiEvent[] => [
     { type: EventType.CUSTOM, name: "plurnk.problem", value: problem },
-    { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type },
+    { type: EventType.RUN_ERROR, message: problem.detail, code: problem.type, metadata: { plurnk: { problem } } },
 ];

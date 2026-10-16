@@ -335,17 +335,21 @@ export default class Translator {
             events.push({ type: EventType.RAW, event: n.usage.meta, source: "provider" });
         }
         // {§agui-run-outcome} A loop that completed finishes the Run with its result; one stopped without failing (499)
-        // finishes it cancelled; any other failure is the Run's error. Usage is each physical request's own counts.
+        // finishes it cancelled; any other failure is the Run's error. Usage is each physical request's own counts, and
+        // the loop's complete terminal record rides the end's metadata ({§agui-plurnk-metadata}).
         const usage = Translator.#tokenUsage(n.usage.accounting);
+        const metadata = { plurnk: { terminal: { ...n, workspaceId: this.#workspaceId } } };
         if (result.status < 400) {
-            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" }, result, ...usage });
+            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" }, result, ...usage, metadata });
         } else if (result.status === 499) {
-            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "cancelled" }, ...usage });
+            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "cancelled" }, ...usage, metadata });
         } else {
             events.push({
                 type: EventType.RUN_ERROR,
                 message: result.problem!.detail,
                 code: result.problem!.type,
+                ...usage,
+                metadata,
             });
         }
         return events;

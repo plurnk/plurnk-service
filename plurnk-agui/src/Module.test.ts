@@ -413,6 +413,8 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
         assert.equal(result?.type, "CUSTOM");
         if (result?.type !== "CUSTOM") throw new Error("missing log.read result");
         assert.deepEqual(result.value, { kind: "log.read", ok: true, result: { entries: rows } });
+        const finished = events.find((event) => event.type === "RUN_FINISHED") as { result?: unknown } | undefined;
+        assert.deepEqual(finished?.result, result.value, "{§agui-plurnk-metadata} the Run's result is the action's outcome");
         const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
         for (const [index, row] of rows.entries()) {
             const live = translator.logEntry({ entry: row }).find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
@@ -688,6 +690,7 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
         assert.equal(result.value.ok, true);
         assert.equal(result.value.result.aliases[0].alias, "opus");
         assert.equal(events[events.length - 1].type, "RUN_FINISHED", "management-action AG-UI Run finishes clean");
+        assert.deepEqual((events[events.length - 1] as { result?: unknown }).result, result.value, "{§agui-plurnk-metadata} with the action's outcome as its result");
         const models = await post(mod.address().port, { threadId: "t1", workerId: "models", forwardedProps: { plurnk: { action: { kind: "models.list", provider: "google", search: "flash", limit: 10 } } } });
         const modelResult = models.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { items: Array<{ selector: string }> } } };
         assert.equal(modelResult.value.ok, true);

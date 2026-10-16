@@ -325,3 +325,56 @@ test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation se
     assert.ok(helper.every(({ id }) => String(id).startsWith("worker://helper#")), `the child's identities are its own: ${JSON.stringify(helper.map(({ id }) => id))}`);
     assert.deepEqual(view(watcher.messages), view(refreshed.messages), "the watcher built exactly the refreshed conversation, its delegation included");
 });
+
+test("{§agui-run-outcome} {§agui-plurnk-metadata} a standard client reads a Run's end: its loop's result, usage and terminal record, or an action's whole outcome", { timeout: 60_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
+    const provider = new AiSdkProvider({
+        model: "standard-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => streamed([{ id: "outcome", model: "standard-witness", choices: [{ index: 0,
+            delta: { content: "````SEND [200]\nDone.\n````" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
+    });
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const agents: HttpAgent[] = [];
+    t.after(async () => {
+        for (const agent of agents) agent.abortRun();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "outcomes" });
+    await daemon.createWorkspace({ name: "taken" });
+    const { workerId } = await daemon.createWorker({ workspaceId, name: "main" });
+    const { host, port } = http.httpAddress();
+    const agent = (threadId: string): HttpAgent => {
+        const made = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId });
+        agents.push(made);
+        return made;
+    };
+
+    const submitter = agent("main");
+    let finished: Record<string, unknown> | undefined;
+    submitter.subscribe({ onRunFinishedEvent: ({ event }) => { finished = { ...event }; } });
+    submitter.messages = [{ id: "prompt-1", role: "user", content: "Finish." }];
+    const run = await submitter.runAgent({ forwardedProps: { plurnk: { workspace: "outcomes", maxTurns: 2 } } });
+    const [loop] = await daemon.listWorkerLoops({ workspaceId, workerId }) as ApplicationLoopProjection[];
+    assert.deepEqual(run.result, loop?.terminalResult, "the official client returns the loop's exact terminal result as the Run's result");
+    assert.deepEqual(finished?.outcome, { type: "success" });
+    assert.deepEqual((finished?.usage as Array<{ totalTokens?: number }> | undefined)?.map(({ totalTokens }) => totalTokens), [120], "with the tokens its request reported");
+    const terminal = (finished?.metadata as { plurnk?: { terminal?: Record<string, unknown> } } | undefined)?.plurnk?.terminal;
+    assert.deepEqual([terminal?.workspaceId, terminal?.workerId, terminal?.loopId, terminal?.result], [workspaceId, workerId, loop?.id, loop?.terminalResult],
+        "and the loop's complete terminal record as its metadata");
+
+    const listed = await agent("listing").runAgent({ forwardedProps: { plurnk: { workspace: "outcomes", action: { kind: "workspace.list" } } } });
+    assert.deepEqual([(listed.result as { kind?: unknown }).kind, (listed.result as { ok?: unknown }).ok], ["workspace.list", true], "an action Run's result is its outcome");
+    const refused = await agent("renaming").runAgent({ forwardedProps: { plurnk: { workspace: "outcomes", action: { kind: "workspace.rename", name: "taken" } } } });
+    const { kind, ok, problem } = refused.result as { kind?: unknown; ok?: unknown; problem?: { status?: unknown } };
+    assert.deepEqual([kind, ok, problem?.status], ["workspace.rename", false, 409], "and a refused action's outcome is its exact Problem, on a Run that finished");
+});

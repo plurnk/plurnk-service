@@ -41,7 +41,7 @@ interface Thread {
     // {§agui-broadcast-fan} An operation Run's Worker stream activity no row of its Loop has announced yet: per
     // address, the latest snapshot and the conclusion, delivered after the row that announces it.
     unannounced: Map<string, { event: unknown; concluded: unknown }>;
-    deferredFinish: AguiEvent[] | null;
+    deferredFinish: { readonly events: AguiEvent[]; readonly result: unknown } | null;
     pendingTerminations: unknown[];
     resolvingInterrupts: boolean;
     cancelOnDisconnect: boolean;
@@ -222,7 +222,7 @@ export default class Portal {
             if (thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                 const deferred = thread.deferredFinish;
                 thread.deferredFinish = null;
-                this.#finishThread(thread, deferred);
+                this.#finishThread(thread, deferred.events, deferred.result);
             }
         }
         return observing.length === 0 ? undefined : Promise.all(observing).then(() => undefined);
@@ -814,18 +814,20 @@ export default class Portal {
         ];
     }
 
-    #finishThread(thread: Thread, events: AguiEvent[]): void {
-        const finished: AguiEvent = { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } };
+    #finishThread(thread: Thread, events: AguiEvent[], result: unknown): void {
+        const finished: AguiEvent = { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" },
+            ...(result === undefined ? {} : { result }) };
         thread.emit([...events, ...thread.router.finish(), ...Portal.#closeSubagents(thread), finished]);
     }
 
-    finishThread(thread: unknown, events: AguiEvent[]): void {
+    // The Run finishes with `events`, and `result` as its result when it has one.
+    finishThread(thread: unknown, events: AguiEvent[], result?: unknown): void {
         const bound = thread as Thread;
         if (bound.openStreams.size > 0) {
-            bound.deferredFinish = events;
+            bound.deferredFinish = { events, result };
             return;
         }
-        this.#finishThread(bound, events);
+        this.#finishThread(bound, events, result);
     }
 
     failThread(thread: unknown, events: AguiEvent[]): void {
