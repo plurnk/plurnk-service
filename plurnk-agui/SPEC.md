@@ -154,6 +154,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id and goes to every Run but the one that submitted it; any other is named by its source |
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
+| `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§agui-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | §agui-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. A finished Run carries its loop's token `usage`: AG-UI's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§agui-cost-evidence}). |
@@ -338,7 +339,8 @@ every other daemon surface.
 the live identities, each tool result after its call where the official reducer puts one that arrives
 live, so a client that applies it keeps every message it built live and a reloaded
 client rebuilds them. It is built from the bound worker's whole log, read page by page
-({§methods-log-read}), because AG-UI defines a snapshot as the complete set:
+({§methods-log-read}), and each subagent run's under {§agui-subagents}, because AG-UI defines a snapshot as the
+complete set:
 
 | Durable row | Snapshot messages |
 |---|---|
@@ -679,16 +681,35 @@ synthesize a second topology by rebroadcasting sibling rows.
 §agui-delegation-observation **A message Run may observe its delegation.** A
 message Run whose `forwardedProps.plurnk.descendants` is `true` also receives the
 rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker
-beneath its bound Worker in Core's authoritative topology, as foreign rows only: `CUSTOM
-plurnk.row` and `plurnk.ambient`, and `plurnk.stream`, never the core
-vocabulary, a step, reasoning, or this Run's terminal. The first event of each descendant is
+beneath its bound Worker in Core's authoritative topology. A row of a loop that a call in view
+opened is its subagent run's ({§agui-subagents}); every other descendant row is a foreign row,
+`CUSTOM plurnk.row` and `plurnk.ambient`, and every descendant stream event is `plurnk.stream`.
+None enters the bound Worker's own steps or reasoning. The first event of each descendant is
 preceded once by `CUSTOM plurnk.descendant` `{workerId, name, parentWorkerId, depth}`, depth
 counted from the bound Worker, so a client renders identity and generation without a second
-directory read. Descendants' events are ordered among themselves on the workspace's delivery
-chain; the bound Worker's own events keep their own order. A descendant's terminal reaches the
-Run as its parent's collect row, never as a terminal; a descendant's open stream never defers
-this Run's settlement; a sibling or unrelated Worker's events never arrive. Without the
-request, the Run observes its bound Worker alone.
+directory read. A workspace's events reach the Run in the order the daemon published them:
+while a descendant's topology or loop is being read, every later event waits for it. A
+descendant's terminal never settles this Run, and its conclusion reaches the bound Worker as its
+parent's collect row; a descendant's open stream never defers this Run's settlement; a sibling or
+unrelated Worker's events never arrive. Without the request, the Run observes its bound Worker
+alone.
+
+§agui-subagents **An observed delegation is a subagent run of the call that opened it.** Under
+{§agui-delegation-observation}, a descendant loop is a subagent of the Run when a call in view
+opened it ({§methods-worker-loops}): a call of the bound Worker, or one a subagent of the Run
+made. The Run judges each loop once, from the daemon's record of its opener, for its live
+projection and its snapshot alike.
+
+| Subagent run | AG-UI |
+|---|---|
+| Identity | `subagentRunId` is its loop's address `ops://<worker>/<loop>` ({§worker-loop-result}); `name` is its worker's name |
+| Its rows | Its own worker's projection ({§agui-projection}, {§agui-snapshot}): each message and tool-call id is a coordinate in that worker's namespace, `worker://<name>#L/T/S`, and every event and message is attributed by `subagentRunId`, its `CUSTOM` metadata included, except the Run-scoped `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR` and `MESSAGES_SNAPSHOT` |
+| Start | `SUBAGENT_STARTED` the first time the Run presents its work, a live row or a snapshot that holds its messages, after its parent subagent's: `parentToolCallId` is the opening call's id, and `parentSubagentRunId` names the subagent that made it |
+| Conclusion | Its loop's conclusion ends the segment once its step closes, in the order the daemon published it: below 400, `SUBAGENT_FINISHED` with `outcome: success` and the exact terminal result as `result`; any other, a stop included, `SUBAGENT_ERROR` with the Problem's `detail` as `message` and `type` as `code`. A loop that concluded before the Run could see it ends as it starts. |
+| The Run's end | Before `RUN_FINISHED`, whether the bound Loop's terminal, an idle synchronization's or an interrupt's, each segment still open ends `SUBAGENT_FINISHED` with `outcome: suspended`: the work goes on, and a later Run presents it again. `RUN_ERROR` ends the stream as it stands. |
+
+A snapshot is one conversation in log order, the bound Worker's messages and each subagent's, and is
+followed by each subagent run it holds, presented parents first.
 
 ## §agui-broadcast-fan Event fan and AG-UI Run settlement
 
@@ -713,7 +734,7 @@ this Run.
 
 | AG-UI Run | Core notifications admitted | Settlement owner |
 | ---------- | --------------------------- | ---------------- |
-| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. Under {§agui-delegation-observation}, descendants' rows and streams as foreign rows. | Exact Loop terminal or interrupt. |
+| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. Under {§agui-delegation-observation}, descendants' rows and streams: a subagent's ({§agui-subagents}) or foreign. | Exact Loop terminal or interrupt. |
 | `op.exec` / `op.parse` | Its operation's Loop in the runtime Worker, from the moment the dispatch opens it: that Loop's rows and notices, and the streams those rows announce. Workspace derivation progress may carry no Worker. | This action result, deferred through its owned streams; never the Loop's terminal. |
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 

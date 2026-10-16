@@ -9,6 +9,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { HttpAgent } from "@ag-ui/client";
 import type { Message, RunAgentInput } from "@ag-ui/core";
+import type { ApplicationLoopProjection, ApplicationWorkerProjection } from "@plurnk/plurnk-contracts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
 // A passive observer is the official client's own run pipeline pointed at /agui/connect.
@@ -25,7 +26,8 @@ const view = (messages: readonly Message[]) => messages.map((message) => {
         ? message.toolCalls?.map(({ id: callId, function: call }) => ({ callId, name: call.name, arguments: JSON.parse(call.arguments) as unknown }))
         : undefined;
     const toolCallId = "toolCallId" in message ? message.toolCallId : undefined;
-    return JSON.parse(JSON.stringify({ id, role, content, name, calls, toolCallId })) as Record<string, unknown>;
+    const subagentRunId = "subagentRunId" in message ? message.subagentRunId : undefined;
+    return JSON.parse(JSON.stringify({ id, role, content, name, calls, toolCallId, subagentRunId })) as Record<string, unknown>;
 });
 
 const until = async (what: string, predicate: () => boolean, timeoutMs = 15_000): Promise<void> => {
@@ -241,4 +243,85 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} every vantag
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }
+});
+
+test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation sees the child as a subagent of the WORK, live as on refresh", { timeout: 60_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
+    const previousPolicy = process.env.PLURNK_SERVICE_PROPOSALS;
+    process.env.PLURNK_SERVICE_PROPOSALS = "accept";
+    t.after(() => {
+        if (previousPolicy === undefined) delete process.env.PLURNK_SERVICE_PROPOSALS;
+        else process.env.PLURNK_SERVICE_PROPOSALS = previousPolicy;
+    });
+    const script = [
+        "````WORK (worker://helper)\nSay hello.\n````\n````WAIT\n````",
+        "````NOTE\nGreeting the delegator.\n````\n````SEND [200]\nhello from the helper\n````",
+        "````SEND [200]\nThe helper said hello.\n````",
+    ];
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        model: "standard-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => streamed([{ id: `subagent-${calls}`, model: "standard-witness", choices: [{ index: 0,
+            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
+    });
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http });
+    const agents: HttpAgent[] = [];
+    t.after(async () => {
+        for (const agent of agents) agent.abortRun();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "subagents" });
+    await daemon.createWorker({ workspaceId, name: "main" });
+    const { host, port } = http.httpAddress();
+    const delegation = { plurnk: { workspace: "subagents", descendants: true } };
+    const failures: unknown[] = [];
+    // What a subscriber learns of each vantage's subagent runs.
+    const lifecycleOf = (agent: HttpAgent): Array<Record<string, unknown>> => {
+        const seen: Array<Record<string, unknown>> = [];
+        agent.subscribe({ onEvent: ({ event }) => {
+            if (event.type === "SUBAGENT_STARTED" || event.type === "SUBAGENT_FINISHED" || event.type === "SUBAGENT_ERROR") seen.push({ ...event });
+        } });
+        return seen;
+    };
+    const watcher = new Observer({ url: `http://${host}:${port}/agui/connect`, threadId: "main" });
+    agents.push(watcher);
+    const lifecycle = lifecycleOf(watcher);
+    void watcher.connectAgent({ forwardedProps: delegation }).catch((error: unknown) => { failures.push(error); });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const submitter = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(submitter);
+    submitter.messages = [{ id: "prompt-1", role: "user", content: "Ask the helper." }];
+    await submitter.runAgent({ forwardedProps: { plurnk: { workspace: "subagents", maxTurns: 6 } } });
+    await until("the watcher to hear the reply", () => watcher.messages.some((message) => message.role === "assistant" && message.content === "The helper said hello."));
+    const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(refreshed);
+    const presented = lifecycleOf(refreshed);
+    await refreshed.runAgent({ forwardedProps: { plurnk: { ...delegation.plurnk, mode: "sync" } } });
+    const helperWorker = (await daemon.listWorkers(workspaceId) as ApplicationWorkerProjection[]).find(({ name }) => name === "helper");
+    const concluded = (await daemon.listWorkerLoops({ workspaceId, workerId: helperWorker!.id }) as ApplicationLoopProjection[])[0]?.terminalResult;
+
+    assert.deepEqual(failures, [], "the official client accepts the subagent lifecycle");
+    const work = view(watcher.messages).flatMap(({ calls: made }) => (made as Array<{ callId: string; name: string }> | undefined) ?? []).find(({ name }) => name === "WORK");
+    const subagentRun = [
+        { type: "SUBAGENT_STARTED", subagentRunId: "ops://helper/1", name: "helper", parentToolCallId: work?.callId },
+        { type: "SUBAGENT_FINISHED", subagentRunId: "ops://helper/1", outcome: { type: "success" }, result: concluded },
+    ];
+    assert.ok(concluded?.status === 200, "the child concluded");
+    assert.deepEqual(lifecycle.map(({ timestamp: _timestamp, ...event }) => event), subagentRun,
+        "the child's loop is one subagent of the WORK that opened it, ended by its conclusion with its exact result");
+    assert.deepEqual(presented.map(({ timestamp: _timestamp, ...event }) => event), subagentRun, "the refreshed Run presents the same subagent run, concluded");
+    const helper = view(watcher.messages).filter(({ subagentRunId }) => subagentRunId === "ops://helper/1");
+    assert.ok(helper.some(({ role, content, name }) => role === "user" && content === "Say hello." && name === "worker://main"), "the child's conversation begins with its task, from its delegator");
+    assert.ok(helper.every(({ id }) => String(id).startsWith("worker://helper#")), `the child's identities are its own: ${JSON.stringify(helper.map(({ id }) => id))}`);
+    assert.deepEqual(view(watcher.messages), view(refreshed.messages), "the watcher built exactly the refreshed conversation, its delegation included");
 });

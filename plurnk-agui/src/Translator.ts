@@ -36,6 +36,8 @@ import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
+type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
+
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
     readonly modelWorkerId: number | null;
@@ -53,6 +55,9 @@ export default class Translator {
     #completedReasoning = new Map<number, string[]>();
     // {§agui-snapshot} The messages this Run submitted: its client already holds them.
     #submitted = new Set<string>();
+    // {§agui-subagents} A delegation this Run observes: the subagent run its events are attributed to, and the worker
+    // whose rows' identities it namespaces; null for the Run's own worker.
+    #subagent: { readonly runId: string; readonly worker: string } | null;
 
     constructor(args: {
         threadId: string;
@@ -60,7 +65,9 @@ export default class Translator {
         modelWorkerId?: number | null;
         workspaceId?: number | null;
         continuation?: TranslatorContinuation;
+        subagent?: { readonly runId: string; readonly worker: string };
     }) {
+        this.#subagent = args.subagent ?? null;
         this.#threadId = args.threadId;
         this.#runId = args.runId;
         this.#currentTurn = args.continuation?.currentTurn ?? null;
@@ -129,7 +136,7 @@ export default class Translator {
         this.#currentTurn = null;
         this.#stepOpen = false;
         this.#completedReasoning.clear();
-        return events;
+        return this.#attributed(events);
     }
 
     // {§agui-readable-reasoning} A Run ended before its request is (revoked, stopped, failed) still
@@ -147,6 +154,10 @@ export default class Translator {
     }
 
     logEntry(n: LogEntryNotification): AguiEvent[] {
+        return this.#attributed(this.#project(n));
+    }
+
+    #project(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
         const clientEntry = e;
@@ -187,15 +198,15 @@ export default class Translator {
             return events;
         }
         if (e.origin !== "model" && !response) {
-            const answered = Translator.#answered(e);
+            const answered = this.#answered(e);
             if (answered !== null) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: Translator.idOf(e), content: Translator.#delivered(e) });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e) });
                 return events;
             }
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
-        const id = Translator.idOf(e);
+        const id = this.#id(e);
         if (e.op !== null) {
             events.push(...Translator.#readableReasoningEvents(Translator.#reasoningId(e, id),
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
@@ -352,47 +363,58 @@ export default class Translator {
     // reasoning, speech, and every other model operation as its tool call and result, under the
     // live identities. Wire rows arrive as the log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
-        const messages: Array<AssistantMessage | ReasoningMessage | ToolMessage | UserMessage> = [];
-        const deliveredReasoning = new Map<number, string[]>();
-        const chronological = entries.toSorted((left, right) => {
-            const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
-            const rightId = typeof right.id === "number" ? right.id : Number.MAX_SAFE_INTEGER;
-            return leftId - rightId;
-        });
-        for (const e of chronological) {
-            const id = Translator.idOf(e);
-            const arrival = this.#arrival(e);
-            if (arrival !== null) {
-                messages.push({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }) });
-                continue;
-            }
-            const response = Translator.isResponse(e, this.#threadId);
-            if (e.origin !== "model" && !response) {
-                const answered = Translator.#answered(e);
-                if (answered !== null) Translator.#placeResult(messages, { id, role: "tool", toolCallId: answered, content: Translator.#delivered(e) });
-                continue;
-            }
-            if (typeof e.op !== "string") {
-                if (Translator.#modelArtifactKind(e.attrs) === null) {
-                    throw new TypeError("An actionless model-origin replay row must carry attrs.kind=emissionAttempt.");
-                }
-                continue;
-            }
-            const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
-            if (reasoning.length > 0) messages.push({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning });
-            const text = Translator.#txBody(e.tx);
-            if (response || Translator.#waitSpeech(e, text)) messages.push({ id, role: "assistant", content: text });
-            if (response || TurnDisposition.isOp(e.op)) continue;
-            const entry = e as LogEntryNotification["entry"];
-            messages.push({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] });
-            if (Translator.#opensObligation(e)) continue;
-            const result = Translator.#asText(e.rx);
-            if (result.length > 0) Translator.#placeResult(messages, { id: `${id}/result`, role: "tool", toolCallId: id, content: result });
+        return Translator.replayAll([{ translator: this, entries }], currentUser);
+    }
+
+    // {§agui-snapshot} {§agui-subagents} One conversation from several logs: every row in the order the workspace
+    // committed it, each projected by its own worker's translator into one message list.
+    static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: ReadonlyArray<Record<string, unknown>> }>, currentUser?: UserMessage): AguiEvent[] {
+        const messages: ReplayMessage[] = [];
+        const order = (e: Record<string, unknown>): number => typeof e.id === "number" ? e.id : Number.MAX_SAFE_INTEGER;
+        const rows = parts.flatMap(({ translator, entries }) => entries.map((e) => ({ translator, e })))
+            .toSorted((left, right) => order(left.e) - order(right.e));
+        const delivered = new Map<Translator, Map<number, string[]>>();
+        for (const { translator, e } of rows) {
+            const reasoning = delivered.get(translator) ?? new Map<number, string[]>();
+            delivered.set(translator, reasoning);
+            translator.#replayRow(e, messages, reasoning);
         }
         if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
             messages.push(currentUser);
         }
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
+    }
+
+    #replayRow(e: Record<string, unknown>, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {
+        const attributed = <T extends ReplayMessage>(message: T): T => this.#subagent === null ? message : { ...message, subagentRunId: this.#subagent.runId };
+        const id = this.#id(e);
+        const arrival = this.#arrival(e);
+        if (arrival !== null) {
+            messages.push(attributed({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }) }));
+            return;
+        }
+        const response = Translator.isResponse(e, this.#threadId);
+        if (e.origin !== "model" && !response) {
+            const answered = this.#answered(e);
+            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e) }));
+            return;
+        }
+        if (typeof e.op !== "string") {
+            if (Translator.#modelArtifactKind(e.attrs) === null) {
+                throw new TypeError("An actionless model-origin replay row must carry attrs.kind=emissionAttempt.");
+            }
+            return;
+        }
+        const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
+        if (reasoning.length > 0) messages.push(attributed({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning }));
+        const text = Translator.#txBody(e.tx);
+        if (response || Translator.#waitSpeech(e, text)) messages.push(attributed({ id, role: "assistant", content: text }));
+        if (response || TurnDisposition.isOp(e.op)) return;
+        const entry = e as LogEntryNotification["entry"];
+        messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] }));
+        if (Translator.#opensObligation(e)) return;
+        const result = Translator.#asText(e.rx);
+        if (result.length > 0) Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: result }));
     }
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
@@ -572,7 +594,7 @@ export default class Translator {
         const messageId = MessageAddress.messageId(e.source, this.#threadId);
         if (messageId !== null) return { id: messageId, content: Translator.#txBody(e.tx) };
         return {
-            id: Translator.idOf(e as Parameters<typeof Translator.idOf>[0]),
+            id: this.#id(e as Parameters<typeof Translator.idOf>[0]),
             content: Translator.#txBody(e.tx),
             ...(typeof e.source === "string" ? { name: e.source } : {}),
         };
@@ -592,17 +614,44 @@ export default class Translator {
         return e.op === "SEND" ? Translator.#txBody(e.tx) : Translator.#asText(e.rx);
     }
 
-    // {§agui-call-result} The call a discharging row answers: the operation it names ({§methods-invocation}).
-    static #answered(e: { invocation?: unknown }): string | null {
+    // {§agui-call-result} The call a discharging row answers: the operation it names ({§methods-invocation}), in the
+    // namespace of the worker whose log holds both.
+    #answered(e: { invocation?: unknown }): string | null {
         if (e.invocation === undefined) return null;
-        const match = typeof e.invocation === "string" ? /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(e.invocation) : null;
-        if (match === null) throw new TypeError(`A discharging row names its operation's log address: ${String(e.invocation)}`);
+        const coordinate = Translator.callOf(e.invocation);
+        return this.#subagent === null ? coordinate : `${Translator.subagentIds(this.#subagent.worker)}#${coordinate}`;
+    }
+
+    // {§methods-invocation} The coordinate of the operation a log address names in its own worker's log.
+    static callOf(invocation: unknown): string {
+        const match = typeof invocation === "string" ? /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(invocation) : null;
+        if (match === null) throw new TypeError(`An invocation is an operation's log address: ${String(invocation)}`);
         return `${match[1]}/${match[2]}/${match[3]}`;
     }
 
+    // {§agui-subagents} A delegated worker's rows are identified within its own namespace, so two logs never collide.
+    static subagentIds(worker: string): string {
+        return `worker://${worker}`;
+    }
+
+    #id(e: { loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown }): string {
+        const coordinate = Translator.idOf(e);
+        return this.#subagent === null ? coordinate : `${Translator.subagentIds(this.#subagent.worker)}#${coordinate}`;
+    }
+
+    // {§agui-subagents} Everything a delegation's conversation produces is attributed to its subagent run, its metadata
+    // included; only the events that describe a Run itself belong to no subagent.
+    #attributed(events: AguiEvent[]): AguiEvent[] {
+        const subagent = this.#subagent;
+        if (subagent === null) return events;
+        return events.map((event) => Translator.#runScoped.has(event.type) ? event : { ...event, subagentRunId: subagent.runId } as AguiEvent);
+    }
+
+    static readonly #runScoped: ReadonlySet<string> = new Set([EventType.RUN_STARTED, EventType.RUN_FINISHED, EventType.RUN_ERROR, EventType.MESSAGES_SNAPSHOT]);
+
     // {§agui-snapshot} A result sits where the official reducer puts one that arrives live: after its call and the results
     // already beside it, or last when the call is not in view.
-    static #placeResult(messages: Array<AssistantMessage | ReasoningMessage | ToolMessage | UserMessage>, result: ToolMessage): void {
+    static #placeResult(messages: ReplayMessage[], result: ToolMessage): void {
         const call = messages.findIndex((message) => message.role === "assistant" && message.toolCalls?.some(({ id }) => id === result.toolCallId) === true);
         if (call === -1) {
             messages.push(result);

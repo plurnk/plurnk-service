@@ -7,16 +7,18 @@
 
 import EventRouter from "./EventRouter.ts";
 import { aliveChildren, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
-import { Problems, selectWorkerLoop } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
-import type { TranslatorContinuation } from "./Translator.ts";
+import Translator, { type TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlBatch, type HitlDelivery } from "./ProposalHitl.ts";
 import type {
+    ApplicationLoopProjection,
     ApplicationWorkerProjection,
+    OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { EventType, type AguiEvent, type UserMessage } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
@@ -51,6 +53,10 @@ interface Thread {
     tree: ReadonlyMap<number, Descendant> | null;
     introduced: Set<number>;
     unrelated: Set<number>;
+    // {§agui-subagents} Each descendant loop this Run has judged, once: its subagent when a call in view opened it, else
+    // null; and the subagents among them by loop id, in the order they were judged.
+    judged: Map<number, Promise<Subagent | null>>;
+    subagents: Map<number, Subagent>;
     // {§agui-status-children} {§agui-status-spend} — what this Run's client holds: its snapshot's, its
     // latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
     gauge: Pick<AguiStatusState, "children" | "spend"> | null;
@@ -66,6 +72,24 @@ interface WorkerBinding {
     readonly workerId: number;
     readonly loopId: number;
 }
+
+// {§agui-subagents} A descendant loop a call in view opened: its subagent run, its worker, the call that opened it and
+// the translator of its own conversation; its loop's conclusion once this Run knows it, and where this Run's stream
+// stands with its segment.
+export interface Subagent {
+    readonly runId: string;
+    readonly loopId: number;
+    readonly workerId: number;
+    readonly worker: string;
+    readonly loopSequence: number;
+    readonly parent: { readonly call: string; readonly subagent?: Subagent };
+    readonly translator: Translator;
+    result: OperationResult | null;
+    segment: "unstarted" | "open" | "ended";
+}
+
+// {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays, parents first, each with its loop's rows.
+export type SubagentHistory = ReadonlyArray<{ readonly subagent: Subagent; readonly entries: Array<Record<string, unknown>> }>;
 
 // {§agui-delegation-observation} — a descendant as the daemon's topology names it, depth counted
 // from the bound Worker.
@@ -118,6 +142,8 @@ export default class Portal {
     #activeInterrupts = new Map<string, Interrupt>();
     #continuations = new Map<string, PresentedInterrupt>();
     #deliveryTails = new Map<number, Promise<void>>();
+    // {§agui-subagents} The loops whose terminal the daemon has published and the Runs have yet to receive, in order.
+    #terminalsDue = new Set<number>();
     #off: (() => void) | null = null;
     #stopped = false;
 
@@ -134,22 +160,35 @@ export default class Portal {
         this.#hitl.start();
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId === null) return; // global (workspace/created) handled out-of-band
-            // {§agui-proposal-resolve} A descendant gate may require asynchronous
-            // topology lookup. A later terminal cannot close its controlling Run first.
-            if (method === "loop/terminated" && this.#deliveryTails.has(workspaceId)) {
+            if (method === "loop/terminated") this.#terminalsDue.add((params as TerminatedNotification).loopId);
+            // {§agui-proposal-resolve} {§agui-subagents} A workspace's events reach its Runs in the order the daemon
+            // published them: while a descendant's topology or loop is being read, every later event waits for it.
+            if (this.#deliveryTails.has(workspaceId)) {
                 this.#enqueueDelivery(workspaceId, async () => this.#routeNotification(workspaceId, method, params));
                 return;
             }
-            this.#routeNotification(workspaceId, method, params);
+            const observing = this.#routeNotification(workspaceId, method, params);
+            if (observing !== undefined) this.#enqueueDelivery(workspaceId, async () => observing);
         });
     }
 
-    #routeNotification(workspaceId: number, method: string, params: unknown): void {
+    // Returns the descendants' events still being read for some Run's presentation, when there are any.
+    #routeNotification(workspaceId: number, method: string, params: unknown): Promise<void> | undefined {
+        if (method === "loop/terminated") this.#terminalsDue.delete((params as TerminatedNotification).loopId);
+        const observing: Array<Promise<void>> = [];
         for (const thread of this.#threads.get(workspaceId) ?? []) {
             if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(thread);
-            if (thread.descendants && Portal.#observedActor(thread, method, params) !== null) {
-                this.#observeDescendant(workspaceId, thread, method, params);
+            const actor = thread.descendants ? Portal.#observedActor(thread, method, params) : null;
+            if (actor !== null) {
+                observing.push(this.#observeDescendant(workspaceId, thread, actor, method, params));
                 continue;
+            }
+            if (thread.descendants && method === "loop/terminated") {
+                const concluded = Portal.#concluded(thread, params as TerminatedNotification);
+                if (concluded !== null) {
+                    if (concluded.length > 0) thread.emit(concluded);
+                    continue;
+                }
             }
             if (!Portal.#ownsNotification(thread, method, params)) {
                 Portal.#holdUnannounced(thread, method, params);
@@ -173,7 +212,7 @@ export default class Portal {
             const opened = Portal.#openedStream(method, params);
             if (opened !== null) thread.openStreams.add(opened);
             if (method === "stream/concluded") thread.openStreams.delete(Portal.#streamTarget(params));
-            const out = thread.router.route(method, params);
+            const out = Portal.#finishing(thread, thread.router.route(method, params));
             if (out.length > 0) thread.emit(out);
             if (method === "log/entry" && opened !== null) this.#releaseUnannounced(thread, opened);
             // {§agui-gate-deferral} — a terminal leaves the held gate durable for the next Run; any other
@@ -186,6 +225,7 @@ export default class Portal {
                 this.#finishThread(thread, deferred);
             }
         }
+        return observing.length === 0 ? undefined : Promise.all(observing).then(() => undefined);
     }
 
     // {§agui-status-children} {§agui-status-spend} — the events after which the bound Worker's alive
@@ -257,29 +297,154 @@ export default class Portal {
         return actor;
     }
 
-    // Descendants' events ride the workspace's delivery chain: ordered among themselves, introduced
-    // once each from the daemon's topology, and never touching this Run's step, streams or terminal.
-    #observeDescendant(workspaceId: number, thread: Thread, method: string, params: unknown): void {
-        const actor = Portal.#observedActor(thread, method, params);
-        if (actor === null) return;
-        this.#enqueueDelivery(workspaceId, async () => {
-            if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
-            let node = thread.tree?.get(actor);
-            if (node === undefined && thread.workerId !== null) {
-                thread.tree = await this.#descendantTree(workspaceId, thread.workerId);
-                node = thread.tree.get(actor);
-            }
-            if (node === undefined) {
-                thread.unrelated.add(actor);
-                return;
-            }
-            if (!thread.introduced.has(actor)) {
-                thread.introduced.add(actor);
-                thread.emit([{ type: EventType.CUSTOM, name: "plurnk.descendant", value: node }]);
-            }
-            const out = thread.router.route(method, params);
-            if (out.length > 0) thread.emit(out);
+    // A descendant's event is introduced once per actor from the daemon's topology, and never touches this Run's step,
+    // streams or terminal. The workspace's later events wait for it ({§agui-subagents}).
+    async #observeDescendant(workspaceId: number, thread: Thread, actor: number, method: string, params: unknown): Promise<void> {
+        let node = thread.tree?.get(actor);
+        if (node === undefined && thread.workerId !== null) {
+            thread.tree = await this.#descendantTree(workspaceId, thread.workerId);
+            node = thread.tree.get(actor);
+        }
+        if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+        if (node === undefined) {
+            thread.unrelated.add(actor);
+            return;
+        }
+        if (!thread.introduced.has(actor)) {
+            thread.introduced.add(actor);
+            thread.emit([{ type: EventType.CUSTOM, name: "plurnk.descendant", value: node }]);
+        }
+        const subagent = method === "log/entry" ? await this.#rowSubagent(thread, node, (params as LogEntryNotification).entry.loop_id) : null;
+        if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+        const out = subagent === null
+            ? thread.router.route(method, params)
+            : [...Portal.#present(subagent), ...subagent.translator.logEntry(params as LogEntryNotification)];
+        if (out.length > 0) thread.emit(out);
+    }
+
+    // {§agui-subagents} The subagent a descendant's row belongs to, when a call in view opened its loop.
+    async #rowSubagent(thread: Thread, node: Descendant, loopId: number): Promise<Subagent | null> {
+        const judged = thread.judged.get(loopId);
+        if (judged !== undefined) return judged;
+        const loop = (await this.#seam.listWorkerLoops({ workspaceId: thread.workspaceId, workerId: node.workerId })).find(({ id }) => id === loopId);
+        if (loop !== undefined) return this.#judge(thread, node, loop);
+        const unlisted = Promise.resolve(null);
+        thread.judged.set(loopId, unlisted);
+        return unlisted;
+    }
+
+    // {§agui-subagents} A descendant loop is a subagent of this Run when a call in view opened it: the bound Worker's,
+    // or one a subagent of this Run made. Each loop is judged once, from the daemon's record of what opened it, and the
+    // live and snapshot projections share the judgment.
+    #judge(thread: Thread, node: Descendant, loop: ApplicationLoopProjection): Promise<Subagent | null> {
+        let judged = thread.judged.get(loop.id);
+        if (judged === undefined) {
+            judged = this.#judgeLoop(thread, node, loop);
+            thread.judged.set(loop.id, judged);
+        }
+        return judged;
+    }
+
+    async #judgeLoop(thread: Thread, node: Descendant, loop: ApplicationLoopProjection): Promise<Subagent | null> {
+        const parent = loop.invocation === null ? null : await this.#opener(thread, loop.invocation);
+        if (parent === null) return null;
+        const runId = `ops://${node.name}/${loop.sequence}`;
+        const subagent: Subagent = {
+            runId, loopId: loop.id, workerId: node.workerId, worker: node.name, loopSequence: loop.sequence, parent,
+            translator: new Translator({ threadId: thread.threadId, runId: thread.inputRunId, modelWorkerId: node.workerId,
+                workspaceId: thread.workspaceId, subagent: { runId, worker: node.name } }),
+            // A conclusion still on its way to this Run ends the segment when it arrives.
+            result: this.#terminalsDue.has(loop.id) ? null : loop.terminalResult,
+            segment: "unstarted",
+        };
+        thread.subagents.set(loop.id, subagent);
+        return subagent;
+    }
+
+    // {§agui-subagents} The call that opened a loop, as this Run's client identifies it, when this Run sees it.
+    async #opener(thread: Thread, invocation: NonNullable<ApplicationLoopProjection["invocation"]>): Promise<Subagent["parent"] | null> {
+        const call = Translator.callOf(invocation.address);
+        if (invocation.workerId === thread.workerId) return { call };
+        let node = thread.tree?.get(invocation.workerId);
+        if (node === undefined && thread.workerId !== null) {
+            thread.tree = await this.#descendantTree(thread.workspaceId, thread.workerId);
+            node = thread.tree.get(invocation.workerId);
+        }
+        if (node === undefined) return null;
+        const loopSequence = Number(call.split("/")[0]);
+        const loop = (await this.#seam.listWorkerLoops({ workspaceId: thread.workspaceId, workerId: node.workerId })).find(({ sequence }) => sequence === loopSequence);
+        const subagent = loop === undefined ? null : await this.#judge(thread, node, loop);
+        return subagent === null ? null : { call: `${Translator.subagentIds(subagent.worker)}#${call}`, subagent };
+    }
+
+    // {§agui-subagents} A subagent's segment of this Run starts the first time the Run presents its work, after its
+    // parent's; a loop that concluded before the Run could see it ends it at once.
+    static #present(subagent: Subagent): AguiEvent[] {
+        if (subagent.segment !== "unstarted") return [];
+        const parent = subagent.parent.subagent;
+        const events = parent === undefined ? [] : Portal.#present(parent);
+        subagent.segment = "open";
+        events.push({
+            type: EventType.SUBAGENT_STARTED, subagentRunId: subagent.runId, name: subagent.worker, parentToolCallId: subagent.parent.call,
+            ...(parent === undefined ? {} : { parentSubagentRunId: parent.runId }),
         });
+        if (subagent.result !== null) events.push(...Portal.#end(subagent, subagent.result));
+        return events;
+    }
+
+    // {§agui-subagents} A loop that completed finishes its subagent with its exact result; any other conclusion, a stop
+    // included, is the subagent's error, from its Problem Details.
+    static #end(subagent: Subagent, result: OperationResult): AguiEvent[] {
+        subagent.segment = "ended";
+        const end: AguiEvent = result.status < 400
+            ? { type: EventType.SUBAGENT_FINISHED, subagentRunId: subagent.runId, outcome: { type: "success" }, result }
+            : { type: EventType.SUBAGENT_ERROR, subagentRunId: subagent.runId, message: result.problem!.detail, code: result.problem!.type };
+        return [...subagent.translator.finish(), end];
+    }
+
+    // {§agui-subagents} A subagent's loop concluded: an open segment ends now, an unstarted one when it is presented;
+    // null for a loop that is no subagent of this Run.
+    static #concluded(thread: Thread, terminal: TerminatedNotification): AguiEvent[] | null {
+        const subagent = thread.subagents.get(terminal.loopId);
+        if (subagent === undefined) return null;
+        subagent.result = Validator.assertOperationResult(terminal.result);
+        return subagent.segment === "open" ? Portal.#end(subagent, subagent.result) : [];
+    }
+
+    // {§agui-subagents} The bound Worker's events, preceded by the end of every subagent segment when they finish the Run.
+    static #finishing(thread: Thread, events: AguiEvent[]): AguiEvent[] {
+        return events.some(({ type }) => type === EventType.RUN_FINISHED) ? [...Portal.#closeSubagents(thread), ...events] : events;
+    }
+
+    // {§agui-subagents} A Run that finishes ends every segment it opened: a subagent still running is suspended, its
+    // work going on for a later Run to present, and each subagent's open step closes first.
+    static #closeSubagents(thread: Thread): AguiEvent[] {
+        return [...thread.subagents.values()].filter(({ segment }) => segment !== "unstarted").flatMap((subagent) => {
+            const events = subagent.translator.finish();
+            if (subagent.segment === "open") {
+                subagent.segment = "ended";
+                events.push({ type: EventType.SUBAGENT_FINISHED, subagentRunId: subagent.runId, outcome: { type: "suspended" } });
+            }
+            return events;
+        });
+    }
+
+    // {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays: each descendant loop a call in view opened,
+    // with the rows `history` reads from its worker's log.
+    async subagentHistory(thread: unknown, history: (workerId: number) => Promise<Array<Record<string, unknown>>>): Promise<SubagentHistory> {
+        const bound = thread as Thread;
+        if (!bound.descendants || bound.workerId === null) return [];
+        bound.tree = await this.#descendantTree(bound.workspaceId, bound.workerId);
+        const parts: Array<SubagentHistory[number]> = [];
+        for (const node of [...bound.tree.values()].toSorted((left, right) => left.depth - right.depth)) {
+            const loops = await this.#seam.listWorkerLoops({ workspaceId: bound.workspaceId, workerId: node.workerId });
+            const subagents = (await Promise.all(loops.map((loop) => this.#judge(bound, node, loop))))
+                .filter((subagent): subagent is Subagent => subagent !== null);
+            if (subagents.length === 0) continue;
+            const rows = await history(node.workerId);
+            for (const subagent of subagents) parts.push({ subagent, entries: rows.filter(({ loop_id }) => loop_id === subagent.loopId) });
+        }
+        return parts;
     }
 
     async #descendantTree(workspaceId: number, rootId: number): Promise<ReadonlyMap<number, Descendant>> {
@@ -428,8 +593,10 @@ export default class Portal {
                 });
                 return interrupt;
             });
+            // {§agui-subagents} The interrupt finishes the Run, so its subagents' segments end before it.
+            const closed = interrupts.length > 0 ? Portal.#closeSubagents(thread) : [];
             this.#withHitl({ events: delivery.batch.events, interrupts }, () => {
-                thread.emit([...delivery.batch.events, ...paused.events]);
+                thread.emit([...delivery.batch.events, ...paused.events, ...closed]);
             });
         }
     }
@@ -579,6 +746,8 @@ export default class Portal {
             tree: null,
             introduced: new Set(),
             unrelated: new Set(),
+            judged: new Map(),
+            subagents: new Map(),
             gauge: null,
             staleGauge: false,
             gaugeRefresh: 0,
@@ -637,12 +806,17 @@ export default class Portal {
         return [stateDelta([{ op: "replace", path: "/plurnk/status", value: status }])];
     }
 
-    replay(thread: unknown, entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
-        return (thread as Thread).router.replay(entries, currentUser);
+    // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
+    replay(thread: unknown, entries: Array<Record<string, unknown>>, currentUser?: UserMessage, subagents: SubagentHistory = []): AguiEvent[] {
+        return [
+            ...(thread as Thread).router.replay(entries, currentUser, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
+            ...subagents.flatMap(({ subagent }) => Portal.#present(subagent)),
+        ];
     }
 
     #finishThread(thread: Thread, events: AguiEvent[]): void {
-        thread.emit([...events, ...thread.router.finish(), { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
+        const finished: AguiEvent = { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } };
+        thread.emit([...events, ...thread.router.finish(), ...Portal.#closeSubagents(thread), finished]);
     }
 
     finishThread(thread: unknown, events: AguiEvent[]): void {
@@ -698,7 +872,7 @@ export default class Portal {
         );
         thread.pendingTerminations = [];
         if (terminal === undefined) return false;
-        const out = thread.router.route("loop/terminated", terminal);
+        const out = Portal.#finishing(thread, thread.router.route("loop/terminated", terminal));
         if (out.length > 0) thread.emit(out);
         return true;
     }

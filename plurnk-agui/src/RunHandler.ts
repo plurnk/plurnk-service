@@ -292,8 +292,10 @@ export default class RunHandler {
             }
             // A sync Run requires its worker ({§agui-action-binding}), so one is bound here.
             const history = await this.#history(workspaceId, workerId!);
+            // {§agui-subagents} A Run that observes its delegation replays it too.
+            const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
             if (finished) return;
-            emit(this.#portal().replay(boundRun, history));
+            emit(this.#portal().replay(boundRun, history, undefined, subagents));
             if (finished) return;
             await this.#portal().synchronize(workspaceId, boundRun, connect);
             return;
@@ -339,7 +341,9 @@ export default class RunHandler {
             if (finished) return;
             if (history !== null && !RunHandler.#isOriented(input, history)) {
                 const replayUser = currentUser ?? undefined;
-                emit(this.#portal().replay(boundRun, history, replayUser));
+                const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
+                if (finished) return;
+                emit(this.#portal().replay(boundRun, history, replayUser, subagents));
             }
         }
         const started = await this.#portal().run(boundRun, {

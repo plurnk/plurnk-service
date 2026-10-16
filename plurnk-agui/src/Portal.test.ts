@@ -20,6 +20,7 @@ import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamEvent, termination } from "../test/notification-fixture.ts";
+import { wireRow } from "../test/log-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
 
@@ -100,7 +101,7 @@ const loop = (workerId: number, id: number): ApplicationLoopProjection => ({
     terminatedAt: null,
     terminalResult: null,
     packetCount: 1,
-    waitUntil: null,
+    waitUntil: null, invocation: null,
 });
 
 const mockSeam = (
@@ -1178,6 +1179,170 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
 
     m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ curationBudget: 1000 }) }));
     assert.ok(seen.some((event) => event.type === "RUN_FINISHED"), "the bound Loop's terminal settles the Run; a descendant's open stream never defers it");
+    portal.stop();
+});
+
+// {§agui-subagents} A delegation of worker 10: worker 20 beneath it and worker 30 beneath that, each loop opened as given.
+const delegation = (loops: ReadonlyMap<number, ApplicationLoopProjection[]>, pending: ProposalProjection[] = []) =>
+    mockSeam(pending, [], { workers: [worker(10), worker(20, 10), worker(30, 20)], loops });
+const openedBy = (workerId: number, id: number, invocation: ApplicationLoopProjection["invocation"],
+    over: Partial<ApplicationLoopProjection> = {}): ApplicationLoopProjection => ({ ...loop(workerId, id), invocation, ...over });
+const concludedLoop = { status: 200, terminatedAt: "2026-10-16T00:00:00.000Z", terminalResult: { status: 200 } } satisfies Partial<ApplicationLoopProjection>;
+const delegated = (id: number, workerId: number, loopId: number) => ({ entry: wireRow({ id, worker_id: workerId, loop_id: loopId, turn_id: 100 + workerId }) });
+const lifecycle = (events: readonly AguiEvent[]) => events.filter(({ type }) => type.startsWith("SUBAGENT_"));
+const attributed = (events: readonly AguiEvent[]) => events.map((event) => `${event.type}:${(event as { subagentRunId?: string }).subagentRunId ?? ""}`);
+const FAILED = { type: "https://problems.plurnk.xyz/loop/failed", title: "Failed", status: 500, detail: "The helper failed." };
+
+test("{§agui-subagents}: a loop a call in view opened is that call's subagent: started by its first row after the subagent whose call opened it, ended by its conclusion, suspended when the Run finishes", async () => {
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" })]],
+        [30, [openedBy(30, 110, { workerId: 20, address: "log:///1/1/3/WORK" })]],
+    ]));
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(2, 20, 100));
+    m.fire(3, "log/entry", delegated(3, 30, 110));
+    m.fire(3, "loop/terminated", termination({ workerId: 30, loopId: 110, result: { status: 500, problem: FAILED } }));
+    await nextTask();
+    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77 }));
+    await nextTask();
+
+    assert.deepEqual(lifecycle(seen), [
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+        { type: EventType.SUBAGENT_ERROR, subagentRunId: "ops://worker-30/1", message: FAILED.detail, code: FAILED.type },
+        { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "suspended" } },
+    ], "the WORK's child is its subagent and the grandchild the child's; a failed conclusion is an error; the Run's end suspends the one still running");
+    assert.deepEqual(seen.filter(({ type }) => type === EventType.TOOL_CALL_START).map((event) => [(event as { toolCallId: string }).toolCallId, (event as { subagentRunId?: string }).subagentRunId]),
+        [["worker://worker-20#1/1/2", "ops://worker-20/1"], ["worker://worker-30#1/1/3", "ops://worker-30/1"]],
+        "a subagent's operations are calls in its own worker's namespace, attributed to it");
+    const order = attributed(seen);
+    assert.ok(order.indexOf("STEP_FINISHED:ops://worker-30/1") < order.indexOf("SUBAGENT_ERROR:ops://worker-30/1"), "a concluded subagent closes its step first");
+    assert.ok(order.indexOf("STEP_FINISHED:ops://worker-20/1") < order.indexOf("SUBAGENT_FINISHED:ops://worker-20/1"), "and so does a suspended one");
+    assert.ok(order.indexOf("SUBAGENT_FINISHED:ops://worker-20/1") < order.indexOf("RUN_FINISHED:"), "no subagent is still running when the Run finishes");
+    portal.stop();
+});
+
+test("{§agui-subagents}: a subagent's parent is presented before it, and a loop that concluded before the Run saw it ends as it starts", async () => {
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" }, concludedLoop)]],
+        [30, [openedBy(30, 110, { workerId: 20, address: "log:///1/1/3/WORK" })]],
+    ]));
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(3, 30, 110));
+    await nextTask();
+    assert.deepEqual(lifecycle(seen), [
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
+        { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "success" }, result: { status: 200 } },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+    ], "the grandchild's first row presents the child that opened it, already concluded with its exact result");
+    portal.stop();
+});
+
+test("{§agui-subagents}: a conclusion still on its way when its loop is judged ends the subagent after the rows published before it", async () => {
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" }, concludedLoop)]],
+    ]));
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(2, 20, 100));
+    m.fire(3, "loop/terminated", termination({ workerId: 20, loopId: 100 }));
+    await nextTask();
+    const order = attributed(seen).filter((label) => label.endsWith(":ops://worker-20/1"));
+    assert.equal(order[0], "SUBAGENT_STARTED:ops://worker-20/1");
+    assert.deepEqual(order.slice(-2), ["STEP_FINISHED:ops://worker-20/1", "SUBAGENT_FINISHED:ops://worker-20/1"],
+        "the daemon read the loop concluded, but the Run receives its row first and its conclusion after");
+    assert.ok(order.includes("TOOL_CALL_RESULT:ops://worker-20/1"));
+    portal.stop();
+});
+
+test("{§agui-subagents}: the bound Worker's events wait while a descendant's loop is judged, so the conversation keeps the order the daemon published", async () => {
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" })]],
+    ]));
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(2, 20, 100));
+    m.fire(3, "log/entry", { entry: wireRow({ id: 3, loop_id: 77, turn_id: 2, turn_seq: 2, sequence: 1 }) });
+    await nextTask();
+    assert.deepEqual(seen.filter(({ type }) => type === EventType.TOOL_CALL_START).map((event) => (event as { toolCallId: string }).toolCallId),
+        ["worker://worker-20#1/1/2", "1/2/1"], "the child's row, published first, is not overtaken by its parent's");
+    portal.stop();
+});
+
+test("{§agui-subagents} {§agui-snapshot}: a snapshot replays each subagent's conversation, then presents its run; a running one goes on live", async () => {
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" }, concludedLoop)]],
+        [30, [openedBy(30, 110, { workerId: 20, address: "log:///1/1/3/WORK" })]],
+    ]));
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const logs = new Map([[20, [delegated(2, 20, 100).entry]], [30, [delegated(3, 30, 110).entry]]]);
+    const subagents = await portal.subagentHistory(thread, async (workerId) => logs.get(workerId) ?? []);
+    const [snapshot, ...presented] = portal.replay(thread, [wireRow({ id: 1, sequence: 2, op: "WORK", attrs: { message: "message://worker-20/ab12" } })], undefined, subagents);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("the snapshot leads");
+    assert.deepEqual(snapshot.messages.map((message) => [message.id, message.role, (message as { subagentRunId?: string }).subagentRunId]), [
+        ["1/1/2", "assistant", undefined],
+        ["worker://worker-20#1/1/2", "assistant", "ops://worker-20/1"], ["worker://worker-20#1/1/2/result", "tool", "ops://worker-20/1"],
+        ["worker://worker-30#1/1/3", "assistant", "ops://worker-30/1"], ["worker://worker-30#1/1/3/result", "tool", "ops://worker-30/1"],
+    ], "one conversation in log order, each subagent's messages attributed to its run");
+    assert.deepEqual(presented, [
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
+        { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "success" }, result: { status: 200 } },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+    ], "every subagent the snapshot holds is presented, parents first: a concluded one ends as it starts");
+    m.fire(3, "log/entry", delegated(4, 30, 110));
+    await nextTask();
+    assert.deepEqual(lifecycle(seen), [], "the running subagent is not started twice");
+    assert.ok(attributed(seen).includes("TOOL_CALL_START:ops://worker-30/1"), "its next row goes on in its run");
+    portal.finishThread(thread, []);
+    assert.deepEqual(lifecycle(seen), [{ type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-30/1", outcome: { type: "suspended" } }],
+        "an idle synchronization finishes with the running subagent suspended and the concluded one untouched");
+    assert.deepEqual(attributed(seen).slice(-3), ["STEP_FINISHED:ops://worker-30/1", "SUBAGENT_FINISHED:ops://worker-30/1", "RUN_FINISHED:"]);
+    portal.stop();
+});
+
+test("{§agui-subagents}: an interrupt that finishes the Run suspends its running subagents after the gate's call", async () => {
+    const gate = proposal({ logEntryId: 42, loopId: 77 });
+    const m = delegation(new Map([
+        [10, [loop(10, 77)]],
+        [20, [openedBy(20, 100, { workerId: 10, address: "log:///1/1/2/WORK" })]],
+    ]), [gate]);
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    const view = capture(portal, seen);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+    m.fire(3, "log/entry", delegated(2, 20, 100));
+    await nextTask();
+    m.fire(3, "loop/proposal", gate);
+    await nextTask();
+    assert.ok(view.interrupt("prop:42"), "the gate is presented");
+    const order = attributed(seen);
+    const call = seen.findIndex((event) => event.type === EventType.TOOL_CALL_END && event.toolCallId === "prop:42");
+    assert.ok(call !== -1 && order.indexOf("SUBAGENT_FINISHED:ops://worker-20/1") > call, "the subagent's segment ends after the gate's call, before the interrupt finishes the Run");
+    assert.deepEqual(lifecycle(seen).at(-1), { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "suspended" } });
     portal.stop();
 });
 

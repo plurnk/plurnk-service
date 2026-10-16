@@ -3,7 +3,7 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
-import type { LogEntryWire } from "@plurnk/plurnk-contracts";
+import type { ApplicationLoopProjection, LogEntryWire } from "@plurnk/plurnk-contracts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
@@ -20,12 +20,17 @@ const streamed = (content: string): Response => new Response(new ReadableStream<
     },
 }), { headers: { "content-type": "text/event-stream" } });
 
-// One loop of `main` against a scripted model whose calls the WAITs serialize; each named worker's log after it, in order.
+// One loop of `main` against a scripted model whose calls the WAITs serialize; each named worker's log after it, in order,
+// and its loops.
 const run = async (
     t: TestContext,
     script: readonly string[],
     peers: readonly string[],
-    check: (logs: (name: string) => Promise<LogEntryWire[]>, announced: readonly LogEntryWire[]) => Promise<void>,
+    check: (
+        logs: (name: string) => Promise<LogEntryWire[]>,
+        announced: readonly LogEntryWire[],
+        worker: (name: string) => Promise<{ id: number; loops: readonly ApplicationLoopProjection[] }>,
+    ) => Promise<void>,
 ): Promise<void> => {
     serverProposals(t, "accept");
     let calls = 0;
@@ -46,11 +51,19 @@ const run = async (
         const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Begin." });
         const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
         assert.equal(status, 200, "main concludes");
-        await check(async (name) => {
+        const named = async (name: string): Promise<number> => {
             const worker = (await daemon.listWorkers(workspaceId)).find((candidate) => candidate.name === name);
             assert.ok(worker, `${name} exists`);
-            return (await daemon.readLog({ workspaceId, workerId: worker.id, limit: 1000 })).toSorted((left, right) => left.id - right.id);
-        }, announced);
+            return worker.id;
+        };
+        await check(
+            async (name) => (await daemon.readLog({ workspaceId, workerId: await named(name), limit: 1000 })).toSorted((left, right) => left.id - right.id),
+            announced,
+            async (name) => {
+                const id = await named(name);
+                return { id, loops: await daemon.listWorkerLoops({ workspaceId, workerId: id }) };
+            },
+        );
     });
 };
 
@@ -83,7 +96,7 @@ test("{§methods-invocation} {§worker-obligations} a delegation is answered by 
         "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
         "````SEND [200]\nforty-two\n````",
         "````SEND [200]\nThe helper said hello; the answer is forty-two.\n````",
-    ], ["peer"], async (logs) => {
+    ], ["peer"], async (logs, _announced, worker) => {
         const main = await logs("main");
         const work = main.find(({ op }) => op === "WORK")!;
         const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
@@ -99,5 +112,12 @@ test("{§methods-invocation} {§worker-obligations} a delegation is answered by 
         assert.equal(wait?.status_rx, 202, "the open message held its sender, so the WAIT parked until the reply");
         const peer = await logs("peer");
         assert.equal(peer.find(({ op, origin }) => op === "SEND" && origin === "_plurnk")?.source, "worker://main", "the message names its sender");
+        // {§methods-worker-loops} A loop names the operation that opened it; a person's prompt is no worker's operation.
+        const sender = await worker("main");
+        assert.deepEqual((await worker("helper")).loops.map(({ invocation }) => invocation), [{ workerId: sender.id, address: address(work) }],
+            "the child's loop was opened by the WORK");
+        assert.deepEqual((await worker("peer")).loops.map(({ invocation }) => invocation), [{ workerId: sender.id, address: address(send) }],
+            "the peer's loop was opened by the SEND");
+        assert.deepEqual(sender.loops.map(({ invocation }) => invocation), [null], "main's loop was opened by a person's prompt");
     });
 });

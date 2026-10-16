@@ -23,7 +23,11 @@ export default class EventRouter {
 
     runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
     submitted(messageId: string): void { this.#t.submitted(messageId); }
-    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] { return this.#t.replay(entries, currentUser); }
+    // {§agui-subagents} The bound Worker's rows and each observed subagent run's, as one conversation.
+    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage,
+        subagents: ReadonlyArray<{ translator: Translator; entries: Array<Record<string, unknown>> }> = []): AguiEvent[] {
+        return Translator.replayAll([{ translator: this.#t, entries }, ...subagents], currentUser);
+    }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
     get reasoningOpen(): boolean { return this.#t.reasoningOpen; }
     finish(): AguiEvent[] { return this.#t.finish(); }

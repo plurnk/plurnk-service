@@ -226,7 +226,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         terminatedAt: null,
         terminalResult: null,
         packetCount: 4,
-        waitUntil: 123_000,
+        waitUntil: 123_000, invocation: null,
     }, NOTHING_SPENT), {
         lifecycle: "parked",
         model,

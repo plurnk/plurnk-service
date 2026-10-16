@@ -1302,6 +1302,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             terminalResult: string | null;
             packetCount: number;
             waitUntil: number | null;
+            invocationWorkerId: number | null;
+            invocation: string | null;
         }>({ worker_id: workerId });
         return rows.map((row) => ({
             id: row.id,
@@ -1314,6 +1316,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
             waitUntil: row.waitUntil,
+            invocation: row.invocation === null || row.invocationWorkerId === null ? null : { workerId: row.invocationWorkerId, address: row.invocation },
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
     }

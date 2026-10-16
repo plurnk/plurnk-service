@@ -90,6 +90,11 @@ export interface ApplicationLoopProjection {
     readonly packetCount: number;
     /** Durable observation deadline, Unix milliseconds; null outside bounded parks. */
     readonly waitUntil: number | null;
+    /**
+     * {§worker-obligations} The operation that opened the loop, by sending its first message: its worker and its log
+     * address in that worker's log. Null when no worker's operation did, or none was recorded.
+     */
+    readonly invocation: { readonly workerId: number; readonly address: string } | null;
 }
 
 export interface ApplicationLoopPacket {

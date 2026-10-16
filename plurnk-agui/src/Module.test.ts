@@ -744,7 +744,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
         terminatedAt: null,
         terminalResult: null,
         packetCount: 3,
-        waitUntil: null,
+        waitUntil: null, invocation: null,
     }];
     seam.workspaceDerivationStatus = () => ({
         phase: "indexing",
@@ -794,7 +794,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
 test("{§application-worker-observation}: an older running task owns the snapshot over newer queued and completed loops", async () => {
     const { seam } = mockSeam();
     existingWorld(seam, "status");
-    const base = { workerId: 20, prompt: "task", promptSource: null, claimedAt: null, terminatedAt: null, terminalResult: null, packetCount: 4, waitUntil: null };
+    const base = { workerId: 20, prompt: "task", promptSource: null, claimedAt: null, terminatedAt: null, terminalResult: null, packetCount: 4, waitUntil: null, invocation: null };
     seam.listWorkerLoops = async () => [
         { ...base, id: 56, sequence: 2, status: 102 },
         { ...base, id: 58, sequence: 4, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
@@ -1734,7 +1734,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
             seam.listWorkers = async () => [workerRow(77, "lifetime"), workerRow(88, "child", "model", 77)];
             seam.listWorkerLoops = async ({ workerId: selected }) => [{
                 id: selected === gateWorkerId ? 1 : 9, workerId: selected, sequence: 1, status: 202,
-                prompt: "", promptSource: null, claimedAt: null, terminatedAt: null, terminalResult: null, packetCount: 1, waitUntil: null,
+                prompt: "", promptSource: null, claimedAt: null, terminatedAt: null, terminalResult: null, packetCount: 1, waitUntil: null, invocation: null,
             }];
             seam.pendingProposals = async () => pending;
             seam.resolveProposal = async () => { pending = []; resolved.resolve(); };
@@ -2049,7 +2049,7 @@ test("a descendant client interaction round-trips through its owning AG-UI threa
         terminatedAt: null,
         terminalResult: null,
         packetCount: 1,
-        waitUntil: null,
+        waitUntil: null, invocation: null,
     }] : [];
     seam.resolveClientInteraction = async (interactionId, resolution) => {
         resolutions.push({ interactionId, resolution });

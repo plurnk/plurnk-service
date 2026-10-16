@@ -144,6 +144,39 @@ test("{§agui-call-result} {§worker-obligations} a delegation and a message are
     ], "replay answers each call beside it");
 });
 
+test("{§agui-subagents} {§agui-snapshot} a subagent's conversation is its own: attributed to its run and identified in its worker's namespace, live and in one replay with its delegator's", () => {
+    const helper = new Translator({ threadId: "th-1", runId: "run-1", modelWorkerId: 20, subagent: { runId: "ops://helper/1", worker: "helper" } });
+    const own = [
+        wireRow({ id: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"), attrs: { worker: "worker://helper", message: "message://helper/ab12" } }),
+        wireRow({ id: 5, turn_id: 2, turn_seq: 2, sequence: 1, origin: "_plurnk", op: "READ", source: "worker://helper", attrs: { kind: "loop_termination" },
+            invocation: "log:///1/1/1/WORK", rx: { status: 200, resource: "ops://helper/1", content: "hello" } }),
+    ];
+    const delegated = [
+        wireRow({ id: 2, worker_id: 20, loop_id: 9, turn_id: 7, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://main", attrs: { kind: "message" }, tx: { body: { raw: "Say hello." } } }),
+        wireRow({ id: 3, worker_id: 20, loop_id: 9, turn_id: 8, turn_seq: 2, sequence: 1, op: "sh", tx: authored("````sh\nprintf 'hello'\n````"),
+            attrs: { stream: "sh:///ab3d5678" }, rx: { status: 200, outcome: "started" } }),
+        wireRow({ id: 4, worker_id: 20, loop_id: 9, turn_id: 8, turn_seq: 2, sequence: 2, origin: "_plurnk", op: "READ", scheme: "sh", pathname: "/ab3d5678",
+            fragment: "stdout", invocation: "log:///1/2/1/sh", rx: { status: 200, exitCode: 0, terminal: true, content: "hello" } }),
+    ];
+    const live = delegated.flatMap((row) => helper.logEntry({ entry: row }));
+    assert.ok(live.length > 0 && live.every((event) => (event as { subagentRunId?: string }).subagentRunId === "ops://helper/1"),
+        "every event of the delegation, its metadata included, belongs to its run");
+    assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_START).map((event) => [event.messageId, event.role, event.name]),
+        [["worker://helper#1/1/1", "user", "worker://main"]], "its task arrives from its delegator, identified in its own namespace");
+    assert.deepEqual(live.filter((event) => event.type === EventType.TOOL_CALL_RESULT).map((event) => [event.toolCallId, event.messageId]),
+        [["worker://helper#1/2/1", "worker://helper#1/2/2"]], "its command is answered by its own observation, in its own namespace");
+    assert.deepEqual(helper.finish().map((event) => [event.type, (event as { subagentRunId?: string }).subagentRunId]), [[EventType.STEP_FINISHED, "ops://helper/1"]],
+        "its step closes in its own lane");
+
+    const [snapshot] = Translator.replayAll([{ translator: t(), entries: own }, { translator: helper, entries: delegated }]);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.map((message) => [message.id, message.role, (message as { subagentRunId?: string }).subagentRunId]), [
+        ["1/1/1", "assistant", undefined], ["1/2/1", "tool", undefined],
+        ["worker://helper#1/1/1", "user", "ops://helper/1"],
+        ["worker://helper#1/2/1", "assistant", "ops://helper/1"], ["worker://helper#1/2/2", "tool", "ops://helper/1"],
+    ], "two logs are one conversation in the order the workspace committed them, each result beside its call");
+});
+
 // {§agui-projection} The arguments are the operation as authored: every operand exactly as parsed, without the verb
 // that is the tool's name or the position it was written at.
 test("{§agui-projection} a tool call's arguments carry every authored operand: host, scope, pattern, aside and both COPY operands", () => {

@@ -120,6 +120,8 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
                 },
                 packetCount: 1,
                 waitUntil: null,
+                // {§worker-obligations} A peer's task is no worker's operation.
+                invocation: null,
             });
             assert.equal(typeof own?.terminatedAt, "string");
             assert.equal(typeof own?.claimedAt, "string");
