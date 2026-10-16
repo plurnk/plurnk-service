@@ -10,8 +10,8 @@
 //   resume entries resolve the durable gate and continue the exact loop.
 //   Reads ride STATE_SNAPSHOT on RUN_STARTED; there are no side-channel action
 //   or proposal-resolution endpoints.
-// An AG-UI threadId names one worker inside the explicitly forwarded
-// workspace ({§agui-thread-binding}); no prefix or inferred workspace is minted.
+// A thread resolves to a model worker through {§agui-thread-binding}; core retains
+// opaque external references, while this adapter interprets qualified addresses.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
@@ -27,6 +27,7 @@ import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } f
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import OAuthServer from "./OAuthServer.ts";
 import RunHandler, { type RunPort, type WorkerBinding } from "./RunHandler.ts";
+import ThreadAddress from "./ThreadAddress.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
@@ -51,6 +52,8 @@ export type AguiPort = Pick<
     | "listWorkers"
     | "listWorkspaces"
     | "readWorker"
+    | "readWorkerReference"
+    | "ensureWorkerReference"
     | "readWorkerModel"
     | "registerHttpRoute"
     | "workspaceDerivationStatus"
@@ -313,9 +316,20 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
     }
 
-    // {§agui-thread-binding} Resolve this Run's explicit workspace selection by exact name.
-    async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+    // {§agui-thread-binding} Opaque references, qualified IDs, and explicit workspace selection.
+    async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean; readonly worker?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null) return { env: await this.#seam.attachWorkspace(qualified), reattached: true };
         const workspace = forwarded?.workspace;
+        if (workspace === undefined) {
+            const reference = { namespace: "agui", reference: threadId };
+            const binding = options.worker === true
+                ? await this.#seam.ensureWorkerReference(reference)
+                : await this.#seam.readWorkerReference(reference);
+            if (binding === null) throw new HttpProblemError(httpProblem("thread-not-found", 404,
+                "The thread has no conversation.", { threadId, stage: "request-validation", retryable: false }));
+            return { env: await this.#seam.attachWorkspace(binding), reattached: true };
+        }
         if (typeof workspace !== "string" || workspace.length === 0) {
             throw new HttpProblemError(httpProblem(
                 "workspace-required",
@@ -402,15 +416,22 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // binding requires it. Cached per workspace identity and threadId: worker names are immutable, so a
     // binding never rots. Durable capability changes use workspace.capabilities.set; approval ownership is
     // durable in Core.
-    async #boundWorker(threadId: string, env: ClientEnvelope, binding: "create" | "required"): Promise<number> {
-        const key = JSON.stringify([env.workspaceId, threadId]);
+    async #boundWorker(threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>): Promise<number> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified === null && forwarded?.workspace === undefined) {
+            const reference = await this.#seam.readWorkerReference({ namespace: "agui", reference: threadId });
+            if (reference === null || reference.workspaceId !== env.workspaceId) throw new Error("Thread reference is absent from its resolved workspace.");
+            return reference.workerId;
+        }
+        const workerName = qualified?.workerName ?? threadId;
+        const key = JSON.stringify([env.workspaceId, workerName]);
         const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return await cached;
         if (binding === "required") {
-            const id = await this.#threadWorker(threadId, env.workspaceId);
+            const id = await this.#modelWorker(workerName, env.workspaceId);
             if (id === undefined) {
                 throw new HttpProblemError(httpProblem("worker-not-found", 404,
-                    `No model worker named ${JSON.stringify(threadId)} exists in workspace ${JSON.stringify(env.workspaceName)}.`, {
+                    `No model worker named ${JSON.stringify(workerName)} exists in workspace ${JSON.stringify(env.workspaceName)}.`, {
                         stage: "request-validation", workspace: env.workspaceName, worker: threadId,
                         recovery: "Name an existing model worker, or create one by sending it a message.", retryable: false,
                     }));
@@ -418,8 +439,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#threadWorkers.set(key, Promise.resolve(id));
             return id;
         }
-        const pending = (async () => await this.#threadWorker(threadId, env.workspaceId)
-            ?? (await this.#seam.createWorker({ workspaceId: env.workspaceId, name: threadId })).workerId)();
+        const pending = (async () => await this.#modelWorker(workerName, env.workspaceId)
+            ?? (await this.#seam.createWorker({ workspaceId: env.workspaceId, name: workerName })).workerId)();
         this.#threadWorkers.set(key, pending);
         try { return await pending; }
         catch (cause) {
@@ -428,21 +449,36 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
     }
 
-    // {§agui-thread-binding} The model worker the threadId names, when it exists; reading it creates nothing. It is
+    // {§agui-thread-binding} The model worker the thread resolves to, when it exists; reading creates nothing. It is
     // also the worker a person's client operation acts for ({§actor-boundary-client-operations}).
-    async #threadWorker(threadId: string, workspaceId: number): Promise<number | undefined> {
-        const worker = await this.#seam.readWorker({ workspaceId, identity: { name: threadId } });
+    async #threadWorker(threadId: string, workspaceId: number, forwarded?: Record<string, unknown>): Promise<number | undefined> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null && qualified.workspaceId !== workspaceId) return undefined;
+        if (qualified === null && forwarded?.workspace === undefined) {
+            const reference = await this.#seam.readWorkerReference({ namespace: "agui", reference: threadId });
+            return reference?.workspaceId === workspaceId ? reference.workerId : undefined;
+        }
+        return this.#modelWorker(qualified?.workerName ?? threadId, workspaceId);
+    }
+
+    async #modelWorker(name: string, workspaceId: number): Promise<number | undefined> {
+        const worker = await this.#seam.readWorker({ workspaceId, identity: { name } });
         return worker?.origin === "model" ? worker.id : undefined;
     }
 
-    // {§agui-run-input} The conversation a thread names, found without binding or creating anything: the workspace the
-    // Run selects by name and the model worker the thread names in it, or null when either does not exist.
+    // {§agui-run-input} Resolve retained identity without creating a conversation or claiming its owner.
     async #conversation(threadId: string, forwarded?: Record<string, unknown>): Promise<{ workspaceId: number; workerId: number } | null> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null) {
+            const workerId = await this.#threadWorker(threadId, qualified.workspaceId, forwarded);
+            return workerId === undefined ? null : { workspaceId: qualified.workspaceId, workerId };
+        }
         const workspaceName = forwarded?.workspace;
+        if (workspaceName === undefined) return this.#seam.readWorkerReference({ namespace: "agui", reference: threadId });
         if (typeof workspaceName !== "string") return null;
         const workspace = (await this.#seam.listWorkspaces()).find(({ name }) => name === workspaceName);
         if (workspace === undefined) return null;
-        const workerId = await this.#threadWorker(threadId, workspace.id);
+        const workerId = await this.#threadWorker(threadId, workspace.id, forwarded);
         return workerId === undefined ? null : { workspaceId: workspace.id, workerId };
     }
 

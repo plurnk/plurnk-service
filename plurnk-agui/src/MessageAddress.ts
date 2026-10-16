@@ -1,7 +1,7 @@
 import type { RunAgentInput, UserMessage } from "./types.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
-const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]+)\/messages\/([^/]+)$/u;
+const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]*)\/messages\/([^/]+)$/u;
 
 /** {§agui-run-source}: message identity belongs to the thread, not its transport run. */
 export default class MessageAddress {

@@ -706,7 +706,7 @@ export default class Portal {
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
     // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
     // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -717,6 +717,7 @@ export default class Portal {
         const continuation = restored?.state;
         const router = new EventRouter({
             threadId: args.threadId,
+            ...(args.replyThreads === undefined ? {} : { replyThreads: args.replyThreads }),
             runId: args.inputRunId ?? String(args.workerId),
             modelWorkerId: args.modelWorkerId ?? null,
             workspaceId: args.workspaceId,

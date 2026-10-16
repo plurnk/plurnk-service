@@ -351,6 +351,9 @@ export class SqlRiteSync {
 	worker_owner_for_loop: SqlRiteSyncPreparedStatements;
 	worker_owner_for_proposal: SqlRiteSyncPreparedStatements;
 	worker_owner_claim: SqlRiteSyncPreparedStatements;
+	worker_reference_allocate: SqlRiteSyncPreparedStatements;
+	worker_reference_read: SqlRiteSyncPreparedStatements;
+	worker_reference_list: SqlRiteSyncPreparedStatements;
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
 	workspace_module_state_put: SqlRiteSyncPreparedStatements;
 	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
@@ -657,6 +660,9 @@ export default class SqlRite {
 	worker_owner_for_loop: SqlRitePreparedStatements;
 	worker_owner_for_proposal: SqlRitePreparedStatements;
 	worker_owner_claim: SqlRitePreparedStatements;
+	worker_reference_allocate: SqlRitePreparedStatements;
+	worker_reference_read: SqlRitePreparedStatements;
+	worker_reference_list: SqlRitePreparedStatements;
 	workspace_module_state_get: SqlRitePreparedStatements;
 	workspace_module_state_put: SqlRitePreparedStatements;
 	workspace_module_state_delete: SqlRitePreparedStatements;

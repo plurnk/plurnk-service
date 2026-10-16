@@ -35,7 +35,7 @@ const V1_27_0: Release = Object.freeze({ version: 15, release: "1.27.0", shape: 
 const V1_24_0: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
 const V1_21_1: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
 
-const released = async (release: Release): Promise<string> => {
+const released = async (release: Pick<Release, "version">): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
     const dir = join(root, "migrations");
     await mkdir(dir);
@@ -623,6 +623,30 @@ test("{§db-migrations} {§worker-obligations}: a version-30 database keeps its 
         assert.deepEqual({ ...(await db.test_worker_obligations.get({ worker_id: 1 })) }, { worker_id: 1, streams: 0, workers: 0, messages: 0 },
             "a message with no recorded opener holds no worker");
     } finally { await db.close(); }
+});
+
+test("{§db-migrations} {§worker-external-reference}: upgrade preserves existing workers without inventing external identities", async (t) => {
+    const path = await released({ version: 31 });
+    t.after(() => rm(join(path, ".."), { recursive: true, force: true }));
+    const before = new DatabaseSync(path);
+    before.exec(`
+        PRAGMA foreign_keys = ON;
+        INSERT INTO workspaces (id, name) VALUES (1, 'retained');
+        INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+        INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'retained', 'model');
+    `);
+    const workspace = { ...before.prepare("SELECT * FROM workspaces WHERE id = 1").get() };
+    const worker = { ...before.prepare("SELECT * FROM workers WHERE id = 1").get() };
+    before.close();
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, workspace);
+        assert.deepEqual({ ...after.prepare("SELECT * FROM workers WHERE id = 1").get() }, worker);
+        assert.deepEqual(after.prepare("SELECT * FROM worker_references").all(), []);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {

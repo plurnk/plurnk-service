@@ -360,6 +360,9 @@ export class SqlRiteSync {
 	worker_owner_for_loop: SqlRiteSyncPreparedStatements;
 	worker_owner_for_proposal: SqlRiteSyncPreparedStatements;
 	worker_owner_claim: SqlRiteSyncPreparedStatements;
+	worker_reference_allocate: SqlRiteSyncPreparedStatements;
+	worker_reference_read: SqlRiteSyncPreparedStatements;
+	worker_reference_list: SqlRiteSyncPreparedStatements;
 	workspace_module_state_get: SqlRiteSyncPreparedStatements;
 	workspace_module_state_put: SqlRiteSyncPreparedStatements;
 	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
@@ -647,6 +650,7 @@ export class SqlRiteSync {
 	test_turns_update_identity: SqlRiteSyncPreparedStatements;
 	test_topology_settle_subscription: SqlRiteSyncPreparedStatements;
 	test_topology_subscription_closed: SqlRiteSyncPreparedStatements;
+	test_worker_reference_delete_worker: SqlRiteSyncPreparedStatements;
 	test_workers_table_sql: SqlRiteSyncPreparedStatements;
 	test_workers_insert: SqlRiteSyncPreparedStatements;
 	test_workers_insert_with_parent: SqlRiteSyncPreparedStatements;
@@ -981,6 +985,9 @@ export default class SqlRite {
 	worker_owner_for_loop: SqlRitePreparedStatements;
 	worker_owner_for_proposal: SqlRitePreparedStatements;
 	worker_owner_claim: SqlRitePreparedStatements;
+	worker_reference_allocate: SqlRitePreparedStatements;
+	worker_reference_read: SqlRitePreparedStatements;
+	worker_reference_list: SqlRitePreparedStatements;
 	workspace_module_state_get: SqlRitePreparedStatements;
 	workspace_module_state_put: SqlRitePreparedStatements;
 	workspace_module_state_delete: SqlRitePreparedStatements;
@@ -1268,6 +1275,7 @@ export default class SqlRite {
 	test_turns_update_identity: SqlRitePreparedStatements;
 	test_topology_settle_subscription: SqlRitePreparedStatements;
 	test_topology_subscription_closed: SqlRitePreparedStatements;
+	test_worker_reference_delete_worker: SqlRitePreparedStatements;
 	test_workers_table_sql: SqlRitePreparedStatements;
 	test_workers_insert: SqlRitePreparedStatements;
 	test_workers_insert_with_parent: SqlRitePreparedStatements;

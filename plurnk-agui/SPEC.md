@@ -26,10 +26,14 @@ does not recompute them.
   request reaches it before its port is installed; from `stop` it answers `503
   service-stopping`.
 - §agui-thread-binding **An AG-UI thread represents a worker; workspace selection is a Plurnk extension.**
-  AG-UI itself defines no workspace. The adapter currently requires a non-empty
-  `forwardedProps.plurnk.workspace` on workspace-bound Runs and rejects its absence with
-  `400 workspace-required`; ordinary clients without this extension cannot yet start a conversation.
-  This field selects a workspace by exact name: attach if it exists, create with that name
+  AG-UI itself defines no workspace. Without a workspace selection, an opaque thread string
+  resolves through core's `agui` worker reference ({§worker-external-reference}). Its first
+  worker-creating Run allocates one ordinary folderless workspace and model worker atomically;
+  subsequent Runs reuse that durable association, across reconnects, workspace rename, and daemon
+  restart. Inspection, resume and workspace actions alone never allocate an opaque conversation;
+  an unknown thread is `404 thread-not-found`. Neither names nor approval owners are lookup keys.
+  Qualified thread addresses resolve directly under {§agui-thread-address}.
+  An explicit `forwardedProps.plurnk.workspace` selects a workspace by exact name: attach if it exists, create with that name
   otherwise when the Run permits creation. An earlier binding serves only while the workspace
   still carries that name. After a rename, the old name resolves afresh and the new one reaches
   the renamed workspace. Under this binding, `threadId` names a worker by its immutable name and is never
@@ -58,11 +62,23 @@ does not recompute them.
   minted after the name and answered there.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
+  A reply to any retained thread reference of the bound worker, its qualified address, or its
+  explicit workspace-selected name is speech in that worker's conversation. This changes neither
+  the recorded message address nor its approval owner. Arrivals from another thread spelling keep
+  their log-coordinate identities and source labels ({§agui-snapshot}).
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
   `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, interrupt outcomes, and `RunAgentInput.resume`
   follow the official `@ag-ui/core` schemas. PLURNK does not maintain a parallel client
   lifecycle dialect. PLURNK owns the internal worker/loop/turn topology and projects it
   through standard events plus namespaced `plurnk.*` extensions.
+
+§agui-thread-address A qualified thread is `<workspace ID>#<worker name>`: a canonical positive,
+safe decimal integer and a native model-worker name. A string beginning with decimal digits then
+`#` reserves this grammar; leading zeroes, an out-of-range ID or an invalid worker name receive
+`400 thread-address-invalid`, not opaque-thread allocation. Other strings remain opaque, including
+Unicode and `#` in a nonnumeric prefix. Qualified IDs always select the immutable workspace ID,
+independently of forwarded workspace labels or target existence. An absent workspace is 404;
+an absent worker may be created only by a worker-creating Run ({§agui-action-binding}).
 
 ## §agui-worker-owner Approval ownership
 
@@ -336,7 +352,7 @@ every other daemon surface.
 
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
-  to its existing workspace by name→id and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
+  through its durable reference or explicit address and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
   carries the bound worker's messages ({§agui-snapshot}) and then the Run's new message ({§agui-run-input})
   under a Run-owned identity. Client-claimed earlier history is not imported. A client already
   carrying any durable assistant identity receives no repeated snapshot. Pending proposals and client interactions remain durable while
@@ -346,9 +362,8 @@ every other daemon surface.
 - §agui-sync **Synchronization is an inference-free AG-UI Run.**
   A Run that carries no new message, action or interrupt resume synchronizes ({§agui-run-input}); its messages
   are the client's copy. A passive observation (`forwardedProps.plurnk.control`
-  absent or false) binds an existing workspace and the existing worker the `threadId` names, creates
-  neither and claims nothing: a missing workspace is 404 `workspace-not-found`, and a name that holds
-  no model worker is 404 `worker-not-found`. An owner's control observation is the owner's session
+  absent or false) resolves an existing worker under {§agui-thread-binding}, creates
+  nothing and claims nothing. An owner's control observation is the owner's session
   attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}). It
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
   `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). What reaches the Run while its log is
@@ -395,6 +410,12 @@ from the installed `@ag-ui/core` schemas ({§agui-run-authority}).
 Deterministic daemon fixtures use the isolated mock-tier bootstrap
 ({§operator-config-real-model-profile}); operator configuration must not start
 external resources during the integration gate.
+
+An independent stock `HttpAgent` witness supplies no Plurnk forwarded properties or metadata
+handling. It exercises first contact, continuation, replay, accepted-message retry, independent
+thread isolation, concurrent first contact, restart and rename continuity, and standard tool-call
+interrupt/resume. Unknown-thread inspection creates nothing. Qualified-address witnesses supply
+only the standard `threadId` field; test-host inspection is not client protocol participation.
 
 The one-shot CLI and interactive terminal consume one AG-UI+
 semantic contract. Each surface verifies the contracts-owned conformance corpus
@@ -573,8 +594,9 @@ successfully transported management Run; it does not turn the Run into
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a daemon, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
 
 §agui-action-binding **What a Run binds.** A message Run and an action addressed to the thread's
-worker bind the worker the `threadId` names ({§agui-thread-binding}); a workspace-level action
-binds none. Only an act addressed to the worker creates it, and only a Run that may create its
+worker resolve the thread's worker ({§agui-thread-binding}); a workspace-level action
+binds none. Opaque threads allocate only for worker-creating Runs. Qualified addresses always
+require their workspace to exist. For explicit workspace selection, only a Run that may create its
 worker, or binds none, may create the workspace:
 
 | The thread's worker | The workspace | Runs and actions |
@@ -1034,6 +1056,8 @@ reconstruct one from `RUN_ERROR`.
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
+| `thread-not-found` | 404 | The thread has no conversation. |
+| `thread-address-invalid` | 400 | The qualified thread address is not `<workspace ID>#<worker name>`. |
 | `interrupt-duplicate` | 400 | The resume contains the same interrupt more than once. Recovery: Include each pending interrupt exactly once. |
 | `interrupt-invalid` | 400 | The resume contains an invalid client interrupt. Recovery: Resume with the interrupt IDs and response shapes supplied by the pending tool calls. |
 | `interrupt-not-pending` | 409 | The resume addresses an interrupt that is not pending, or an unknown interrupt presentation. Recovery: Refresh pending interrupts before resuming. |

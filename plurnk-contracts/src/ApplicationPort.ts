@@ -143,6 +143,12 @@ export interface ApplicationPort extends HttpHost {
     attachWorkspace(args: {
         readonly workspaceId: number;
     }): Promise<ClientEnvelope>;
+    /** {§worker-external-reference} Opaque, adapter-namespaced identity; reading never allocates. */
+    readWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number } | null>;
+    /** {§worker-external-reference} Atomically allocate a folderless workspace and model worker when absent. */
+    ensureWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number }>;
+    /** {§worker-external-reference} Inspect the adapter's retained references to this worker. */
+    listWorkerReferences(args: { readonly workspaceId: number; readonly workerId: number; readonly namespace: string }): Promise<string[]>;
     listWorkspaces(): Promise<Array<{
         readonly id: number;
         readonly name: string;

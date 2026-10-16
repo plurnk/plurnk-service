@@ -175,6 +175,9 @@ const mockSeam = (operatorSecret: string | null = null) => {
             };
         },
         createWorkspace: async ({ name = "agui-t" }) => { workspaces.add(name); return workspace(name); },
+        readWorkerReference: async () => null,
+        listWorkerReferences: async () => [],
+        ensureWorkerReference: async () => { throw new Error("unexpected external allocation in this fixture"); },
         attachWorkspace: async () => {
             const [name] = workspaces;
             if (name === undefined) throw new Error("unexpected attach");
@@ -565,10 +568,13 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
     let runCalls = 0;
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null });
-    directory(seam, [workerRow(20, "model-1")]);
+    const workers = [workerRow(20, "model-1")];
+    directory(seam, workers);
     seam.createWorker = async (a) => {
         if (a.name === "chat-b") await releaseSecondWorker.promise;
-        return { workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" };
+        const workerId = a.name === "chat-a" ? 77 : 78;
+        workers.push(workerRow(workerId, a.name!));
+        return { workerId, workerName: a.name! };
     };
     // runLoop does NOT finish here: both streams stay open so the injected stream event
     // races concurrent management-action AG-UI Runs against a resumed exec.
@@ -2411,7 +2417,7 @@ test("{§agui-thread-binding} a cached binding never outlives its workspace's na
     seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
     seam.listWorkspaces = async () => [workspaceRow(3, name)];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null });
-    seam.readWorker = async ({ identity }) => identity.name === "exact-worker" ? workerRow(88, "exact-worker", "model") : null;
+    directory(seam, [workerRow(88, "exact-worker")]);
     const mod = await host(seam);
     const observe = async (workspace: string): Promise<Response> => await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
         method: "POST", headers: { "content-type": "application/json" },
@@ -2774,8 +2780,9 @@ test("{§agui-thread-binding} explicit workspace selection resolves the thread's
     seam.listWorkspaces = async () => [workspaceRow(7, "workspace-a")];
     seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", projectLabel: "/w" }; };
     seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, projectLabel: a.projectRoot ?? null }; };
-    directory(seam, [workerRow(200, "chat-0")]);
-    seam.createWorker = async (a) => { minted.push(a); return { workerId: 300, workerName: a.name ?? "x" }; };
+    const workers = [workerRow(200, "chat-0")];
+    directory(seam, workers);
+    seam.createWorker = async (a) => { minted.push(a); workers.push(workerRow(300, a.name!)); return { workerId: 300, workerName: a.name! }; };
     const drivenRuns: number[] = [];
     seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
@@ -2836,24 +2843,40 @@ test("{§agui-thread-binding}: the same thread name remains isolated across work
     }
 });
 
-test("{§agui-thread-binding} current workspace-qualified binding reports its missing selection as a Problem", async () => {
+test("{§agui-thread-binding} inspection of an unknown opaque thread reports absence without allocation", async () => {
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, projectLabel: null }; };
     const mod = await host(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
-        assert.equal(res.status, 400, "the current adapter rejects the missing workspace selection");
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [] })) });
+        assert.equal(res.status, 404);
         assert.equal(res.headers.get("content-type"), "application/problem+json");
         const body = await res.json() as { type: string; status: number; detail: string; stage: string; recovery: string; retryable: boolean };
-        assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-required");
-        assert.equal(body.status, 400);
-        assert.match(body.detail, /forwardedProps\.plurnk\.workspace must name a workspace/);
+        assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/thread-not-found");
+        assert.equal(body.status, 404);
+        assert.equal(body.detail, "The thread has no conversation.");
         assert.equal(body.stage, "request-validation");
-        assert.equal(body.recovery, "Provide a non-empty workspace name."); // {§problems-agui}
         assert.equal(body.retryable, false);
         assert.equal(created, 0, "NO workspace was forged from the threadId");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-replay} a failed history read reports its cause and does not submit the next message", async () => {
+    const { seam, loopRuns } = mockSeam();
+    existingWorkspace(seam, "history-failure");
+    const problem = Problems.create("daemon:worker", "fixture-unavailable", 503, "History unavailable.", { retryable: true });
+    seam.readLog = async () => { throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } }); };
+    const mod = await host(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "main", messages: [{ id: "new", role: "user", content: "Continue." }],
+            forwardedProps: { plurnk: { workspace: "history-failure" } } });
+        const last = events.at(-1) as { type: string; code?: string; message?: string };
+        assert.equal(last.type, "RUN_ERROR");
+        assert.equal(last.code, problem.type);
+        assert.equal(last.message, problem.detail);
+        assert.deepEqual(loopRuns, [], "unavailable conversation history is not silently treated as empty");
     } finally { await mod.close(); }
 });
 
@@ -3425,8 +3448,9 @@ test("a thread naming no worker MINTS one named for it, and the loop drives ther
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null });
-    directory(seam, [workerRow(20, "model-1")]);
-    seam.createWorker = async (a) => { created.push(a); return { workerId: 77, workerName: a.name ?? "x" }; };
+    const workers = [workerRow(20, "model-1")];
+    directory(seam, workers);
+    seam.createWorker = async (a) => { created.push(a); workers.push(workerRow(77, a.name!)); return { workerId: 77, workerName: a.name! }; };
     seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
     try {
@@ -3489,8 +3513,12 @@ test("{§agui-thread-binding}: concurrent threads create one workspace, and each
         return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null };
     };
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null });
-    directory(seam, []);
-    seam.createWorker = async ({ name }) => ({ workerId: ++workerId, workerName: name! });
+    const workers: WorkerRow[] = [];
+    directory(seam, workers);
+    seam.createWorker = async ({ name }) => {
+        workers.push(workerRow(++workerId, name!));
+        return { workerId, workerName: name! };
+    };
     seam.runLoop = async ({ workspaceId, workerId }) => {
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -3553,10 +3581,12 @@ for (const stage of ["envelope", "worker"] as const) {
             if (fail && stage === "envelope") throw failure;
             return { workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null };
         };
-        directory(seam, []);
+        const workers: WorkerRow[] = [];
+        directory(seam, workers);
         seam.createWorker = async () => {
             created += 1;
             if (fail && stage === "worker") throw failure;
+            workers.push(workerRow(42, "named"));
             return { workerId: 42, workerName: "named" };
         };
         const mod = await host(seam);

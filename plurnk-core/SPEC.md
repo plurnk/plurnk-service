@@ -5371,6 +5371,21 @@ the authoritative scope and is `null` only for a global event. Core does not
 mutate each payload to repeat it. A transport module stamps that scope onto any
 outward envelope that requires it and owns workspace fan-out.
 
+### §worker-external-reference External worker references
+
+An adapter's `(namespace, reference)` identifies one durable model worker. Both strings are opaque
+to core; protocol syntax belongs to the adapter. `readWorkerReference` returns its workspace and
+worker IDs or null, without creating anything. `ensureWorkerReference` returns the same identity,
+atomically creating an ordinary folderless workspace and root model worker if absent. Names follow
+{§workspace-auto-name} and {§worker-auto-name}; no owner is claimed and no work starts.
+
+The association is immutable while its worker exists. Concurrent allocation creates exactly one
+workspace, worker and association; failure leaves none. Renaming a workspace, changing approval
+ownership, reconnecting or restarting does not change the association. Worker deletion removes it
+through its foreign key. Namespaces isolate adapter identities, not authorization: the daemon
+remains one trust domain. `listWorkerReferences` inspects one namespace's references to a worker,
+bounded by its workspace. New workspace creation emits the ordinary `workspace/created` event.
+
 ### §connection-lifecycle Client operations
 
 A worker is a model's identity. A person's client operations (an execution, typed

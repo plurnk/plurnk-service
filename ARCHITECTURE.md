@@ -435,7 +435,7 @@ the submitter the owner of the shared runtime.
 | Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
-| Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |
+| External conversation identity | The adapter interprets its protocol identifiers; core retains opaque worker references with referential integrity ({§worker-external-reference}). Connections and presentation remain client-interface state. |
 | A choice of behaviour                   | The owning package's `.env.defaults`, read through the system environment; see Configuration authority. |
 
 ## Data preservation

@@ -34,6 +34,7 @@ import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import Envelope, { projectWorkerRow, type WorkspaceEnvelope } from "./envelope.ts";
+import WorkerReferences from "./WorkerReferences.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
@@ -1410,6 +1411,25 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async attachWorkspace(args: { workspaceId: number }): Promise<ClientEnvelope> {
         const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
         return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
+    }
+
+    // {§worker-external-reference} The adapter interprets the key; core retains its target by identity.
+    async readWorkerReference(args: Parameters<ApplicationPort["readWorkerReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["readWorkerReference"]>>> {
+        return WorkerReferences.read(this.#db, args);
+    }
+
+    async ensureWorkerReference(args: Parameters<ApplicationPort["ensureWorkerReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["ensureWorkerReference"]>>> {
+        const { binding, created } = await WorkerReferences.ensure(this.#db, args);
+        if (created) {
+            const env = await this.attachWorkspace(binding);
+            this.#broadcast("all", "workspace/created", { id: env.workspaceId, name: env.workspaceName, projectRoot: env.projectRoot, projectLabel: env.projectLabel });
+        }
+        return binding;
+    }
+
+    async listWorkerReferences({ workspaceId, workerId, namespace }: Parameters<ApplicationPort["listWorkerReferences"]>[0]): Promise<string[]> {
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        return (await this.#db.worker_reference_list.all<{ reference: string }>({ namespace, worker_id: workerId })).map(({ reference }) => reference);
     }
 
     // {§rollback} {§methods-workspace-rollback} — the compensations are one client operation of the acting person

@@ -7,6 +7,12 @@ interface and translates daemon lifecycle events into AG-UI events.
 
 `POST /agui` accepts `RunAgentInput` and returns an AG-UI event stream.
 
+A stock AG-UI client needs only the endpoint and, when enabled, authentication.
+Its first message creates a folderless workspace and worker; the same `threadId`
+reopens that conversation after reconnect or daemon restart. An existing worker
+is directly addressable as `<workspace ID>#<worker name>`, stable across workspace
+renames. Inspection creates nothing ({§agui-thread-binding}, {§agui-thread-address}).
+
 PLURNK uses standard AG-UI events for Runs, messages, steps, tool calls, state,
 and approval requests. PLURNK's facts about those parts ride their standard
 `metadata` under `plurnk`; facts with no standard subject use namespaced

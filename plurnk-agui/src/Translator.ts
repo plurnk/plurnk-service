@@ -49,6 +49,7 @@ export interface TranslatorContinuation {
 
 export default class Translator {
     #threadId: string;
+    readonly #replyThreads: readonly string[];
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
     #currentTurn: number | null = null;
     #stepOpen = false;
@@ -67,6 +68,7 @@ export default class Translator {
 
     constructor(args: {
         threadId: string;
+        replyThreads?: readonly string[];
         runId: string;
         modelWorkerId?: number | null;
         workspaceId?: number | null;
@@ -77,6 +79,7 @@ export default class Translator {
     }) {
         this.#subagent = args.subagent ?? null;
         this.#threadId = args.threadId;
+        this.#replyThreads = args.replyThreads ?? [args.threadId];
         this.#runId = args.runId;
         this.#currentTurn = args.continuation?.currentTurn ?? null;
         this.#modelWorkerId = args.continuation?.modelWorkerId ?? args.modelWorkerId ?? null;
@@ -170,7 +173,7 @@ export default class Translator {
     // {§agui-subagents} The translator of a subagent run this Run presents: its own namespace, this Run's client.
     subagentTranslator(args: { readonly modelWorkerId: number; readonly subagent: { readonly runId: string; readonly worker: string } }): Translator {
         return new Translator({ threadId: this.#threadId, runId: this.#runId, modelWorkerId: args.modelWorkerId, workspaceId: this.#workspaceId,
-            subagent: args.subagent, held: this.#held });
+            subagent: args.subagent, held: this.#held, replyThreads: this.#replyThreads });
     }
 
     // {§agui-proposal-resolve} A gate's call: the operation awaiting its decision, built as its row builds it and so
@@ -211,7 +214,7 @@ export default class Translator {
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
             return events;
         }
-        const response = Translator.isResponse(e, this.#threadId);
+        const response = Translator.isResponse(e, this.#replyThreads);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) {
@@ -433,7 +436,7 @@ export default class Translator {
             messages.push(attributed({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata }));
             return;
         }
-        const response = Translator.isResponse(e, this.#threadId);
+        const response = Translator.isResponse(e, this.#replyThreads);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e), metadata }));
@@ -567,7 +570,7 @@ export default class Translator {
     }
 
     // {§loop-response-messages}: share admission with reattach orientation.
-    static isResponse(entry: Record<string, unknown>, threadId: string): boolean {
+    static isResponse(entry: Record<string, unknown>, replyThreads: readonly string[]): boolean {
         if (entry.op !== "SEND" && entry.op !== "KILL") return false;
         const deliveredReply = Translator.#attrKind(entry.attrs) === "reply";
         if ((!deliveredReply && entry.source != null) || entry.inherited_history === 1) return false;
@@ -579,7 +582,7 @@ export default class Translator {
         if (rx === null || typeof rx !== "object") return false;
         const answers = (rx as { answers?: unknown }).answers;
         if (!Array.isArray(answers)) return false;
-        return answers.some((address) => MessageAddress.messageId(address, threadId) !== null);
+        return answers.some((address) => replyThreads.some((threadId) => MessageAddress.messageId(address, threadId) !== null));
     }
 
     // The model-facing textual statement body out of the tx. The real

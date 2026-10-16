@@ -20,7 +20,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 export type WorkerBinding = "create" | "required" | "attach" | "none";
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "messageAdmission" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
+export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "readWorker" | "listWorkerReferences" | "messageAdmission" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -28,9 +28,9 @@ export default class RunHandler {
     readonly #portal: () => Portal;
     readonly #requiresWorkspace: (action: ActionRequest) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
-    readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+    readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
-    readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
+    readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
@@ -41,9 +41,9 @@ export default class RunHandler {
         portal: () => Portal;
         requiresWorkspace: (action: ActionRequest) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
-        envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+        envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
-        boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
+        boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
@@ -142,8 +142,8 @@ export default class RunHandler {
             currentUser = fresh;
         }
 
-        // {§agui-thread-binding} {§agui-action-binding} The threadId names its worker, never compared with the
-        // workspace's name. A message, a setting, or its owner's session attaching creates it; watching passively
+        // {§agui-thread-binding} {§agui-action-binding} The thread resolves to its worker. A message,
+        // a setting, or its owner's session attaching creates it; watching passively
         // or reading never does. A Run that requires an existing worker, or creates nothing, attaches to an
         // existing workspace: a workspace that does not exist has no worker. A resume continues the Run whose interrupt it
         // answers: it binds the worker that Run bound, if any.
@@ -152,11 +152,20 @@ export default class RunHandler {
             : action === null ? "create" : this.#actionBinding(action);
         const { env, reattached } = await this.#envelope(input.threadId, forwarded, {
             create: binding === "create" || binding === "none",
+            worker: binding === "create",
         });
         const workspaceId = env.workspaceId;
         const workerId = binding === "create" || binding === "required"
-            ? await this.#boundWorker(input.threadId, env, binding)
+            ? await this.#boundWorker(input.threadId, env, binding, forwarded)
             : input.resume === undefined ? undefined : this.#portal().resumedWorker(workspaceId, input.threadId, input.resume);
+        // {§agui-thread-address} Routing identity and the spelling a client used are separate from reply delivery.
+        const replyThreads = [input.threadId];
+        if (workerId !== undefined) {
+            const worker = await this.#seam().readWorker({ workspaceId, identity: { id: workerId } });
+            if (worker === null) throw new Error("The bound worker is absent.");
+            replyThreads.push(worker.name, `${workspaceId}#${worker.name}`,
+                ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" }));
+        }
         // {§agui-sync} A passive observation claims nothing; an owner's control connection claims as a message Run does.
         // Either presents the gates addressed to its thread ({§agui-proposal-resolve}).
         const address = MessageAddress.owner(principal, input.threadId);
@@ -230,6 +239,7 @@ export default class RunHandler {
             // {§agui-broadcast-fan} An operation Run learns its Worker and Loop from the dispatch that opens them.
             workerId: notificationScope === "operation" ? null : workerId ?? null,
             threadId: input.threadId,
+            replyThreads,
             notificationScope,
             owner: address,
             family,
@@ -343,9 +353,9 @@ export default class RunHandler {
         if (prompt === null || currentUser === null || workerId === undefined) throw new Error("message AG-UI Run reached dispatch without a validated prompt and its worker");
 
         if (reattached) {
-            const history = await this.#history(workspaceId, workerId).catch(() => null);
+            const history = await this.#history(workspaceId, workerId);
             if (finished) return;
-            if (history !== null && !RunHandler.#isOriented(input, history)) {
+            if (!RunHandler.#isOriented(input, history, replyThreads)) {
                 const replayUser = currentUser ?? undefined;
                 const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
                 if (finished) return;
@@ -453,9 +463,9 @@ export default class RunHandler {
             || (event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient")));
     }
 
-    static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
+    static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>, replyThreads: readonly string[]): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
-            Translator.isResponse(entry, input.threadId)
+            Translator.isResponse(entry, replyThreads)
                     ? [Translator.idOf(entry)]
                 : []));
         return input.messages.some(({ id }) => durableMessageIds.has(id));

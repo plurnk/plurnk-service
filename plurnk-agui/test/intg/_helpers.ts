@@ -3,10 +3,10 @@ import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 
 export const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 
-export async function openTestDatabase() {
+export async function openTestDatabase(path?: string) {
     const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
     // {§test-artifact-retention} — this lane's run directory, beside every other harness's.
-    return openMigrated(join(await testArtifactDirectory("agui"), `db-${crypto.randomUUID()}.db`));
+    return openMigrated(path ?? join(await testArtifactDirectory("agui"), `db-${crypto.randomUUID()}.db`));
 }
 
 // {§agui-daemon-client} — the daemon's one listener, bound before the daemon exists as the service
