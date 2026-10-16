@@ -14,6 +14,14 @@ import Translator from "./Translator.ts";
 import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+
+// One authored operation, parsed as the service parses it.
+const authored = (source: string): Record<string, unknown> => {
+    const item = PlurnkParser.parseStatements(source).items[0];
+    if (item?.kind !== "statement") throw new Error(`no statement in ${source}`);
+    return item.statement as unknown as Record<string, unknown>;
+};
 
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
@@ -65,14 +73,42 @@ test("{§agui-replay} a SEND without a delivered recipient is an operation in li
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
-    const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
+    const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: authored("````READ (worker:///notes.md)\n````"), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
     assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
     const start = events[1] as { toolCallId: string; toolCallName: string };
     assert.equal(start.toolCallId, "1/1/3", "the coordinate IS the toolCallId");
     assert.equal(start.toolCallName, "READ");
     const args = events[2] as { delta: string };
-    assert.match(args.delta, /worker:\/\/\/notes\.md/, "the target rides the args");
+    assert.equal(JSON.parse(args.delta).target.raw, "worker:///notes.md", "the target rides the args");
+});
+
+// {§agui-projection} The arguments are the operation as authored: every operand exactly as parsed, without the verb
+// that is the tool's name or the position it was written at.
+test("{§agui-projection} a tool call's arguments carry every authored operand: host, scope, pattern, aside and both COPY operands", () => {
+    for (const [source, check] of [
+        ["````READ (worker://user/identity.md) <1,2> /cobalt/ <!-- selected evidence -->\n````", (args: Record<string, unknown>) => {
+            assert.equal((args.target as { raw: string }).raw, "worker://user/identity.md", "the host addresses the resource");
+            assert.notEqual(args.lineMarker, null, "the scope survives");
+            assert.notEqual(args.matcher, null, "the pattern survives");
+            assert.equal(args.aside, "selected evidence");
+        }],
+        ["````COPY (a.txt) <1,2> (worker:///b.md)\n````", (args: Record<string, unknown>) => {
+            assert.equal((args.source as { target: { raw: string } }).target.raw, "a.txt");
+            assert.equal((args.destination as { target: { raw: string } }).target.raw, "worker:///b.md", "the destination survives");
+        }],
+    ] as const) {
+        const statement = authored(source);
+        const row = entry({ op: statement.op as string, tx: statement });
+        const live = t().logEntry(row).find((event) => event.type === EventType.TOOL_CALL_ARGS) as { delta: string } | undefined;
+        assert.ok(live, source);
+        const { op: _op, position: _position, ...operands } = statement;
+        assert.deepEqual(JSON.parse(live.delta), operands, `the live arguments are the statement: ${source}`);
+        check(JSON.parse(live.delta) as Record<string, unknown>);
+        const replayed = (t().replay([row.entry])[0] as { messages: Array<{ toolCalls?: Array<{ function: { arguments: string } }> }> })
+            .messages.flatMap(({ toolCalls }) => toolCalls ?? []);
+        assert.deepEqual(replayed.map(({ function: call }) => JSON.parse(call.arguments)), [operands], `replay carries the same arguments: ${source}`);
+    }
 });
 
 test("{§message-completion}: delivered completion replies enter live and replay messages, independent of their outcome", () => {

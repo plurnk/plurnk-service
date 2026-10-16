@@ -553,13 +553,13 @@ export default class Translator {
         };
     }
 
-    // Tool-call args: the op's addressing + body as one JSON string (AG-UI streams args as deltas;
-    // a dispatched plurnk op is atomic, so the whole args object arrives as one delta).
+    // {§agui-projection} A tool call's arguments are the operation as authored: its durable statement, every operand
+    // exactly as parsed ({§log-sensitive-request-evidence}), without the verb that is the tool's name or the position it
+    // was written at. AG-UI streams arguments as deltas; a dispatched operation is atomic, so they arrive as one.
     static #argsFor(e: LogEntryNotification["entry"]): string {
-        return JSON.stringify({
-            target: e.scheme !== null && e.scheme !== undefined ? `${e.scheme}://${e.pathname ?? ""}` : e.pathname ?? null,
-            body: Translator.#txBody(e.tx) || undefined,
-            signal: e.signal ?? undefined,
-        });
+        const statement = typeof e.tx === "string" && e.tx.length > 0 ? JSON.parse(e.tx) as unknown : e.tx;
+        if (statement === null || typeof statement !== "object" || Array.isArray(statement)) return JSON.stringify({});
+        const { op: _op, position: _position, ...operands } = statement as Record<string, unknown>;
+        return JSON.stringify(operands);
     }
 }

@@ -195,8 +195,10 @@ reasoning ({§agui-lifecycle-projection}), and a response row still precedes its
 sequence.
 
 - **An op row IS a tool call** — its coordinate `L/T/S`, from the row's ordinals
-  ({§methods-log-coordinate}), is the `toolCallId`, its tx the args (one delta: a dispatched plurnk
-  op is atomic), its rx the result. The log-shaped richness the core vocabulary can't hold
+  ({§methods-log-coordinate}), is the `toolCallId`; its durable statement is the args, every
+  operand exactly as parsed (host, scope, pattern, aside, both COPY/MOVE selections) without the
+  verb that is the tool's name or its source position, in one delta because a dispatched plurnk op
+  is atomic; its rx is the result. The log-shaped richness the core vocabulary can't hold
   (curation metadata, the ordinals) stays on the row inside `plurnk.row`.
 - §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
   AG-UI defines encrypted-reasoning events and message values; plurnk emits none and

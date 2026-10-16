@@ -1,4 +1,4 @@
-// {§agui-snapshot} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
+// {§agui-snapshot} {§agui-projection} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
 // alone, CUSTOM events ignored. The official HttpAgent and its own reducer watch one worker from every vantage: attached
 // before the prompt, the client that submits it, attached mid-request, and refreshed after. Every view holds the same
 // messages, in the same order, under the same identities.
@@ -19,7 +19,9 @@ const view = (messages: readonly Message[]) => messages.map((message) => {
     const { id, role } = message;
     const content = "content" in message ? message.content : undefined;
     const name = "name" in message ? message.name : undefined;
-    const calls = "toolCalls" in message ? message.toolCalls?.map(({ id: callId, function: call }) => ({ callId, name: call.name })) : undefined;
+    const calls = "toolCalls" in message
+        ? message.toolCalls?.map(({ id: callId, function: call }) => ({ callId, name: call.name, arguments: JSON.parse(call.arguments) as unknown }))
+        : undefined;
     const toolCallId = "toolCallId" in message ? message.toolCallId : undefined;
     return JSON.parse(JSON.stringify({ id, role, content, name, calls, toolCallId })) as Record<string, unknown>;
 });
@@ -73,7 +75,8 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
                 queueMicrotask(() => reasoningStreamed.resolve());
                 return streamed([
                     frame({ reasoning_content: "Weighing the plan." }),
-                    frame({ content: "````NOTE\nPlan the note.\n````\n````EDIT (worker:///notes.md)\nfirst\n````" }, "stop"),
+                    frame({ content: "````NOTE\nPlan the note.\n````\n````EDIT (worker:///notes.md)\nfirst\n````\n"
+                        + "````READ (worker://user/identity.md) <1,2> /cobalt/ <!-- selected evidence -->\n````" }, "stop"),
                 ], held.promise);
             }
             return streamed([frame({ content: "````SEND [200]\nNoted.\n````" }, "stop")]);
@@ -126,6 +129,12 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
     assert.deepEqual(truth.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
         [{ id: "prompt-1", content: "Note the plan." }], "the refreshed snapshot holds the prompt once, under the submitter's id");
     assert.ok(truth.some(({ role }) => role === "reasoning"), "the snapshot holds the turn's reasoning");
+    // {§agui-projection} #1140 — a tool call carries the operation as authored: its host, scope, pattern and aside.
+    const read = truth.flatMap(({ calls }) => (calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+        .find(({ name }) => name === "READ");
+    assert.equal((read?.arguments.target as { raw?: string } | undefined)?.raw, "worker://user/identity.md", "the host addresses the resource");
+    assert.ok(read?.arguments.lineMarker !== null && read?.arguments.matcher !== null && read?.arguments.aside === "selected evidence",
+        `the scope, pattern and aside ride the arguments: ${JSON.stringify(read?.arguments)}`);
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }
