@@ -121,3 +121,23 @@ test("{§methods-invocation} {§worker-obligations} a delegation is answered by 
         assert.deepEqual(sender.loops.map(({ invocation }) => invocation), [null], "main's loop was opened by a person's prompt");
     });
 });
+
+test("{§methods-answering} a peer's progress and its completion each name the SEND they answer; only the completion discharges it", async (t) => {
+    await run(t, [
+        "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND\nStill looking.\n````\n````SEND [200]\nforty-two\n````",
+        "````SEND [200]\nThe answer is forty-two.\n````",
+    ], ["peer"], async (logs, announced) => {
+        const main = await logs("main");
+        const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
+        const replies = main.filter(({ answering }) => answering !== undefined).map(({ answering, invocation, source, tx }) =>
+            ({ answering, invocation, source, body: (tx as { body?: { raw?: unknown } } | null)?.body?.raw }));
+        assert.deepEqual(replies, [
+            { answering: address(send), invocation: undefined, source: "worker://peer", body: "Still looking." },
+            { answering: address(send), invocation: address(send), source: "worker://peer", body: "forty-two" },
+        ], "progress names the SEND it answers; the completion names it twice, as what it answers and what it discharges");
+        const progress = main.find(({ answering, invocation }) => answering !== undefined && invocation === undefined)!;
+        assert.equal(announced.find(({ id }) => id === progress.id)?.answering, address(send), "log/entry carries it as readLog does");
+        assert.equal((await logs("peer")).some(({ answering }) => answering !== undefined), false, "the peer's own log answers nothing of its own");
+    });
+});

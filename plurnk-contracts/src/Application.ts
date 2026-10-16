@@ -142,6 +142,8 @@ export type LogEntryWire = {
     reasoning_request_sequence?: number;
     // {§methods-invocation} On a row that discharges an obligation, the log address of the operation that opened it.
     invocation?: string;
+    // {§methods-answering} On a reply to a message this worker's operation sent, the log address of that operation.
+    answering?: string;
 };
 /** {§methods-loop-run} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
 export type ApplicationLoopAdmission = OperationResult & {

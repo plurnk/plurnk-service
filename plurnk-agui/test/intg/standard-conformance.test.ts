@@ -182,7 +182,7 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     }
 });
 
-test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} every vantage sees a delegation answered by its child's conclusion and a message by its reply", { timeout: 60_000 }, async (t) => {
+test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-progress-reply} every vantage sees a delegation answered by its child's conclusion, a message by its reply, and the peer's progress as its message", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
@@ -198,7 +198,7 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} every vantag
         "````WORK (worker://helper)\nSay hello.\n````\n````WAIT\n````",
         "````SEND [200]\nhello from the helper\n````",
         "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
-        "````SEND [200]\nforty-two\n````",
+        "````SEND\nStill looking.\n````\n````SEND [200]\nforty-two\n````",
         "````SEND [200]\nThe helper said hello; the answer is forty-two.\n````",
     ];
     let calls = 0;
@@ -249,6 +249,8 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} every vantag
     assert.equal(conclusion.length, 1, "the WORK has one result: no receipt beside its child's conclusion");
     assert.equal((JSON.parse(conclusion[0] as string) as { content?: unknown }).content, "hello from the helper", "the child's conclusion answers the WORK");
     assert.deepEqual(answersOf(callOf("SEND")), ["forty-two"], "the peer's completion answers the SEND, in its own words");
+    assert.deepEqual(truth.filter(({ role, name }) => role === "user" && name === "worker://peer").map(({ content }) => content), ["Still looking."],
+        "the peer's progress is its message to main");
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }

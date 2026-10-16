@@ -195,6 +195,15 @@ export default class Translator {
                 events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e), metadata: Translator.#rowMetadata(e) });
                 return events;
             }
+            // {§agui-progress-reply} Progress on a message this worker sent is a message from the one who reported it.
+            if (typeof e.answering === "string") {
+                const id = this.#id(e);
+                const text = Translator.#txBody(e.tx);
+                events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "user", ...(typeof e.source === "string" ? { name: e.source } : {}), metadata: Translator.#rowMetadata(e) });
+                if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
+                events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
+                return events;
+            }
             events.push(ambient);
             return events;
         }
@@ -391,6 +400,10 @@ export default class Translator {
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e), metadata }));
+            // {§agui-progress-reply}
+            else if (typeof e.answering === "string") {
+                messages.push(attributed({ id, role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}), metadata }));
+            }
             return;
         }
         if (typeof e.op !== "string") {

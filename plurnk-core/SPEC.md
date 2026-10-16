@@ -5322,6 +5322,12 @@ A message names an invocation only to the worker whose operation sent it; histor
 same invocation as its original, at the same coordinate. The row's own `source` keeps its attribution meaning
 ({§env-delta-attribution}). An obligation whose opener was not recorded, and every other row, omits the field.
 
+§methods-answering **A reply names the operation that sent the message it answers.** `readLog` and `log/entry`
+project `answering` on a reply delivered to the worker whose operation sent the message ({§message-reply-delivery}):
+that operation's log address, whether the reply completes the message or reports progress. A completion reply
+names the same address as its `invocation`. A reply to a message this worker did not send, such as another actor
+answering a message in this worker's inbox, omits the field, as does every other row.
+
 ### §notifications Core events
 
 | Event                                                        | Payload | When fired |

@@ -154,6 +154,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | §agui-parse-refusal `log/entry` model `error` row, a parse refusal | The call the worker attempted ({§parse-attempt}): `TOOL_CALL_START` named by the attempt's verb, its arguments `{ text }` the statement as written, then `TOOL_CALL_RESULT` with the refusal, its status the failure; a refusal that names no attempt is no call and rides `CUSTOM plurnk.ambient` ({§agui-ambient}) |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id, and the Run that submitted it, which already holds it, receives only `TEXT_MESSAGE_START/END` carrying its row's facts ({§agui-plurnk-metadata}); any other is named by its source |
+| §agui-progress-reply `log/entry` reply reporting progress on a message this worker's operation sent ({§methods-answering}) | A user `TEXT_MESSAGE_START/CONTENT/END` named by its source, as on replay; a reply that completes the message answers its call instead ({§agui-call-result}), and one to a message this worker did not send rides `CUSTOM plurnk.ambient` |
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations, {§agui-ambient}) |
 | `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§agui-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
@@ -367,6 +368,7 @@ complete set:
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
 | Any other model operation, a bodiless WAIT and a parse refusal's attempt included ({§agui-parse-refusal}) | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}) |
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
+| A reply reporting progress on a message this worker sent | `user` identified by its coordinate and named by its source ({§agui-progress-reply}) |
 | Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
 
 Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,

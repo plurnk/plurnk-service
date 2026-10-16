@@ -40,7 +40,21 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
             WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
             LIMIT 1)
-       ) AS invocation
+       ) AS invocation,
+       -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
+       -- completes the message or reports progress.
+       (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+        FROM ambient_events ae
+        JOIN log_responses r ON r.id = ae.source_record_id
+        JOIN json_each(r.rx, '$.answers') answer
+        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM workers w WHERE w.id = le.worker_id)
+        JOIN loop_messages m ON m.id = ms.id
+        JOIN turns opened ON opened.id = m.opened_turn_id
+        JOIN loops sender ON sender.id = opened.loop_id
+        JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+        WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+          AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+        LIMIT 1) AS answering
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
@@ -85,7 +99,21 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
             WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
             LIMIT 1)
-       ) AS invocation
+       ) AS invocation,
+       -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
+       -- completes the message or reports progress.
+       (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
+        FROM ambient_events ae
+        JOIN log_responses r ON r.id = ae.source_record_id
+        JOIN json_each(r.rx, '$.answers') answer
+        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM workers w WHERE w.id = le.worker_id)
+        JOIN loop_messages m ON m.id = ms.id
+        JOIN turns opened ON opened.id = m.opened_turn_id
+        JOIN loops sender ON sender.id = opened.loop_id
+        JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
+        WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
+          AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+        LIMIT 1) AS answering
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
