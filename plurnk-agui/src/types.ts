@@ -8,7 +8,6 @@
 export { EventType } from "@ag-ui/core";
 export type {
     AGUIEvent as AguiEvent,
-    ActivityMessage,
     AssistantMessage,
     ReasoningMessage,
     RunAgentInput,

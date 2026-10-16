@@ -56,37 +56,14 @@ export default class EventRouter {
             }
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
             case "outside/event": return this.#t.outside(params as OutsideEventNotification);
+            // {§agui-projection} Execution metadata: a stream's progress and its exact conclusion as they happen. The
+            // conversation receives an execution's result through its stream's observation ({§agui-execution-result}).
             case "stream/event":
-            case "stream/concluded": return [
-                // Family channel (rich, full payload) AND the standard ACTIVITY channel (§475):
-                // an exec/search stream is 'in-progress activity between chat messages'. A
-                // replace-snapshot per event is the stateless conformant form — each carries the
-                // full current view; activityType is the stream's scheme (SEARCH/SH/…).
-                { type: EventType.CUSTOM, name: "plurnk.stream", value: params },
-                EventRouter.#activity(params),
-            ];
+            case "stream/concluded": return [{ type: EventType.CUSTOM, name: "plurnk.stream", value: params }];
             case "loop/proposal":
             case "loop/interaction":
                 return []; // ProposalHitl owns the shared terminate-resume path.
             default: return []; // workspace/created + anything unmodeled: the module handles out-of-band
         }
-    }
-
-    // A stream event → the standard ACTIVITY snapshot. messageId = the stream's entry id
-    // (so a frontend keys deltas/updates to one activity); activityType = the scheme,
-    // uppercased (SEARCH, SH, …), the protocol's discriminator; content = the full
-    // payload; replace = true (each is the complete current view — stateless, conformant).
-    static #activity(params: unknown): AguiEvent {
-        const p = (params ?? {}) as { entryId?: number; scheme?: string };
-        const content = params !== null && typeof params === "object"
-            ? params as Record<string, unknown>
-            : { value: params };
-        return {
-            type: EventType.ACTIVITY_SNAPSHOT,
-            messageId: `stream-${p.entryId ?? 0}`,
-            activityType: typeof p.scheme === "string" && p.scheme.length > 0 ? p.scheme.toUpperCase() : "STREAM",
-            content,
-            replace: true,
-        };
     }
 }

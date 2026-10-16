@@ -83,6 +83,38 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.equal(JSON.parse(args.delta).target.raw, "worker:///notes.md", "the target rides the args");
 });
 
+test("{§agui-execution-result} {§methods-stream-invocation} a started execution is answered by its stream's observations, live and on replay", () => {
+    const command = authored("````sh\nprintf 'hi\\n'; printf 'warn\\n' >&2\n````");
+    const rows = [
+        entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "sh", tx: command, attrs: { stream: "sh:///ab3d5678" }, rx: { status: 200, outcome: "started" } }),
+        entry({ id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "NOTE", tx: authored("````NOTE\nrunning\n````"), rx: { status: 200 } }),
+        entry({ id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: "sh", tx: command, attrs: { stream: "sh:///c0ffee00" }, status_rx: 404,
+            rx: { status: 404, problem: { type: "https://problems.plurnk.xyz/scheme/exec/source", title: "Source", status: 404, detail: "No source." } } }),
+        entry({ id: 4, loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, origin: "_plurnk", op: "READ", tx: null, scheme: "sh", pathname: "/ab3d5678",
+            fragment: "stdout", invocation: "log:///1/1/1/sh", rx: { status: 200, exitCode: 0, terminal: true, content: "hi\n" } }),
+        entry({ id: 5, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, origin: "_plurnk", op: "READ", tx: null, scheme: "sh", pathname: "/ab3d5678",
+            fragment: "stderr", invocation: "log:///1/1/1/sh", rx: { status: 200, terminal: true, content: "warn\n" } }),
+    ];
+    const tr = t();
+    const live = rows.flatMap((row) => tr.logEntry(row));
+    const results = live.filter((event) => event.type === EventType.TOOL_CALL_RESULT) as Array<{ toolCallId: string; messageId: string; content: string }>;
+    assert.deepEqual(results.map(({ toolCallId, messageId }) => [toolCallId, messageId]),
+        [["1/1/2", "1/1/2/result"], ["1/1/3", "1/1/3/result"], ["1/1/1", "1/2/1"], ["1/1/1", "1/2/2"]],
+        "the started command's receipt is no result; each observation answers it under its own coordinate, and a failed command's receipt is its result");
+    assert.equal(JSON.parse(results[2]!.content).content, "hi\n", "the observation carries the output");
+    assert.ok(!live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "an observation that answers a call is not ambient");
+
+    const [snapshot] = tr.replay(rows.map(({ entry: row }) => row));
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.map((message) => [message.id, message.role, "toolCallId" in message ? message.toolCallId : undefined]), [
+        ["1/1/1", "assistant", undefined], ["1/2/1", "tool", "1/1/1"], ["1/2/2", "tool", "1/1/1"],
+        ["1/1/2", "assistant", undefined], ["1/1/2/result", "tool", "1/1/2"],
+        ["1/1/3", "assistant", undefined], ["1/1/3/result", "tool", "1/1/3"],
+    ], "each result sits after its call, where the official reducer puts one that arrives live");
+    assert.throws(() => t().logEntry(entry({ origin: "_plurnk", op: "READ", invocation: "sh:///ab3d5678" })), /log address/u,
+        "an observation names its execution by log address");
+});
+
 // {§agui-projection} The arguments are the operation as authored: every operand exactly as parsed, without the verb
 // that is the tool's name or the position it was written at.
 test("{§agui-projection} a tool call's arguments carry every authored operand: host, scope, pattern, aside and both COPY operands", () => {

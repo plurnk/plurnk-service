@@ -142,7 +142,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, then `CUSTOM plurnk.send` with the actual wait result; a bodiless WAIT is `CUSTOM plurnk.send` alone. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
+| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists, except for an execution its receipt started, which its stream's observations answer {§agui-execution-result}) |
+| §agui-execution-result `log/entry` stream observation, naming its execution ({§methods-stream-invocation}) | `TOOL_CALL_RESULT` answering that execution's call under the observation's own coordinate, its receipt the content: the output's first page, terminal status and exit code, exactly as the worker received them ({§exec-stream}). An execution whose receipt started its stream (`200` or `202` with `attrs.stream`) is answered only by its observations, one per channel its conclusion published, whenever they land; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id and goes to every Run but the one that submitted it; any other is named by its source |
@@ -155,7 +156,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
-| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
+| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` alone: execution metadata, the stream's progress and its exact universal `result`, including RFC 9457 Problem Details, as they happen. Never a conversation message; the execution's result reaches the conversation through its observation {§agui-execution-result}. AG-UI does not reconstruct failure from a status or summary. |
 
 §agui-lifecycle-projection **Lifecycle, memory and speech remain distinct.** Live
 events, replay and `log.read` preserve literal native bodies. No task inventory
@@ -198,7 +199,8 @@ sequence.
   ({§methods-log-coordinate}), is the `toolCallId`; its durable statement is the args, every
   operand exactly as parsed (host, scope, pattern, aside, both COPY/MOVE selections) without the
   verb that is the tool's name or its source position, in one delta because a dispatched plurnk op
-  is atomic; its rx is the result. The log-shaped richness the core vocabulary can't hold
+  is atomic; its rx is the result, except for an execution its receipt started, whose stream's
+  observations are ({§agui-execution-result}). The log-shaped richness the core vocabulary can't hold
   (curation metadata, the ordinals) stays on the row inside `plurnk.row`.
 - §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
   AG-UI defines encrypted-reasoning events and message values; plurnk emits none and
@@ -327,7 +329,8 @@ every other daemon surface.
   independently-owned work.
 
 §agui-snapshot **A snapshot is the messages the live projection built**, in log order and under
-the live identities, so a client that applies it keeps every message it built live and a reloaded
+the live identities, each tool result after its call where the official reducer puts one that arrives
+live, so a client that applies it keeps every message it built live and a reloaded
 client rebuilds them. It is built from the bound worker's whole log, read page by page
 ({§methods-log-read}), because AG-UI defines a snapshot as the complete set:
 
@@ -336,7 +339,8 @@ client rebuilds them. It is built from the bound worker's whole log, read page b
 | Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
 | A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one |
+| Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one; an execution its receipt started carries none ({§agui-execution-result}) |
+| Stream observation | `tool` identified by its coordinate, answering the execution it names: after that call and the results already beside it, or last when the call is not in view ({§agui-execution-result}) |
 | Bodiless WAIT, emission attempt, ambient row | No message of its own |
 
 Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,
@@ -670,7 +674,7 @@ synthesize a second topology by rebroadcasting sibling rows.
 message Run whose `forwardedProps.plurnk.descendants` is `true` also receives the
 rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker
 beneath its bound Worker in Core's authoritative topology, as foreign rows only: `CUSTOM
-plurnk.row` and `plurnk.ambient`, `plurnk.stream` and its activity snapshot, never the core
+plurnk.row` and `plurnk.ambient`, and `plurnk.stream`, never the core
 vocabulary, a step, reasoning, or this Run's terminal. The first event of each descendant is
 preceded once by `CUSTOM plurnk.descendant` `{workerId, name, parentWorkerId, depth}`, depth
 counted from the bound Worker, so a client renders identity and generation without a second
@@ -716,7 +720,7 @@ win). A detached execution (`<-1>`) is nobody's obligation and never defers the
 result. The runtime Worker hosts every person's operations and the daemon's own work, so an
 operation Run never owns a stream its Loop did not announce. Stream activity of that Worker
 which no row of the Run's Loop has announced yet is held for it: the row that announces the
-address delivers the latest snapshot and then any conclusion, so a stream that concluded
+address delivers the latest progress and then any conclusion, so a stream that concluded
 before its row defers nothing; activity no row of its Loop ever announces never reaches it.
 
 `workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or

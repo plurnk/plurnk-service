@@ -58,6 +58,7 @@ export default class LogEntry {
             ...(typeof row.reasoning === "string" && typeof row.reasoning_model_call_id === "number"
                 ? { reasoning_model_call_id: row.reasoning_model_call_id, reasoning_request_sequence: row.reasoning_request_sequence as number }
                 : {}),
+            ...(typeof row.invocation === "string" ? { invocation: row.invocation } : {}),
         };
     }
 }

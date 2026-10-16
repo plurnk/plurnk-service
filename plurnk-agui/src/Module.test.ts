@@ -581,7 +581,8 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
         emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         emit(3, "loop/terminated", termination({ workerId: 78, loopId: 10, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         const [ea, eb] = await Promise.all([a, b]);
-        const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
+        const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "CUSTOM" && (e as { name?: string }).name === "plurnk.stream"
+            && (e as { value?: { entryId?: number } }).value?.entryId === 5);
         assert.ok(hasExecActivity(ea), "AG-UI Run A received the exec stream activity");
         assert.equal(hasExecActivity(eb), false, "AG-UI Run B did not receive another worker's stream activity");
     } finally { await mod.close(); }
@@ -1670,7 +1671,8 @@ test("{§agui-broadcast-fan} an operation Run stays open until the stream its ow
         const events = await run;
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
         assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));
-        assert.ok(events.some((event) => event.type === "ACTIVITY_SNAPSHOT" && (event as { messageId?: string }).messageId === "stream-81"));
+        assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.stream"
+            && (event as { value?: { entryId?: number } }).value?.entryId === 81), "the operation's Run carries its stream");
     } finally { await mod.close(); }
 });
 

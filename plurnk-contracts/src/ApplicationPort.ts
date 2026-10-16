@@ -154,6 +154,8 @@ export type LogEntryWire = {
     // {§methods-readable-reasoning} The request that streamed `reasoning`; absent for history a FORK inherited.
     reasoning_model_call_id?: number;
     reasoning_request_sequence?: number;
+    // {§methods-stream-invocation} On a stream observation, the log address of the execution it observes.
+    invocation?: string;
 };
 export type ApplicationEventHandler = (
     workspaceId: number | null,

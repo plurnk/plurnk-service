@@ -186,6 +186,11 @@ export default class Translator {
             return events;
         }
         if (e.origin !== "model" && !response) {
+            const answered = Translator.#answered(e);
+            if (answered !== null) {
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: Translator.idOf(e), content: Translator.#asText(e.rx) });
+                return events;
+            }
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
@@ -217,6 +222,7 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: Translator.#argsFor(e) });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
+        if (Translator.#streamStarted(e)) return events;
         const rxText = Translator.#asText(e.rx);
         if (rxText.length > 0) {
             events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: rxText });
@@ -347,7 +353,11 @@ export default class Translator {
                 continue;
             }
             const response = Translator.isResponse(e, this.#threadId);
-            if (e.origin !== "model" && !response) continue;
+            if (e.origin !== "model" && !response) {
+                const answered = Translator.#answered(e);
+                if (answered !== null) Translator.#placeResult(messages, { id, role: "tool", toolCallId: answered, content: Translator.#asText(e.rx) });
+                continue;
+            }
             if (typeof e.op !== "string") {
                 if (Translator.#modelArtifactKind(e.attrs) === null) {
                     throw new TypeError("An actionless model-origin replay row must carry attrs.kind=emissionAttempt.");
@@ -361,8 +371,9 @@ export default class Translator {
             if (response || TurnDisposition.isOp(e.op)) continue;
             const entry = e as LogEntryNotification["entry"];
             messages.push({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] });
+            if (Translator.#streamStarted(e)) continue;
             const result = Translator.#asText(e.rx);
-            if (result.length > 0) messages.push({ id: `${id}/result`, role: "tool", toolCallId: id, content: result });
+            if (result.length > 0) Translator.#placeResult(messages, { id: `${id}/result`, role: "tool", toolCallId: id, content: result });
         }
         if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
             messages.push(currentUser);
@@ -551,6 +562,35 @@ export default class Translator {
             content: Translator.#txBody(e.tx),
             ...(typeof e.source === "string" ? { name: e.source } : {}),
         };
+    }
+
+    // {§agui-execution-result} An execution whose receipt started its stream is answered by the stream's observation, which
+    // carries its output and conclusion; its receipt rides the row ({§exec-stream}).
+    static #streamStarted(e: { attrs?: unknown; status_rx?: unknown }): boolean {
+        const attrs = typeof e.attrs === "string" ? JSON.parse(e.attrs) as unknown : e.attrs;
+        const stream = attrs !== null && typeof attrs === "object" ? (attrs as { stream?: unknown }).stream : undefined;
+        return typeof stream === "string" && typeof e.status_rx === "number" && e.status_rx < 400;
+    }
+
+    // {§agui-execution-result} The call a stream observation answers: the execution it names ({§methods-stream-invocation}).
+    static #answered(e: { invocation?: unknown }): string | null {
+        if (e.invocation === undefined) return null;
+        const match = typeof e.invocation === "string" ? /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(e.invocation) : null;
+        if (match === null) throw new TypeError(`A stream observation names its execution's log address: ${String(e.invocation)}`);
+        return `${match[1]}/${match[2]}/${match[3]}`;
+    }
+
+    // {§agui-snapshot} A result sits where the official reducer puts one that arrives live: after its call and the results
+    // already beside it, or last when the call is not in view.
+    static #placeResult(messages: Array<AssistantMessage | ReasoningMessage | ToolMessage | UserMessage>, result: ToolMessage): void {
+        const call = messages.findIndex((message) => message.role === "assistant" && message.toolCalls?.some(({ id }) => id === result.toolCallId) === true);
+        if (call === -1) {
+            messages.push(result);
+            return;
+        }
+        let at = call + 1;
+        while (at < messages.length && messages[at]!.role === "tool") at++;
+        messages.splice(at, 0, result);
     }
 
     // {§agui-projection} A tool call's arguments are the operation as authored: its durable statement, every operand

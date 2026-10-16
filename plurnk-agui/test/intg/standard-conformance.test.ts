@@ -1,8 +1,10 @@
-// {§agui-snapshot} {§agui-projection} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
+// {§agui-snapshot} {§agui-projection} {§agui-execution-result} {§agui-official-client-conformance} — the conversation a standard AG-UI client builds from standard events
 // alone, CUSTOM events ignored. The official HttpAgent and its own reducer watch one worker from every vantage: attached
-// before the prompt, the client that submits it, attached mid-request, and refreshed after. Every view holds the same
-// messages, in the same order, under the same identities.
+// before the prompt, the client that submits it, attached mid-request, attached while a command runs, and refreshed after.
+// Every view holds the same messages, in the same order, under the same identities.
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { HttpAgent } from "@ag-ui/client";
@@ -46,7 +48,7 @@ const streamed = (frames: readonly object[], hold?: Promise<void>): Response => 
     },
 }), { headers: { "content-type": "text/event-stream" } });
 
-test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every vantage on one worker builds the same conversation from standard events", { timeout: 60_000 }, async (t) => {
+test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-execution-result} every vantage on one worker builds the same conversation from standard events", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { AiSdkProvider } = await import("@plurnk/plurnk-providers");
@@ -57,9 +59,12 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
         else process.env.PLURNK_SERVICE_PROPOSALS = previousPolicy;
     });
 
-    // Turn 1 streams its reasoning, holds until released, then works; turn 2 replies.
+    // Turn 1 streams its reasoning, holds until released, then works and runs a command that waits for its own release;
+    // turn 2 replies.
     const held = Promise.withResolvers<void>();
     const reasoningStreamed = Promise.withResolvers<void>();
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-agui-standard-"));
+    const release = join(scratch, "release");
     let calls = 0;
     const frame = (delta: object, finish: string | null = null) => ({
         id: `standard-${calls}`, model: "standard-witness", choices: [{ index: 0, delta, finish_reason: finish }],
@@ -76,7 +81,10 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
                 return streamed([
                     frame({ reasoning_content: "Weighing the plan." }),
                     frame({ content: "````NOTE\nPlan the note.\n````\n````EDIT (worker:///notes.md)\nfirst\n````\n"
-                        + "````READ (worker://user/identity.md) <1,2> /cobalt/ <!-- selected evidence -->\n````" }, "stop"),
+                        + "````READ (worker://user/identity.md) <1,2> /cobalt/ <!-- selected evidence -->\n````\n"
+                        + "````COPY (worker:///notes.md) (worker:///copy.md)\n````\n"
+                        + `\`\`\`\`sh\nwhile [ ! -e '${release}' ]; do sleep 0.02; done; printf 'hello\\n'\n\`\`\`\`\n`
+                        + "````WAIT\n````" }, "stop"),
                 ], held.promise);
             }
             return streamed([frame({ content: "````SEND [200]\nNoted.\n````" }, "stop")]);
@@ -89,10 +97,12 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
     const agents: HttpAgent[] = [];
     t.after(async () => {
         held.resolve();
+        await writeFile(release, "");
         for (const agent of agents) agent.abortRun();
         await daemon.stop();
         await http.close();
         await db.close();
+        await rm(scratch, { recursive: true, force: true });
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "standard" });
@@ -117,9 +127,19 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
     const late = observe();
     await new Promise((resolve) => setTimeout(resolve, 100));
     held.resolve();
+
+    // {§agui-execution-result} A command is one tool call whose result is its stream's observation, whenever that arrives.
+    const command = (agent: HttpAgent): string | undefined => agent.messages.flatMap((message) => "toolCalls" in message ? message.toolCalls ?? [] : [])
+        .find(({ function: call }) => call.name === "sh")?.id;
+    const answered = (agent: HttpAgent, callId: string) => agent.messages.some((message) => message.role === "tool" && message.toolCallId === callId);
+    await until("the command to start", () => command(submitter) !== undefined);
+    const running = observe();
+    await until("the running observer's snapshot", () => command(running) !== undefined);
+    assert.equal(answered(running, command(running)!), false, "a running command has no result yet");
+    await writeFile(release, "");
     await submitted;
     const replied = (agent: HttpAgent) => agent.messages.some((message) => message.role === "assistant" && message.content === "Noted.");
-    await until("the observers to hear the reply", () => replied(before) && replied(late));
+    await until("the observers to hear the reply", () => replied(before) && replied(late) && replied(running));
 
     const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(refreshed);
@@ -135,7 +155,18 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} every va
     assert.equal((read?.arguments.target as { raw?: string } | undefined)?.raw, "worker://user/identity.md", "the host addresses the resource");
     assert.ok(read?.arguments.lineMarker !== null && read?.arguments.matcher !== null && read?.arguments.aside === "selected evidence",
         `the scope, pattern and aside ride the arguments: ${JSON.stringify(read?.arguments)}`);
-    for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late]] as const) {
+    const copy = truth.flatMap(({ calls }) => (calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+        .find(({ name }) => name === "COPY");
+    assert.deepEqual([copy?.arguments.source, copy?.arguments.destination].map((operand) => (operand as { target?: { raw?: string } } | undefined)?.target?.raw),
+        ["worker:///notes.md", "worker:///copy.md"], "both COPY operands ride the arguments");
+    const commandId = command(refreshed)!;
+    const outputs = truth.filter(({ role, toolCallId }) => role === "tool" && toolCallId === commandId);
+    assert.deepEqual(outputs.map(({ content }) => {
+        const { status, exitCode, terminal, content: output } = JSON.parse(content as string) as Record<string, unknown>;
+        return { status, exitCode, terminal, output };
+    }), [{ status: 200, exitCode: 0, terminal: true, output: "hello\n" }], "the command's result is its output and conclusion, not its start receipt");
+    for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late],
+        ["attached while the command ran", running]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }
 });

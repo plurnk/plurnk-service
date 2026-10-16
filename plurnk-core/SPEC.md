@@ -5300,6 +5300,14 @@ watched stream; history a FORK inherited was streamed by no request of this work
 core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 
+§methods-stream-invocation **A stream observation names the execution it observes.** On a row that
+observes a stream ({§exec-stream}), `readLog` and `log/entry` project `invocation`: the log address
+of the execution that opened the stream, exactly as its subscription recorded it
+({§subscriptions-causal-resource}), so a client can pair the observation with its operation without
+matching addresses. It is derived from the publication the row advanced; the row's own `source` keeps
+its attribution meaning ({§env-delta-attribution}). A stream whose subscription recorded no
+causal address, and every other row, omits the field.
+
 ### §notifications Core events
 
 | Event                                                        | Payload | When fired |

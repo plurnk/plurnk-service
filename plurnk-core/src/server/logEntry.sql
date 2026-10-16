@@ -23,7 +23,10 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
            (SELECT MAX(pr.sequence) FROM turn_sources s
             JOIN provider_requests pr ON pr.inference_call_id = s.model_call_id
             WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0 AND pr.outcome = 'response')
-       END AS reasoning_request_sequence
+       END AS reasoning_request_sequence,
+       -- {§methods-stream-invocation} The execution a stream observation observes, as its subscription recorded it.
+       (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
+        WHERE sp.id = le.subscription_publication_id) AS invocation
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
@@ -51,7 +54,10 @@ SELECT le.*, l.sequence AS loop_seq, t.sequence AS turn_seq,
            (SELECT MAX(pr.sequence) FROM turn_sources s
             JOIN provider_requests pr ON pr.inference_call_id = s.model_call_id
             WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0 AND pr.outcome = 'response')
-       END AS reasoning_request_sequence
+       END AS reasoning_request_sequence,
+       -- {§methods-stream-invocation} The execution a stream observation observes, as its subscription recorded it.
+       (SELECT s.source FROM subscription_publications sp JOIN subscriptions s ON s.id = sp.subscription_id
+        WHERE sp.id = le.subscription_publication_id) AS invocation
 FROM log_entries le
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id

@@ -133,33 +133,27 @@ test("indexing completion clears activity; failures retain an explicit diagnosti
     }, { type: "CUSTOM", name: "plurnk.notice", value: failure }]);
 });
 
-test("stream events serve the standard ACTIVITY channel AND plurnk.stream (complete-support)", () => {
+test("{§agui-projection} a stream's progress and conclusion are execution metadata, never a conversation message", () => {
     const r = router();
-    const ev = r.route("stream/event", streamEvent({ target: "search:///1/1/9", scheme: "search" }));
-    const activity = ev.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { messageId: string; activityType: string; content: unknown; replace?: boolean } | undefined;
-    assert.ok(activity !== undefined, "a stream event emits ACTIVITY_SNAPSHOT");
-    assert.equal(activity.messageId, "stream-9", "keyed to the stream's entry id");
-    assert.equal(activity.activityType, "SEARCH", "activityType is the scheme, uppercased (the protocol discriminator)");
-    assert.equal(activity.replace, true, "a stateless full-view snapshot");
-    assert.ok(ev.some((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.stream"), "the family channel still rides alongside");
+    const progress = streamEvent({ target: "search:///1/1/9", scheme: "search" });
+    assert.deepEqual(r.route("stream/event", progress), [{ type: "CUSTOM", name: "plurnk.stream", value: progress }],
+        "progress rides plurnk.stream alone; the call it belongs to is the conversation's");
 
-    // Conclusion also snapshots its final state with the owner scheme.
     const problem = {
         type: "https://problems.plurnk.xyz/executor/search/searxng-unreachable",
         title: "Searxng unreachable",
         status: 502,
         detail: "The search relay was unreachable.",
     };
-    const done = r.route("stream/concluded", streamConclusion({
+    const conclusion = streamConclusion({
         target: "search:///1/1/9",
         scheme: "search",
         result: { status: 502, problem },
         summary: "done",
-    }));
-    const dact = done.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { activityType: string } | undefined;
-    assert.equal(dact?.activityType, "SEARCH");
-    const custom = done.find((e) => e.type === "CUSTOM") as { value?: { result?: unknown } } | undefined;
-    assert.deepEqual(custom?.value?.result, { status: 502, problem }, "AG-UI preserves the exact terminal Problem");
+    });
+    const done = r.route("stream/concluded", conclusion);
+    assert.deepEqual(done, [{ type: "CUSTOM", name: "plurnk.stream", value: conclusion }],
+        "the conclusion rides plurnk.stream alone, its exact terminal Problem preserved");
 });
 
 test("terminated serves the standard RAW channel — the provider's native completion frame", () => {
