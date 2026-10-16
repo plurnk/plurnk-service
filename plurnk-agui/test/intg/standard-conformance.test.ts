@@ -315,7 +315,9 @@ test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation se
     assert.deepEqual(failures, [], "the official client accepts the subagent lifecycle");
     const work = view(watcher.messages).flatMap(({ calls: made }) => (made as Array<{ callId: string; name: string }> | undefined) ?? []).find(({ name }) => name === "WORK");
     const subagentRun = [
-        { type: "SUBAGENT_STARTED", subagentRunId: "ops://helper/1", name: "helper", parentToolCallId: work?.callId },
+        // {§agui-delegation-observation} The subagent's start names its worker, a generation below the bound one.
+        { type: "SUBAGENT_STARTED", subagentRunId: "ops://helper/1", name: "helper", parentToolCallId: work?.callId,
+            metadata: { plurnk: { workerId: helperWorker!.id, name: "helper", parentWorkerId: helperWorker!.parentWorkerId, depth: 1 } } },
         { type: "SUBAGENT_FINISHED", subagentRunId: "ops://helper/1", outcome: { type: "success" }, result: concluded },
     ];
     assert.ok(concluded?.status === 200, "the child concluded");

@@ -216,8 +216,8 @@ sequence.
   streams and snapshot replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.ambient`, `plurnk.notice`, `plurnk.outside`, `plurnk.stream`,
-  `plurnk.descendant`, and `plurnk.problem` for a Problem that ends no Run, such as an unavailable provider
-  catalog): facts with no standard subject. Generic frontends skip unknown
+  `plurnk.descendant` for a descendant outside any subagent, and `plurnk.problem` for a Problem that ends no
+  Run, such as an unavailable provider catalog): facts with no standard subject. Generic frontends skip unknown
   customs; plurnk-aware frontends render them richly. Nothing plurnk-specific ever masquerades as a core event.
 - §agui-plurnk-metadata **plurnk facts ride standard metadata.** A plurnk fact about something the
   standard conversation or Run holds rides that thing's `metadata` under the one key `plurnk`, on the event
@@ -230,6 +230,7 @@ sequence.
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
   | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag) and attributes. Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
@@ -698,10 +699,11 @@ rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of eve
 beneath its bound Worker in Core's authoritative topology. A row of a loop that a call in view
 opened is its subagent run's ({§agui-subagents}); every other descendant row is a foreign row,
 `CUSTOM plurnk.ambient` ({§agui-ambient}), and every descendant stream event is `plurnk.stream`.
-None enters the bound Worker's own steps or reasoning. The first event of each descendant is
-preceded once by `CUSTOM plurnk.descendant` `{workerId, name, parentWorkerId, depth}`, depth
-counted from the bound Worker, so a client renders identity and generation without a second
-directory read. A workspace's events reach the Run in the order the daemon published them:
+None enters the bound Worker's own steps or reasoning. Each descendant is introduced once with its
+identity and generation `{workerId, name, parentWorkerId, depth}`, depth counted from the bound Worker,
+so a client renders them without a second directory read: by the metadata of its subagent's
+`SUBAGENT_STARTED` ({§agui-subagents}), or, when its first event belongs to no subagent, by a
+`CUSTOM plurnk.descendant` before that event. A workspace's events reach the Run in the order the daemon published them:
 while a descendant's topology or loop is being read, every later event waits for it. A
 descendant's terminal never settles this Run, and its conclusion reaches the bound Worker as its
 parent's collect row; a descendant's open stream never defers this Run's settlement; a sibling or

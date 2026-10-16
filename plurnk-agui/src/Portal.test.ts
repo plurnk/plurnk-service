@@ -1217,11 +1217,15 @@ test("{§agui-subagents}: a loop a call in view opened is that call's subagent: 
     await nextTask();
 
     assert.deepEqual(lifecycle(seen), [
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2",
+            metadata: { plurnk: { workerId: 20, name: "worker-20", parentWorkerId: 10, depth: 1 } } },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1",
+            metadata: { plurnk: { workerId: 30, name: "worker-30", parentWorkerId: 20, depth: 2 } } },
         { type: EventType.SUBAGENT_ERROR, subagentRunId: "ops://worker-30/1", message: FAILED.detail, code: FAILED.type },
         { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "suspended" } },
     ], "the WORK's child is its subagent and the grandchild the child's; a failed conclusion is an error; the Run's end suspends the one still running");
+    assert.ok(!seen.some((event) => event.type === EventType.CUSTOM && (event as { name: string }).name === "plurnk.descendant"),
+        "{§agui-delegation-observation} each subagent's start introduces its worker, with its name and generation");
     assert.deepEqual(seen.filter(({ type }) => type === EventType.TOOL_CALL_START).map((event) => [(event as { toolCallId: string }).toolCallId, (event as { subagentRunId?: string }).subagentRunId]),
         [["worker://worker-20#1/1/2", "ops://worker-20/1"], ["worker://worker-30#1/1/3", "ops://worker-30/1"]],
         "a subagent's operations are calls in its own worker's namespace, attributed to it");
@@ -1246,9 +1250,11 @@ test("{§agui-subagents}: a subagent's parent is presented before it, and a loop
     m.fire(3, "log/entry", delegated(3, 30, 110));
     await nextTask();
     assert.deepEqual(lifecycle(seen), [
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2",
+            metadata: { plurnk: { workerId: 20, name: "worker-20", parentWorkerId: 10, depth: 1 } } },
         { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "success" }, result: { status: 200 } },
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1",
+            metadata: { plurnk: { workerId: 30, name: "worker-30", parentWorkerId: 20, depth: 2 } } },
     ], "the grandchild's first row presents the child that opened it, already concluded with its exact result");
     portal.stop();
 });
@@ -1312,9 +1318,11 @@ test("{§agui-subagents} {§agui-snapshot}: a snapshot replays each subagent's c
         ["worker://worker-30#1/1/3", "assistant", "ops://worker-30/1"], ["worker://worker-30#1/1/3/result", "tool", "ops://worker-30/1"],
     ], "one conversation in log order, each subagent's messages attributed to its run");
     assert.deepEqual(presented, [
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-20/1", name: "worker-20", parentToolCallId: "1/1/2",
+            metadata: { plurnk: { workerId: 20, name: "worker-20", parentWorkerId: 10, depth: 1 } } },
         { type: EventType.SUBAGENT_FINISHED, subagentRunId: "ops://worker-20/1", outcome: { type: "success" }, result: { status: 200 } },
-        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1" },
+        { type: EventType.SUBAGENT_STARTED, subagentRunId: "ops://worker-30/1", name: "worker-30", parentToolCallId: "worker://worker-20#1/1/3", parentSubagentRunId: "ops://worker-20/1",
+            metadata: { plurnk: { workerId: 30, name: "worker-30", parentWorkerId: 20, depth: 2 } } },
     ], "every subagent the snapshot holds is presented, parents first: a concluded one ends as it starts");
     m.fire(3, "log/entry", delegated(4, 30, 110));
     await nextTask();

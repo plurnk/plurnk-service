@@ -81,6 +81,8 @@ export interface Subagent {
     readonly loopId: number;
     readonly workerId: number;
     readonly worker: string;
+    // {§agui-delegation-observation} Its worker as the daemon's topology names it, which its start introduces.
+    readonly descendant: Descendant;
     readonly loopSequence: number;
     readonly parent: { readonly call: string; readonly subagent?: Subagent };
     readonly translator: Translator;
@@ -310,14 +312,15 @@ export default class Portal {
             thread.unrelated.add(actor);
             return;
         }
-        if (!thread.introduced.has(actor)) {
-            thread.introduced.add(actor);
-            thread.emit([{ type: EventType.CUSTOM, name: "plurnk.descendant", value: node }]);
-        }
         const subagent = method === "log/entry" ? await this.#rowSubagent(thread, node, (params as LogEntryNotification).entry.loop_id) : null;
         if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+        // {§agui-delegation-observation} A subagent's start introduces its worker; any other descendant is introduced once
+        // before its first event.
+        const introduction: AguiEvent[] = thread.introduced.has(actor) || subagent !== null ? []
+            : [{ type: EventType.CUSTOM, name: "plurnk.descendant", value: node }];
+        thread.introduced.add(actor);
         const out = subagent === null
-            ? thread.router.route(method, params)
+            ? [...introduction, ...thread.router.route(method, params)]
             : [...Portal.#present(subagent), ...subagent.translator.logEntry(params as LogEntryNotification)];
         if (out.length > 0) thread.emit(out);
     }
@@ -350,7 +353,7 @@ export default class Portal {
         if (parent === null) return null;
         const runId = `ops://${node.name}/${loop.sequence}`;
         const subagent: Subagent = {
-            runId, loopId: loop.id, workerId: node.workerId, worker: node.name, loopSequence: loop.sequence, parent,
+            runId, loopId: loop.id, workerId: node.workerId, worker: node.name, descendant: node, loopSequence: loop.sequence, parent,
             translator: new Translator({ threadId: thread.threadId, runId: thread.inputRunId, modelWorkerId: node.workerId,
                 workspaceId: thread.workspaceId, subagent: { runId, worker: node.name } }),
             // A conclusion still on its way to this Run ends the segment when it arrives.
@@ -387,6 +390,7 @@ export default class Portal {
         events.push({
             type: EventType.SUBAGENT_STARTED, subagentRunId: subagent.runId, name: subagent.worker, parentToolCallId: subagent.parent.call,
             ...(parent === undefined ? {} : { parentSubagentRunId: parent.runId }),
+            metadata: { plurnk: { ...subagent.descendant } },
         });
         if (subagent.result !== null) events.push(...Portal.#end(subagent, subagent.result));
         return events;
