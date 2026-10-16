@@ -191,7 +191,10 @@ repository's push instead of silently breaking the client. The installed CLI
 and TUI journeys require that checkout and its dependencies; `PLURNK_CLIENT_CHECKOUT`
 selects another installed client location instead of the `../plurnk` default. The phase
 reads that checkout as it stands: land a client change before the service push that
-depends on it, and never leave it half-edited while a gate runs. Its scripted model
+depends on it, and never leave it half-edited while a gate runs. It builds that checkout
+against this checkout's packed packages, while the client's own suite runs on its published
+dependencies, so a type a service change moves or removes must leave the client compiling
+against both. Its scripted model
 (`scripts/fixtures/client-journey-model.mjs`) asserts text from the teaching pages, so a
 teaching edit updates it in the same landing.
 
