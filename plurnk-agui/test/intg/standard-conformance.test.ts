@@ -17,17 +17,19 @@ class Observer extends HttpAgent {
     override connect(input: RunAgentInput) { return super.run({ ...input, messages: [] }); }
 }
 
-// What a standard client shows of a message: who said what, and which operation ran.
+// What a standard client shows of a message: who said what, which operation ran, and the metadata folded onto each
+// ({§agui-plurnk-metadata}).
 const view = (messages: readonly Message[]) => messages.map((message) => {
     const { id, role } = message;
     const content = "content" in message ? message.content : undefined;
     const name = "name" in message ? message.name : undefined;
     const calls = "toolCalls" in message
-        ? message.toolCalls?.map(({ id: callId, function: call }) => ({ callId, name: call.name, arguments: JSON.parse(call.arguments) as unknown }))
+        ? message.toolCalls?.map(({ id: callId, function: call, metadata: callMetadata }) => ({ callId, name: call.name, arguments: JSON.parse(call.arguments) as unknown, metadata: callMetadata }))
         : undefined;
     const toolCallId = "toolCallId" in message ? message.toolCallId : undefined;
     const subagentRunId = "subagentRunId" in message ? message.subagentRunId : undefined;
-    return JSON.parse(JSON.stringify({ id, role, content, name, calls, toolCallId, subagentRunId })) as Record<string, unknown>;
+    const metadata = "metadata" in message ? message.metadata : undefined;
+    return JSON.parse(JSON.stringify({ id, role, content, name, calls, toolCallId, subagentRunId, metadata })) as Record<string, unknown>;
 });
 
 const until = async (what: string, predicate: () => boolean, timeoutMs = 15_000): Promise<void> => {

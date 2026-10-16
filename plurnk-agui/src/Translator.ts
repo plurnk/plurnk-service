@@ -191,8 +191,14 @@ export default class Translator {
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         const arrival = this.#arrival(e);
         if (arrival !== null) {
-            if (this.#submitted.has(arrival.id)) return events;
-            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: arrival.id, role: "user", ...(arrival.name === undefined ? {} : { name: arrival.name }) });
+            // {§agui-plurnk-metadata} The Run that submitted a message already holds it: it receives only the row's facts,
+            // which the reducer folds onto that message.
+            if (this.#submitted.has(arrival.id)) {
+                events.push({ type: EventType.TEXT_MESSAGE_START, messageId: arrival.id, role: "user", metadata: Translator.#rowMetadata(e) });
+                events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
+                return events;
+            }
+            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: arrival.id, role: "user", ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata: Translator.#rowMetadata(e) });
             events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: arrival.id, delta: arrival.content });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
             return events;
@@ -200,7 +206,7 @@ export default class Translator {
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e) });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e), metadata: Translator.#rowMetadata(e) });
                 return events;
             }
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
@@ -216,7 +222,7 @@ export default class Translator {
         // teaches both as the worker's words to the user. A bodiless WAIT is lifecycle alone.
         const text = Translator.#txBody(e.tx);
         if (response || Translator.#waitSpeech(e, text)) {
-            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
+            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant", metadata: Translator.#rowMetadata(e) });
             events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
         }
@@ -231,13 +237,14 @@ export default class Translator {
             }
             return events;
         }
-        events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op });
+        const metadata = Translator.#rowMetadata(e);
+        events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op, metadata });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: Translator.#argsFor(e) });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
         if (Translator.#opensObligation(e)) return events;
         const rxText = Translator.#asText(e.rx);
         if (rxText.length > 0) {
-            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: rxText });
+            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: rxText, metadata });
         }
         return events;
     }
@@ -386,15 +393,16 @@ export default class Translator {
     #replayRow(e: Record<string, unknown>, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {
         const attributed = <T extends ReplayMessage>(message: T): T => this.#subagent === null ? message : { ...message, subagentRunId: this.#subagent.runId };
         const id = this.#id(e);
+        const metadata = Translator.#rowMetadata(e);
         const arrival = this.#arrival(e);
         if (arrival !== null) {
-            messages.push(attributed({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }) }));
+            messages.push(attributed({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata }));
             return;
         }
         const response = Translator.isResponse(e, this.#threadId);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
-            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e) }));
+            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e), metadata }));
             return;
         }
         if (typeof e.op !== "string") {
@@ -406,13 +414,13 @@ export default class Translator {
         const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
         if (reasoning.length > 0) messages.push(attributed({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning }));
         const text = Translator.#txBody(e.tx);
-        if (response || Translator.#waitSpeech(e, text)) messages.push(attributed({ id, role: "assistant", content: text }));
+        if (response || Translator.#waitSpeech(e, text)) messages.push(attributed({ id, role: "assistant", content: text, metadata }));
         if (response || TurnDisposition.isOp(e.op)) return;
         const entry = e as LogEntryNotification["entry"];
-        messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) } }] }));
+        messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) }, metadata }] }));
         if (Translator.#opensObligation(e)) return;
         const result = Translator.#asText(e.rx);
-        if (result.length > 0) Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: result }));
+        if (result.length > 0) Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: result, metadata }));
     }
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
@@ -618,6 +626,12 @@ export default class Translator {
         if (e.invocation === undefined) return null;
         const coordinate = Translator.callOf(e.invocation);
         return this.#subagent === null ? coordinate : `${Translator.subagentIds(this.#subagent.worker)}#${coordinate}`;
+    }
+
+    // {§agui-plurnk-metadata} What the row that builds a message, tool call or result holds beyond the standard fields: its
+    // durable id, worker, origin, source, signal, status and attrs, the same live and on snapshot.
+    static #rowMetadata(e: { id?: unknown; worker_id?: unknown; origin?: unknown; source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown }): { plurnk: Record<string, unknown> } {
+        return { plurnk: { id: e.id, worker: e.worker_id, origin: e.origin, source: e.source, signal: e.signal, status: e.status_rx, attrs: e.attrs } };
     }
 
     // {§methods-invocation} The coordinate of the operation a log address names in its own worker's log.

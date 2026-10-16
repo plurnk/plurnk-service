@@ -152,7 +152,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | §agui-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
-| `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id and goes to every Run but the one that submitted it; any other is named by its source |
+| `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id, and the Run that submitted it, which already holds it, receives only `TEXT_MESSAGE_START/END` carrying its row's facts ({§agui-plurnk-metadata}); any other is named by its source |
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§agui-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
@@ -230,6 +230,7 @@ sequence.
   |---|---|
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
+  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, worker, origin, source, signal, status, attrs }`, its durable id, worker, origin, causal source, signal, receipt status (the failure flag) and attributes |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
@@ -348,8 +349,8 @@ every other daemon surface.
   creates no turn, and performs no model inference. Disconnecting this observer never cancels
   independently-owned work.
 
-§agui-snapshot **A snapshot is the messages the live projection built**, in log order and under
-the live identities, each tool result after its call where the official reducer puts one that arrives
+§agui-snapshot **A snapshot is the messages the live projection built**, in log order, under
+the live identities and with the same metadata ({§agui-plurnk-metadata}), each tool result after its call where the official reducer puts one that arrives
 live, so a client that applies it keeps every message it built live and a reloaded
 client rebuilds them. It is built from the bound worker's whole log, read page by page
 ({§methods-log-read}), and each subagent run's under {§agui-subagents}, because AG-UI defines a snapshot as the

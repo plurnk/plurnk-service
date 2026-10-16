@@ -32,6 +32,10 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
     return { entry: wireRow({ id: 7, sequence: 3, tx: { target: null, body: { raw: "message" } }, rx, ...over }) };
 };
 
+// What a snapshot's messages say, without the row facts their metadata carries ({§agui-plurnk-metadata}).
+const said = <T extends object>(messages: readonly T[]): Array<Omit<T, "metadata">> =>
+    messages.map((message) => { const { metadata: _metadata, ...rest } = message as T & { metadata?: unknown }; return rest; });
+
 // What a reader sees of a snapshot: its speech, and its operations as their calls.
 type Replayed = { role: string; content?: unknown; toolCalls?: ReadonlyArray<{ id: string; function: { name: string } }> };
 const speech = (messages: readonly Replayed[]): unknown[] =>
@@ -290,7 +294,7 @@ test("{§agui-replay} an arrival retains the AG-UI message id across reconnects"
         tx: { body: { raw: "Question." } }, rx: { status: 200 }, loop_seq: 1, turn_seq: 1, sequence: 1 });
     const [snapshot] = t().replay([record.entry]);
     assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
-    if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages, [{ id: "user one", role: "user", content: "Question." }],
+    if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(said(snapshot.messages), [{ id: "user one", role: "user", content: "Question." }],
         "a thread client's message replays as that client sent it");
 });
 
@@ -746,7 +750,7 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND speech 
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
-    assert.deepEqual(snap.messages, [
+    assert.deepEqual(said(snap.messages), [
         { id: "1/1/0", role: "user", content: "What is the answer?" },
         { id: "1/1/1", role: "assistant", content: "orient" },
         { id: "1/1/9/reasoning", role: "reasoning", content: "considered the evidence" },
@@ -816,7 +820,7 @@ test("{§loop-status-notice} {§agui-status-timing} a lifecycle notice is its lo
     assert.throws(() => beat(102, null, undefined, null), /names its loop/u);
 });
 
-test("{§agui-snapshot} {§message-arrival} an arrival is the same user message live and on replay, and never reaches the Run that submitted it", () => {
+test("{§agui-snapshot} {§message-arrival} an arrival is the same user message live and on replay, and the Run that submitted it gets only its row's facts", () => {
     const own = "agui://alice/threads/th-1/messages/m-own";
     const other = "agui://bob/threads/th-1/messages/m-other";
     const arrival = (id: number, source: string, body: string) => wireRow({ id, origin: "_plurnk", op: "SEND", source, attrs: { kind: "message" }, tx: { body: { raw: body } } });
@@ -832,9 +836,12 @@ test("{§agui-snapshot} {§message-arrival} an arrival is the same user message 
         { id: "m-other", role: "user", name: undefined },
         { id: "1/1/3", role: "user", name: "worker://helper" },
     ], "an observer receives every arrival natively: a thread client's message as that client sent it, any other named by its source");
-    assert.deepEqual(user(live(submitter)).map(({ id }) => id), ["m-other", "1/1/3"], "the submitting Run's client already holds its own message");
+    const words = (events: readonly AguiEvent[]) => events.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => (event as { messageId: string }).messageId);
+    assert.deepEqual(words(live(submitter)), ["m-other", "1/1/3"], "the submitting Run's client already holds its own message's words");
+    assert.deepEqual((live(submitter).find((event) => event.type === EventType.TEXT_MESSAGE_START && event.messageId === "m-own") as { metadata?: { plurnk?: { id?: unknown } } } | undefined)?.metadata?.plurnk?.id, 1,
+        "{§agui-plurnk-metadata} and receives only its row's facts for it");
     const snapshot = t().replay(rows)[0] as { messages: Array<{ id: string; role: string; content: unknown; name?: string }> };
-    assert.deepEqual(snapshot.messages, [
+    assert.deepEqual(said(snapshot.messages), [
         { id: "m-own", role: "user", content: "From the submitter." },
         { id: "m-other", role: "user", content: "From another client." },
         { id: "1/1/3", role: "user", content: "From a worker.", name: "worker://helper" },
@@ -853,6 +860,27 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
     const inherited = wireRow({ id: 6, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", reasoning: "The parent's thought." });
     const snapshot = t().replay([accepted, inherited])[0] as { messages: Array<{ id: string; role: string }> };
     assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map(({ id }) => id), [live, "1/2/1/reasoning"]);
+});
+
+test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
+    const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, worker: row.worker_id, origin: row.origin, source: row.source,
+        signal: row.signal, status: row.status_rx, attrs: row.attrs } });
+    const rows = [
+        wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),
+        wireRow({ id: 2, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", tx: authored("````READ (worker:///notes.md)\n````"), status_rx: 404,
+            rx: { status: 404, problem: { type: "https://problems.plurnk.xyz/scheme/worker/missing", title: "Missing", status: 404, detail: "No such entry." } } }),
+        wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+    ];
+    const live = rows.flatMap((row) => t().logEntry({ entry: row }));
+    const carried = (type: string) => live.filter((event) => event.type === type).map((event) => (event as { metadata?: unknown }).metadata);
+    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]!), facts(rows[2]!)], "an arrival and speech carry their rows' facts");
+    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]!)], "a call carries its row's facts");
+    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]!)], "and so does its result, its status the failure");
+    const [snapshot] = t().replay(rows);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.map((message) => "toolCalls" in message && message.toolCalls !== undefined
+        ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata), [facts(rows[0]!), facts(rows[1]!), facts(rows[1]!), facts(rows[2]!)],
+        "the snapshot holds the same metadata on the same parts");
 });
 
 test("{§methods-log-coordinate} a row's message identity is its L/T/S coordinate, and a row without its ordinals is refused", () => {

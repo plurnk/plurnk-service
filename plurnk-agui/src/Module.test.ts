@@ -2431,7 +2431,7 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
     seam.runLoop = async () => {
         runs++;
         setImmediate(() => {
-            for (const entry of rows) emit(3, "log/entry", { entry });
+            for (const entry of logRows(rows)) emit(3, "log/entry", { entry });
             emit(3, "loop/terminated", termination({ workerId: 20, loopId: 9, result: { status: 200 }, turnIds: [1, 2, 3],
                 usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
         });
