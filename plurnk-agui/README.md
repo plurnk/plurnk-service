@@ -28,6 +28,7 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Loop conclusion | Lifecycle signals; delivered SEND replies are assistant speech. |
 | Live provider reasoning | Standard `REASONING_*` deltas, immediately. Retries have separate identities. |
 | SEND | Assistant text; already-streamed reasoning is not repeated. |
+| A message to the worker | A user message, named by its source unless this client sent it. |
 | Other model operations | Standard tool calls and results. |
 | A row's facts | `metadata.plurnk` on the message, tool call or result the row builds, live and on snapshot. |
 | Harness activity, other workers' rows | `CUSTOM plurnk.ambient`, the whole row, without invented model speech. |
@@ -35,9 +36,12 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Packet and terminal usage | State updates, and the loop's terminal record as the end's `metadata.plurnk.terminal`: the complete accounting with cost; daemon quantities pass through unchanged. |
 
 READ of `reasoning://<worker>/…` is an operation receipt, not another reasoning stream.
-On reattach, the durable `MESSAGES_SNAPSHOT` restores accepted reasoning and
-SENDs. `forwardedProps.plurnk.mode="sync"` obtains that state without a prompt
-or model inference ({§agui-sync}).
+
+A Run's `messages` are the client's copy of the conversation. A Run submits only a
+user message the conversation doesn't hold, and a Run with nothing new reattaches:
+the durable `MESSAGES_SNAPSHOT` restores the whole conversation without a prompt or
+model inference ({§agui-run-input}, {§agui-sync}). A stock `HttpAgent` therefore
+reattaches by running again with its history.
 
 Pending proposals and user interactions use standard AG-UI interrupts and
 resume Runs. Core decides their owner and disposition, including delegated

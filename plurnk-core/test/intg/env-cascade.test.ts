@@ -452,7 +452,7 @@ for (const built of [false, true]) {
             body: JSON.stringify({
                 threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
                 // {§agui-sync} A client attaches to the worker it owns, as the terminal client does.
-                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, mode: "sync", control: true } },
+                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, control: true } },
             }),
         });
         assert.equal(sync.status, 200);
@@ -508,7 +508,7 @@ for (const built of [false, true]) {
         // worker creates it, and inheriting the child model resolves no provider.
         const created = await request({ action: { kind: "worker.child.set", selector: null } });
         assert.equal(outcomeOf(created)?.ok, true, JSON.stringify(created));
-        const sync = await request({ mode: "sync", control: true });
+        const sync = await request({ control: true });
         assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
         assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
         const snapshot = sync.find(({ type }) => type === "STATE_SNAPSHOT")?.snapshot;

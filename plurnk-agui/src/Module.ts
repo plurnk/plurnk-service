@@ -103,7 +103,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #activated = false;
     #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -414,7 +414,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         const cached = this.#threadWorkers.get(key);
         if (cached !== undefined) return await cached;
         if (binding === "required") {
-            const id = await this.#threadWorker(threadId, env);
+            const id = await this.#threadWorker(threadId, env.workspaceId);
             if (id === undefined) {
                 throw new HttpProblemError(httpProblem("worker-not-found", 404,
                     `No model worker named ${JSON.stringify(threadId)} exists in workspace ${JSON.stringify(env.workspaceName)}.`, {
@@ -425,7 +425,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             this.#threadWorkers.set(key, Promise.resolve(id));
             return id;
         }
-        const pending = (async () => await this.#threadWorker(threadId, env)
+        const pending = (async () => await this.#threadWorker(threadId, env.workspaceId)
             ?? (await this.#seam.createWorker({ workspaceId: env.workspaceId, name: threadId })).workerId)();
         this.#threadWorkers.set(key, pending);
         try { return await pending; }
@@ -437,9 +437,20 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
 
     // {§agui-thread-binding} The model worker the threadId names, when it exists; reading it creates nothing. It is
     // also the worker a person's client operation acts for ({§actor-boundary-client-operations}).
-    async #threadWorker(threadId: string, env: ClientEnvelope): Promise<number | undefined> {
-        const worker = await this.#seam.readWorker({ workspaceId: env.workspaceId, identity: { name: threadId } });
+    async #threadWorker(threadId: string, workspaceId: number): Promise<number | undefined> {
+        const worker = await this.#seam.readWorker({ workspaceId, identity: { name: threadId } });
         return worker?.origin === "model" ? worker.id : undefined;
+    }
+
+    // {§agui-run-input} The conversation a thread names, found without binding or creating anything: the world the
+    // Run selects by name and the model worker the thread names in it, or null when either does not exist.
+    async #conversation(threadId: string, forwarded?: Record<string, unknown>): Promise<{ workspaceId: number; workerId: number } | null> {
+        const workspace = forwarded?.workspace;
+        if (typeof workspace !== "string") return null;
+        const world = (await this.#seam.listWorkspaces()).find(({ name }) => name === workspace);
+        if (world === undefined) return null;
+        const workerId = await this.#threadWorker(threadId, world.id);
+        return workerId === undefined ? null : { workspaceId: world.id, workerId };
     }
 
     // {§agui-action-binding} — what an action binds of the thread's worker. Reached only for a registered

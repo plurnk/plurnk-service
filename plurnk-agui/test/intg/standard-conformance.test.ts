@@ -12,9 +12,10 @@ import type { Message, RunAgentInput } from "@ag-ui/core";
 import type { ApplicationLoopProjection, ApplicationWorkerProjection } from "@plurnk/plurnk-contracts";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
 
-// A passive observer is the official client's own run pipeline pointed at /agui/connect.
+// HttpAgent leaves AbstractAgent's connect() to its subclasses: a standing observer is the official client's own run
+// pipeline pointed at /agui/connect ({§agui-owner-connection}), carrying its copy of the conversation ({§agui-run-input}).
 class Observer extends HttpAgent {
-    override connect(input: RunAgentInput) { return super.run({ ...input, messages: [] }); }
+    override connect(input: RunAgentInput) { return super.run(input); }
 }
 
 // What a standard client shows of a message: who said what, which operation ran, and the metadata folded onto each
@@ -148,7 +149,7 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
 
     const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(refreshed);
-    await refreshed.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, mode: "sync" } } });
+    await refreshed.runAgent({ forwardedProps });
 
     const truth = view(refreshed.messages);
     assert.deepEqual(truth.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
@@ -179,6 +180,22 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late],
         ["attached while the command ran", running]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
+    }
+
+    // {§agui-run-input} Running again with a held message reattaches: a client that kept only its accepted prompt, and
+    // the submitter with its whole copy, each carry nothing new, so nothing is refused and nothing is inferred.
+    const made = calls;
+    const failures: unknown[] = [];
+    const failed = { onRunErrorEvent: ({ event }: { event: unknown }) => { failures.push(event); } };
+    const resumed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(resumed);
+    resumed.messages = [{ id: "prompt-1", role: "user", content: "Note the plan." }];
+    await resumed.runAgent({ forwardedProps }, failed);
+    await submitter.runAgent({ forwardedProps }, failed);
+    assert.deepEqual(failures, [], "running again with a held message is not refused");
+    assert.equal(calls, made, "running again with a held message infers nothing");
+    for (const [vantage, agent] of [["a client that kept only its prompt", resumed], ["the submitter", submitter]] as const) {
+        assert.deepEqual(view(agent.messages), truth, `${vantage}, running again, rebuilt exactly the conversation`);
     }
 });
 
@@ -239,7 +256,7 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-prog
     await until("the observer to hear the reply", () => finished(before));
     const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(refreshed);
-    await refreshed.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, mode: "sync" } } });
+    await refreshed.runAgent({ forwardedProps });
 
     const truth = view(refreshed.messages);
     const callOf = (name: string) => truth.flatMap(({ calls: made }) => (made as Array<{ callId: string; name: string }> | undefined) ?? [])
@@ -254,6 +271,19 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-prog
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
     }
+
+    // {§agui-run-input} A copy that ends with the peer's progress holds nothing new: running again infers nothing, and the
+    // peer's words are never sent as this client's own.
+    const made = calls;
+    const progress = refreshed.messages.findIndex((message) => message.role === "user" && message.name === "worker://peer");
+    const cut = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
+    agents.push(cut);
+    cut.messages = refreshed.messages.slice(0, progress + 1);
+    const failures: unknown[] = [];
+    await cut.runAgent({ forwardedProps }, { onRunErrorEvent: ({ event }) => { failures.push(event); } });
+    assert.deepEqual(failures, [], "running again with the peer's message last is not refused");
+    assert.equal(calls, made, "running again with the peer's message last infers nothing");
+    assert.deepEqual(view(cut.messages), truth, "the copy is completed from the conversation, the peer's words still the peer's");
 });
 
 test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation sees the child as a subagent of the WORK, live as on refresh", { timeout: 60_000 }, async (t) => {
@@ -317,7 +347,7 @@ test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation se
     const refreshed = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(refreshed);
     const presented = lifecycleOf(refreshed);
-    await refreshed.runAgent({ forwardedProps: { plurnk: { ...delegation.plurnk, mode: "sync" } } });
+    await refreshed.runAgent({ forwardedProps: delegation });
     const helperWorker = (await daemon.listWorkers(workspaceId) as ApplicationWorkerProjection[]).find(({ name }) => name === "helper");
     const concluded = (await daemon.listWorkerLoops({ workspaceId, workerId: helperWorker!.id }) as ApplicationLoopProjection[])[0]?.terminalResult;
 

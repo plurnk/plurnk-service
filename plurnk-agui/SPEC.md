@@ -78,7 +78,7 @@ requests.
 
 | Request | Ownership effect |
 |---|---|
-| Prompt or interrupt resume | Control attachment for the worker the Run binds, if any ({§agui-action-binding}). |
+| A new message ({§agui-run-input}) or an interrupt resume | Control attachment for the worker the Run binds, if any ({§agui-action-binding}). |
 | Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
 | Passive synchronization / connection; a client operation ({§agui-client-operation}); other management Runs | No claim and no capability replacement. |
 
@@ -119,14 +119,16 @@ cancellation responsibility.
 
 ## §agui-owner-connection Persistent observation
 
-`POST /agui/connect` accepts the standard `RunAgentInput`, without messages, actions, or
-resumes. It binds as synchronization does: an owner's control connection creates the worker the
+`POST /agui/connect` accepts a standard `RunAgentInput` that submits nothing ({§agui-run-input}): its messages are
+the client's copy, and one that carries a new message, an action or a resume is refused, 400 `invalid-connect-input`.
+It binds as synchronization does: an owner's control connection creates the worker the
 thread names when there is none, and a passive one creates nothing. It uses the same snapshots,
 events, and interrupt representation
 ({§agui-sync}), but waits when the worker is idle. New work, including owner-addressed
 child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
-This is the transport implementation of the AG-UI `connect()` extension, not another event protocol.
+This is the transport implementation of the AG-UI `connect()` extension, not another event protocol: `HttpAgent`
+leaves `connect()` to its subclasses, and a client without one reattaches by running with nothing new.
 
 §agui-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new
 requests while admitted Runs retain terminal-event delivery. In `close`, after core
@@ -143,7 +145,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | plurnk wire                                | AG-UI events |
 | ------------------------------------------ | ------------ |
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
-| `forwardedProps.plurnk.mode = "sync"`      | Durable `MESSAGES_SNAPSHOT` of the bound worker, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-sync} |
+| A Run that carries nothing new ({§agui-run-input}) | Durable `MESSAGES_SNAPSHOT` of the bound worker, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-sync} |
 | `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
 | `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, its receipt in the speech's metadata ({§agui-plurnk-metadata}); a bodiless WAIT is an operation like any other, `TOOL_CALL_START/ARGS/END` + its receipt. No invented plan, no invented speech (#1003). |
 | Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END`, the row's signal and status in its metadata ({§agui-plurnk-metadata}) |
@@ -332,15 +334,15 @@ every other daemon surface.
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
   to its existing workspace by name→id and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
-  carries the bound worker's messages ({§agui-snapshot}) and then the one validated current Run user message
+  carries the bound worker's messages ({§agui-snapshot}) and then the Run's new message ({§agui-run-input})
   under a Run-owned identity. Client-claimed earlier history is not imported. A client already
   carrying any durable assistant identity receives no repeated snapshot. Pending proposals and client interactions remain durable while
   their operation owners are live and are presented as interrupts when the owning thread is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
 
 - §agui-sync **Synchronization is an inference-free AG-UI Run.**
-  `forwardedProps.plurnk.mode = "sync"` on the existing Run endpoint accepts no messages,
-  management action, or interrupt resume. A passive observation (`forwardedProps.plurnk.control`
+  A Run that carries no new message, action or interrupt resume synchronizes ({§agui-run-input}); its messages
+  are the client's copy. A passive observation (`forwardedProps.plurnk.control`
   absent or false) binds an existing workspace and the existing worker the `threadId` names, creates
   neither and claims nothing: a missing workspace is 404 `workspace-not-found`, and a name that holds
   no model worker is 404 `worker-not-found`. An owner's control observation is the owner's session
@@ -488,20 +490,22 @@ selection.
 
 ## §agui-management-plane The action surface
 
-PLURNK has three inputs through the one AG-UI Run endpoint. A normal user message
-and a standard interrupt resume are not management actions.
+A Run's input ({§agui-run-input}) is one of three, and a Run that carries none of them synchronizes. A new user
+message and a standard interrupt resume are not management actions.
 
 ```mermaid
 flowchart LR
     client["AG-UI client"] --> run["POST RunAgentInput"]
-    run --> classify{"Input form"}
-    classify -->|"textual user message"| loop["ApplicationPort.runLoop"]
+    run --> classify{"What the conversation doesn't hold"}
+    classify -->|"new user message"| loop["ApplicationPort.runLoop"]
     classify -->|"RunAgentInput.resume"| resume["ApplicationPort proposal / interaction resolution"]
     classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
+    classify -->|"none of them"| sync["Synchronization"]
     actions --> builtIn["Advertised schema admission<br/>and typed ApplicationPort call"]
     actions --> extension["Scoped ApplicationPort.invokeModuleAction"]
     loop --> events["Core event source"]
     resume --> events
+    sync --> events
     builtIn --> events
     events --> projection["AG-UI projection"]
     extension --> result["RUN_FINISHED result"]
@@ -920,13 +924,27 @@ address is the daemon's.
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 
-`POST /agui` accepts a schema-valid AG-UI `RunAgentInput`: the last textual
-`user` message becomes the
-`ApplicationPort.runLoop` prompt (`maxTurns` from
-the forwarded PLURNK properties); the response is `text/event-stream`,
-one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
-is rejected until the model-loop seam supports it deliberately. Proposal
-disposition remains Core policy; this module routes review to the worker's owner.
+`POST /agui` accepts a schema-valid AG-UI `RunAgentInput`; the response is `text/event-stream`, one `data:` line
+per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Proposal disposition remains Core policy; this module routes
+review to the worker's owner.
+
+§agui-run-input **A Run's input is what its conversation doesn't hold.** A Run's `messages` are the client's copy of
+the conversation its thread names, which the official `HttpAgent` sends whole on every Run. Its last message is new
+when it is a user message of that conversation (no `subagentRunId`) whose id the conversation's snapshot
+({§agui-snapshot}) does not hold; every other message is the client's copy, never imported ({§agui-replay}). The Run
+is decided before it binds anything, and a refused Run binds, creates and claims nothing:
+
+| The Run carries | It |
+|---|---|
+| An interrupt resume | Resolves its interrupts ({§agui-proposal-resolve}) |
+| `forwardedProps.plurnk.action` | Acts ({§agui-management-plane}) |
+| A new message | Submits it: its text is the `ApplicationPort.runLoop` prompt, `maxTurns` from the forwarded PLURNK properties |
+| None of them | Synchronizes ({§agui-sync}) |
+| More than one of them | Is refused, 400 `ambiguous-run-input` |
+
+A new message that is not non-empty text is refused, 400 `user-message-text-required`: multimodal content waits until
+the model-loop seam supports it deliberately. A last user message whose id the conversation holds with other content
+is refused, 409 `message-id-conflict`. A connection submits nothing ({§agui-owner-connection}).
 
 §agui-run-source The run's user message is the causal actor behind its inbound SEND
 ({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
@@ -1006,10 +1024,11 @@ reconstruct one from `RUN_ERROR`.
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
 | `control-invalid` | 400 | control must be a boolean. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
-| `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
-| `invalid-sync-input` | 400 | A sync Run cannot include messages, an action, or an interrupt resume. |
+| `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
+| `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |
+| `message-id-conflict` | 409 | Message *id* is already in this conversation with other content. Recovery: Give a new message its own id. |
 | `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*. Recovery: Name an existing model worker, or create one by sending it a message. |
-| `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |
+| `user-message-text-required` | 400 | A new user message must be non-empty text. Recovery: Send the message as non-empty text. |
 | `run-failed` | 500 | The AG-UI Run failed unexpectedly. |
 
 §pinned-wording-agui **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.

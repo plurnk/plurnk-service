@@ -1690,7 +1690,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
             const binding = { threadId: "lifetime", forwardedProps: { plurnk: { workspace: "w" } } };
             const observe = () => post(mod.address().port, {
                 ...binding, runId: crypto.randomUUID(),
-                forwardedProps: { plurnk: { workspace: "w", mode: "sync", control: true } },
+                forwardedProps: { plurnk: { workspace: "w", control: true } },
             });
             const controller = new AbortController();
             try {
@@ -1789,7 +1789,7 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
     const binding = { threadId: "presentations", forwardedProps: { plurnk: { workspace: "w" } } };
     const observe = async (): Promise<Interrupt[]> => {
         const events = await post(mod.address().port, {
-            ...binding, forwardedProps: { plurnk: { workspace: "w", mode: "sync", control: true } },
+            ...binding, forwardedProps: { plurnk: { workspace: "w", control: true } },
         });
         const terminal = events.at(-1);
         assert.ok(terminal?.type === "RUN_FINISHED" && terminal.outcome?.type === "interrupt");
@@ -1884,7 +1884,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     const mod = await host(seam);
     try {
         const interrupted = await post(mod.address().port, {
-            threadId: "t2", forwardedProps: { plurnk: { workspace: "t2", mode: "sync", control: true } },
+            threadId: "t2", forwardedProps: { plurnk: { workspace: "t2", control: true } },
         });
         const events = await post(mod.address().port, {
             threadId: "t2", runId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
@@ -2249,7 +2249,7 @@ test("{§agui-sync}: an inference-free sync replays the bound worker's durable l
         const events = await post(mod.address().port, {
             threadId: "sync-client",
             runId: "sync-run",
-            forwardedProps: { plurnk: { workspace: "sync-client", mode: "sync" } },
+            forwardedProps: { plurnk: { workspace: "sync-client" } },
         });
         assert.deepEqual(events.map(({ type }) => type), [
             "RUN_STARTED",
@@ -2279,9 +2279,9 @@ test("{§agui-owner-activation} an owner's attachment starts its workspace's act
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "owned", projectRoot: null, projectLabel: null });
     const mod = await host(seam);
     try {
-        await post(mod.address().port, { threadId: "owned", runId: "watch", forwardedProps: { plurnk: { workspace: "owned", mode: "sync" } } });
+        await post(mod.address().port, { threadId: "owned", runId: "watch", forwardedProps: { plurnk: { workspace: "owned" } } });
         assert.deepEqual(activations, [], "a passive observation activates nothing");
-        await post(mod.address().port, { threadId: "owned", runId: "own", forwardedProps: { plurnk: { workspace: "owned", mode: "sync", control: true } } });
+        await post(mod.address().port, { threadId: "owned", runId: "own", forwardedProps: { plurnk: { workspace: "owned", control: true } } });
         assert.deepEqual(activations, [3], "the owner's arrival activates the workspace");
     } finally { await mod.close(); }
 });
@@ -2307,7 +2307,7 @@ test("{§agui-sync} rows that reach a sync Run while its log is read follow its 
     };
     const mod = await host(seam);
     try {
-        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy", mode: "sync" } } });
+        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy" } } });
         const snapshot = events.findIndex((event) => event.type === "MESSAGES_SNAPSHOT");
         const calls = events.flatMap((event, index) => event.type === "TOOL_CALL_START"
             ? [[index > snapshot, (event as { metadata?: { plurnk?: { id?: number; status?: number } } }).metadata?.plurnk]] : []);
@@ -2334,7 +2334,7 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
     };
     const mod = await host(seam);
     try {
-        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy", mode: "sync" } } });
+        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy" } } });
         assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
         const rows = events.filter((event) => event.type === "TOOL_CALL_START").map((event) => (event as { metadata?: { plurnk?: { id?: number } } }).metadata?.plurnk?.id);
         assert.deepEqual(rows, [2, 3], "each row once, in arrival order, after the snapshot");
@@ -2389,7 +2389,7 @@ test("{§agui-thread-binding} a cached binding never outlives its workspace's na
     const mod = await host(seam);
     const observe = async (workspace: string): Promise<Response> => await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(standardInput({ threadId: "exact-worker", messages: [], forwardedProps: { plurnk: { workspace, mode: "sync" } } })),
+        body: JSON.stringify(standardInput({ threadId: "exact-worker", messages: [], forwardedProps: { plurnk: { workspace } } })),
     });
     try {
         const first = await observe("before-rename");
@@ -2426,7 +2426,7 @@ test("{§agui-sync} an observation binds an existing workspace and worker, exact
     const observe = async (threadId: string, workspace: string, connect = false): Promise<Response> => await fetch(
         `http://127.0.0.1:${mod.address().port}/agui${connect ? "/connect" : ""}`, {
             method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify(standardInput({ threadId, messages: [], forwardedProps: { plurnk: connect ? { workspace } : { workspace, mode: "sync" } } })),
+            body: JSON.stringify(standardInput({ threadId, messages: [], forwardedProps: { plurnk: { workspace } } })),
         });
     const refused = async (response: Response): Promise<[number, string]> => [response.status, ((await response.json()) as { type: string }).type.split("/").at(-1)!];
     try {
@@ -2492,7 +2492,7 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
         // The SDK keeps of a client's messages only those a snapshot names, so a snapshot naming every
         // live message is what keeps a reconnecting client whole, as it rebuilds a reloaded one.
         const fresh = new HttpAgent({ url, threadId });
-        await fresh.runAgent({ forwardedProps: { plurnk: { workspace: threadId, mode: "sync" } } });
+        await fresh.runAgent({ forwardedProps: { plurnk: { workspace: threadId } } });
         assert.deepEqual(fresh.messages.map(({ id }) => id), built.map(({ id }) => id), "the snapshot names every message the live Run built, in order");
         assert.deepEqual(fresh.messages.filter(({ role }) => role !== "user"), built.filter(({ role }) => role !== "user"),
             "reasoning, calls, results and speech are the live ones");
@@ -2531,7 +2531,7 @@ test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the mo
         const events = await post(mod.address().port, {
             threadId: "sync-interrupt",
             runId: "sync-interrupt-run",
-            forwardedProps: { plurnk: { workspace: "sync-interrupt", mode: "sync", control: true } },
+            forwardedProps: { plurnk: { workspace: "sync-interrupt", control: true } },
         });
         assert.deepEqual(events.slice(0, 3).map(({ type }) => type), [
             "RUN_STARTED",
@@ -2552,56 +2552,100 @@ test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the mo
     }
 });
 
-test("{§agui-sync}: sync rejects ambiguous input before binding a workspace", async () => {
-    const { seam } = mockSeam();
-    const mod = await host(seam);
-    try {
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(standardInput({
-                threadId: "ambiguous-sync",
-                messages: [{ role: "user", content: "do work" }],
-                forwardedProps: { plurnk: { workspace: "ambiguous-sync", mode: "sync" } },
-            })),
-        });
-        assert.equal(response.status, 400);
-        assert.deepEqual(await response.json(), Problems.create(
-            "agui:http",
-            "invalid-sync-input",
-            400,
-            "A sync Run cannot include messages, an action, or an interrupt resume.",
-            { stage: "request-validation", retryable: false },
-        ));
-    } finally {
-        await mod.close();
+// {§agui-run-input} The conversation a client holds a copy of: its own message, the reply that answered it, and a
+// peer's message, each under the id its snapshot gives it.
+const conversationRows = () => logRows([
+    { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk", source: "agui://anonymous/threads/matrix/messages/own", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "Hello." } } },
+    { id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/matrix/messages/own"] }, turn_id: 1, tx: { body: "Hi." } },
+    { id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: "SEND", status_rx: 200, origin: "_plurnk", source: "worker://peer", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "From a peer." } } },
+]);
+const copy = [
+    { id: "own", role: "user", content: "Hello." },
+    { id: "1/1/2", role: "assistant", content: "Hi." },
+    { id: "1/1/3", role: "user", name: "worker://peer", content: "From a peer." },
+];
+// The Run's last message, and what it is to the conversation.
+const lastMessages: Record<string, { messages: Array<Record<string, unknown>>; fresh?: true; text?: false; conflict?: true }> = {
+    "no message": { messages: [] },
+    "a new text message": { messages: [...copy, { id: "next", role: "user", content: "Next." }], fresh: true },
+    "a new empty message": { messages: [...copy, { id: "next", role: "user", content: "" }], fresh: true, text: false },
+    "a new non-text message": { messages: [...copy, { id: "next", role: "user", content: [{ type: "text", text: "Next." }] }], fresh: true, text: false },
+    "the client's own held message": { messages: [copy[0]!] },
+    "its held id with other words": { messages: [{ id: "own", role: "user", content: "Edited." }], conflict: true },
+    "a peer's held message": { messages: copy },
+    "a reply's id as a user message": { messages: [{ id: "1/1/2", role: "user", content: "Hi." }], conflict: true },
+    "an assistant message": { messages: copy.slice(0, 2) },
+    "a subagent's message": { messages: [...copy, { id: "worker://child#1/1/1", role: "user", content: "x", subagentRunId: "ops://child/1" }] },
+};
+const carried = {
+    nothing: {},
+    "an action": { action: { kind: "worker.model.get" } },
+    "a resume": { resume: [{ interruptId: "int:unknown", status: "resolved", payload: {} }] },
+} as const;
+const outcomeOf = (last: (typeof lastMessages)[string], carries: keyof typeof carried, connect: boolean): string => {
+    if (last.conflict) return "409 message-id-conflict";
+    const asks = Number(carries !== "nothing") + Number(last.fresh === true);
+    if (connect && asks > 0) return "400 invalid-connect-input";
+    if (asks > 1) return "400 ambiguous-run-input";
+    if (carries === "an action") return "acts";
+    if (carries === "a resume") return "resolves";
+    if (last.fresh) return last.text === false ? "400 user-message-text-required" : "submits";
+    return "observes";
+};
+for (const [lastName, last] of Object.entries(lastMessages)) {
+    for (const carries of Object.keys(carried) as Array<keyof typeof carried>) {
+        for (const connect of [false, true]) {
+            const expected = outcomeOf(last, carries, connect);
+            test(`{§agui-run-input}: ${lastName} with ${carries} on ${connect ? "/agui/connect" : "/agui"} ${expected}`, async () => {
+                const { seam, loopRuns, owners, finish } = mockSeam();
+                existingWorld(seam, "matrix");
+                let attached = 0;
+                seam.attachWorkspace = async () => { attached += 1; return { workspaceId: 3, workspaceName: "matrix", projectRoot: null, projectLabel: null }; };
+                seam.readLog = async () => conversationRows();
+                seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+                const mod = await host(seam);
+                const stop = new AbortController();
+                try {
+                    const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui${connect ? "/connect" : ""}`, {
+                        method: "POST", headers: { "content-type": "application/json" }, signal: stop.signal,
+                        body: JSON.stringify({ runId: "r", threadId: "matrix", state: {}, tools: [], context: [], messages: last.messages,
+                            forwardedProps: { plurnk: { workspace: "matrix", ...("action" in carried[carries] ? carried[carries] : {}) } },
+                            ...("resume" in carried[carries] ? carried[carries] : {}) }),
+                    });
+                    if (response.status !== 200) {
+                        const problem = await response.json() as { type: string };
+                        assert.equal(`${response.status} ${problem.type.slice(problem.type.lastIndexOf("/") + 1)}`, expected);
+                        assert.deepEqual([attached, owners.size, loopRuns.length], [0, 0, 0], "a refused Run binds, claims and starts nothing");
+                        return;
+                    }
+                    // A connection observes until its worker has work: read it to its snapshot, then leave.
+                    const events: AguiEvent[] = [];
+                    const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+                    for (let buffer = ""; ;) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        buffer += value;
+                        const frames = buffer.split("\n\n");
+                        buffer = frames.pop()!;
+                        events.push(...frames.filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
+                        if (connect && events.some(({ type }) => type === "MESSAGES_SNAPSHOT")) { stop.abort(); break; }
+                    }
+                    const result = actionOutcome(events) as { kind?: string } | undefined;
+                    const problem = runProblem(events);
+                    const observed = loopRuns.length > 0 ? `submits ${loopRuns.map(({ prompt }) => prompt).join()}`
+                        : result?.kind === "worker.model.get" ? "acts"
+                        : problem?.type.endsWith("/interrupt-not-pending") ? "resolves"
+                        : events.some(({ type }) => type === "MESSAGES_SNAPSHOT") && problem === undefined ? "observes"
+                        : JSON.stringify(events.map(({ type }) => type));
+                    assert.equal(observed, expected === "submits" ? "submits Next." : expected);
+                } finally {
+                    stop.abort();
+                    await mod.close();
+                }
+            });
+        }
     }
-});
-
-test("{§agui-sync}: unknown Run modes fail without echoing untrusted input", async () => {
-    const { seam } = mockSeam();
-    const mod = await host(seam);
-    try {
-        const response = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(standardInput({
-                threadId: "unknown-mode",
-                forwardedProps: { plurnk: { mode: "<private-value>" } },
-            })),
-        });
-        assert.equal(response.status, 400);
-        assert.deepEqual(await response.json(), Problems.create(
-            "agui:http",
-            "unsupported-run-mode",
-            400,
-            'forwardedProps.plurnk.mode must be "sync" when present.',
-            { stage: "request-validation", retryable: false },
-        ));
-    } finally {
-        await mod.close();
-    }
-});
+}
 
 test("the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
     const { seam, finish } = mockSeam();
@@ -2875,7 +2919,7 @@ test("{§workspace-label} the workspace list and the snapshot carry each folder'
         const result = actionOutcome(listed) as { ok: boolean; result: { workspaces: Array<{ project_label: string | null }> } };
         assert.equal(result.ok, true, "the list's output schema admits the label");
         assert.equal(result.result.workspaces[0]?.project_label, "~/proj");
-        const observed = await post(mod.address().port, { threadId: "proj", runId: "observe", forwardedProps: { plurnk: { workspace: "proj", mode: "sync" } } });
+        const observed = await post(mod.address().port, { threadId: "proj", runId: "observe", forwardedProps: { plurnk: { workspace: "proj" } } });
         const snapshot = observed.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: unknown } } };
         assert.deepEqual(snapshot.snapshot.plurnk.workspace, { id: 3, name: "proj", projectRoot: "/home/u/proj", projectLabel: "~/proj", preparation: [], activity: null });
     } finally { await mod.close(); }
@@ -3054,7 +3098,7 @@ const CREATING_FORMS: Readonly<Record<string, RunForm>> = {
 };
 // Each names the seam call that carries its effect to the worker it binds.
 const REQUIRING_FORMS: Readonly<Record<string, RunForm & { readonly effect: string }>> = {
-    "a sync observation": { plurnk: { mode: "sync" }, effect: "readLog" },
+    "a sync observation": { plurnk: {}, effect: "readLog" },
     "a connect observation": { path: "/agui/connect", effect: "readLog" },
     "loop.inject": { ...actionForm("loop.inject", { prompt: "steer" }), effect: "runLoop" },
     "loop.cancel": { ...actionForm("loop.cancel"), effect: "cancelDrain" },
@@ -3149,7 +3193,7 @@ for (const [form, input] of Object.entries(CREATING_FORMS)) {
 
 // {§agui-owner-connection} An owner's control observation is the owner's session attaching to its worker.
 const OWNER_OBSERVATIONS: Readonly<Record<string, RunForm>> = {
-    "a sync control observation": { plurnk: { mode: "sync", control: true } },
+    "a sync control observation": { plurnk: { control: true } },
     "a connect control observation": { path: "/agui/connect", plurnk: { control: true } },
 };
 
@@ -3430,7 +3474,8 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         if (++calls === 1) { lookup.resolve(); await release.promise; }
         return [];
     };
-    seam.createWorkspace = async () => ({ workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null });
+    let created = 0;
+    seam.createWorkspace = async () => { created += 1; return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null }; };
     seam.runLoop = async ({ workspaceId, workerId }) => {
         finish(workspaceId, workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -3447,7 +3492,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         assert.equal(refused.status, 404);
         assert.equal((await refused.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
         assert.notEqual(loopTerminal(await run), undefined, "the message Run ends with its loop's terminal record");
-        assert.equal(calls, 2, "the creating request performs its own lookup after the failed action");
+        assert.equal(created, 1, "the creating request looks the world up itself after the failed action, and creates it");
     } finally { release.resolve(); await mod.close(); }
 });
 
@@ -3665,7 +3710,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
 });
 
 
-test("{§agui-run-endpoint} the prompt is the last textual user message, and a non-textual one is refused before any loop", async () => {
+test("{§agui-run-input} the prompt is the Run's last message when a new user message, and a new one that is not text is refused before any loop", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     seam.runLoop = async (a) => {
         loopRuns.push({ prompt: a.prompt });
@@ -3697,7 +3742,7 @@ test("{§agui-run-endpoint} the prompt is the last textual user message, and a n
         assert.equal(response.status, 400);
         assert.equal(response.headers.get("content-type"), "application/problem+json");
         const problem = await response.json() as Record<string, unknown>;
-        assert.equal(problem.type, "https://problems.plurnk.xyz/agui/http/user-message-required");
+        assert.equal(problem.type, "https://problems.plurnk.xyz/agui/http/user-message-text-required");
         assert.equal(loopRuns.length, 1, "a refused Run starts no loop");
     } finally { await mod.close(); }
 });

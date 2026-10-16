@@ -29,18 +29,20 @@ export default class RunHandler {
     readonly #requiresWorkspace: (action: ActionRequest) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+    readonly #conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
     readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
 
-    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, boundWorker, actionBinding, workerStatus, action }: {
+    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerStatus, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
         requiresWorkspace: (action: ActionRequest) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+        conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
         boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required") => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
@@ -52,6 +54,7 @@ export default class RunHandler {
         this.#requiresWorkspace = requiresWorkspace;
         this.#controlRun = controlRun;
         this.#envelope = envelope;
+        this.#conversation = conversation;
         this.#boundWorker = boundWorker;
         this.#actionBinding = actionBinding;
         this.#workerStatus = workerStatus;
@@ -94,51 +97,49 @@ export default class RunHandler {
             throw new HttpProblemError(httpProblem("interactive-invalid", 400, "interactive must be a boolean.",
                 { stage: "request-validation", retryable: false }));
         }
-        const mode = forwarded?.mode;
-        if (mode !== undefined && mode !== "sync") {
+        // {§agui-run-input} A Run does one thing, chosen by its input before anything binds: a resume resolves, an
+        // action acts, a new message submits, and a Run that carries none of them synchronizes ({§agui-sync}).
+        const action = parseAction(input.forwardedProps);
+        const fresh = await this.#newMessage(input, forwarded);
+        const asks = Number(input.resume !== undefined) + Number(action !== null) + Number(fresh !== null);
+        if (connect && asks > 0) {
             throw new HttpProblemError(httpProblem(
-                "unsupported-run-mode",
+                "invalid-connect-input",
                 400,
-                'forwardedProps.plurnk.mode must be "sync" when present.',
+                "A connection cannot include a new message, an action, or an interrupt resume.",
                 { stage: "request-validation", retryable: false },
             ));
         }
-        const synchronize = connect || mode === "sync";
+        if (asks > 1) {
+            throw new HttpProblemError(httpProblem(
+                "ambiguous-run-input",
+                400,
+                "The Run carries more than one of a new message, an action, and an interrupt resume.",
+                { stage: "request-validation", recovery: "Send each in its own Run.", retryable: false },
+            ));
+        }
+        const synchronize = connect || asks === 0;
 
         // Control plane FIRST: a management action that doesn't live in a world, and one the module does not
         // register or whose input it refuses, answers without binding — or forging — a workspace
         // ({§agui-action-binding}). Only admitted world-scoped actions, message Runs and sync Runs reach #envelope below.
-        const action = parseAction(input.forwardedProps);
-        if (synchronize && (action !== null || input.resume !== undefined || input.messages.length > 0)) {
-            throw new HttpProblemError(httpProblem(
-                "invalid-sync-input",
-                400,
-                "A sync Run cannot include messages, an action, or an interrupt resume.",
-                { stage: "request-validation", retryable: false },
-            ));
-        }
         if (action !== null && !this.#requiresWorkspace(action)) {
             return await this.#controlRun(action, input, res, principal);
         }
 
         let prompt: string | null = null;
         let currentUser: UserMessage | null = null;
-        if (!synchronize && action === null && input.resume === undefined) {
-            const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
-            if (lastUser === undefined || typeof lastUser.content !== "string" || lastUser.content.length === 0) {
+        if (fresh !== null) {
+            if (typeof fresh.content !== "string" || fresh.content.length === 0) {
                 throw new HttpProblemError(httpProblem(
-                    "user-message-required",
+                    "user-message-text-required",
                     400,
-                    "A new AG-UI Run requires a non-empty textual user message.",
-                    {
-                        stage: "request-validation",
-                        recovery: "Provide a non-empty user message.",
-                        retryable: false,
-                    },
+                    "A new user message must be non-empty text.",
+                    { stage: "request-validation", recovery: "Send the message as non-empty text.", retryable: false },
                 ));
             }
-            prompt = lastUser.content;
-            currentUser = lastUser;
+            prompt = fresh.content;
+            currentUser = fresh;
         }
 
         // {§agui-thread-binding} {§agui-action-binding} The threadId names its worker, never compared with the
@@ -396,6 +397,26 @@ export default class RunHandler {
             );
             this.#portal().failThread(boundRun, runErrorEvents(problem));
         }
+    }
+
+    // {§agui-run-input} The Run's new message: its last message, when that is a user message of the thread's own
+    // conversation whose id the conversation's snapshot does not hold. A held id whose content differs is a conflict.
+    async #newMessage(input: RunAgentInput, forwarded: Record<string, unknown> | undefined): Promise<UserMessage | null> {
+        const last = input.messages.at(-1);
+        if (last?.role !== "user" || last.subagentRunId !== undefined) return null;
+        const conversation = await this.#conversation(input.threadId, forwarded);
+        if (conversation === null) return last;
+        const translator = new Translator({ threadId: input.threadId, runId: input.runId, modelWorkerId: conversation.workerId, workspaceId: conversation.workspaceId });
+        const [snapshot] = Translator.replayAll([{ translator, entries: await this.#history(conversation.workspaceId, conversation.workerId) }]);
+        const held = snapshot?.type === EventType.MESSAGES_SNAPSHOT ? snapshot.messages.find(({ id }) => id === last.id) : undefined;
+        if (held === undefined) return last;
+        if (held.role === "user" && held.content === last.content) return null;
+        throw new HttpProblemError(httpProblem(
+            "message-id-conflict",
+            409,
+            `Message ${JSON.stringify(last.id)} is already in this conversation with other content.`,
+            { stage: "request-validation", messageId: last.id, recovery: "Give a new message its own id.", retryable: false },
+        ));
     }
 
     // {§agui-snapshot} A snapshot is every message the live projection built, so it reads the whole log, page by page.

@@ -80,7 +80,7 @@ const setup = async (
         forwardedProps: { plurnk: { workspace, projectRoot: null, interactive: true } },
     });
     const reconnect = (): Promise<Event[]> => post({
-        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true, mode: "sync" } },
+        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true } },
     });
     return { provider, post, start, reconnect, daemon, db };
 };

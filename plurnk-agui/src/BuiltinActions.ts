@@ -87,14 +87,14 @@ export default class BuiltinActions {
     readonly #seam: () => BuiltinActionsPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
-    readonly #threadWorker: (threadId: string, env: ClientEnvelope) => Promise<number | undefined>;
+    readonly #threadWorker: (threadId: string, workspaceId: number) => Promise<number | undefined>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
 
     constructor({ seam, capabilities, envelope, threadWorker, requireWorkspace }: {
         seam: () => BuiltinActionsPort;
         capabilities: () => Promise<AguiDiscovery>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
-        threadWorker: (threadId: string, env: ClientEnvelope) => Promise<number | undefined>;
+        threadWorker: (threadId: string, workspaceId: number) => Promise<number | undefined>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
     }) {
         this.#seam = seam;
@@ -113,7 +113,7 @@ export default class BuiltinActions {
         statements: PlurnkStatement[],
         onLoop: OperationLoopListener | undefined,
     ): Promise<OperationResult[]> {
-        const contextWorkerId = await this.#threadWorker(input.threadId, world);
+        const contextWorkerId = await this.#threadWorker(input.threadId, world.workspaceId);
         return await this.#seam().dispatchClientAction({
             workspaceId: world.workspaceId,
             actor: MessageAddress.owner(principal, input.threadId),

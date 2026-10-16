@@ -57,7 +57,7 @@ for (const final of ["Four, precisely.", ""]) {
             assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta), expected);
             const replay = await post(port, {
                 threadId: "main",runId: "reconnected",
-                forwardedProps: { plurnk: { workspace: "sent-reply", mode: "sync" } },
+                forwardedProps: { plurnk: { workspace: "sent-reply" } },
             });
             const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ role: string; content: string }> } | undefined;
             assert.ok(snapshot);
@@ -151,7 +151,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         "{§agui-snapshot} the steering message reaches the opening Run as a user message, as on replay, then both answers");
         const replay = await post(port, {
             threadId: "main",runId: "reconnected",
-            forwardedProps: { plurnk: { workspace: "injected-source", mode: "sync" } },
+            forwardedProps: { plurnk: { workspace: "injected-source" } },
         });
         const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ id: string; role: string; content: string }> } | undefined;
         assert.ok(snapshot);
@@ -220,7 +220,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned wor
         assert.equal(provider.received.length, 2, "the assigned model observes the reply before concluding");
         const replay = await post(port, {
             threadId: "assigned", runId: "reconnect",
-            forwardedProps: { plurnk: { workspace: "collaborative-reply", mode: "sync" } },
+            forwardedProps: { plurnk: { workspace: "collaborative-reply" } },
         });
         const snapshot = replay.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: Array<{ role: string; content: string }> } | undefined;
         assert.deepEqual(speech(snapshot?.messages), ["A collaborator found 42."]);
@@ -321,7 +321,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
 
         const replay = await post(port, {
             threadId: "run-source", runId: "reconnect",
-            forwardedProps: { plurnk: { workspace: "run-source", mode: "sync" } },
+            forwardedProps: { plurnk: { workspace: "run-source" } },
         });
         const snapshot = replay.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: Array<{ id: string; role: string; content: string }> } | undefined;
         assert.ok(snapshot, "reconnecting obtains standard AG-UI message history");
@@ -330,13 +330,15 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         assert.deepEqual(speech(snapshot.messages), ["Named."],
             "the exact-address response replays once");
 
-        const duplicate = await post(port, {
-            threadId: "run-source", runId: "different-run-same-message",
-            messages: [{ id: "message 1", role: "user", content: "Replace the original." }],
-            forwardedProps: { plurnk: { workspace: "run-source" } },
+        // {§agui-run-input} The conversation holds that id with other words: refused before anything binds.
+        const duplicate = await fetch(`http://127.0.0.1:${port}/agui`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ state: {}, tools: [], context: [], threadId: "run-source", runId: "different-run-same-message",
+                messages: [{ id: "message 1", role: "user", content: "Replace the original." }],
+                forwardedProps: { plurnk: { workspace: "run-source" } } }),
         });
-        assert.ok(duplicate.some((event) => event.type === "RUN_ERROR"));
-        assert.match(JSON.stringify(duplicate), /message-already-accepted/);
+        assert.equal(duplicate.status, 409);
+        assert.equal(((await duplicate.json()) as { type: string }).type, "https://problems.plurnk.xyz/agui/http/message-id-conflict");
         assert.equal(provider.received.length, 2, "a conflicting message identity cannot launch another inference");
         const workspace = (await daemon.listWorkspaces()).find(({ name }: { name: string }) => name === "run-source");
         assert.ok(workspace);
