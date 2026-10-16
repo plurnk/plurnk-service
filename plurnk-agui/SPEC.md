@@ -230,7 +230,7 @@ sequence.
   |---|---|
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
-  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, worker, origin, op, source, signal, status, attrs }`, its durable id, worker, origin, operation, causal source, signal, receipt status (the failure flag) and attributes. Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, signal, status, attrs }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, signal, receipt status (the failure flag) and attributes. Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 

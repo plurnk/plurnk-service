@@ -840,8 +840,9 @@ test("{§agui-snapshot} {§message-arrival} an arrival is the same user message 
     ], "an observer receives every arrival natively: a thread client's message as that client sent it, any other named by its source");
     const words = (events: readonly AguiEvent[]) => events.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => (event as { messageId: string }).messageId);
     assert.deepEqual(words(live(submitter)), ["m-other", "1/1/3"], "the submitting Run's client already holds its own message's words");
-    assert.deepEqual((live(submitter).find((event) => event.type === EventType.TEXT_MESSAGE_START && event.messageId === "m-own") as { metadata?: { plurnk?: { id?: unknown } } } | undefined)?.metadata?.plurnk?.id, 1,
-        "{§agui-plurnk-metadata} and receives only its row's facts for it");
+    const ownFacts = (live(submitter).find((event) => event.type === EventType.TEXT_MESSAGE_START && event.messageId === "m-own") as { metadata?: { plurnk?: { id?: unknown; coordinate?: unknown } } } | undefined)?.metadata?.plurnk;
+    assert.deepEqual([ownFacts?.id, ownFacts?.coordinate], [1, "1/1/1"],
+        "{§agui-plurnk-metadata} and receives only its row's facts for it, its log coordinate among them");
     const snapshot = t().replay(rows)[0] as { messages: Array<{ id: string; role: string; content: unknown; name?: string }> };
     assert.deepEqual(said(snapshot.messages), [
         { id: "m-own", role: "user", content: "From the submitter." },
@@ -865,8 +866,8 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
 });
 
 test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
-    const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, worker: row.worker_id, origin: row.origin, op: row.op, source: row.source,
-        signal: row.signal, status: row.status_rx, attrs: row.attrs } });
+    const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}`,
+        worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, signal: row.signal, status: row.status_rx, attrs: row.attrs } });
     const speech = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
     const rows = [
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),

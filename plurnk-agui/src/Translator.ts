@@ -37,7 +37,8 @@ import MessageAddress from "./MessageAddress.ts";
 import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
-type RowFacts = { id?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown; source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown };
+type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
+    source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown };
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
@@ -630,9 +631,10 @@ export default class Translator {
     }
 
     // {§agui-plurnk-metadata} What the row that builds a message, tool call or result holds beyond the standard fields: its
-    // durable id, worker, origin, operation, source, signal, status and attrs, the same live and on snapshot.
+    // durable id, log coordinate, worker, origin, operation, source, signal, status and attrs, the same live and on snapshot.
     static #rowMetadata(e: RowFacts): { plurnk: Record<string, unknown> } {
-        return { plurnk: { id: e.id, worker: e.worker_id, origin: e.origin, op: e.op, source: e.source, signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+        return { plurnk: { id: e.id, coordinate: Translator.idOf(e), worker: e.worker_id, origin: e.origin, op: e.op, source: e.source,
+            signal: e.signal, status: e.status_rx, attrs: e.attrs } };
     }
 
     // {§agui-plurnk-metadata} Speech holds the body; its heading's aside and its receipt have no field in a text message.
