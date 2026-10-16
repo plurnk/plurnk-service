@@ -4,6 +4,7 @@ import { EventType } from "@ag-ui/core";
 // AG-UI 1.0 ships its runtime validators on the schemas subpath; the root export is types only.
 import {
     MessagesSnapshotEventSchema,
+    RunFinishedEventSchema,
     ReasoningEndEventSchema,
     ReasoningMessageContentEventSchema,
     ReasoningMessageEndEventSchema,
@@ -546,6 +547,35 @@ test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, 
     assert.equal(custom.value.usage.accounting.usage?.outputTokenDetails?.reasoningTokens, 2);
     assert.equal(custom.value.usage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 3);
     assert.deepEqual(custom.value.usage.meta, { balance: { amount: "0.99", currency: "XMR" } }, "opaque provider meta, verbatim");
+});
+
+// {§agui-run-outcome} Every way a loop ends, as the official schema reads it.
+test("{§agui-run-outcome} a loop's end is the Run's standard outcome: completed with its result, cancelled, or failed, with the requests' usage", () => {
+    const unknown = { kind: "unknown", reason: "no provider rate" } as const;
+    const requests = [
+        { provider: "openai", model: "a", outcome: "response", cost: unknown, usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120,
+            inputTokenDetails: { noCacheTokens: 60, cacheReadTokens: 40, cacheWriteTokens: 0 }, outputTokenDetails: { textTokens: 15, reasoningTokens: 5 } } },
+        { provider: "openai", model: "a", outcome: "response", cost: unknown, usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 } },
+        { provider: "openai", model: "b", outcome: "error", status: 503, cost: unknown },
+    ] as const;
+    const ended = (result: TerminatedNotification["result"], reported: ReadonlyArray<(typeof requests)[number]> = requests) => t().terminated({
+        terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result, hitMaxTurns: false, turnIds: [1], attributions: [],
+        usage: loopUsage({ accounting: { requests: [...reported], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null } }),
+    }).filter(({ type }) => type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR);
+    const usage = [{ provider: "openai", model: "a", inputTokens: 150, outputTokens: 30, totalTokens: 180, reasoningTokens: 5, cachedInputTokens: 40, cacheWriteInputTokens: 0 }];
+
+    const completed = ended({ status: 200 });
+    assert.deepEqual(completed, [{ type: EventType.RUN_FINISHED, threadId: "th-1", runId: "run-1", outcome: { type: "success" }, result: { status: 200 }, usage }],
+        "a completed loop finishes with its exact result and the tokens its requests reported, per model");
+    const cancel = { type: "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled", title: "Loop cancelled", status: 499, detail: "Cancelled by its owner." };
+    const cancelled = ended({ status: 499, problem: cancel });
+    assert.deepEqual(cancelled, [{ type: EventType.RUN_FINISHED, threadId: "th-1", runId: "run-1", outcome: { type: "cancelled" }, usage }],
+        "a loop stopped without failing finishes cancelled, never as an error");
+    for (const event of [...completed, ...cancelled]) RunFinishedEventSchema.parse(event);
+    const failure = { type: "https://problems.plurnk.xyz/lifecycle/loop/runaway", title: "Runaway", status: 508, detail: "The loop repeated itself." };
+    assert.deepEqual(ended({ status: 508, problem: failure }), [{ type: EventType.RUN_ERROR, message: failure.detail, code: failure.type }], "a failed loop is the Run's error");
+    assert.deepEqual(ended({ status: 200 }, [requests[2]]), [{ type: EventType.RUN_FINISHED, threadId: "th-1", runId: "run-1", outcome: { type: "success" }, result: { status: 200 } }],
+        "requests that reported no tokens report no usage, never zero");
 });
 
 test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {

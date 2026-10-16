@@ -156,7 +156,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
-| `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
+| §agui-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. A finished Run carries its loop's token `usage`: AG-UI's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§agui-cost-evidence}). |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/workspace/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
 | `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
@@ -290,9 +290,9 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 | `STATE_DELTA /budget/contextTokens`          | `loop/terminated.usage.contextTokens`     | Latest emission call's last physical request input occupancy, or `null` when that call issued none or reported none. |
 | `STATE_DELTA /budget/contextCapacity`        | `loop/terminated.usage.contextCapacity`   | That same latest emission call's request-shaped physical input capacity, or `null` when unknown. |
 
-§agui-cost-evidence AG-UI defines lifecycle, messages, tools, state transport,
-`RAW`, and `CUSTOM`, but no standard token-usage or monetary-accounting event.
-`plurnk.terminated.usage.accounting` therefore preserves the daemon's complete
+§agui-cost-evidence AG-UI carries token usage on `RUN_FINISHED` ({§agui-run-outcome}), but it defines
+no monetary accounting and no per-request record. `plurnk.terminated.usage.accounting` therefore
+preserves the daemon's complete
 {§provider-accounting} verbatim: ordered physical request records, conventional
 input/output totals with cache/reasoning details, and exact-decimal nullable
 `costUsd`. The custom event distinguishes charged, Models.dev-estimated,

@@ -29,7 +29,8 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Other model operations | Standard tool calls and results. |
 | Log rows | `CUSTOM plurnk.row` for richer clients; not a second chat stream to render alongside standard messages. |
 | Harness activity | `CUSTOM plurnk.ambient`, without invented model speech. |
-| Packet and terminal usage | State updates and `plurnk.terminated`; daemon quantities pass through unchanged. |
+| Loop end | `RUN_FINISHED` completed with its result or cancelled, or `RUN_ERROR` for a failure; a finished Run carries its token `usage`. |
+| Packet and terminal usage | State updates and `plurnk.terminated`, the complete accounting with cost; daemon quantities pass through unchanged. |
 
 READ of `reasoning://<worker>/…` is an operation receipt, not another reasoning stream.
 On reattach, the durable `MESSAGES_SNAPSHOT` restores accepted reasoning and

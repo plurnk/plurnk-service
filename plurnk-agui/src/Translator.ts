@@ -31,6 +31,7 @@ import {
     type ToolMessage,
     type UserMessage,
 } from "./types.ts";
+import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
@@ -322,8 +323,13 @@ export default class Translator {
         if (n.usage.meta !== undefined && n.usage.meta !== null && Object.keys(n.usage.meta).length > 0) {
             events.push({ type: EventType.RAW, event: n.usage.meta, source: "provider" });
         }
-        if (result.status === 200) {
-            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" } });
+        // {§agui-run-outcome} A loop that completed finishes the Run with its result; one stopped without failing (499)
+        // finishes it cancelled; any other failure is the Run's error. Usage is each physical request's own counts.
+        const usage = Translator.#tokenUsage(n.usage.accounting);
+        if (result.status < 400) {
+            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "success" }, result, ...usage });
+        } else if (result.status === 499) {
+            events.push({ type: EventType.RUN_FINISHED, threadId: this.#threadId, runId: this.#runId, outcome: { type: "cancelled" }, ...usage });
         } else {
             events.push({
                 type: EventType.RUN_ERROR,
@@ -332,6 +338,14 @@ export default class Translator {
             });
         }
         return events;
+    }
+
+    // {§agui-run-outcome} AG-UI's token usage of the loop's physical requests, by the standard's own AI SDK mapping and
+    // per-model aggregation: the daemon's counts, never its gauge ({§agui-numbers-passthrough}). Unreported counts stay absent.
+    static #tokenUsage(accounting: TerminatedNotification["usage"]["accounting"]): { usage?: TokenUsage[] } {
+        const usage = aggregateTokenUsage(accounting.requests.flatMap(({ provider, model, usage: counts }) =>
+            tokenUsageFromAiSdkUsage(counts, { provider, model }) ?? []));
+        return usage.length === 0 ? {} : { usage };
     }
 
     // {§agui-replay} {§agui-snapshot} — the messages as the live projection built them: arrivals, each turn's
