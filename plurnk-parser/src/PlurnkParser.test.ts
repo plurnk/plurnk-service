@@ -156,3 +156,13 @@ test("{§forgotten-tag}: at the top level, an operation heading under a bare fen
     assert.deepEqual(ran("```NOTE\nshown:\n```\nREAD (x)\n```\n```"), ["NOTE"], "inside a body the same shape stays literal");
     assert.deepEqual(warnings("```\n```READ (notes.md)\n```\n```"), ["`READ` inside a code block was shown, not run."], "a fenced example inside keeps its own receipt");
 });
+
+test("{§parse-attempt} a refused statement carries its attempt, its verb and its text as written; a diagnostic outside every statement carries none", () => {
+    const attempts = (source: string) => PlurnkParser.parse(source).items
+        .flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.attempt ?? null] : []);
+    assert.deepEqual(attempts("````READ (a.md) <1,\n````"), [{ verb: "READ", text: "````READ (a.md) <1,\n````" }, null],
+        "the refused READ as written; the turn's absence of an operation refuses no statement");
+    assert.deepEqual(attempts("````sh\necho hi\n````\n````FIND (*.md) <x>\n````"), [{ verb: "FIND", text: "````FIND (*.md) <x>\n````" }],
+        "a sibling that parsed leaves the refusal its own attempt");
+    assert.deepEqual(attempts("````READ (b.md\n````")[0], { verb: "READ", text: "````READ (b.md\n" }, "an unclosed slot is read as far as the parser read it");
+});

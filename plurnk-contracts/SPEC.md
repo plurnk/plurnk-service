@@ -1980,6 +1980,11 @@ intent ({§diagnostic-observation}).
 Unexpected top-level text immediately after a closed operation identifies that
 operation's opening line, closing line, and matching backtick count.
 
+§parse-attempt A hard fact that refused a statement the parser opened carries its `attempt`: the
+statement's text exactly as written, from its opening fence as far as the parser read it, and the
+`verb` that fence names, an operation keyword or an execution's runtime tag. A diagnostic that refused no opened
+statement, such as a lost boundary or a stray character outside every statement, carries none.
+
 Examples of canonical hard facts:
 
 - `unrecognized character '<' in target`

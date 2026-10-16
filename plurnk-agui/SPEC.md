@@ -151,6 +151,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` + `TOOL_CALL_RESULT` carrying its receipt, except for a call that opened an obligation, which what discharges it answers {§agui-call-result} |
 | §agui-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
 | `log/entry` actionless `kind=emissionAttempt` | `CUSTOM plurnk.ambient` ({§agui-ambient}); no assistant speech or reasoning replay. |
+| §agui-parse-refusal `log/entry` model `error` row, a parse refusal | The call the worker attempted ({§parse-attempt}): `TOOL_CALL_START` named by the attempt's verb, its arguments `{ text }` the statement as written, then `TOOL_CALL_RESULT` with the refusal, its status the failure; a refusal that names no attempt is no call and rides `CUSTOM plurnk.ambient` ({§agui-ambient}) |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
 | `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id, and the Run that submitted it, which already holds it, receives only `TEXT_MESSAGE_START/END` carrying its row's facts ({§agui-plurnk-metadata}); any other is named by its source |
 | `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations, {§agui-ambient}) |
@@ -317,8 +318,8 @@ every other daemon surface.
 
 - §agui-ambient **A row outside the conversation rides whole** — a row that builds no part of the
   conversation rides `CUSTOM plurnk.ambient` carrying the complete client-facing row: a foist, delta or
-  narration, another worker's row, a descendant's row outside any subagent ({§agui-subagents}), and an
-  emission the daemon rejected. An emission row ({§emission-row}) rides it like any other; the operations
+  narration, another worker's row, a descendant's row outside any subagent ({§agui-subagents}), an
+  emission the daemon rejected, and a parse refusal that names no attempt ({§agui-parse-refusal}). An emission row ({§emission-row}) rides it like any other; the operations
   it announces arrive as their own parts, so a client that renders operations omits it. Literal bodies
   follow {§agui-lifecycle-projection}; rich clients never receive the internal Plan extension. Generic
   clients ignore this channel.
@@ -344,7 +345,9 @@ every other daemon surface.
   no model worker is 404 `worker-not-found`. An owner's control observation is the owner's session
   attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}). It
   emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
-  `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). A durable pending interrupt is re-presented
+  `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). What reaches the Run while its log is
+  read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already
+  holds as it arrived, which are not built a second time. A durable pending interrupt is re-presented
   through the standard terminate-resume contract; an active Loop remains observed through its
   terminal; an idle worker emits `RUN_FINISHED`. Synchronization admits no prompt,
   creates no turn, and performs no model inference. Disconnecting this observer never cancels
@@ -362,9 +365,9 @@ complete set:
 | Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
 | A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation, a bodiless WAIT included | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}) |
+| Any other model operation, a bodiless WAIT and a parse refusal's attempt included ({§agui-parse-refusal}) | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§agui-call-result}) |
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
-| Emission attempt, ambient row | No message of its own |
+| Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
 
 Interrupt presentations are not snapshot messages: a pending one is re-presented as an interrupt,
 and a settled one's evidence is its operation's receipt. Transient reasoning of failed or rejected

@@ -83,10 +83,16 @@ export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, col
 // The platform's setTimeout ceiling (2^31-1 ms): the bound on any delay a knob may name.
 export const MAX_TIMER_MS = 2_147_483_647;
 
+// {§parse-attempt} The statement a hard fact refused, as the worker wrote it.
+export interface ParseAttempt {
+    readonly verb: string;
+    readonly text: string;
+}
+
 export type ParseItem =
     | { kind: "statement"; statement: PlurnkStatement }
     | { kind: "text"; content: string; position: Position }
-    | { kind: "error"; error: PlurnkParseError };
+    | { kind: "error"; error: PlurnkParseError; attempt?: ParseAttempt };
 
 export type ParseResult = {
     items: ParseItem[];

@@ -886,6 +886,26 @@ test("{§agui-plurnk-metadata} a row's address is what it recorded: scheme, host
     assert.equal(Translator.addressOf(wireRow({ scheme: null, pathname: null })), null, "a row that named nothing has no address");
 });
 
+test("{§agui-parse-refusal} a parse refusal is the call the worker attempted, answered by the refusal, live and on replay; one that names no attempt rides whole", () => {
+    const refusal = { type: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax", title: "Invalid operation syntax", status: 400, detail: "invalid READ scope" };
+    const attempted = wireRow({ id: 4, sequence: 2, op: "error", status_rx: 400, tx: "", rx: { status: 400, problem: refusal },
+        attrs: { attempt: { verb: "READ", text: "````READ (a.md) <1,\n````" } } });
+    const unread = wireRow({ id: 5, sequence: 3, op: "error", status_rx: 400, tx: "", rx: { status: 400, problem: refusal }, attrs: {} });
+    const live = [attempted, unread].flatMap((row) => t().logEntry({ entry: row }));
+    const start = live.find((event) => event.type === EventType.TOOL_CALL_START) as { toolCallId: string; toolCallName: string } | undefined;
+    assert.deepEqual([start?.toolCallId, start?.toolCallName], ["1/1/2", "READ"], "named by the verb the parser read");
+    const args = live.find((event) => event.type === EventType.TOOL_CALL_ARGS) as { delta: string } | undefined;
+    assert.deepEqual(JSON.parse(args?.delta ?? "{}"), { text: "````READ (a.md) <1,\n````" }, "its arguments are the statement as written");
+    const result = live.find((event) => event.type === EventType.TOOL_CALL_RESULT) as { content: string; metadata?: { plurnk?: { status?: number } } } | undefined;
+    assert.deepEqual([JSON.parse(result?.content ?? "{}").problem?.type, result?.metadata?.plurnk?.status], [refusal.type, 400], "answered by the refusal, its status the failure");
+    assert.equal(live.filter((event) => event.type === EventType.TOOL_CALL_START).length, 1, "a refusal that names no attempt is no call");
+    assert.ok(live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "it rides whole");
+    const [snapshot] = t().replay([attempted, unread]);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(calls(snapshot.messages), [["1/1/2", "READ"]], "the snapshot holds the same call");
+    assert.ok(snapshot.messages.some((message) => message.role === "tool" && message.toolCallId === "1/1/2"), "and its refusal");
+});
+
 test("{§methods-log-coordinate} a row's message identity is its L/T/S coordinate, and a row without its ordinals is refused", () => {
     assert.equal(Translator.idOf(wireRow({ loop_seq: 3, turn_seq: 4, sequence: 5 })), "3/4/5");
     assert.throws(() => Translator.idOf({ id: 9 } as never), /loop, turn and sequence ordinals/);

@@ -13,6 +13,8 @@ export interface RecordProblem {
     readonly source: string;
     readonly result: SchemeResult;
     readonly outcome?: string | null;
+    // {§parse-attempt} What the row records beside its Problem, never part of its body or weight.
+    readonly attrs?: Readonly<Record<string, unknown>>;
 }
 
 export interface MintedProblem {
@@ -53,7 +55,7 @@ export default class ProblemLog {
             `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${input.sequence}/error`,
         );
         const rx = JSON.stringify(failure);
-        const attrs = "{}";
+        const attrs = JSON.stringify(input.attrs ?? {});
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: input.workerId,
             loop_id: input.loopId,

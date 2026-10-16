@@ -209,12 +209,13 @@ export default class RunHandler {
 
         // {§agui-run-start} The Portal routes to this Run from the moment it is bound; what reaches it
         // before RUN_STARTED and the snapshot are written follows them, in order. A terminal ends it at once.
+        // Each notification's events are held together, so a sync Run can tell the rows its snapshot holds.
         let presented = false;
-        const held: AguiEvent[] = [];
+        const held: AguiEvent[][] = [];
         const routed = (events: AguiEvent[]): void => {
             if (presented) return emit(events);
             const terminal = events.filter(({ type }) => type === EventType.RUN_ERROR || type === EventType.RUN_FINISHED);
-            if (terminal.length === 0) return void held.push(...events);
+            if (terminal.length === 0) return void held.push(events);
             held.length = 0;
             emit(terminal);
         };
@@ -278,8 +279,10 @@ export default class RunHandler {
                 ...(status === undefined ? {} : { status }),
             }),
         ));
-        presented = true;
-        emit(held.splice(0));
+        if (!synchronize) {
+            presented = true;
+            emit(held.splice(0).flat());
+        }
         if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
 
@@ -296,6 +299,11 @@ export default class RunHandler {
             const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
             if (finished) return;
             emit(this.#portal().replay(boundRun, history, undefined, subagents));
+            // {§agui-sync} What reached the Run while its log was read follows its snapshot, and a row the snapshot
+            // already holds as it arrived is not built a second time.
+            const replayed = new Map([...history, ...subagents.flatMap(({ entries }) => entries)].map((row) => [row.id, RunHandler.#version(row)]));
+            presented = true;
+            emit(held.splice(0).flatMap((events) => RunHandler.#unreplayed(events, replayed)));
             if (finished) return;
             await this.#portal().synchronize(workspaceId, boundRun, connect);
             return;
@@ -401,6 +409,23 @@ export default class RunHandler {
             rows.push(...older);
             beforeId = Math.min(...older.map(({ id }) => id));
         }
+    }
+
+    // {§agui-sync} A row's version: what a later delivery of the same row can change.
+    static #version(row: { status_rx?: unknown; signal?: unknown; attrs?: unknown }): string {
+        return JSON.stringify([row.status_rx ?? null, row.signal ?? null, row.attrs ?? null]);
+    }
+
+    // {§agui-sync} One notification's events, without the parts of a row the snapshot already holds as it arrived.
+    static #unreplayed(events: AguiEvent[], replayed: ReadonlyMap<unknown, string>): AguiEvent[] {
+        const facts = events.map((event) => (event as { metadata?: { plurnk?: { id?: unknown; status?: unknown; signal?: unknown; attrs?: unknown } } }).metadata?.plurnk)
+            .find((plurnk) => plurnk?.id !== undefined);
+        const whole = events.find((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient") as { value?: Record<string, unknown> } | undefined;
+        const row = facts !== undefined ? { id: facts.id, version: RunHandler.#version({ status_rx: facts.status, signal: facts.signal, attrs: facts.attrs }) }
+            : whole?.value !== undefined ? { id: whole.value.id, version: RunHandler.#version(whole.value) } : null;
+        if (row === null || replayed.get(row.id) !== row.version) return events;
+        return events.filter((event) => !(event.type.startsWith("TOOL_CALL_") || event.type.startsWith("TEXT_MESSAGE_") || event.type.startsWith("REASONING_")
+            || (event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient")));
     }
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {

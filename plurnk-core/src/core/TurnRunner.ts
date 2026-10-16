@@ -7,12 +7,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, NoteStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, NoteStatement, ParseAttempt } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
-export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string };
+export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
 // {§emission-row} {§reasoning-row}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number };
 const comparePosition = (
@@ -1960,7 +1960,9 @@ export default class TurnRunner {
                                 parserSource: err.source,
                             });
                         } else {
-                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source, ...(err.recovery === undefined ? {} : { recovery: err.recovery }) });
+                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source,
+                                ...(err.recovery === undefined ? {} : { recovery: err.recovery }),
+                                ...(item.attempt === undefined ? {} : { attempt: item.attempt }) });
                         }
                     } else {
                         const msg = (err as { message?: string } | undefined)?.message ?? "parse error";

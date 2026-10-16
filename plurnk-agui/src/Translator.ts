@@ -220,9 +220,15 @@ export default class Translator {
             events.push(ambient);
             return events;
         }
+        // {§agui-parse-refusal} A refusal is the call the worker attempted; one that names no attempt builds no part.
+        const call = Translator.#callOf(e);
+        if (call === null) {
+            events.push(ambient);
+            return events;
+        }
         const metadata = Translator.#rowMetadata(e);
-        events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: e.op, metadata });
-        events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: Translator.#argsFor(e) });
+        events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: call.name, metadata });
+        events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: call.args });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
         // {§agui-call-result} A call is answered by its receipt, unless it opened an obligation.
         if (!Translator.#opensObligation(e)) {
@@ -400,8 +406,9 @@ export default class Translator {
             messages.push(attributed({ id, role: "assistant", content: text, metadata: Translator.#speechMetadata(e) }));
             return;
         }
-        const entry = e as LogEntryNotification["entry"];
-        messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: e.op, arguments: Translator.#argsFor(entry) }, metadata }] }));
+        const call = Translator.#callOf(e as LogEntryNotification["entry"]);
+        if (call === null) return;
+        messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: call.name, arguments: call.args }, metadata }] }));
         if (Translator.#opensObligation(e)) return;
         Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: Translator.#asText(e.rx), metadata }));
     }
@@ -685,6 +692,15 @@ export default class Translator {
         let at = call + 1;
         while (at < messages.length && messages[at]!.role === "tool") at++;
         messages.splice(at, 0, result);
+    }
+
+    // {§agui-parse-refusal} The call a model operation row is: its operation and its statement, or for a parse refusal the
+    // statement the worker attempted, its verb and its text as written; null for a refusal that names no attempt.
+    static #callOf(e: LogEntryNotification["entry"]): { name: string; args: string } | null {
+        if (e.op !== "error") return { name: e.op as string, args: Translator.#argsFor(e) };
+        const attempt = (Translator.#parsed(e.attrs) as { attempt?: { verb?: unknown; text?: unknown } } | null)?.attempt;
+        return typeof attempt?.verb === "string" && typeof attempt.text === "string"
+            ? { name: attempt.verb, args: JSON.stringify({ text: attempt.text }) } : null;
     }
 
     // {§agui-projection} A tool call's arguments are the operation as authored: its durable statement, every operand

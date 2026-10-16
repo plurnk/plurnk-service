@@ -922,6 +922,13 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
         assert.equal(problem.column, 38);
+        // {§parse-attempt} The row records the statement the parser refused, as written; the packet shows the model nothing new.
+        const [refused] = await db.test_log_entries_by_worker_op_full.all<{ attrs: string }>({ worker_id: workerId, op: "error" });
+        const attempt = (JSON.parse(refused!.attrs) as { attempt?: { verb: string; text: string } }).attempt;
+        assert.equal(attempt?.verb, "COPY");
+        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null).split("\n")[0]!), attempt?.text);
+        assert.equal(Object.hasOwn(problem, "attempt"), false);
+        assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
     } finally { await db.close(); }
 });
 

@@ -9,6 +9,7 @@ import RecordingListener from "./RecordingListener.ts";
 import { isReasoningOperation, type ReasoningOperation } from "./ReasoningOperation.ts";
 import {
     PlurnkParseError,
+    type ParseAttempt,
     type ParseItem,
     type ParseResult,
     type PlurnkStatement,
@@ -452,7 +453,7 @@ export default class PlurnkParser {
                 if (errForStatement) {
                     // One malformed statement projects one hard diagnostic. {§error-shape}
                     for (const error of errorsForStatement) consumedErrors.add(error);
-                    items.push({ kind: "error", error: errForStatement });
+                    items.push({ kind: "error", error: errForStatement, ...PlurnkParser.#attempt(start, stop) });
                 } else if ((c.getChildCount?.() ?? 0) === 0 || c.exception || c.start?.type === Token.EOF) {
                     // A phantom statement context synthesized during error recovery (a required
                     // slot the parser opened then failed to fill, or a disposition the log rule
@@ -475,13 +476,20 @@ export default class PlurnkParser {
                         // internal bug, not a parse error: let it crash rather than masquerade
                         // as a model-facing parse-error item.
                         if (!(e instanceof PlurnkParseError)) throw e;
-                        items.push({ kind: "error", error: e });
+                        items.push({ kind: "error", error: e, ...PlurnkParser.#attempt(start, stop) });
                     }
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
                 PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn, boundary);
             }
         }
+    }
+
+    // {§parse-attempt} The statement a hard fact refused: its text as written, and the verb its opening fence names.
+    static #attempt(start: Token, stop: Token | null | undefined): { attempt: ParseAttempt } | Record<string, never> {
+        const verb = (start.text ?? "").replace(/^`+[0-9]*/u, "").trim();
+        const text = start.inputStream?.getTextFromRange(start.start, (stop ?? start).stop);
+        return verb.length === 0 || /\s/u.test(verb) || text === undefined ? {} : { attempt: { verb, text } };
     }
 
     static #isBefore(point: { line: number; column: number }, boundary: Position): boolean {

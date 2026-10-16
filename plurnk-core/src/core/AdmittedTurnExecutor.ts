@@ -198,6 +198,8 @@ export default class AdmittedTurnExecutor {
                             retryable: false,
                         },
                     ),
+                    // {§parse-attempt} The statement the parser refused rides the row, outside its body.
+                    ...(error.attempt === undefined ? {} : { attrs: { attempt: error.attempt } }),
                 });
                 outcomes.push({ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null });
                 onDispatch?.(recorded.id);

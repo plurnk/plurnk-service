@@ -87,6 +87,7 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
                     frame({ content: "````NOTE\nPlan the note.\n````\n````EDIT (worker:///notes.md)\nfirst\n````\n"
                         + "````READ (worker://user/identity.md) <1,2> /cobalt/ <!-- selected evidence -->\n````\n"
                         + "````COPY (worker:///notes.md) (worker:///copy.md)\n````\n"
+                        + "````READ (worker:///notes.md) <1,\n````\n"
                         + `\`\`\`\`sh\nwhile [ ! -e '${release}' ]; do sleep 0.02; done; printf 'hello\\n'\n\`\`\`\`\n`
                         + "````WAIT\n````" }, "stop"),
                 ], held.promise);
@@ -163,6 +164,12 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
         .find(({ name }) => name === "COPY");
     assert.deepEqual([copy?.arguments.source, copy?.arguments.destination].map((operand) => (operand as { target?: { raw?: string } } | undefined)?.target?.raw),
         ["worker:///notes.md", "worker:///copy.md"], "both COPY operands ride the arguments");
+    // {§agui-parse-refusal} #1140 — a refused statement is the call the worker attempted, answered by its refusal.
+    const attempted = truth.flatMap(({ calls }) => (calls as Array<{ callId: string; name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+        .find(({ name, arguments: args }) => name === "READ" && typeof args.text === "string");
+    assert.equal(attempted?.arguments.text, "````READ (worker:///notes.md) <1,\n````", "the attempt is the statement as written");
+    const refusal = truth.find(({ role, toolCallId }) => role === "tool" && toolCallId === attempted?.callId);
+    assert.equal((JSON.parse(refusal?.content as string ?? "{}") as { status?: number }).status, 400, "answered by the refusal");
     const commandId = command(refreshed)!;
     const outputs = truth.filter(({ role, toolCallId }) => role === "tool" && toolCallId === commandId);
     assert.deepEqual(outputs.map(({ content }) => {

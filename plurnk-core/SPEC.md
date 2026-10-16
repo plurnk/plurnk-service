@@ -1481,7 +1481,9 @@ completion before the model sees them in the next packet.
 WAIT without a live obligation continues to those results.
 This is operation recovery, not provider
 resampling. A malformed statement's Problem records the factual
-`siblingsRetained: true` extension.
+`siblingsRetained: true` extension, and its row's `attrs` record the statement the parser refused,
+its `attempt` ({§parse-attempt}), outside the row's body and weight, so the packet shows the model
+nothing new.
 
 §invalid-emission-attempts Each exhausted emission-attempt budget contributes
 one frame-contract strike to the same streak as other contract violations

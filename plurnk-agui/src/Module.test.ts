@@ -2286,6 +2286,40 @@ test("{§agui-owner-activation} an owner's attachment starts its workspace's act
     } finally { await mod.close(); }
 });
 
+test("{§agui-sync} rows that reach a sync Run while its log is read follow its snapshot, and one the snapshot holds as it arrived is not built twice", async () => {
+    const { seam, emit } = mockSeam();
+    seam.listWorkspaces = async () => [workspaceRow(3, "busy")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "busy", projectRoot: null, projectLabel: null });
+    directory(seam, [workerRow(20, "busy")]);
+    const row = (id: number, status = 200) => ({ id, worker_id: 20, loop_id: 1, origin: "model", op: "READ", status_rx: status, rx: { status },
+        loop_seq: 1, turn_seq: 1, sequence: id, tx: { body: "" }, turn_id: 1, attrs: {} });
+    // While the log is read: row 2 commits in time for the read, row 3 after it, and row 2's receipt then settles.
+    let read = false;
+    seam.readLog = async ({ beforeId }) => {
+        if (beforeId !== undefined) return [];
+        if (!read) {
+            read = true;
+            emit(3, "log/entry", { entry: wireRow(row(2)) });
+            emit(3, "log/entry", { entry: wireRow(row(3)) });
+            emit(3, "log/entry", { entry: wireRow(row(2, 404)) });
+        }
+        return logRows([row(2)]);
+    };
+    const mod = await host(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy", mode: "sync" } } });
+        const snapshot = events.findIndex((event) => event.type === "MESSAGES_SNAPSHOT");
+        const calls = events.flatMap((event, index) => event.type === "TOOL_CALL_START"
+            ? [[index > snapshot, (event as { metadata?: { plurnk?: { id?: number; status?: number } } }).metadata?.plurnk]] : []);
+        assert.deepEqual(calls, [[true, expectedFacts(3)], [true, expectedFacts(2, 404)]],
+            "after the snapshot: the row it could not hold, and the settled receipt of the one it held; never the held row again");
+    } finally { await mod.close(); }
+
+    function expectedFacts(id: number, status = 200) {
+        return { id, coordinate: `1/1/${id}`, worker: 20, origin: "model", op: "READ", source: null, address: null, signal: null, status, attrs: {} };
+    }
+});
+
 test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows that reached it while the snapshot was read follow them, in order", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "busy")];
